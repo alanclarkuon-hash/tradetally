@@ -2,6 +2,8 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const symbolCategories = require('../utils/symbolCategories');
+const yahooFinance = require('../utils/yahooFinance');
+const TierService = require('../services/tierService');
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 
@@ -278,6 +280,33 @@ async function getSymbolMetadata(req, res) {
           exchange: metadata[symbol].exchange || category.exchange || null,
           logo: metadata[symbol].logo || category.logo || null
         };
+      }
+    }
+
+    // Yahoo needs no key and covers listings the configured provider may not.
+    // Self-hosted only, matching the gate the chart fallbacks use: a hosted
+    // instance must never reach this provider. Best-effort either way — a
+    // failure here must not fail the response.
+    const billingEnabled = await TierService.isBillingEnabled(req.headers?.host);
+    const symbolsMissingName = billingEnabled ? [] : symbols.filter(
+      symbol => metadata[symbol] && !metadata[symbol].companyName && !isOptionContractSymbol(symbol)
+    );
+
+    if (symbolsMissingName.length > 0 && yahooFinance.isEnabled()) {
+      // Bounded concurrency: a portfolio of uncovered symbols would otherwise
+      // open one request per symbol at once.
+      const chunkSize = 5;
+      for (let i = 0; i < symbolsMissingName.length; i += chunkSize) {
+        const chunk = symbolsMissingName.slice(i, i + chunkSize);
+        const names = await Promise.all(
+          chunk.map(symbol => yahooFinance.getSymbolName(symbol).catch(() => null))
+        );
+
+        chunk.forEach((symbol, index) => {
+          if (names[index]) {
+            metadata[symbol] = { ...metadata[symbol], companyName: names[index] };
+          }
+        });
       }
     }
 

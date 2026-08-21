@@ -404,6 +404,92 @@ class YahooFinanceClient {
     }
   }
 
+  // Company profile for a listing the configured provider does not cover.
+  // Uses the search endpoint, which needs no key and no crumb, unlike
+  // quoteSummary. Search is fuzzy, so only an exact ticker match is accepted.
+  async getSymbolProfile(symbol) {
+    if (!this.isEnabled()) return null;
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+
+    const cached = await cache.get('yahoo_symbol_profile', yahooSymbol);
+    if (cached) return cached.miss ? null : cached;
+
+    try {
+      const response = await axios.get(
+        `https://${YAHOO_CHART_HOSTS[1]}/v1/finance/search`,
+        {
+          timeout: 8000,
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+          params: { q: yahooSymbol, quotesCount: 5, newsCount: 0, enableFuzzyQuery: false }
+        }
+      );
+
+      // Search is a fuzzy endpoint: only an exact ticker match may be trusted,
+      // or a mistyped symbol silently adopts a neighbour's industry.
+      const match = (response.data?.quotes || []).find(
+        (candidate) => String(candidate?.symbol || '').toUpperCase() === yahooSymbol
+      );
+      if (!match) {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, { miss: true });
+        return null;
+      }
+
+      const profile = {
+        symbol: yahooSymbol,
+        name: match.longname || match.shortname || null,
+        // An ETF legitimately has no industry; null is the right answer, not a gap.
+        industry: match.industry || null,
+        exchange: match.exchDisp || match.exchange || null,
+        quoteType: match.quoteType || null
+      };
+
+      if (profile.name || profile.industry) {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, profile);
+      } else {
+        await cache.set('yahoo_symbol_profile', yahooSymbol, { miss: true });
+      }
+
+      return profile;
+    } catch (error) {
+      console.warn(`[SYMBOLS] Yahoo Finance profile lookup failed for ${yahooSymbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Company name for a listing the configured provider does not cover. Finnhub's
+  // free tier is US-only, so a European holding otherwise shows no name at all.
+  // The chart endpoint already carries it, so this costs one cached request.
+  async getSymbolName(symbol) {
+    if (!this.isEnabled()) return null;
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+
+    const cached = await cache.get('yahoo_symbol_name', yahooSymbol);
+    if (cached) return cached;
+
+    try {
+      const response = await axios.get(
+        `https://${YAHOO_CHART_HOSTS[0]}/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+        {
+          timeout: 8000,
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
+          params: { interval: '1d', range: '1d' }
+        }
+      );
+
+      const meta = response.data?.chart?.result?.[0]?.meta;
+      const name = meta?.longName || meta?.shortName || null;
+      if (name) await cache.set('yahoo_symbol_name', yahooSymbol, name);
+      return name;
+    } catch (error) {
+      console.warn(`[SYMBOLS] Yahoo Finance name lookup failed for ${yahooSymbol}: ${error.message}`);
+      return null;
+    }
+  }
+
   async getStockTradeChartData(symbol, entryDate, exitDate = null, requestedResolution = 'D') {
     if (!this.isEnabled()) {
       throw new Error('Yahoo Finance fallback is disabled');

@@ -1,5 +1,7 @@
 const db = require('../config/database');
 const finnhub = require('./finnhub');
+const yahooFinance = require('./yahooFinance');
+const TierService = require('../services/tierService');
 const cache = require('./cache');
 
 class SymbolCategoryManager {
@@ -97,8 +99,33 @@ class SymbolCategoryManager {
       
       // If not found or stale, fetch from API
         console.log(`[CHECK] Fetching category for ${symbol} from API...`);
-        const profile = await finnhub.getCompanyProfile(symbolUpper);
-      
+        // A plan restriction throws rather than returning empty; degrade to
+        // the fallback below rather than abandoning the symbol.
+        let profile = null;
+        try {
+          profile = await finnhub.getCompanyProfile(symbolUpper);
+        } catch (providerError) {
+          console.warn(`[SYMBOLS] ${finnhub.displayName || 'Market data'} profile unavailable for ${symbolUpper}: ${providerError.message}`);
+        }
+
+        // Yahoo needs no key and covers listings the configured provider may not.
+        // Self-hosted only, matching the gate the chart fallbacks use.
+        const billingEnabled = await TierService.isBillingEnabled();
+        if (!billingEnabled
+            && !this.hasStoredMetadata(this.normalizeCategory(symbolUpper, profile || {}))) {
+          const yahooProfile = await yahooFinance.getSymbolProfile(symbolUpper).catch(() => null);
+
+          if (yahooProfile && (yahooProfile.name || yahooProfile.industry)) {
+            profile = {
+              ...(profile || {}),
+              name: (profile && profile.name) || yahooProfile.name,
+              finnhubIndustry: (profile && (profile.finnhubIndustry || profile.finnhub_industry))
+                || yahooProfile.industry,
+              exchange: (profile && profile.exchange) || yahooProfile.exchange
+            };
+          }
+        }
+
         if (profile) {
         // Store in permanent storage even if no industry (to avoid repeated API calls)
           await this.saveSymbolCategory(symbolUpper, profile);
