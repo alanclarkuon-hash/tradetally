@@ -334,6 +334,56 @@ class YahooFinanceClient {
     return resolution;
   }
 
+  // Latest price for a listing the configured provider cannot quote. Finnhub's
+  // free tier is US-only, so European holdings otherwise show no current price
+  // and no unrealized P&L at all. Shaped like the Finnhub quote the callers
+  // already consume: c = current, pc = previous close, d/dp = change.
+  async getQuote(symbol) {
+    if (!this.isEnabled()) return null;
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) return null;
+
+    const cached = await cache.get('yahoo_quote', yahooSymbol);
+    if (cached) return cached;
+
+    try {
+      const response = await axios.get(
+        `https://${YAHOO_CHART_HOSTS[0]}/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
+        {
+          timeout: 8000,
+          headers: { Accept: 'application/json', 'User-Agent': 'TradeTally/2.9' },
+          params: { interval: '1d', range: '5d' }
+        }
+      );
+
+      const meta = response.data?.chart?.result?.[0]?.meta;
+      const current = asNumber(meta?.regularMarketPrice);
+      if (current === null) return null;
+
+      const previousClose = asNumber(meta?.chartPreviousClose) ?? asNumber(meta?.previousClose) ?? 0;
+      const change = previousClose ? current - previousClose : 0;
+
+      const quote = {
+        c: current,
+        pc: previousClose,
+        d: change,
+        dp: previousClose ? (change / previousClose) * 100 : 0,
+        h: asNumber(meta?.regularMarketDayHigh),
+        l: asNumber(meta?.regularMarketDayLow),
+        o: null,
+        currency: meta?.currency || null,
+        source: 'yahoo'
+      };
+
+      await cache.set('yahoo_quote', yahooSymbol, quote);
+      return quote;
+    } catch (error) {
+      console.warn(`[QUOTES] Yahoo Finance quote failed for ${yahooSymbol}: ${error.message}`);
+      return null;
+    }
+  }
+
   async getStockTradeChartData(symbol, entryDate, exitDate = null, requestedResolution = 'D') {
     if (!this.isEnabled()) {
       throw new Error('Yahoo Finance fallback is disabled');

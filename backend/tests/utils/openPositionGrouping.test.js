@@ -191,3 +191,38 @@ describe('groupTradesIntoPositions', () => {
     expect(mrvl.avgPrice).toBeCloseTo(1.5, 6);
   });
 });
+
+describe('position currency', () => {
+  test('carries the trade currency onto the grouped position', () => {
+    const positions = groupTradesIntoPositions([
+      {
+        id: 't1',
+        symbol: 'EXCO.DE',
+        side: 'long',
+        quantity: 10,
+        entry_price: 100,
+        instrument_type: 'stock',
+        original_currency: 'EUR',
+        executions: [{ action: 'buy', quantity: 10, price: 100 }]
+      }
+    ]);
+
+    expect(Object.values(positions)[0].currency).toBe('EUR');
+  });
+
+  test('leaves the currency null when the trade does not record one', () => {
+    const positions = groupTradesIntoPositions([
+      {
+        id: 't2',
+        symbol: 'EXCO',
+        side: 'long',
+        quantity: 1,
+        entry_price: 50,
+        instrument_type: 'stock',
+        executions: [{ action: 'buy', quantity: 1, price: 50 }]
+      }
+    ]);
+
+    expect(Object.values(positions)[0].currency).toBeNull();
+  });
+});

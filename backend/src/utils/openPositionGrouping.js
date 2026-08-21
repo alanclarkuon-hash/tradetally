@@ -153,7 +153,11 @@ function groupTradesIntoPositions(openTrades) {
         underlying_symbol: trade.underlying_symbol || null,
         expiration_date: trade.expiration_date || null,
         option_type: trade.option_type || null,
-        strike_price: trade.strike_price || null
+        strike_price: trade.strike_price || null,
+        // A position groups trades in one symbol, which are necessarily in one
+        // currency. Carrying it lets the UI label the value correctly instead
+        // of assuming the account's currency.
+        currency: trade.original_currency || null
       };
     }
 

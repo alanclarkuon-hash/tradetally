@@ -1156,7 +1156,10 @@ class Trade {
         t.option_type,
         t.strike_price,
         t.trade_date,
-        t.entry_time
+        t.entry_time,
+        -- Positions can be held in a currency other than the account's; without
+        -- this the dashboard labels a EUR holding with the account's symbol.
+        t.original_currency
       FROM trades t
       ${whereClause}
       ORDER BY t.trade_date DESC, t.entry_time DESC
