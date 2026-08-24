@@ -1242,7 +1242,10 @@
           </div>
 
           <!-- Trade Chart Visualization (Collapsible) -->
-          <div v-if="trade.exit_price && trade.exit_time" class="card">
+          <!-- Open trades chart too: the endpoint returns candles up to the
+               present for them, and KLineTradeChart already renders an entry
+               marker with no exit. -->
+          <div v-if="trade.entry_time || trade.trade_date" class="card">
             <div class="card-body">
               <button
                 @click="toggleChartSection"
@@ -1707,6 +1710,7 @@ function hasLegacyFuturesExcursionUnits(currentTrade, captured, scale) {
 
 const loading = ref(true)
 const trade = ref(null)
+
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
 const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
