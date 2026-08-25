@@ -31,8 +31,44 @@ const EXCHANGES = {
   AX: { zone: 'Australia/Sydney', open: 10 * 60, close: 16 * 60, venue: 'ASX', tzLabel: 'Sydney' },
 }
 
+// A TradingView import keeps the exchange on the symbol (LSE:IGLN), stating the
+// venue outright instead of implying it with a suffix. US prefixes need no
+// entry here — NASDAQ:DEVS and NYSE:KO already land on the default.
+const EXCHANGE_PREFIXES = {
+  LSE: 'L',
+  XETR: 'DE',
+  FWB: 'F',
+  GETTEX: 'F',
+  TRADEGATE: 'F',
+  // One prefix covers the continental Euronext books. Paris, Amsterdam and
+  // Brussels share a session; Lisbon runs an hour earlier and is read an hour
+  // late here, which is still its own morning rather than New York's.
+  EURONEXT: 'PA',
+  MIL: 'MI',
+  BME: 'MC',
+  SIX: 'SW',
+  VIE: 'VI',
+  OMXSTO: 'ST',
+  OMXCOP: 'CO',
+  OMXHEX: 'HE',
+  OSL: 'OL',
+  TSX: 'TO',
+  HKEX: 'HK',
+  TSE: 'T',
+  ASX: 'AX',
+}
+
 export function exchangeForSymbol(symbol) {
-  const normalized = String(symbol || '').trim().toUpperCase()
+  let normalized = String(symbol || '').trim().toUpperCase()
+
+  const colon = normalized.indexOf(':')
+  if (colon !== -1) {
+    const prefix = EXCHANGE_PREFIXES[normalized.slice(0, colon)]
+    if (prefix) return EXCHANGES[prefix]
+    // Unrecognised: drop it and let any suffix on the rest still be read.
+    normalized = normalized.slice(colon + 1)
+  }
+
   const lastDot = normalized.lastIndexOf('.')
   if (lastDot === -1) return US
 

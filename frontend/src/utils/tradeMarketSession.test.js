@@ -63,4 +63,40 @@ describe('getTradeMarketSession', () => {
         .toMatchObject({ key: 'regular' })
     })
   })
+
+  describe('exchange-qualified symbols from a TradingView import', () => {
+    it('reads the venue from the prefix', () => {
+      // 13:26Z is 14:26 in London, mid-session, but 09:26 in New York.
+      expect(getTradeMarketSession('2026-08-12T13:26:00.000Z', 'LSE:IGLN'))
+        .toMatchObject({ key: 'regular', label: 'Market' })
+      expect(getTradeMarketSession('2026-08-12T13:26:00.000Z', 'LSE:IGLN').title)
+        .toContain('LSE')
+    })
+
+    it('agrees with the suffix form of the same listing', () => {
+      const stamp = '2026-08-12T13:26:00.000Z'
+      expect(getTradeMarketSession(stamp, 'LSE:IGLN'))
+        .toEqual(getTradeMarketSession(stamp, 'IGLN.L'))
+    })
+
+    it('keeps US hours for a US prefix', () => {
+      expect(getTradeMarketSession('2025-01-02T14:30:00.000Z', 'NASDAQ:DEVS'))
+        .toMatchObject({ key: 'regular' })
+      expect(getTradeMarketSession('2025-01-02T13:00:00.000Z', 'NASDAQ:DEVS'))
+        .toMatchObject({ key: 'pre_market' })
+    })
+
+    it('covers the other prefixed venues', () => {
+      // 09:05Z is 11:05 in Frankfurt and Paris, 05:05 in New York.
+      expect(getTradeMarketSession('2026-08-14T09:05:00.000Z', 'XETR:BMW'))
+        .toMatchObject({ key: 'regular' })
+      expect(getTradeMarketSession('2026-08-14T09:05:00.000Z', 'EURONEXT:TTE'))
+        .toMatchObject({ key: 'regular' })
+    })
+
+    it('still reads a suffix when the prefix is unknown', () => {
+      expect(getTradeMarketSession('2026-08-12T13:26:00.000Z', 'AQUIS:IGLN.L'))
+        .toMatchObject({ key: 'regular' })
+    })
+  })
 })
