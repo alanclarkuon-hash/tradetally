@@ -26,8 +26,9 @@ function normaliseMinorUnit(currency) {
 
 /**
  * Restate a quote in `targetCurrency`. Prices are scaled; percentage change is
- * currency-invariant and left alone. Throws when a rate cannot be obtained, so
- * the caller drops the quote rather than showing an unlabelled number.
+ * currency-invariant and left alone. Throws when the source currency is unknown
+ * or a rate cannot be obtained, so the caller drops the quote rather than
+ * showing a number whose unit it cannot state.
  */
 async function convertQuoteCurrency(quote, targetCurrency) {
   if (!quote) return quote;
@@ -35,8 +36,10 @@ async function convertQuoteCurrency(quote, targetCurrency) {
   const target = String(targetCurrency || '').trim().toUpperCase();
   const source = normaliseMinorUnit(quote.currency);
 
-  // Nothing to do without both sides, or when they already agree in the major unit.
-  if (!target || !source) return quote;
+  // A quote with no currency cannot be compared with anything: converting it
+  // would invent a unit, and passing it through would let a caller assume one.
+  if (!source) throw new Error('quote has no currency');
+  if (!target) return quote;
   if (source.code === target && source.divisor === 1) return quote;
 
   const rate = source.code === target
@@ -48,7 +51,13 @@ async function convertQuoteCurrency(quote, targetCurrency) {
   }
 
   const factor = Number(rate) / source.divisor;
-  const scale = (value) => (Number.isFinite(Number(value)) ? Number(value) * factor : value);
+  // A field the provider did not supply stays absent. Number(null) is 0, so
+  // coercing first would turn a missing high or low into a real-looking zero.
+  const scale = (value) => {
+    if (value === null || value === undefined || value === '') return value;
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric * factor : value;
+  };
 
   return {
     ...quote,

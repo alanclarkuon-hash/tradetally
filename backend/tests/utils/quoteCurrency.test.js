@@ -73,3 +73,39 @@ describe('convertQuoteCurrency', () => {
     expect(normaliseMinorUnit('EUR')).toEqual({ code: 'EUR', divisor: 1 });
   });
 });
+
+describe('quotes the converter must refuse', () => {
+  test('throws when the quote carries no currency', async () => {
+    await expect(convertQuoteCurrency(quote({ currency: null }), 'USD'))
+      .rejects.toThrow(/no currency/);
+    expect(currencyConverter.getForexRate).not.toHaveBeenCalled();
+  });
+
+  test('throws on an empty currency rather than assuming the target', async () => {
+    await expect(convertQuoteCurrency(quote({ currency: '' }), 'USD'))
+      .rejects.toThrow(/no currency/);
+  });
+});
+
+describe('fields the provider did not supply', () => {
+  test('leaves null OHLC null instead of converting it to zero', async () => {
+    currencyConverter.getForexRate.mockResolvedValue(1.5);
+
+    const converted = await convertQuoteCurrency(
+      quote({ h: null, l: null, o: null }),
+      'USD'
+    );
+
+    expect(converted.h).toBeNull();
+    expect(converted.l).toBeNull();
+    expect(converted.o).toBeNull();
+    // The fields that were present are still converted.
+    expect(converted.c).toBeCloseTo(150, 2);
+  });
+
+  test('leaves an undefined field undefined', async () => {
+    currencyConverter.getForexRate.mockResolvedValue(1.5);
+    const converted = await convertQuoteCurrency(quote({ h: undefined }), 'USD');
+    expect(converted.h).toBeUndefined();
+  });
+});

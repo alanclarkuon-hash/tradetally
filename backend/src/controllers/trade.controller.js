@@ -3015,11 +3015,13 @@ const tradeController = {
         // necessarily the currency the position is booked in: a broker may book
         // a EUR-quoted listing in USD. Comparing those directly invents P&L,
         // so convert first.
+        // A position whose currency could not be established (the same symbol
+        // held in two currencies) has no target to convert into; assuming the
+        // account's would invent the comparison this exists to prevent.
         const bookedCurrency = new Map(
-          Object.values(positionMap).map(position => [
-            position.symbol,
-            (position.currency || accountCurrency).toUpperCase()
-          ])
+          Object.values(positionMap)
+            .filter(position => position.currency)
+            .map(position => [position.symbol, String(position.currency).toUpperCase()])
         );
 
         const yahooQuotes = await Promise.all(
@@ -3028,6 +3030,7 @@ const tradeController = {
             if (!quote) return null;
 
             const target = bookedCurrency.get(symbol);
+            if (!target) return null;
             try {
               return await convertQuoteCurrency(quote, target);
             } catch (conversionError) {
@@ -3138,22 +3141,27 @@ const tradeController = {
 
       console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
 
-      // fxRate converts this position's native currency into the account's.
-      // null means no rate was available, which the UI must surface rather than
-      // quietly leaving the position out of a total.
+      // fx_rate converts this position's own currency into the account's. null
+      // means no usable rate, which the UI must surface rather than quietly
+      // dropping the position from a total or counting it at zero. A position
+      // with no established currency never gets a rate.
+      const usableRate = (value) => {
+        const rate = Number(value);
+        return Number.isFinite(rate) && rate > 0 ? rate : null;
+      };
       const normalisedPositions = enhancedPositions.map(position => {
-        const currency = (position.currency || accountCurrency).toUpperCase();
+        const currency = position.currency ? String(position.currency).toUpperCase() : null;
         return {
           ...position,
           currency,
-          accountCurrency,
-          fxRate: Object.hasOwn(fxRates, currency) ? fxRates[currency] : null
+          account_currency: accountCurrency,
+          fx_rate: currency ? usableRate(fxRates[currency]) : null
         };
       });
 
       res.json({
         positions: normalisedPositions,
-        accountCurrency,
+        account_currency: accountCurrency,
         quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
         totalPositions: normalisedPositions.length,
         quotePending,

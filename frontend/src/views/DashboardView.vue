@@ -1677,6 +1677,12 @@ import {
   normalizeTradeFiltersForSharedState,
   loadTradeFiltersFromStorage
 } from '@/utils/tradeFilterState'
+import {
+  positionStatedCurrency,
+  positionsMissingRate,
+  needsCurrencyNote,
+  sumInAccountCurrency as sumPositionsInAccountCurrency
+} from '@/utils/positionTotals'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
@@ -2317,11 +2323,10 @@ watch(
   { immediate: true }
 )
 
-// A position's own currency. Trades in one symbol share one currency, so this
-// is well defined per row; only the account default is an assumption.
+// For display only: an unlabelled row falls back to the account's currency,
+// which is a guess and must never be used to decide a conversion.
 function positionCurrency(position) {
-  const currency = position?.currency
-  return currency ? String(currency).toUpperCase() : currencyCode.value
+  return positionStatedCurrency(position) || currencyCode.value
 }
 
 function formatPositionCurrency(value, position) {
@@ -2337,43 +2342,16 @@ function formatSignedPositionCurrency(value, position) {
 // supplies a per-position rate for.
 const accountCurrency = computed(() => (openPositionsAccountCurrency.value || currencyCode.value).toUpperCase())
 
-const openPositionCurrencies = computed(
-  () => new Set(openTrades.value.map(position => positionCurrency(position)))
+const hasMixedCurrencies = computed(
+  () => needsCurrencyNote(openTrades.value, accountCurrency.value)
 )
 
-const hasMixedCurrencies = computed(() => openPositionCurrencies.value.size > 1)
-
-// A position whose rate could not be fetched must be excluded from a total
-// rather than added at face value, which would silently understate or inflate
-// it. Track them so the UI can say the total is partial.
-const positionsMissingRate = computed(() => openTrades.value.filter(position => (
-  positionCurrency(position) !== accountCurrency.value &&
-  !Number.isFinite(Number(position.fxRate))
-)))
-
-const totalsArePartial = computed(() => positionsMissingRate.value.length > 0)
-
-function toAccountCurrency(value, position) {
-  const amount = Number(value)
-  if (!Number.isFinite(amount)) return null
-  if (positionCurrency(position) === accountCurrency.value) return amount
-
-  const rate = Number(position.fxRate)
-  return Number.isFinite(rate) ? amount * rate : null
-}
+const totalsArePartial = computed(
+  () => positionsMissingRate(openTrades.value, accountCurrency.value).length > 0
+)
 
 function sumInAccountCurrency(pick) {
-  let total = 0
-  let hasAny = false
-
-  for (const position of openTrades.value) {
-    const converted = toAccountCurrency(pick(position), position)
-    if (converted === null) continue
-    total += converted
-    hasAny = true
-  }
-
-  return hasAny ? total : null
+  return sumPositionsInAccountCurrency(openTrades.value, pick, accountCurrency.value)
 }
 
 const totalOpenCostAccount = computed(() => sumInAccountCurrency(position => position.totalCost || 0))
@@ -2386,7 +2364,11 @@ const totalUnrealizedPnLAccount = computed(() => sumInAccountCurrency(position =
   position.requires_manual_price ? getOptionPnL(position).unrealizedPnL : position.unrealizedPnL
 )))
 
-const totalOpenCostLabel = computed(() => formatCurrency(totalOpenCostAccount.value ?? 0, { currency: accountCurrency.value }))
+const totalOpenCostLabel = computed(() => (
+  totalOpenCostAccount.value === null
+    ? '\u2014'
+    : formatCurrency(totalOpenCostAccount.value, { currency: accountCurrency.value })
+))
 
 const totalCurrentValueLabel = computed(() => (
   totalCurrentValueAccount.value === null
@@ -2815,7 +2797,7 @@ async function fetchOpenTrades(options = {}) {
         if (requestId !== openPositionsRequestId) return
 
         const fastPositions = preserveExistingQuoteData(fastResponse.data.positions || [])
-        openPositionsAccountCurrency.value = fastResponse.data.accountCurrency || openPositionsAccountCurrency.value
+        openPositionsAccountCurrency.value = fastResponse.data.account_currency ?? fastResponse.data.accountCurrency ?? openPositionsAccountCurrency.value
         openTrades.value = fastPositions
         cacheOpenPositions(openTrades.value)
         cleanupManualOptionPrices()
@@ -2832,7 +2814,7 @@ async function fetchOpenTrades(options = {}) {
       console.warn('Real-time quotes not available:', response.data.error)
     }
 
-    openPositionsAccountCurrency.value = response.data.accountCurrency || openPositionsAccountCurrency.value
+    openPositionsAccountCurrency.value = response.data.account_currency ?? response.data.accountCurrency ?? openPositionsAccountCurrency.value
     openTrades.value = response.data.positions || []
     cacheOpenPositions(openTrades.value)
     cleanupManualOptionPrices()

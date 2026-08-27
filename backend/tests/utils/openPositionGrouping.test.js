@@ -226,3 +226,75 @@ describe('position currency', () => {
     expect(Object.values(positions)[0].currency).toBeNull();
   });
 });
+
+describe('stored currency vs original_currency', () => {
+  // A converted import stores USD and keeps the source currency in
+  // original_currency, so the two disagree exactly when a conversion ran.
+  test('reports USD for a converted import, not the source currency', () => {
+    const positions = groupTradesIntoPositions([
+      {
+        id: 't3',
+        symbol: 'EXCO.DE',
+        side: 'long',
+        quantity: 10,
+        entry_price: 150,
+        instrument_type: 'stock',
+        original_currency: 'EUR',
+        exchange_rate: 1.5,
+        original_entry_price_currency: 100,
+        executions: [{ action: 'buy', quantity: 10, price: 150 }]
+      }
+    ]);
+
+    expect(Object.values(positions)[0].currency).toBe('USD');
+  });
+
+  test('reports the trade currency when nothing was converted', () => {
+    const positions = groupTradesIntoPositions([
+      {
+        id: 't4',
+        symbol: 'EXCO.DE',
+        side: 'long',
+        quantity: 10,
+        entry_price: 100,
+        instrument_type: 'stock',
+        original_currency: 'EUR',
+        exchange_rate: 1,
+        executions: [{ action: 'buy', quantity: 10, price: 100 }]
+      }
+    ]);
+
+    expect(Object.values(positions)[0].currency).toBe('EUR');
+  });
+
+  test('states no currency when one symbol is held in two of them', () => {
+    const positions = groupTradesIntoPositions([
+      {
+        id: 't5',
+        symbol: 'EXCO.DE',
+        side: 'long',
+        quantity: 10,
+        entry_price: 100,
+        instrument_type: 'stock',
+        original_currency: 'EUR',
+        exchange_rate: 1,
+        account_identifier: 'A',
+        executions: [{ action: 'buy', quantity: 10, price: 100 }]
+      },
+      {
+        id: 't6',
+        symbol: 'EXCO.DE',
+        side: 'long',
+        quantity: 10,
+        entry_price: 150,
+        instrument_type: 'stock',
+        original_currency: 'EUR',
+        exchange_rate: 1.5,
+        account_identifier: 'B',
+        executions: [{ action: 'buy', quantity: 10, price: 150 }]
+      }
+    ]);
+
+    expect(Object.values(positions)[0].currency).toBeNull();
+  });
+});

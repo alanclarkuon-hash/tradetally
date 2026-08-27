@@ -127,6 +127,18 @@ function calculateTotalSharesTraded(trade) {
   return trade.quantity || 0;
 }
 
+// The currency the stored monetary columns are actually in. An import with
+// currency conversion rewrites entry_price, pnl and fees to USD and keeps the
+// source currency in original_currency, so original_currency does NOT name the
+// currency of the stored numbers whenever a conversion ran. exchange_rate is
+// left at 1 exactly when nothing was converted.
+function storedCurrency(trade) {
+  const rate = Number(trade.exchange_rate);
+  if (Number.isFinite(rate) && rate !== 1) return 'USD';
+  const original = trade.original_currency;
+  return original ? String(original).toUpperCase() : null;
+}
+
 // Group open trades into positions. Returns a map of position key -> position
 // with side/avgPrice resolved, zero-net positions removed, and position_key
 // stamped on every surviving position.
@@ -154,11 +166,19 @@ function groupTradesIntoPositions(openTrades) {
         expiration_date: trade.expiration_date || null,
         option_type: trade.option_type || null,
         strike_price: trade.strike_price || null,
-        // A position groups trades in one symbol, which are necessarily in one
-        // currency. Carrying it lets the UI label the value correctly instead
-        // of assuming the account's currency.
-        currency: trade.original_currency || null
+        // The currency the position's own numbers are in, so the UI can label
+        // them instead of assuming the account's currency. Null means it could
+        // not be established, which callers must treat as unconvertible rather
+        // than assume.
+        currency: storedCurrency(trade)
       };
+    }
+
+    // The same symbol can be held in more than one currency across accounts.
+    // Such a group has no single currency, and saying it does would mislabel
+    // the value and invite a comparison between two different units.
+    if (positionMap[posKey].currency !== storedCurrency(trade)) {
+      positionMap[posKey].currency = null;
     }
 
     positionMap[posKey].trades.push(trade);
@@ -275,6 +295,7 @@ function groupTradesIntoPositions(openTrades) {
 }
 
 module.exports = {
+  storedCurrency,
   OPTION_FALLBACK_PREFIX,
   normalizeExpDate,
   enrichOptionMetadata,
