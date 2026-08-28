@@ -109,3 +109,24 @@ describe('fields the provider did not supply', () => {
     expect(converted.h).toBeUndefined();
   });
 });
+
+describe('one raw quote converted for two currency-split positions', () => {
+  test('each position gets its own target, not whichever ran last', async () => {
+    // Positions are split by stored currency, so the same symbol can appear
+    // twice. Converting once per SYMBOL would give both the same result.
+    const raw = { c: 100, pc: 100, d: 0, dp: 0, h: 100, l: 100, o: null, currency: 'EUR' };
+
+    currencyConverter.getForexRate.mockResolvedValue(1.5);
+    const asUsd = await convertQuoteCurrency({ ...raw }, 'USD');
+
+    currencyConverter.getForexRate.mockClear();
+    const asEur = await convertQuoteCurrency({ ...raw }, 'EUR');
+
+    expect(asUsd.c).toBeCloseTo(150, 2);
+    expect(asUsd.currency).toBe('USD');
+    // Already in EUR: passed through untouched, with no rate lookup.
+    expect(asEur.c).toBe(100);
+    expect(asEur.currency).toBe('EUR');
+    expect(currencyConverter.getForexRate).not.toHaveBeenCalled();
+  });
+});

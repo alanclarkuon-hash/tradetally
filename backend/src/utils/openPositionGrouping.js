@@ -225,8 +225,14 @@ function groupTradesIntoPositions(openTrades) {
     // positions share the bare underlying as their symbol, so with multiple
     // contracts open on the same underlying we cannot tell which one the
     // metadata-less trade belongs to.
+    // Never merge across currencies: an EUR fallback folded into a USD
+    // composite would put two units into one position's totalCost, which is
+    // exactly what keying by currency exists to prevent.
+    const sameCurrency = (pos) => pos.currency === fbPosition.currency;
+
     const symbolMatches = Object.entries(positionMap).filter(([key, pos]) => {
       return key !== fbKey && !fallbackKeys.has(key) && pos.instrumentType === 'option'
+        && sameCurrency(pos)
         && String(pos.symbol || '').trim().toUpperCase() === fbSymbol;
     });
     let compositeMatch = symbolMatches.length === 1 ? symbolMatches[0] : null;
@@ -236,6 +242,7 @@ function groupTradesIntoPositions(openTrades) {
     if (!compositeMatch) {
       const underlyingMatches = Object.entries(positionMap).filter(([key, pos]) => {
         return key !== fbKey && !fallbackKeys.has(key) && pos.instrumentType === 'option'
+          && sameCurrency(pos)
           && String(pos.underlying_symbol || '').trim().toUpperCase() === fbSymbol;
       });
       if (underlyingMatches.length === 1) {

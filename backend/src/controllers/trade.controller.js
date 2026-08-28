@@ -3004,6 +3004,10 @@ const tradeController = {
       // needs no key and covers the non-US listings Finnhub's free tier
       // refuses. Without this a European position shows no price at all.
       //
+      // A converted quote belongs to a position, not a symbol: two positions on
+      // one symbol can be booked in different currencies.
+      const convertedQuotesByPosition = {};
+
       // Self-hosted only, matching the gate the chart fallbacks already use: a
       // hosted instance must never reach this provider.
       const billingEnabled = await TierService.isBillingEnabled(req.headers.host);
@@ -3015,35 +3019,39 @@ const tradeController = {
         // necessarily the currency the position is booked in: a broker may book
         // a EUR-quoted listing in USD. Comparing those directly invents P&L,
         // so convert first.
-        // A position whose currency could not be established (the same symbol
-        // held in two currencies) has no target to convert into; assuming the
-        // account's would invent the comparison this exists to prevent.
-        const bookedCurrency = new Map(
-          Object.values(positionMap)
-            .filter(position => position.currency)
-            .map(position => [position.symbol, String(position.currency).toUpperCase()])
-        );
-
-        const yahooQuotes = await Promise.all(
+        // One raw quote per symbol, converted once PER POSITION. Positions are
+        // split by stored currency, so the same symbol can appear twice with
+        // different targets; keying the converted quote by symbol would give
+        // both positions whichever conversion ran last.
+        const unquoted = new Set(unquotedSymbols);
+        const rawQuotes = new Map();
+        await Promise.all(
           unquotedSymbols.map(async (symbol) => {
             const quote = await yahooFinance.getQuote(symbol).catch(() => null);
-            if (!quote) return null;
-
-            const target = bookedCurrency.get(symbol);
-            if (!target) return null;
-            try {
-              return await convertQuoteCurrency(quote, target);
-            } catch (conversionError) {
-              // Never show a number we cannot state the currency of.
-              console.warn(`[QUOTES] Dropping ${symbol} quote: cannot convert ${quote.currency} to ${target}: ${conversionError.message}`);
-              return null;
-            }
+            if (quote) rawQuotes.set(symbol, quote);
           })
         );
 
-        unquotedSymbols.forEach((symbol, index) => {
-          if (yahooQuotes[index]) quotes[symbol] = yahooQuotes[index];
-        });
+        await Promise.all(
+          Object.entries(positionMap).map(async ([posKey, position]) => {
+            if (!unquoted.has(position.symbol)) return;
+            const quote = rawQuotes.get(position.symbol);
+            if (!quote) return;
+
+            // A position with no established currency has no target to convert
+            // into; assuming the account's would invent the comparison this
+            // exists to prevent.
+            const target = position.currency ? String(position.currency).toUpperCase() : null;
+            if (!target) return;
+
+            try {
+              convertedQuotesByPosition[posKey] = await convertQuoteCurrency(quote, target);
+            } catch (conversionError) {
+              // Never show a number we cannot state the currency of.
+              console.warn(`[QUOTES] Dropping ${position.symbol} quote: cannot convert ${quote.currency} to ${target}: ${conversionError.message}`);
+            }
+          })
+        );
       }
 
       // Enhance positions with real-time data
@@ -3085,7 +3093,7 @@ const tradeController = {
           };
         }
 
-        const quote = quotes[position.symbol];
+        const quote = convertedQuotesByPosition[posKey] || quotes[position.symbol];
 
         if (quote) {
           const currentPrice = quote.c; // Current price
@@ -3162,7 +3170,11 @@ const tradeController = {
       res.json({
         positions: normalisedPositions,
         account_currency: accountCurrency,
-        quotesAvailable: Object.keys(quotes).length + Object.keys(alpacaQuotes).length,
+        // Fallback quotes are keyed per position rather than per symbol, so they
+        // have to be counted alongside the provider's own.
+        quotesAvailable: Object.keys(quotes).length
+          + Object.keys(alpacaQuotes).length
+          + Object.keys(convertedQuotesByPosition).length,
         totalPositions: normalisedPositions.length,
         quotePending,
         quoteFetchedAt: new Date().toISOString()

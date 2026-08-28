@@ -348,3 +348,39 @@ describe('stored currency vs original_currency', () => {
     grouped.forEach(position => expect(position.totalCost).toBeGreaterThan(0));
   });
 });
+
+describe('heal-merge respects currency', () => {
+  const composite = (over = {}) => ({
+    id: 'c1', symbol: 'MRVL', side: 'long', quantity: 1, entry_price: 100,
+    instrument_type: 'option', underlying_symbol: 'MRVL', strike_price: 65,
+    expiration_date: '2026-02-20', option_type: 'put',
+    executions: [{ action: 'buy', quantity: 1, price: 100 }], ...over
+  });
+  const fallback = (over = {}) => ({
+    id: 'f1', symbol: 'MRVL', side: 'long', quantity: 2, entry_price: 100,
+    instrument_type: 'option',
+    executions: [{ action: 'buy', quantity: 2, price: 100 }], ...over
+  });
+
+  test('does not fold a EUR fallback into a USD composite position', () => {
+    const positions = groupTradesIntoPositions([
+      composite({ original_currency: 'USD' }),
+      fallback({ original_currency: 'EUR' })
+    ]);
+
+    // Merging would add EUR contracts into a USD position's totalCost.
+    const grouped = Object.values(positions);
+    expect(grouped).toHaveLength(2);
+    expect(grouped.map(p => p.currency).sort()).toEqual(['EUR', 'USD']);
+  });
+
+  test('still folds a fallback into a composite of the same currency', () => {
+    const positions = groupTradesIntoPositions([
+      composite({ original_currency: 'USD' }),
+      fallback({ original_currency: 'USD' })
+    ]);
+
+    expect(Object.keys(positions)).toHaveLength(1);
+    expect(Object.values(positions)[0].totalQuantity).toBe(3);
+  });
+});

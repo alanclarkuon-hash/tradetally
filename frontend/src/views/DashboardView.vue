@@ -1677,6 +1677,7 @@ import {
   normalizeTradeFiltersForSharedState,
   loadTradeFiltersFromStorage
 } from '@/utils/tradeFilterState'
+import { legacyPositionKey, readManualPrice } from '@/utils/manualPriceKeys'
 import {
   positionStatedCurrency,
   positionsMissingRate,
@@ -1763,14 +1764,41 @@ function setManualOptionPrice(position, value) {
   } else {
     manualOptionPrices.value[key] = num
   }
+  const legacy = legacyOpenPositionKey(position)
+  if (legacy !== null && legacy !== key) delete manualOptionPrices.value[legacy]
   if (key !== position.symbol) {
     delete manualOptionPrices.value[position.symbol]
   }
   saveManualOptionPrices()
 }
 
+// Pure: this runs inside computed properties, so it must not write to
+// manualOptionPrices — doing so invalidates the computed that is reading it.
+// Rewriting old keys is done once by migrateManualOptionPriceKeys instead.
 function getManualOptionPrice(position) {
-  return manualOptionPrices.value[getOpenPositionKey(position)] ?? manualOptionPrices.value[position.symbol]
+  return readManualPrice(manualOptionPrices.value, getOpenPositionKey(position), position.symbol)
+}
+
+// Move values saved under a pre-currency-suffix key (or the older bare-symbol
+// form) onto the current key. Called once when positions load, never on read.
+function migrateManualOptionPriceKeys() {
+  let migrated = false
+
+  openTrades.value.filter(p => p.requires_manual_price).forEach(position => {
+    const key = getOpenPositionKey(position)
+    if (manualOptionPrices.value[key] !== undefined) return
+
+    const inherited = readManualPrice(manualOptionPrices.value, key, position.symbol)
+    if (inherited === undefined) return
+
+    manualOptionPrices.value[key] = inherited
+    const legacy = legacyOpenPositionKey(position)
+    if (legacy !== null && legacy !== key) delete manualOptionPrices.value[legacy]
+    if (key !== position.symbol) delete manualOptionPrices.value[position.symbol]
+    migrated = true
+  })
+
+  if (migrated) saveManualOptionPrices()
 }
 
 function getOptionPnL(position) {
@@ -2650,6 +2678,10 @@ function cacheOpenPositions(positions) {
   }
 }
 
+function legacyOpenPositionKey(position) {
+  return legacyPositionKey(getOpenPositionKey(position))
+}
+
 function getOpenPositionKey(position) {
   // The backend stamps a stable position_key on every position; the composite
   // fallback only covers positions cached in sessionStorage before upgrade.
@@ -2732,6 +2764,9 @@ function cleanupManualOptionPrices() {
   const validKeys = new Set()
   openTrades.value.filter(p => p.requires_manual_price).forEach(p => {
     validKeys.add(getOpenPositionKey(p))
+    // Keep the pre-suffix key alive until it has been migrated on read.
+    const legacy = legacyOpenPositionKey(p)
+    if (legacy !== null) validKeys.add(legacy)
     validKeys.add(p.symbol)
   })
   let cleaned = false
@@ -2760,6 +2795,7 @@ async function fetchOpenTrades(options = {}) {
         openPositionsAccountCurrency.value = fastResponse.data.account_currency ?? fastResponse.data.accountCurrency ?? openPositionsAccountCurrency.value
         openTrades.value = fastPositions
         cacheOpenPositions(openTrades.value)
+        migrateManualOptionPriceKeys()
         cleanupManualOptionPrices()
         fastRequestSucceeded = true
       } catch (fastError) {
@@ -2777,6 +2813,7 @@ async function fetchOpenTrades(options = {}) {
     openPositionsAccountCurrency.value = response.data.account_currency ?? response.data.accountCurrency ?? openPositionsAccountCurrency.value
     openTrades.value = response.data.positions || []
     cacheOpenPositions(openTrades.value)
+    migrateManualOptionPriceKeys()
     cleanupManualOptionPrices()
   } catch (error) {
     console.error('Failed to fetch open trades:', error)
