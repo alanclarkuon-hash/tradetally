@@ -9,7 +9,7 @@ const finnhub = require('../utils/finnhub');
 const cache = require('../utils/cache');
 const AnalyticsCache = require('../services/analyticsCache');
 const { computeTradePnl } = require('../services/pnlEngine');
-const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
+const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPositionGrouping');
 const yahooFinance = require('../utils/yahooFinance');
 const { convertQuoteCurrency } = require('../utils/quoteCurrency');
 const symbolCategories = require('../utils/symbolCategories');
@@ -4102,9 +4102,11 @@ const tradeController = {
         // Trade details
         entryPrice: trade.price || trade.entry_price,
         exitPrice: trade.exit_price,
-        // The chart's summary row formats these, and a EUR fill labelled with
-        // the account's currency symbol is simply the wrong number.
-        currency: trade.original_currency || trade.currency || null,
+        // The chart's summary row formats entryPrice/exitPrice/pnl above, so it
+        // must be told the currency those STORED values are in. That is not
+        // original_currency: a converted import holds USD there while
+        // original_currency still names the source it came from.
+        currency: storedCurrency(trade) || trade.currency || null,
         quantity: trade.quantity,
         side: trade.side,
         pnl: trade.pnl,

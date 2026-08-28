@@ -58,6 +58,11 @@ export function statedCurrencies(positions) {
 // than the account's. An all-EUR book on a USD account qualifies just as much
 // as a mixed one, and is precisely what a "more than one currency" test misses.
 export function needsCurrencyNote(positions, accountCurrency) {
+  // A position with no stated currency is excluded from totals and makes them
+  // partial, so the note has to appear for it too — otherwise a book holding
+  // only such a position is marked partial with nothing on screen saying so.
+  if ((positions || []).some(position => !positionStatedCurrency(position))) return true
+
   const currencies = statedCurrencies(positions)
   if (currencies.size > 1) return true
   return [...currencies].some(currency => currency !== accountCurrency)

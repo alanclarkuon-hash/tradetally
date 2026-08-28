@@ -81,6 +81,21 @@ describe('needsCurrencyNote', () => {
   })
 })
 
+describe('ambiguous positions and the partial note stay consistent', () => {
+  const ambiguous = { currency: null, fx_rate: null, totalCost: 100 }
+
+  it('shows the note when the only position has no stated currency', () => {
+    // totalsArePartial would otherwise be true with nothing on screen saying so.
+    expect(positionsMissingRate([ambiguous], 'USD')).toHaveLength(1)
+    expect(needsCurrencyNote([ambiguous], 'USD')).toBe(true)
+  })
+
+  it('agrees with positionsMissingRate for an all-domestic book', () => {
+    expect(positionsMissingRate([usd(), usd()], 'USD')).toHaveLength(0)
+    expect(needsCurrencyNote([usd(), usd()], 'USD')).toBe(false)
+  })
+})
+
 describe('sumInAccountCurrency', () => {
   const cost = (position) => position.totalCost
 

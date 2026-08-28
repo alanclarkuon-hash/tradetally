@@ -52,19 +52,43 @@ function enrichOptionMetadata(trade) {
   return trade;
 }
 
+// The currency the stored monetary columns are actually in. An import with
+// currency conversion rewrites entry_price, pnl and fees to USD while keeping
+// the SOURCE currency in original_currency, so original_currency does not name
+// the currency of the stored numbers whenever a conversion ran.
+function storedCurrency(trade) {
+  // Only a conversion writes the pre-conversion value, so its presence is the
+  // marker that the stored columns were rewritten. exchange_rate is NOT one: a
+  // manual, API or OAuth-broker trade can carry a rate beside an unconverted
+  // price, and a null rate coerces to 0, which would then read as converted.
+  const preConversion = trade.original_entry_price_currency;
+  if (preConversion !== null && preConversion !== undefined && preConversion !== '') {
+    return 'USD';
+  }
+
+  const original = trade.original_currency;
+  return original ? String(original).toUpperCase() : null;
+}
+
 function getPositionKey(trade) {
+  // Positions are separated by the currency their stored numbers are in.
+  // Without this, one symbol held in two currencies groups into a single
+  // position whose totalCost and avgPrice add different units together — a
+  // figure that cannot be labelled or converted correctly.
+  const currency = storedCurrency(trade) || 'UNKNOWN';
+
   if (trade.instrument_type === 'option' && trade.underlying_symbol
       && String(trade.underlying_symbol).trim()
       && trade.strike_price && trade.expiration_date && trade.option_type) {
     const underlying = String(trade.underlying_symbol).trim().toUpperCase();
     const strike = parseFloat(trade.strike_price);
     const optionType = String(trade.option_type).toLowerCase();
-    return `${underlying}_${strike}_${normalizeExpDate(trade.expiration_date)}_${optionType}`;
+    return `${underlying}_${strike}_${normalizeExpDate(trade.expiration_date)}_${optionType}|${currency}`;
   }
   if (trade.instrument_type === 'option') {
-    return `${OPTION_FALLBACK_PREFIX}${trade.symbol}`;
+    return `${OPTION_FALLBACK_PREFIX}${trade.symbol}|${currency}`;
   }
-  return trade.symbol;
+  return `${trade.symbol}|${currency}`;
 }
 
 // Calculate net position (signed shares/contracts still held) from executions
@@ -127,18 +151,6 @@ function calculateTotalSharesTraded(trade) {
   return trade.quantity || 0;
 }
 
-// The currency the stored monetary columns are actually in. An import with
-// currency conversion rewrites entry_price, pnl and fees to USD and keeps the
-// source currency in original_currency, so original_currency does NOT name the
-// currency of the stored numbers whenever a conversion ran. exchange_rate is
-// left at 1 exactly when nothing was converted.
-function storedCurrency(trade) {
-  const rate = Number(trade.exchange_rate);
-  if (Number.isFinite(rate) && rate !== 1) return 'USD';
-  const original = trade.original_currency;
-  return original ? String(original).toUpperCase() : null;
-}
-
 // Group open trades into positions. Returns a map of position key -> position
 // with side/avgPrice resolved, zero-net positions removed, and position_key
 // stamped on every surviving position.
@@ -172,13 +184,6 @@ function groupTradesIntoPositions(openTrades) {
         // than assume.
         currency: storedCurrency(trade)
       };
-    }
-
-    // The same symbol can be held in more than one currency across accounts.
-    // Such a group has no single currency, and saying it does would mislabel
-    // the value and invite a comparison between two different units.
-    if (positionMap[posKey].currency !== storedCurrency(trade)) {
-      positionMap[posKey].currency = null;
     }
 
     positionMap[posKey].trades.push(trade);

@@ -318,6 +318,31 @@ describe('TradeChartVisualization currency', () => {
     expect(wrapper.text()).not.toContain('$100.00')
   })
 
+  it('labels a converted import in the currency its stored values are in', async () => {
+    // A converted import stores USD while original_currency still names the
+    // source, so the API must send the STORED currency. Sending the source
+    // would render a stored $100 as EUR 100.
+    apiGet.mockResolvedValue({
+      data: {
+        ...baseChartData,
+        interval: 'daily',
+        source: 'yahoo',
+        trade: { ...baseChartData.trade, entryPrice: 100, exitPrice: null, pnl: null, currency: 'USD' },
+      },
+    })
+
+    const wrapper = mount(TradeChartVisualization, {
+      props: { tradeId: 'trade-converted' },
+      global: { stubs: { KLineTradeChart: true, ProUpgradePrompt: true } },
+    })
+
+    await wrapper.get('button.btn-primary').trigger('click')
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    await vi.waitFor(() => expect(wrapper.text()).toContain('$100.00'))
+
+    expect(wrapper.text()).not.toContain('\u20ac100.00')
+  })
+
   it('falls back to the account currency when the trade carries none', async () => {
     apiGet.mockResolvedValue({
       data: {

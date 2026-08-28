@@ -740,8 +740,8 @@
                   <div class="text-sm font-bold text-gray-900 dark:text-white">
                     {{ totalOpenCostLabel }}
                   </div>
-                  <div v-if="totalUnrealizedPnL !== null" class="text-sm font-bold" :class="[
-                    totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                  <div v-if="totalUnrealizedPnLAccount !== null" class="text-sm font-bold" :class="[
+                    totalUnrealizedPnLAccount >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     {{ totalUnrealizedPnLLabel }}
                   </div>
@@ -997,9 +997,9 @@
                     <span v-else class="text-xs text-gray-400">-</span>
                   </td>
                   <td class="px-3 py-3 text-sm font-bold text-right tabular-nums">
-                    <div v-if="totalUnrealizedPnL !== null">
+                    <div v-if="totalUnrealizedPnLAccount !== null">
                       <div :class="[
-                        totalUnrealizedPnL >= 0 ? 'text-green-600' : 'text-red-600'
+                        totalUnrealizedPnLAccount >= 0 ? 'text-green-600' : 'text-red-600'
                       ]">
                         {{ totalUnrealizedPnLLabel }}
                       </div>
@@ -2381,46 +2381,6 @@ const totalUnrealizedPnLLabel = computed(() => (
     ? null
     : formatSignedCurrency(totalUnrealizedPnLAccount.value, { currency: accountCurrency.value })
 ))
-
-const totalOpenCost = computed(() => {
-  return openTrades.value.reduce((sum, position) => sum + (position.totalCost || 0), 0)
-})
-
-const totalUnrealizedPnL = computed(() => {
-  let total = 0
-  let hasAny = false
-  openTrades.value.forEach(position => {
-    if (position.requires_manual_price) {
-      const optPnL = getOptionPnL(position)
-      if (optPnL.unrealizedPnL !== null) {
-        total += optPnL.unrealizedPnL
-        hasAny = true
-      }
-    } else if (position.unrealizedPnL !== null) {
-      total += position.unrealizedPnL
-      hasAny = true
-    }
-  })
-  return hasAny ? total : null
-})
-
-const totalCurrentValue = computed(() => {
-  let total = 0
-  let hasAny = false
-  openTrades.value.forEach(position => {
-    if (position.requires_manual_price) {
-      const optPnL = getOptionPnL(position)
-      if (optPnL.currentValue !== null) {
-        total += optPnL.currentValue
-        hasAny = true
-      }
-    } else if (position.currentValue !== null) {
-      total += position.currentValue
-      hasAny = true
-    }
-  })
-  return hasAny ? total : null
-})
 
 const totalUnrealizedPnLPercent = computed(() => {
   // Both sides are normalised to the account currency, so this ratio is
