@@ -189,3 +189,63 @@ describe('advertised resolutions match what can be served', () => {
   });
 });
 
+describe('Yahoo Finance quotes', () => {
+  let originalEnabled;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    originalEnabled = process.env.YAHOO_FINANCE_ENABLED;
+    process.env.YAHOO_FINANCE_ENABLED = 'true';
+  });
+
+  afterEach(() => {
+    if (originalEnabled === undefined) delete process.env.YAHOO_FINANCE_ENABLED;
+    else process.env.YAHOO_FINANCE_ENABLED = originalEnabled;
+  });
+
+  function quoteResponse(meta) {
+    return { data: { chart: { error: null, result: [{ meta, timestamp: [], indicators: { quote: [{}] } }] } } };
+  }
+
+  test('shapes the quote like the Finnhub one the callers already consume', async () => {
+    axios.get.mockResolvedValue(quoteResponse({
+      regularMarketPrice: 100,
+      chartPreviousClose: 80,
+      currency: 'EUR',
+      regularMarketDayHigh: 110,
+      regularMarketDayLow: 90
+    }));
+
+    const quote = await yahooFinance.getQuote('EXCO.DE');
+
+    expect(quote.c).toBe(100);
+    expect(quote.pc).toBe(80);
+    expect(quote.d).toBeCloseTo(20, 2);
+    expect(quote.dp).toBeCloseTo(25, 2);
+    expect(quote.currency).toBe('EUR');
+    expect(quote.source).toBe('yahoo');
+  });
+
+  test('returns null rather than a bogus quote when there is no price', async () => {
+    axios.get.mockResolvedValue(quoteResponse({ currency: 'EUR' }));
+    expect(await yahooFinance.getQuote('EXCO.DE')).toBeNull();
+  });
+
+  test('never throws when the request fails', async () => {
+    axios.get.mockRejectedValue(new Error('network down'));
+    expect(await yahooFinance.getQuote('EXCO.DE')).toBeNull();
+  });
+
+  test('translates the symbol before quoting', async () => {
+    axios.get.mockResolvedValue(quoteResponse({ regularMarketPrice: 100, chartPreviousClose: 99 }));
+    await yahooFinance.getQuote('SPX');
+    expect(axios.get.mock.calls[0][0]).toContain(encodeURIComponent('^SPX'));
+  });
+
+  test('does not divide by a zero previous close', async () => {
+    axios.get.mockResolvedValue(quoteResponse({ regularMarketPrice: 12, chartPreviousClose: 0 }));
+    const quote = await yahooFinance.getQuote('NEWLISTING');
+    expect(quote.dp).toBe(0);
+    expect(Number.isFinite(quote.dp)).toBe(true);
+  });
+});

@@ -47,7 +47,8 @@ const NAMESPACE_TTLS = {
   chart_intraday: 15 * MINUTE,
   chart_daily: HOUR,
   yahoo_chart_intraday: 15 * MINUTE,
-  yahoo_chart_daily: HOUR
+  yahoo_chart_daily: HOUR,
+  yahoo_quote: 2 * MINUTE
 };
 
 const SWEEP_INTERVAL_MS = MINUTE;

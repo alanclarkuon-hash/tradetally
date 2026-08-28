@@ -109,7 +109,7 @@
         <dl v-if="chartData.trade" class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Entry</dt>
-            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatCurrency(chartData.trade.entryPrice) }}</dd>
+            <dd class="mt-0.5 font-semibold text-gray-900 dark:text-white">{{ formatTradeCurrency(chartData.trade.entryPrice) }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Exit</dt>
@@ -117,7 +117,7 @@
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">P&amp;L</dt>
-            <dd class="mt-0.5 font-semibold" :class="metricClass(chartData.trade.pnl)">{{ formatCurrency(chartData.trade.pnl) }}</dd>
+            <dd class="mt-0.5 font-semibold" :class="metricClass(chartData.trade.pnl)">{{ formatTradeCurrency(chartData.trade.pnl) }}</dd>
           </div>
           <div class="rounded-lg bg-gray-50 px-3 py-2 dark:bg-gray-800/70">
             <dt class="text-gray-500 dark:text-gray-400">Return</dt>
@@ -198,10 +198,21 @@ const intervalLabel = computed(() => {
 })
 
 // An open trade has no exit yet; say so rather than formatting a null.
+// Format in the currency the trade was actually executed in, matching the
+// Trade Details panel, rather than the account's display currency.
+const tradeCurrency = computed(() => {
+  const currency = chartData.value?.trade?.currency
+  return currency ? String(currency).toUpperCase() : currencyCode.value
+})
+
+function formatTradeCurrency(value) {
+  return formatCurrency(value, { currency: tradeCurrency.value })
+}
+
 const exitLabel = computed(() => {
   const exitPrice = chartData.value?.trade?.exitPrice
   if (exitPrice === null || exitPrice === undefined) return 'Open'
-  return formatCurrency(exitPrice)
+  return formatTradeCurrency(exitPrice)
 })
 
 // Surface a degraded chart instead of quietly rendering fallback data: a
