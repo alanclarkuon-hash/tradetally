@@ -170,7 +170,7 @@ class YahooFinanceClient {
 
   async fetchCandles(yahooSymbol, entryDate, exitDate, resolution, options = {}) {
     const config = RESOLUTIONS[resolution];
-    const window = this.chartWindow(entryDate, exitDate, resolution, options);
+    const window = options.window || this.chartWindow(entryDate, exitDate, resolution, options);
     if (window.period2 <= window.period1) {
       throw new Error('Yahoo Finance chart window is not available yet');
     }
@@ -334,6 +334,24 @@ class YahooFinanceClient {
     }
 
     return resolution;
+  }
+
+  // Bars for an explicit window, for callers that know the span they need
+  // rather than deriving it from a trade. Yahoo retains 1-minute data for
+  // roughly 30 days.
+  async getCandlesInWindow(symbol, fromSeconds, toSeconds, resolution = '1') {
+    if (!this.isEnabled()) {
+      throw new Error('Yahoo Finance fallback is disabled');
+    }
+
+    const yahooSymbol = this.getYahooSymbol(symbol);
+    if (!yahooSymbol) {
+      throw new Error(`No Yahoo Finance symbol for ${symbol}`);
+    }
+
+    return this.fetchCandles(yahooSymbol, null, null, resolution, {
+      window: { period1: Math.floor(fromSeconds), period2: Math.floor(toSeconds) }
+    });
   }
 
   // Latest price for a listing the configured provider cannot quote. Finnhub's
