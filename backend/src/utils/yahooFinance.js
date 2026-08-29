@@ -1,7 +1,9 @@
 const axios = require('axios');
 const cache = require('./cache');
 const { getFuturesPointValue, getFuturesTickSize } = require('./futuresUtils');
+const { version: APP_VERSION } = require('../../package.json');
 
+const USER_AGENT = `TradeTally/${APP_VERSION}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const YAHOO_CHART_HOSTS = ['query1.finance.yahoo.com', 'query2.finance.yahoo.com'];
 
@@ -202,7 +204,7 @@ class YahooFinanceClient {
               timeout: 15000,
               headers: {
                 Accept: 'application/json',
-                'User-Agent': 'TradeTally/2.8'
+                'User-Agent': USER_AGENT
               },
               params: {
                 interval: config.yahoo_interval,
@@ -352,7 +354,7 @@ class YahooFinanceClient {
         `https://${YAHOO_CHART_HOSTS[0]}/v8/finance/chart/${encodeURIComponent(yahooSymbol)}`,
         {
           timeout: 8000,
-          headers: { Accept: 'application/json', 'User-Agent': 'TradeTally/2.9' },
+          headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
           params: { interval: '1d', range: '5d' }
         }
       );
