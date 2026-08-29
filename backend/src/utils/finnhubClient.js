@@ -1532,6 +1532,9 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     // Use the date as seen on a US exchange — the UTC date rolls over at
     // 8:00 PM ET, which would chart the wrong day for after-hours trades.
     const MARKET_TZ = 'America/New_York';
+    // Upper bound on an intraday window, so a long hold cannot request an
+    // unbounded span.
+    const INTRADAY_MAX_SPAN_DAYS = 30;
     const tradeDateET = getDateInTimezone(entryTime, MARKET_TZ, false);
 
     // Set chart window to show extended trading hours for the trade day
@@ -1541,6 +1544,17 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     // localToUTC is DST-aware (handles both EST and EDT)
     let chartFromTime = new Date(localToUTC(`${tradeDateET}T04:00:00`, MARKET_TZ));
     let chartToTime = new Date(localToUTC(`${tradeDateET}T20:00:00`, MARKET_TZ));
+
+    // A multi-session hold runs to its exit day; a same-day trade keeps the
+    // tighter single-session frame.
+    const exitDateET = getDateInTimezone(exitTime, MARKET_TZ, false);
+    if (exitDateET && exitDateET !== tradeDateET) {
+      const cappedEnd = Math.min(
+        new Date(localToUTC(`${exitDateET}T20:00:00`, MARKET_TZ)).getTime(),
+        chartFromTime.getTime() + INTRADAY_MAX_SPAN_DAYS * oneDayMs
+      );
+      chartToTime = new Date(Math.max(chartToTime.getTime(), cappedEnd));
+    }
     const intervals = {
       '1': '1min',
       '5': '5min',
@@ -1551,8 +1565,12 @@ Please provide just the ticker symbol (like "AAPL" for Apple). If you don't know
     const resolution = Object.hasOwn(intervals, requestedResolution) ? requestedResolution : '1';
 
     if (resolution === 'D') {
-      chartFromTime = new Date(entryTime.getTime() - 30 * oneDayMs);
-      chartToTime = new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + 10 * oneDayMs);
+      // Widen these where the provider serves more history than the free
+      // tiers these defaults were sized for.
+      const lookbackDays = Number(process.env.CHART_DAILY_LOOKBACK_DAYS) || 30;
+      const lookaheadDays = Number(process.env.CHART_DAILY_LOOKAHEAD_DAYS) || 10;
+      chartFromTime = new Date(entryTime.getTime() - lookbackDays * oneDayMs);
+      chartToTime = new Date(Math.max(entryTime.getTime(), exitTime.getTime()) + lookaheadDays * oneDayMs);
     }
 
     console.log('Focusing chart on single trading day:', {
