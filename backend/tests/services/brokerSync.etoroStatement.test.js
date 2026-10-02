@@ -25,6 +25,12 @@ test('converts native rates with statement FX while retaining the broker profit'
   const t = mapClosedPositions([{ ...row, 'FX rate at open (USD)': '1.25', 'FX rate at close (USD)': '1.3' }])[0];
   expect(t).toMatchObject({ entryPrice: 62.5, exitPrice: 52, pnl: 19.5 });
 });
+test('a missing opening FX uses reported USD capital per unit and is explicitly marked', () => {
+  const t=mapClosedPositions([{...row,'FX rate at open (USD)':'0.0000'}])[0];
+  expect(t).toMatchObject({entryPrice:50,capitalBasis:true,pnl:19.5});
+  expect(t.executions[0]).toMatchObject({etoro_fx:null,etoro_entry_price_basis:'reported_usd_capital'});
+  expect(t.notes).toContain('Opening FX is missing');
+});
 test('detects API overlap despite sub-second timestamps and refuses mismatched quantities', () => {
   const t = mapClosedPositions([row])[0];
   const old = { quantity: 2, pnl: 19.5, entry_time: '2021-11-01T21:26:55.654Z', exit_time: '2021-11-02T22:26:55.123Z' };

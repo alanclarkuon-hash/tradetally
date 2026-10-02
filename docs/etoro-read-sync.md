@@ -26,4 +26,6 @@ Read the XLSX from its original private location with `backend/scripts/read_etor
 
 `etoroStatement.importClosedPositions` imports the Closed Positions sheet after a dry run and backup. It preserves Stocks/ETF, Crypto and CFD classifications, copied origin and leverage metadata, native rates, stated FX and authoritative USD profit. It supports legitimate zero-price delistings and zero-capital corporate allocations. Overlap matching uses position identity, symbol, quantities, profit and timestamps rounded to seconds; conflicting overlaps stop the transaction. Batched inserts retain existing API trade IDs. Repeated imports do not duplicate records.
 
+If the statement explicitly supplies zero opening FX, its reported USD invested capital times leverage divided by units supplies the USD unit cost basis. A trade note and execution metadata distinguish this from a broker quoted price. The missing FX remains null and the native price is retained. Closing FX must still be supplied. Reported profit is preserved independently of rounded historical prices.
+
 Historical Holdings sheets are periodic snapshots and are not imported as current holdings. Current API holdings remain authoritative. Account Activity and Dividends are kept privately for a separate cashflow/income reconciliation; they are not implicitly added again to closed-trade profit.
