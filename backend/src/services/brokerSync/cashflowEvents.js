@@ -55,7 +55,7 @@ async function dayEvents(userId,accountId,date,currency = 'USD') {
     const amount = row.currency === currency ? Number(row.amount) :
       (row.amount_usd != null ? Number(row.amount_usd) * await rateFor('USD',currency,date,rates) : Number(row.amount)*await rateFor(row.currency,currency,date,rates));
     events.push({id:row.id,transactionType:row.event_type,amount:Math.abs(amount),signedAmount:amount,
-      description:row.description,sourceType:'ibkr',originalAmount:Number(row.amount),originalCurrency:row.currency});
+      description:row.description,sourceType:row.broker_type,originalAmount:Number(row.amount),originalCurrency:row.currency});
   }
   return {events,tradeRate:await rateFor('USD',currency,date,rates)};
 }

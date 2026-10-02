@@ -98,7 +98,36 @@ class Trading212Service extends OAuthBrokerBase {
     const positions = await this.fetchPositions(connection);
     const result = await require('./trading212Reconcile').reconcileSnapshot(connection, rawExecutions, trades);
     await require('./portfolioSnapshot').saveTrading212Snapshot(connection, positions);
+    const cashSections = {};
+    for (const section of ['transactions','dividends']) {
+      cashSections[section] = await this.fetchCashHistory(connection,section);
+    }
+    const cash = await require('./trading212CashEvents').importCashEvents(connection,cashSections);
+    result.cashEventsImported = cash.imported;
     return result;
+  }
+
+  async fetchCashHistory(connection, section) {
+    if (!['transactions','dividends'].includes(section)) throw new Error('Unsupported cash history section');
+    const base = getApiBase(connection.brokerEnvironment || 'live');
+    const path = `/api/v0/equity/history/${section}`;
+    const auth = {username:connection.trading212ApiKey,password:connection.trading212ApiSecret};
+    const items = [], seen = new Set();
+    let url = `${base}/equity/history/${section}?limit=${PAGE_SIZE}`;
+    while (url) {
+      if (seen.has(url) || seen.size >= MAX_PAGES) throw new Error('Invalid Trading 212 cash pagination');
+      seen.add(url);
+      const response = await this.requestPage(url,auth);
+      if (!Array.isArray(response.data?.items)) throw new Error('Invalid Trading 212 cash history response');
+      items.push(...response.data.items);
+      const next = response.data.nextPagePath;
+      if (!next) break;
+      const nextUrl = new URL(next,`${base}/`);
+      if (nextUrl.origin !== new URL(base).origin || nextUrl.pathname !== path) throw new Error('Invalid Trading 212 cash pagination URL');
+      url = nextUrl.toString();
+      if (Number(response.headers?.['x-ratelimit-remaining']) <= 0) await this.waitForRateLimitReset(response.headers);
+    }
+    return items;
   }
 
   async fetchPositions(connection) {

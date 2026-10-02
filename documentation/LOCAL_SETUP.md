@@ -184,6 +184,15 @@ scripts so the Docker startup scripts also work after a Windows checkout.
 
 ## Before cloud deployment
 
+Trading 212 sync imports complete cash transaction and paid dividend histories
+into the managed account, alongside trades and the holdings snapshot. Payment
+references are upserted so repeat syncs do not duplicate cash. Transfers are
+signed funding movements; cash and lending interest are income. Dividend
+amounts use net wallet payments, without adding gross or euro reference values.
+The original payment currency is preserved for Cashflow. A matching managed
+account is required. Review opening balances separately when importing funding
+history to avoid counting an original deposit twice.
+
 This configuration is for local use. A hosted instance needs HTTPS, a single
 owner account with registration disabled, persistent database and upload
 storage, backups, and a review of public-sharing endpoints. Broker syncing runs
