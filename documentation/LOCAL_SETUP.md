@@ -110,7 +110,11 @@ StatementOfFundsLine rows in StmtFunds; both wrapper names are supported.
 
 The pre-cashflow-migration backup is
 `tradetally-backup-2026-10-02T13-08-22-859Z.json` (167 tables, 9,984 records).
-It was parsed after creation; restoration has not been tested.
+It was parsed after creation; restoration has not been tested. The backup before
+the first cash import is `tradetally-backup-2026-10-02T13-20-47-994Z.json`
+(168 tables, 10,408 records). A further backup
+before changing the account currencies and IBKR opening balance is
+`tradetally-backup-2026-10-02T13-15-58-608Z.json` (168 tables, 10,198 records).
 
 ## Local backups
 
