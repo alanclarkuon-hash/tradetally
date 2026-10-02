@@ -3,7 +3,7 @@
     <!-- Range selector -->
     <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
       <p class="text-sm text-gray-500 dark:text-gray-400">
-        Dividend, interest, and fee activity from your Plaid-linked investment accounts
+        Dividend, interest, and account fee activity from your synced investment accounts
       </p>
       <div class="flex items-center gap-1">
         <button
@@ -230,7 +230,7 @@ function createChart() {
         },
         tooltip: {
           callbacks: {
-            label: context => `${context.dataset.label}: ${formatCurrencyBase(context.parsed.y)}`
+            label: context => `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`
           }
         }
       },
@@ -246,7 +246,7 @@ function createChart() {
             color: textColor,
             callback: value => new Intl.NumberFormat('en-US', {
               style: 'currency',
-              currency: currencyCode.value,
+              currency: income.value?.currency || currencyCode.value,
               notation: 'compact'
             }).format(value)
           },
@@ -258,7 +258,7 @@ function createChart() {
 }
 
 function formatCurrency(value) {
-  return formatCurrencyBase(value || 0)
+  return formatCurrencyBase(value || 0, { currency: income.value?.currency || currencyCode.value })
 }
 
 function formatDate(value) {
