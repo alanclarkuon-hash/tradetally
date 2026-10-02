@@ -228,7 +228,7 @@ router.post('/', flexibleAuth, requireApiScope('trades:write'), validate(schemas
  *                 enum: [long, short]
  *               instrumentType:
  *                 type: string
- *                 enum: [stock, option, future, crypto]
+ *                 enum: [stock, option, future, crypto, forex]
  *                 default: stock
  *               broker:
  *                 type: string
@@ -676,6 +676,8 @@ router.post('/cusip/resolve-unresolved', authenticate, tradeController.resolveUn
  */
 router.delete('/bulk', authenticate, tradeController.bulkDeleteTrades);
 router.patch('/bulk', authenticate, tradeController.bulkUpdateMetadata);
+router.patch('/bulk/stops', authenticate, tradeController.bulkUpdateStops);
+router.post('/bulk/stops/preview', authenticate, tradeController.previewBulkStops);
 
 /**
  * @swagger

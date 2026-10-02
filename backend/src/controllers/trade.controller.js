@@ -48,6 +48,8 @@ const OptionStrategyGroupingService = require('../services/optionStrategyGroupin
 const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewService');
 const BulkTradeMetadataService = require('../services/bulkTradeMetadataService');
 const FeeProfileService = require('../services/feeProfileService');
+const BulkTradeStopsService = require('../services/bulkTradeStopsService');
+const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 // Analytics requests can arrive in parallel from the dashboard, trade list,
 // and mobile clients after a mutation. Share one expensive aggregate query per
@@ -1432,6 +1434,7 @@ const tradeController = {
           // Delete associated jobs and trades together in one transaction
           // (same job cleanup predicate as Trade.delete, batched)
           const deletedRows = await db.withTransaction(async (client) => {
+            await BrokerTradeExclusions.recordDeleted(client, req.user.id, idsToDelete);
             const deletedJobs = await client.query(
               `DELETE FROM job_queue
                WHERE data->>'tradeId' = ANY($1::text[])
@@ -1588,6 +1591,28 @@ const tradeController = {
     } catch (error) {
       next(error);
     }
+  },
+
+  async bulkUpdateStops(req, res, next) {
+    try {
+      res.json(await BulkTradeStopsService.update(
+        req.user.id,
+        req.body?.trade_ids,
+        req.body?.stops,
+        req.body?.apply_default_to_missing
+      ));
+    } catch (error) { next(error); }
+  },
+
+  async previewBulkStops(req, res, next) {
+    try {
+      res.json(await BulkTradeStopsService.preview(
+        req.user.id,
+        req.body?.trade_ids,
+        req.body?.stops,
+        req.body?.apply_default_to_missing
+      ));
+    } catch (error) { next(error); }
   },
 
   async getPublicTrades(req, res, next) {
@@ -2411,15 +2436,22 @@ const tradeController = {
 
           logger.logImport(`Tier check passed: ${importCheck.tier} tier, importing ${trades.length} trades (max per import: ${importCheck.max || 'unlimited'})`);
 
-          // Apply currency conversion if a currency column was detected
-          if (context.hasCurrencyColumn && context.currencyRecords) {
+          // A CSV currency column is one source of currency information. Some
+          // execution formats, notably TradingView forex order history, encode
+          // the P&L currency in the symbol instead (EURJPY -> JPY). That
+          // conversion is required for correct P&L and is not a tier feature.
+          const hasRequiredTradeCurrency = trades.some(trade =>
+            trade.currencyConversionRequired &&
+            (trade.originalCurrency || trade.original_currency)
+          );
+          if ((context.hasCurrencyColumn && context.currencyRecords) || hasRequiredTradeCurrency) {
             logger.logImport('[CURRENCY] Applying currency conversion to parsed trades');
 
             // Build a map of currency values from the original CSV records
             const currencyMap = new Map();
             const currencyFieldPatterns = ['currency', 'curr', 'ccy', 'currency_code', 'currencycode'];
 
-            context.currencyRecords.forEach((record, index) => {
+            (context.currencyRecords || []).forEach((record, index) => {
               for (const fieldName of Object.keys(record)) {
                 const lowerFieldName = fieldName.toLowerCase().trim();
 
@@ -2438,12 +2470,20 @@ const tradeController = {
             const convertedTrades = [];
             for (let i = 0; i < trades.length; i++) {
               const trade = trades[i];
-              const currency = currencyMap.get(i) || 'USD';
+              const inferredCurrency = trade.currencyConversionRequired
+                ? (trade.originalCurrency || trade.original_currency)
+                : null;
+              const currency = inferredCurrency || currencyMap.get(i) || 'USD';
 
               if (currency && currency !== 'USD') {
                 try {
-                  const tradeDate = trade.tradeDate || trade.entryTime?.split('T')[0];
-                  const convertedTrade = await currencyConverter.convertTradeToUSD(trade, currency, tradeDate);
+                  // Forex P&L becomes real on the exit, so cross-currency P&L
+                  // uses that day's rate. Explicit CSV currencies retain the
+                  // established trade-date behavior.
+                  const conversionDate = inferredCurrency
+                    ? (trade.exitTime?.split('T')[0] || trade.tradeDate || trade.entryTime?.split('T')[0])
+                    : (trade.tradeDate || trade.entryTime?.split('T')[0]);
+                  const convertedTrade = await currencyConverter.convertTradeToUSD(trade, currency, conversionDate);
                   convertedTrades.push(convertedTrade);
                   logger.logImport(`[CURRENCY] Converted trade ${i + 1}: ${currency} to USD (rate: ${convertedTrade.exchangeRate})`);
                 } catch (error) {

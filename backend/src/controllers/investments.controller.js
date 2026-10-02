@@ -7,6 +7,7 @@ const EightPillarsService = require('../services/eightPillarsService');
 const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
 const PortfolioService = require('../services/portfolioService');
+const { parseReportDateRange } = require('../utils/reportDateRange');
 const DCFValuationService = require('../services/dcfValuationService');
 const investmentIncomeService = require('../services/investmentIncomeService');
 const db = require('../config/database');
@@ -931,6 +932,7 @@ const recordDividend = async (req, res) => {
 
 function buildPortfolioOptions(query = {}) {
   return {
+    ...parseReportDateRange(query),
     accounts: query.accounts,
     benchmark: query.benchmark,
     period: query.period
@@ -956,7 +958,7 @@ const getPortfolioOverview = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio overview error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio overview' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio overview' });
   }
 };
 
@@ -970,7 +972,7 @@ const getPortfolioPositions = async (req, res) => {
     res.json(await convertForDisplay(req, positions));
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio positions error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio positions' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio positions' });
   }
 };
 
@@ -984,7 +986,7 @@ const getPortfolioPerformance = async (req, res) => {
     res.json(performance);
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio performance error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio performance' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio performance' });
   }
 };
 
@@ -1012,7 +1014,7 @@ const getPortfolioAlerts = async (req, res) => {
     res.json(alerts);
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio alerts error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio alerts' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio alerts' });
   }
 };
 
@@ -1040,7 +1042,7 @@ const getPortfolioPreferences = async (req, res) => {
     res.json(preferences);
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio preferences error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio preferences' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio preferences' });
   }
 };
 
@@ -1097,7 +1099,7 @@ const getPortfolioSummary = async (req, res) => {
     });
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio summary error:', error);
-    res.status(500).json({ error: error.message || 'Failed to get portfolio summary' });
+    res.status(error.status || 500).json({ error: error.message || 'Failed to get portfolio summary' });
   }
 };
 

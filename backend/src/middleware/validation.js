@@ -54,6 +54,25 @@ const normalizeFieldNames = (body) => {
   return normalized;
 };
 
+/**
+ * Validate one payload against a schema outside the middleware chain (used by
+ * bulk endpoints, where each array item must pass the same schema as the
+ * single-item route). Returns { value } or { fields } on failure.
+ */
+const validatePayload = (schema, body) => {
+  const { error, value } = schema.validate(normalizeFieldNames(body));
+  if (error) {
+    return {
+      fields: error.details.map(d => ({
+        field: d.path.join('.'),
+        message: d.message,
+        type: d.type
+      }))
+    };
+  }
+  return { value };
+};
+
 const validate = (schema) => {
   return (req, res, next) => {
     // Normalize snake_case to camelCase before validation
@@ -199,8 +218,8 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd').optional(), // Accept snake_case for API compatibility
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -304,8 +323,8 @@ const schemas = {
   createShellTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd').optional(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').optional(),
     broker: Joi.string().max(50).allow(''),
     account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
@@ -358,7 +377,7 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex'),
     commission: Joi.number(),  // Can be negative for rebates
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
@@ -987,4 +1006,4 @@ const schemas = {
 
 schemas.trade = schemas.createTrade;
 
-module.exports = { validate, schemas };
+module.exports = { validate, validatePayload, schemas };

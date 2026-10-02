@@ -4,12 +4,20 @@ const AnalyticsCache = require('./analyticsCache');
 const TradeQueries = require('./tradeQueries');
 const Trade = require('../models/Trade');
 const NewsService = require('./newsService');
+const finnhub = require('../utils/finnhub');
 const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
 
 const DASHBOARD_TTL_MS = 24 * 60 * 60 * 1000;
 const NEWS_STALE_AFTER_MS = 75 * 60 * 1000;
 const RECENT_NEWS_LIMIT = 5;
+const MARKET_TIME_ZONE = 'America/New_York';
+const QUOTE_FRESHNESS_MS = 2 * 60 * 1000;
+const CLOSED_METRICS_TTL_MINUTES = 7 * 24 * 60;
+const configuredQuoteTimeoutMs = parseInt(process.env.OPEN_POSITIONS_FINNHUB_TIMEOUT_MS || '', 10);
+const QUOTE_TIMEOUT_MS = Number.isFinite(configuredQuoteTimeoutMs) && configuredQuoteTimeoutMs > 0
+  ? configuredQuoteTimeoutMs
+  : 3000;
 
 function currentTradingWeekRange(now, timezone) {
   const endDate = getDateInTimezone(now, timezone || 'UTC', false);
@@ -26,6 +34,53 @@ function currentTradingWeekRange(now, timezone) {
 function finiteNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function previousWeekday(dateString) {
+  const cursor = new Date(`${dateString}T12:00:00.000Z`);
+  do {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  } while (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6);
+  return cursor.toISOString().slice(0, 10);
+}
+
+function equityMarketState(now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKET_TIME_ZONE,
+    weekday: 'short',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(now);
+  const part = type => parts.find(candidate => candidate.type === type)?.value;
+  const value = type => Number(part(type) || 0);
+  const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(part('weekday'));
+  const minutesAfterMidnight = value('hour') * 60 + value('minute');
+  const isWeekday = weekday >= 1 && weekday <= 5;
+  const isOpen = isWeekday && minutesAfterMidnight >= 9 * 60 + 30 && minutesAfterMidnight < 16 * 60;
+  let sessionDate = `${part('year')}-${part('month')}-${part('day')}`;
+
+  if (!isWeekday || minutesAfterMidnight < 9 * 60 + 30) {
+    sessionDate = previousWeekday(sessionDate);
+  }
+
+  return { isOpen, sessionDate };
+}
+
+function openPositionSignature(positions) {
+  return positions
+    .map(position => [
+      String(position.symbol || '').trim().toUpperCase(),
+      position.instrumentType || 'stock',
+      String(position.side || '').toLowerCase(),
+      finiteNumber(position.totalQuantity),
+      finiteNumber(position.pointValue, 1)
+    ].join(':'))
+    .sort()
+    .join('|');
 }
 
 function parseExecutions(trade) {
@@ -66,9 +121,18 @@ async function loadAnalytics(user) {
   return analytics;
 }
 
-async function loadOpenPositionMetrics(userId) {
+async function loadOpenPositionMetrics(userId, now = new Date()) {
   const trades = (await Trade.findOpenPositionsByUser(userId, { limit: 200 })).map(parseExecutions);
   const positions = Object.values(groupTradesIntoPositions(trades));
+  const market = equityMarketState(now);
+  const positionSignature = openPositionSignature(positions);
+  const closeCacheKey = `widget_today_pnl_${market.sessionDate}`;
+  const cachedClose = market.isOpen
+    ? null
+    : await AnalyticsCache.get(userId, closeCacheKey);
+  const matchingCachedClose = cachedClose?.positionSignature === positionSignature
+    ? cachedClose
+    : null;
   const symbols = [...new Set(positions.map(position => String(position.symbol || '').trim().toUpperCase()).filter(Boolean))];
 
   if (symbols.length === 0) {
@@ -89,18 +153,59 @@ async function loadOpenPositionMetrics(userId) {
     .filter(position => position.instrumentType !== 'option')
     .map(position => String(position.symbol || '').trim().toUpperCase())
     .filter(Boolean))];
-  const quoteResult = quoteSymbols.length > 0
+  // Read all rows once. During the session only two-minute rows are live; after
+  // the close the latest persisted row is the stable official-session fallback.
+  const quoteResult = quoteSymbols.length > 0 && finnhub.isConfigured()
     ? await db.query(
-        `SELECT UPPER(symbol) AS symbol, current_price, price_change
+        `SELECT UPPER(symbol) AS symbol, current_price, price_change, last_updated
          FROM price_monitoring
          WHERE UPPER(symbol) = ANY($1::text[])`,
         [quoteSymbols]
       )
     : { rows: [] };
-  const quotes = new Map(quoteResult.rows.map(row => [row.symbol, row]));
+  const quotes = new Map(quoteResult.rows
+    .filter(row => {
+      if (!market.isOpen || !row.last_updated) return true;
+      const updatedAt = new Date(row.last_updated).getTime();
+      return Number.isFinite(updatedAt) && now.getTime() - updatedAt <= QUOTE_FRESHNESS_MS;
+    })
+    .map(row => [row.symbol, row]));
+
+  const hasUsableDayQuote = quote => {
+    const currentPrice = finiteNumber(quote?.current_price, NaN);
+    const dayChange = finiteNumber(quote?.price_change, NaN);
+    return Number.isFinite(currentPrice) && currentPrice > 0 && Number.isFinite(dayChange);
+  };
+  const uncachedSymbols = quoteSymbols.filter(symbol => !hasUsableDayQuote(quotes.get(symbol)));
+  if (uncachedSymbols.length > 0 && finnhub.isConfigured() && (market.isOpen || !matchingCachedClose)) {
+    let timeoutId;
+    try {
+      const freshQuotes = await Promise.race([
+        finnhub.getBatchQuotes(uncachedSymbols, {
+          source: 'open_positions',
+          priority: 0,
+          userId,
+          maxQueueWaitMs: QUOTE_TIMEOUT_MS
+        }),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Widget quote fetch timed out')), QUOTE_TIMEOUT_MS);
+        })
+      ]);
+      for (const symbol of uncachedSymbols) {
+        const quote = freshQuotes?.[symbol];
+        if (quote) quotes.set(symbol, { current_price: quote.c, price_change: quote.d });
+      }
+    } catch (error) {
+      // Keep any fresh cache rows while treating unresolved positions as
+      // unquoted, just as the dashboard does when its provider call fails.
+      console.warn('[WIDGET] Open-position quote refresh unavailable:', error.message);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 
   let openUnrealizedPnL = 0;
-  let todayPnL = 0;
+  let computedTodayPnL = 0;
   let winningOpenPositions = 0;
 
   for (const position of positions) {
@@ -124,8 +229,25 @@ async function loadOpenPositionMetrics(userId) {
     const dayPriceChange = finiteNumber(quote?.price_change, NaN);
     if (Number.isFinite(dayPriceChange)) {
       const direction = position.side === 'short' ? -1 : 1;
-      todayPnL += dayPriceChange * quantity * multiplier * direction;
+      computedTodayPnL += dayPriceChange * quantity * multiplier * direction;
     }
+  }
+
+  const hasCompleteQuoteSet = quoteSymbols.every(symbol => hasUsableDayQuote(quotes.get(symbol)));
+  let todayPnL = matchingCachedClose
+    ? finiteNumber(matchingCachedClose.todayPnL)
+    : computedTodayPnL;
+
+  // Continuously seed the session close while the market is open. Once closed,
+  // the first complete calculation is persisted and every widget refresh uses
+  // that same total instead of publishing whichever quote subset resolved.
+  if (hasCompleteQuoteSet && (!matchingCachedClose || market.isOpen)) {
+    await AnalyticsCache.set(userId, closeCacheKey, {
+      positionSignature,
+      todayPnL: computedTodayPnL,
+      sessionDate: market.sessionDate
+    }, CLOSED_METRICS_TTL_MINUTES);
+    todayPnL = computedTodayPnL;
   }
 
   return {
@@ -218,10 +340,10 @@ async function loadTopInsight(userId) {
   };
 }
 
-async function getSnapshot(user) {
+async function getSnapshot(user, now = new Date()) {
   const [analytics, positionMetrics, topInsight] = await Promise.all([
     loadAnalytics(user),
-    loadOpenPositionMetrics(user.id),
+    loadOpenPositionMetrics(user.id, now),
     loadTopInsight(user.id)
   ]);
   const news = await loadNewsSnapshot(positionMetrics.symbols);
@@ -239,12 +361,13 @@ async function getSnapshot(user) {
     recentNews: news.recentNews,
     newsFetchedAt: news.newsFetchedAt,
     topInsight,
-    updatedAt: new Date().toISOString()
+    updatedAt: now.toISOString()
   };
 }
 
 module.exports = {
   currentTradingWeekRange,
+  equityMarketState,
   getSnapshot,
   loadNewsSnapshot,
   NEWS_STALE_AFTER_MS
