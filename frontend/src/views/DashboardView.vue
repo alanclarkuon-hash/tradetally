@@ -722,7 +722,7 @@
                 </div>
               </div>
               <!-- Single trade: just show a View link -->
-              <div v-else class="pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div v-else-if="position.trades.length === 1" class="pt-3 border-t border-gray-200 dark:border-gray-700">
                 <router-link
                   :to="`/trades/${position.trades[0].id}`"
                   class="text-sm text-primary-600 hover:text-primary-900 dark:hover:text-primary-400 font-medium"

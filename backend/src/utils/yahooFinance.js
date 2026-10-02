@@ -2,6 +2,7 @@ const axios = require('axios');
 const cache = require('./cache');
 const { getFuturesPointValue, getFuturesTickSize } = require('./futuresUtils');
 const { version: APP_VERSION } = require('../../package.json');
+const { normaliseMinorUnit } = require('./quoteCurrency');
 
 const USER_AGENT = `TradeTally/${APP_VERSION}`;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -92,6 +93,10 @@ class YahooFinanceClient {
     if (!raw) return raw;
     if (raw.startsWith('^')) return raw;
     if (INDEX_SYMBOLS[raw]) return INDEX_SYMBOLS[raw];
+    // Also accept London identifiers saved by older Trading 212 imports.
+    const london = raw.match(/^(.+)L_EQ$/) || raw.match(/^(.+)_GB_EQ$/);
+    if (london) return `${london[1]}.L`;
+    if (raw.endsWith('_US_EQ')) return raw.slice(0, -6);
 
     const lastDot = raw.lastIndexOf('.');
     if (lastDot === -1) return raw;
@@ -189,7 +194,11 @@ class YahooFinanceClient {
 
     const cached = await cache.get(namespace, cacheKey);
     if (cached) {
-      return cached;
+      const currency = options.onCurrency && await cache.get('yahoo_chart_currency', yahooSymbol);
+      if (!options.onCurrency || currency) {
+        if (currency) options.onCurrency(currency);
+        return cached;
+      }
     }
 
     let response;
@@ -241,6 +250,10 @@ class YahooFinanceClient {
     }
 
     const timestamps = result.timestamp || [];
+    if (result.meta?.currency) {
+      await cache.set('yahoo_chart_currency', yahooSymbol, result.meta.currency, 60 * 60 * 1000);
+      if (options.onCurrency) options.onCurrency(result.meta.currency);
+    }
     const quote = result.indicators?.quote?.[0] || {};
     const candles = timestamps.map((time, index) => ({
       time: Number(time),
@@ -497,7 +510,8 @@ class YahooFinanceClient {
       : null;
     let candles;
 
-    const options = { spanHoldingPeriod: true };
+    let candleCurrency = null;
+    const options = { spanHoldingPeriod: true, onCurrency: value => { candleCurrency = value; } };
 
     try {
       candles = await this.fetchCandles(yahooSymbol, entryDate, exitDate, resolution, options);
@@ -508,10 +522,18 @@ class YahooFinanceClient {
       candles = await this.fetchCandles(yahooSymbol, entryDate, exitDate, resolution, options);
     }
 
+    const unit = normaliseMinorUnit(candleCurrency);
+    if (!unit) throw new Error('Yahoo Finance chart is missing its price currency');
+    const normalizedCandles = unit.divisor === 1 ? candles : candles.map(candle => ({
+      ...candle,
+      open: candle.open / unit.divisor, high: candle.high / unit.divisor,
+      low: candle.low / unit.divisor, close: candle.close / unit.divisor
+    }));
     return {
       type: resolution === 'D' ? 'daily' : 'intraday',
       interval: RESOLUTIONS[resolution].interval,
-      candles,
+      candles: normalizedCandles,
+      candles_currency: unit.code,
       source: 'yahoo',
       symbol: yahooSymbol,
       available_resolutions: this.availableStockResolutions(entryDate, exitDate),

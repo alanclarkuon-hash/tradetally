@@ -1,6 +1,18 @@
 const { scaleMoneyInPayload, isTradeMoneyKey } = require('../../src/utils/displayCurrency');
 
 describe('trades-domain money walker', () => {
+  test('converts portfolio prices and costs while preserving shares and allocation', () => {
+    const payload = { totalValue: 1000, positionCount: 27, positions: [{
+      totalShares: 2, currentPrice: 500, currentValue: 1000, averageCostBasis: 400,
+      totalCostBasis: 800, totalDividendsReceived: 10, allocationPercent: 25
+    }] };
+    scaleMoneyInPayload(payload, 0.8);
+    expect(payload.totalValue).toBe(800);
+    expect(payload.positionCount).toBe(27);
+    expect(payload.positions[0]).toEqual({ totalShares: 2, currentPrice: 400,
+      currentValue: 800, averageCostBasis: 320, totalCostBasis: 640,
+      totalDividendsReceived: 8, allocationPercent: 25 });
+  });
   test('scales numeric and numeric-string money fields, keeps string shape', () => {
     const payload = {
       trades: [{

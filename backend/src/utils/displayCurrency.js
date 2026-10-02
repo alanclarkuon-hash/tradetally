@@ -109,6 +109,9 @@ const TRADE_MONEY_EXACT = new Set([
   'totalCosts', 'total_costs', 'total_commissions', 'total_fees', 'gross', 'net',
   'entry_price', 'exit_price', 'entryPrice', 'exitPrice', 'netPnl', 'grossPnl',
   'realizedPnl', 'notional',
+  'currentPrice', 'currentValue', 'averageCostBasis', 'totalCostBasis', 'totalValue',
+  'totalDividendsReceived', 'totalDividends', 'totalReturn', 'valueDelta', 'targetValue',
+  'cashFromSells', 'additionalCashNeeded', 'excessCash', 'brokerCurrentPrice',
   // candlestick OHLC (chart payloads) - never appears with another meaning
   // in trades-domain responses, and price axis must scale with the markers
   'open', 'high', 'low', 'close'
