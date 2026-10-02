@@ -27,9 +27,14 @@ function mapClosedPositions(rows) {
     const quantity = numeric(row['Units / Contracts'], 'units', true);
     const leverage = numeric(row.Leverage, 'leverage', true);
     const capital = numeric(row.Amount, 'invested amount');
-    const fxOpen = row['FX rate at open (USD)'] === '-' ? 1 : numeric(row['FX rate at open (USD)'], 'opening FX', true);
+    const fxOpen = row['FX rate at open (USD)'] === '-' ? 1 : numeric(row['FX rate at open (USD)'], 'opening FX');
+    if (fxOpen < 0) throw new Error('Negative opening FX.');
     const fxClose = row['FX rate at close (USD)'] === '-' ? 1 : numeric(row['FX rate at close (USD)'], 'closing FX', true);
-    const entryPrice = numeric(row['Open Rate'], 'opening rate') * fxOpen;
+    const nativeOpen = numeric(row['Open Rate'], 'opening rate');
+    // Historical copied positions can explicitly report 0.0000 opening FX.
+    // Use their stated USD invested capital, leverage and actual units as the
+    // cost basis; never pretend the missing rate is 1 or invent a market quote.
+    const entryPrice = fxOpen === 0 ? capital * leverage / quantity : nativeOpen * fxOpen;
     const exitPrice = numeric(row['Close Rate'], 'closing rate') * fxClose;
     if (capital < 0 || entryPrice < 0 || exitPrice < 0) throw new Error('Negative statement price or capital.');
     const pnl = numeric(row['Profit(USD)'], 'USD profit');
@@ -45,9 +50,12 @@ function mapClosedPositions(rows) {
     // splits, FX or fees already incorporated into the broker's execution rates.
     return { positionId: id, symbol, type, quantity, entryTime, exitTime, entryPrice, exitPrice,
       side, pnl, pnlPercent: capital > 0 ? pnl / capital * 100 : null,
+      capitalBasis: fxOpen === 0,
+      notes: fxOpen === 0 ? 'Opening FX is missing in the eToro statement. USD entry cost is based on reported invested capital, leverage and units; the native rate is preserved in execution data.' : null,
       executions: [
         { ...common, type: 'entry', action: side === 'long' ? 'buy' : 'sell', quantity,
-          price: entryPrice, datetime: entryTime, etoro_native_price: Number(row['Open Rate']), etoro_fx: fxOpen },
+          price: entryPrice, datetime: entryTime, etoro_native_price: nativeOpen, etoro_fx: fxOpen === 0 ? null : fxOpen,
+          etoro_entry_price_basis: fxOpen === 0 ? 'reported_usd_capital' : 'reported_rate_and_fx' },
         { ...common, type: 'exit', action: side === 'long' ? 'sell' : 'buy', quantity,
           price: exitPrice, datetime: exitTime, realized_pnl: pnl, exit_date: exitTime.slice(0,10),
           etoro_reported_net_profit: pnl, etoro_native_price: Number(row['Close Rate']), etoro_fx: fxClose,
@@ -90,7 +98,8 @@ async function importClosedPositions(connection, statement, { dryRun = false } =
       matched++;
       verified.push({ old: previous[0], trade: t });
     }
-    const result = { imported: fresh.length, matched, rows: trades.length, dryRun };
+    const result = { imported: fresh.length, matched, rows: trades.length, dryRun,
+      capitalBasisRows: trades.filter(t => t.capitalBasis).length };
     if (dryRun) return result;
     for (const { old, trade: t } of verified) {
       // Keep API precision and IDs; add statement-confirmed CFD/copy metadata.
@@ -106,12 +115,12 @@ async function importClosedPositions(connection, statement, { dryRun = false } =
         const first = params.length;
         params.push(connection.userId,t.symbol,t.exitTime.slice(0,10),t.entryTime,t.exitTime,
           t.entryPrice,t.exitPrice,t.quantity,t.side,t.pnl,t.pnlPercent,JSON.stringify(t.executions),
-          connection.id,account,t.type);
-        return '(' + Array.from({length:15},(_,i)=>`$${first+i+1}`).join(',') + ",'etoro','USD',1,0,0)";
+          connection.id,account,t.type,t.notes);
+        return '(' + Array.from({length:16},(_,i)=>`$${first+i+1}`).join(',') + ",'etoro','USD',1,0,0)";
       });
       await client.query(`INSERT INTO trades(user_id,symbol,trade_date,entry_time,exit_time,
         entry_price,exit_price,quantity,side,pnl,pnl_percent,executions,broker_connection_id,
-        account_identifier,instrument_type,broker,original_currency,exchange_rate,commission,fees)
+        account_identifier,instrument_type,notes,broker,original_currency,exchange_rate,commission,fees)
         VALUES ${values.join(',')}`, params);
     }
     await client.query('DELETE FROM analytics_cache WHERE user_id=$1', [connection.userId]);
