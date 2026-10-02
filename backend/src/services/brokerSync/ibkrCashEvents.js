@@ -34,7 +34,7 @@ function cashEvent(row, isFunds) {
       !Number.isFinite(Date.parse(date)) || !/^[A-Z]{3}$/.test(currency) || !account || !reference) {
     throw new Error('IBKR cash row needs a valid account, transaction ID, date, currency and amount; select all Statement of Funds fields.');
   }
-  return {type,amount,date,currency,account,reference,description:field(row,'activityDescription','description')};
+  return {type,amount,date,currency,account,reference,fxRateToBase:Number(field(row,'fxRateToBase')) || null,description:field(row,'activityDescription','description')};
 }
 
 async function importCashEvents(connection, sections, range = {}) {
@@ -49,7 +49,8 @@ async function importCashEvents(connection, sections, range = {}) {
   for (const [row,isFunds] of inputs) {
     if (/summary|total/i.test(field(row,'levelOfDetail'))) continue;
     try {
-      const event = cashEvent(row,isFunds);
+      const cashRow = (sections.cash_transactions || []).find(c => field(c,'accountId','account') === field(row,'accountId','account') && field(c,'transactionID') === field(row,'transactionID'));
+      const event = cashEvent({...row,fxRateToBase:field(row,'fxRateToBase') || field(cashRow || {},'fxRateToBase')},isFunds);
       if (!event || (range.startDate && event.date < range.startDate) || (range.endDate && event.date > range.endDate)) continue;
       const key = `${event.account}:${event.reference}`;
       if (events.has(key) && JSON.stringify(events.get(key)) !== JSON.stringify(event)) throw new Error('Conflicting IBKR cash transaction IDs; cash import aborted.');
@@ -58,14 +59,18 @@ async function importCashEvents(connection, sections, range = {}) {
   }
   if (warnings.length) return {imported:0,matched:0,warnings:[...new Set(warnings)]};
   if (!events.size) return {imported:0,matched:0,warnings:[],rows:0};
-  const accounts = (await db.query('SELECT id,account_identifier,broker FROM user_accounts WHERE user_id=$1',[connection.userId])).rows;
+  const accounts = (await db.query('SELECT id,account_identifier,broker,currency FROM user_accounts WHERE user_id=$1',[connection.userId])).rows;
   const prepared = [];
   for (const event of events.values()) {
     const masked = `****${event.account.slice(-4)}`;
     const matches = accounts.filter(a => ['ibkr','interactive brokers','interactivebrokers'].includes(String(a.broker || '').toLowerCase()) &&
       [event.account,masked].includes(a.account_identifier));
     if (matches.length !== 1) { warnings.push('IBKR cash events could not match exactly one managed IBKR account. Check its account identifier.'); continue; }
-    const converted = await converter.convertToUSD(event.amount,event.currency,event.date);
+    // The managed account currency represents the broker's base currency.
+    // For USD base accounts prefer the actual statement FX rate over an estimate.
+    const converted = matches[0].currency === 'USD' && event.fxRateToBase > 0
+      ? {amountUSD:event.amount * event.fxRateToBase,exchangeRate:event.fxRateToBase}
+      : await converter.convertToUSD(event.amount,event.currency,event.date);
     if (!Number.isFinite(converted.amountUSD) || !(converted.exchangeRate > 0)) throw new Error('Invalid IBKR cash conversion');
     prepared.push({...event,accountId:matches[0].id,usd:converted.amountUSD});
   }

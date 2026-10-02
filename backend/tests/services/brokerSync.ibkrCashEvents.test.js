@@ -8,7 +8,7 @@ const {decodeIBKRFlexReport}=require('../../src/utils/ibkrFlexReport');
 const row=(code,amount,id='1')=>({accountId:'U1234',activityCode:code,amount:String(amount),currency:'USD',date:'20260112',transactionID:id,activityDescription:'Example'});
 beforeEach(()=>{jest.clearAllMocks();fx.convertToUSD.mockImplementation(async amount=>({amountUSD:amount,exchangeRate:1}));fx.getForexRate.mockResolvedValue(0.8);});
 test('decodes the cash ledger independently of trades and inherits statement account identity',()=>{
-  const decoded=decodeIBKRFlexReport('<FlexQueryResponse><FlexStatement accountId="U1234"><StatementOfFunds><StatementOfFundsLine activityCode="OFEE" amount="-5" currency="USD" date="20260112" transactionID="1" /></StatementOfFunds><CashReport><CashReportCurrency otherFees="-5" /></CashReport></FlexStatement></FlexQueryResponse>');
+  const decoded=decodeIBKRFlexReport('<FlexQueryResponse><FlexStatement accountId="U1234"><StmtFunds><StatementOfFundsLine activityCode="OFEE" amount="-5" currency="USD" date="20260112" transactionID="1" /></StmtFunds><CashReport><CashReportCurrency otherFees="-5" /></CashReport></FlexStatement></FlexQueryResponse>');
   expect(decoded.cash_sections.statement_of_funds).toHaveLength(1);
   expect(cashEvent(decoded.cash_sections.statement_of_funds[0],true)).toMatchObject({type:'account_fee',amount:-5,account:'U1234'});
 });
@@ -38,6 +38,14 @@ test('owner-scoped upserts preserve repeat syncs, ignoring cash summaries and th
 test('invalid or conflicting rows abort cash writes rather than partially importing',async()=>{
   const result=await importCashEvents({userId:'owner'},{statement_of_funds:[row('DEP',100),row('DEP',101)]});
   expect(result.imported).toBe(0);expect(result.warnings).toHaveLength(1);expect(db.withTransaction).not.toHaveBeenCalled();
+});
+test('USD base accounts use IBKR transaction FX rates for sterling funding',async()=>{
+  db.query.mockResolvedValue({rows:[{id:'account',broker:'ibkr',account_identifier:'U1234',currency:'USD'}]});
+  const client={query:jest.fn().mockResolvedValue({rows:[{inserted:true}]})};
+  db.withTransaction.mockImplementation(fn=>fn(client));
+  await importCashEvents({userId:'owner'},{statement_of_funds:[{...row('DEP',1000),currency:'GBP'}],cash_transactions:[{...row('DEP',1000),currency:'GBP',fxRateToBase:'1.25'}]});
+  expect(client.query.mock.calls[0][1][7]).toBeCloseTo(1250.00,2);
+  expect(fx.convertToUSD).not.toHaveBeenCalled();
 });
 test('cashflow includes signed fees and refunds without double-counting trading commission',async()=>{
   db.query.mockResolvedValue({rows:[{event_date:'2026-01-12',event_type:'account_fee',amount:-5,currency:'USD'},{event_date:'2026-01-12',event_type:'account_fee',amount:2,currency:'USD'},{event_date:'2026-01-13',event_type:'dividend',amount:10,currency:'USD'}]});
