@@ -19,3 +19,11 @@ Official references:
 - [Real portfolio and PnL](https://api-portal.etoro.com/api-reference/trading--real/get-account-pnl-and-portfolio-details)
 
 Validation: service tests cover safe GET requests, secret redaction, partial closes, copied positions, incomplete fetches, identity changes and snapshot ownership. Model tests cover encryption and credential-free responses.
+
+## Historical account statements
+
+Read the XLSX from its original private location with `backend/scripts/read_etoro_statement.py` and pipe the extracted JSON directly into private application data. Never save source statements or extracted rows as tracked fixtures. Account-statement filenames are ignored by Git as an additional safeguard.
+
+`etoroStatement.importClosedPositions` imports the Closed Positions sheet after a dry run and backup. It preserves Stocks/ETF, Crypto and CFD classifications, copied origin and leverage metadata, native rates, stated FX and authoritative USD profit. It supports legitimate zero-price delistings and zero-capital corporate allocations. Overlap matching uses position identity, symbol, quantities, profit and timestamps rounded to seconds; conflicting overlaps stop the transaction. Batched inserts retain existing API trade IDs. Repeated imports do not duplicate records.
+
+Historical Holdings sheets are periodic snapshots and are not imported as current holdings. Current API holdings remain authoritative. Account Activity and Dividends are kept privately for a separate cashflow/income reconciliation; they are not implicitly added again to closed-trade profit.
