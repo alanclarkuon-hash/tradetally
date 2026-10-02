@@ -200,7 +200,7 @@ function decodeXmlReport(content) {
   }
 
   const cashSections = {};
-  for (const [key, selector] of Object.entries({cash_transactions:'CashTransactions > CashTransaction', statement_of_funds:'StatementOfFunds > StatementOfFundsLine', cash_report:'CashReport > CashReportCurrency'})) {
+  for (const [key, selector] of Object.entries({cash_transactions:'CashTransactions > CashTransaction', statement_of_funds:'StatementOfFunds > StatementOfFundsLine, StmtFunds > StatementOfFundsLine', cash_report:'CashReport > CashReportCurrency'})) {
     cashSections[key] = [];
     $(selector).each((_, element) => cashSections[key].push({ ...($(element).closest('FlexStatement').attr() || {}), ...($(element).attr() || {}) }));
   }

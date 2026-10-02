@@ -32,7 +32,8 @@ async function enrichCashflow(userId,accountId,rows,start,end,currency = 'USD') 
     AND event_date >= $3 AND event_date <= $4 ORDER BY event_date,reference_id`,[userId,accountId,start,end])).rows;
   for (const event of events) {
     const date = dateKey(event.event_date);
-    const amount = Number(event.amount) * await rateFor(event.currency,currency,date,rates);
+    const amount = event.currency === currency ? Number(event.amount) :
+      (event.amount_usd != null ? Number(event.amount_usd) * await rateFor('USD',currency,date,rates) : Number(event.amount) * await rateFor(event.currency,currency,date,rates));
     const row = byDate.get(date) || {date,trade_inflow:0,trade_outflow:0,fees:0,deposits:0,withdrawals:0,inflow:0,outflow:0,income:0,account_fees:0,withholding_tax:0};
     if (amount >= 0) row.inflow += amount; else row.outflow -= amount;
     if (event.event_type === 'deposit') row.deposits = Number(row.deposits || 0) + amount;
@@ -51,7 +52,8 @@ async function dayEvents(userId,accountId,date,currency = 'USD') {
   const rows = (await db.query('SELECT * FROM broker_cash_events WHERE user_id=$1 AND account_id=$2 AND event_date=$3 ORDER BY reference_id',[userId,accountId,date])).rows;
   const events = [];
   for (const row of rows) {
-    const amount = Number(row.amount)*await rateFor(row.currency,currency,date,rates);
+    const amount = row.currency === currency ? Number(row.amount) :
+      (row.amount_usd != null ? Number(row.amount_usd) * await rateFor('USD',currency,date,rates) : Number(row.amount)*await rateFor(row.currency,currency,date,rates));
     events.push({id:row.id,transactionType:row.event_type,amount:Math.abs(amount),signedAmount:amount,
       description:row.description,sourceType:'ibkr',originalAmount:Number(row.amount),originalCurrency:row.currency});
   }
