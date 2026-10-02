@@ -60,11 +60,11 @@ class Account {
 
     const query = `
       INSERT INTO user_accounts (
-        user_id, account_name, account_identifier, broker,
+        user_id, account_name, account_identifier, broker, currency,
         initial_balance, initial_balance_date, is_primary, notes,
         is_archived, include_in_reports, fee_profile_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $12, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
 
@@ -79,7 +79,8 @@ class Account {
       notes || null,
       effectiveIsArchived,
       includeInReports !== false,
-      effectiveFeeProfileId
+      effectiveFeeProfileId,
+      accountData.currency || 'USD'
     ]);
 
     console.log(`[ACCOUNTS] Created account "${accountName}" for user ${userId}`);
@@ -792,11 +793,13 @@ class Account {
     `;
 
     const ytdResult = await db.query(ytdQuery, [userId, accountId, ytdStartDate, ytdEndDate]);
+    const brokerYtd = await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,[],ytdStartDate,ytdEndDate,account.currency);
     const ytdData = ytdResult.rows[0] || { ytd_deposits: 0, ytd_withdrawals: 0 };
 
     // Calculate running balance
     let runningBalance = parseFloat(account.initial_balance) || 0;
-    const cashflowData = result.rows.map(row => {
+    const cashRows = await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
+    const cashflowData = cashRows.map(row => {
       const net = parseFloat(row.net) || 0;
       runningBalance += net;
 
@@ -805,6 +808,9 @@ class Account {
         tradeInflow: parseFloat(row.trade_inflow) || 0,
         tradeOutflow: parseFloat(row.trade_outflow) || 0,
         fees: parseFloat(row.fees) || 0,
+        income: Number(row.income || 0),
+        accountFees: Number(row.account_fees || 0),
+        withholdingTax: Number(row.withholding_tax || 0),
         deposits: parseFloat(row.deposits) || 0,
         withdrawals: parseFloat(row.withdrawals) || 0,
         inflow: parseFloat(row.inflow) || 0,
@@ -822,12 +828,15 @@ class Account {
       totalOutflow: cashflowData.reduce((sum, d) => sum + d.outflow, 0),
       totalDeposits: cashflowData.reduce((sum, d) => sum + d.deposits, 0),
       totalWithdrawals: cashflowData.reduce((sum, d) => sum + d.withdrawals, 0),
+      totalIncome: cashflowData.reduce((sum,d)=>sum+d.income,0),
+      totalAccountFees: cashflowData.reduce((sum,d)=>sum+d.accountFees,0),
+      totalWithholdingTax: cashflowData.reduce((sum,d)=>sum+d.withholdingTax,0),
       totalFees: cashflowData.reduce((sum, d) => sum + d.fees, 0),
       totalTradeInflow: cashflowData.reduce((sum, d) => sum + d.tradeInflow, 0),
       totalTradeOutflow: cashflowData.reduce((sum, d) => sum + d.tradeOutflow, 0),
       tradingDays: cashflowData.length,
-      ytdDeposits: parseFloat(ytdData.ytd_deposits) || 0,
-      ytdWithdrawals: parseFloat(ytdData.ytd_withdrawals) || 0
+      ytdDeposits: (parseFloat(ytdData.ytd_deposits) || 0) + brokerYtd.reduce((sum,r)=>sum+Number(r.deposits || 0),0),
+      ytdWithdrawals: (parseFloat(ytdData.ytd_withdrawals) || 0) + brokerYtd.reduce((sum,r)=>sum+Number(r.withdrawals || 0),0)
     };
 
     return {
@@ -836,6 +845,7 @@ class Account {
         accountName: account.account_name,
         accountIdentifier: account.account_identifier,
         broker: account.broker,
+        currency: account.currency,
         initialBalance: parseFloat(account.initial_balance),
         initialBalanceDate: account.initial_balance_date,
         isPrimary: account.is_primary
@@ -921,6 +931,7 @@ class Account {
       db.query(transactionsQuery, [userId, accountId, date])
     ]);
 
+    const brokerDay = await require('../services/brokerSync/cashflowEvents').dayEvents(userId,accountId,date,account.currency);
     return {
       date,
       trades: tradesResult.rows.map(row => ({
@@ -931,19 +942,19 @@ class Account {
         quantity: parseFloat(row.quantity),
         eventType: row.event_type,
         eventTime: row.event_time,
-        price: row.price !== null ? parseFloat(row.price) : null,
-        grossAmount: parseFloat(row.gross_amount) || 0,
+        price: row.price !== null ? parseFloat(row.price) * brokerDay.tradeRate : null,
+        grossAmount: (parseFloat(row.gross_amount) || 0) * brokerDay.tradeRate,
         direction: row.direction,
-        commission: parseFloat(row.commission) || 0,
-        pnl: row.pnl !== null && row.pnl !== undefined ? parseFloat(row.pnl) : null
+        commission: (parseFloat(row.commission) || 0) * brokerDay.tradeRate,
+        pnl: row.pnl !== null && row.pnl !== undefined ? parseFloat(row.pnl) * brokerDay.tradeRate : null
       })),
-      transactions: transactionsResult.rows.map(tx => ({
+      transactions: [...brokerDay.events, ...transactionsResult.rows.map(tx => ({
         id: tx.id,
         transactionType: tx.transaction_type,
         amount: parseFloat(tx.amount) || 0,
         description: tx.description,
         sourceType: tx.source_type
-      }))
+      }))]
     };
   }
 }

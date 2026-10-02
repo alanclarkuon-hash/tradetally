@@ -82,6 +82,36 @@ The one-time import repair takes a database backup first. Its private history
 snapshot stays in the `app_data` volume. `backend/scripts/rebuild-trading212-import.js`
 defaults to a dry-run; `--apply` reconciles that snapshot in a transaction.
 
+## IBKR account cashflow
+
+The Activity Flex Query should include Trades, Open Positions, Cash Transactions,
+Statement of Funds and Cash Report, with all fields and XML output. Statement of
+Funds supplies actual deposits, withdrawals, dividends, paid/charged interest,
+account fees (including market data subscriptions), and withholding/sales tax.
+Trades, FX conversions and interest accruals are excluded from the additional
+cash-event ledger. Cash Report totals are never imported as extra transactions.
+Cash Transactions is a fallback for accounts without Statement of Funds rows.
+Each cash event requires a transaction ID and is matched to exactly one managed
+IBKR account belonging to the syncing user. Repeated syncs update the same event
+instead of creating duplicates. Missing fields or conflicting IDs stop the cash
+import with a warning. Cash events are stored separately from manual transfers;
+manual entries representing the same funding should not also be entered.
+
+Cashflow is calculated and labelled in the managed account's currency, rather
+than the general portfolio display preference. Trade values stored in USD are
+converted with historical exchange rates for GBP accounts. Native broker cash
+amounts and currencies remain available in the daily activity detail.
+Account currencies are configured separately from the display preference. When
+opening deposits are imported as funding, the account's opening balance should
+represent cash before those deposits to avoid counting the same funding twice.
+Payments retain their original amounts and currencies; USD base reporting uses
+transaction FX rates returned by IBKR. Actual XML reports wrap
+StatementOfFundsLine rows in StmtFunds; both wrapper names are supported.
+
+The pre-cashflow-migration backup is
+`tradetally-backup-2026-10-02T13-08-22-859Z.json` (167 tables, 9,984 records).
+It was parsed after creation; restoration has not been tested.
+
 ## Local backups
 
 Automatic database exports are enabled daily with 30-day retention. The built-in

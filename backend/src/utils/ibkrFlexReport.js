@@ -32,10 +32,16 @@ function parseCsvLine(line) {
 
 function classifyHeaders(headers, sectionName = '') {
   const normalizedSection = normalizeHeader(sectionName);
+  if (normalizedSection === 'cashtransactions') return 'cash_transactions';
+  if (normalizedSection === 'statementoffunds') return 'statement_of_funds';
+  if (normalizedSection === 'cashreport') return 'cash_report';
   if (normalizedSection === 'trades' || normalizedSection === 'trade') return 'trades';
   if (normalizedSection === 'openpositions' || normalizedSection === 'openposition') return 'open_positions';
 
   const normalized = headers.map(normalizeHeader);
+  if (normalized.includes('activitycode') && normalized.includes('amount')) return 'statement_of_funds';
+  if (normalized.includes('type') && normalized.includes('amount') && normalized.includes('currency')) return 'cash_transactions';
+  if (normalized.includes('startingcash') && normalized.includes('endingcash')) return 'cash_report';
   if (!normalized.includes('symbol')) return null;
   if (normalized.some(field => TRADE_HEADER_FIELDS.has(field))) return 'trades';
   if (normalized.some(field => OPEN_POSITION_HEADER_FIELDS.has(field))) return 'open_positions';
@@ -193,6 +199,11 @@ function decodeXmlReport(content) {
     throw error;
   }
 
+  const cashSections = {};
+  for (const [key, selector] of Object.entries({cash_transactions:'CashTransactions > CashTransaction', statement_of_funds:'StatementOfFunds > StatementOfFundsLine', cash_report:'CashReport > CashReportCurrency'})) {
+    cashSections[key] = [];
+    $(selector).each((_, element) => cashSections[key].push({ ...($(element).closest('FlexStatement').attr() || {}), ...($(element).attr() || {}) }));
+  }
   const statements = [];
   $('FlexStatement').each((_, element) => {
     const attrs = $(element).attr() || {};
@@ -218,6 +229,7 @@ function decodeXmlReport(content) {
   return {
     recognized: true,
     format: 'xml',
+    cash_sections: cashSections,
     statements,
     trade_records,
     open_position_records,
@@ -235,6 +247,7 @@ function decodeXmlReport(content) {
 
 function decodeCsvReport(content) {
   const lines = String(content || '').split(/\r?\n/);
+  const cashSections = {cash_transactions:[],statement_of_funds:[],cash_report:[]};
   const trade_records = [];
   const open_position_records = [];
   let active = null;
@@ -260,6 +273,7 @@ function decodeCsvReport(content) {
 
     if (rowType === 'data' && active && headers) {
       const record = recordFromFields(headers, fields.slice(2));
+      if (cashSections[active]) cashSections[active].push(record);
       if (active === 'trades') trade_records.push(record);
       if (active === 'open_positions') open_position_records.push(record);
       continue;
@@ -276,13 +290,15 @@ function decodeCsvReport(content) {
 
     if (active && headers) {
       const record = recordFromFields(headers, fields);
+      if (cashSections[active]) cashSections[active].push(record);
       if (active === 'trades') trade_records.push(record);
       if (active === 'open_positions') open_position_records.push(record);
     }
   }
 
   return {
-    recognized: trade_records.length > 0 || open_position_records.length > 0 || Boolean(headers),
+    cash_sections: cashSections,
+    recognized: Object.values(cashSections).some(rows => rows.length) || trade_records.length > 0 || open_position_records.length > 0 || Boolean(headers),
     format: 'csv',
     statements: [],
     trade_records,

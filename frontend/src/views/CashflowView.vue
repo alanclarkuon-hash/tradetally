@@ -90,6 +90,13 @@
           </div>
         </div>
 
+        <div v-if="cashflow" class="mb-4 flex flex-wrap gap-6 text-sm text-gray-600 dark:text-gray-300">
+          <span>Account currency: {{ cashflow.account.currency }}</span>
+          <span>Dividends &amp; interest: {{ formatSignedCurrency(cashflow.summary.totalIncome) }}</span>
+          <span>Account fees: {{ formatCurrency(cashflow.summary.totalAccountFees) }}</span>
+          <span>Withholding &amp; sales tax: {{ formatCurrency(cashflow.summary.totalWithholdingTax) }}</span>
+        </div>
+
         <BalanceEquityCurve ref="balanceEquityCurve" />
 
         <PlaidReviewQueue
@@ -210,7 +217,7 @@
                               </ul>
                             </div>
 
-                            <!-- Deposits & Withdrawals -->
+                            <!-- Account cash movements -->
                             <div v-if="expandedActivity.transactions.length">
                               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                                 Deposits &amp; Withdrawals
@@ -222,7 +229,7 @@
                                   class="flex items-center justify-between gap-3 text-sm"
                                 >
                                   <div class="flex items-center gap-2 min-w-0">
-                                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="tx.transactionType === 'deposit' ? 'bg-green-500' : 'bg-red-500'"></span>
+                                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="transactionAmount(tx) >= 0 ? 'bg-green-500' : 'bg-red-500'"></span>
                                     <span class="font-medium capitalize text-gray-900 dark:text-white">{{ tx.transactionType }}</span>
                                     <span v-if="tx.description" class="truncate text-gray-500 dark:text-gray-400">{{ tx.description }}</span>
                                     <span
@@ -232,8 +239,8 @@
                                       Plaid
                                     </span>
                                   </div>
-                                  <span class="shrink-0 whitespace-nowrap" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                                    {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
+                                  <span class="shrink-0 whitespace-nowrap" :class="transactionAmount(tx) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                                    {{ formatSignedCurrency(transactionAmount(tx)) }}
                                   </span>
                                 </li>
                               </ul>
@@ -321,7 +328,7 @@
                       {{ account.broker }}
                     </div>
                     <div class="text-sm text-gray-500 dark:text-gray-400">
-                      Initial: {{ formatCurrency(account.initialBalance) }}
+                      Initial: {{ formatCurrency(account.initialBalance, {currency:account.currency}) }}
                     </div>
                     <div v-if="account.tradeCount > 0" class="text-xs text-gray-400 dark:text-gray-500 mt-1">
                       {{ account.tradeCount }} linked trade{{ account.tradeCount !== 1 ? 's' : '' }}
@@ -436,8 +443,8 @@
                 class="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-800"
               >
                 <div>
-                  <div class="text-sm font-medium" :class="tx.transactionType === 'deposit' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
-                    {{ formatSignedCurrency(tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }}
+                  <div class="text-sm font-medium" :class="transactionAmount(tx) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">
+                    {{ formatSignedCurrency(transactionAmount(tx)) }}
                   </div>
                   <div class="text-xs text-gray-500 dark:text-gray-400">
                     {{ formatDate(tx.transactionDate) }}
@@ -487,7 +494,11 @@ import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
-const { formatCurrency, formatSignedCurrency, currencySymbol } = useCurrencyFormatter()
+const { formatCurrency: formatMoney, formatSignedCurrency: formatSignedMoney } = useCurrencyFormatter()
+const accountCurrency = computed(() => cashflow.value?.account?.currency || accounts.value.find(a => a.id === selectedAccountId.value)?.currency || 'USD')
+const currencySymbol = computed(() => accountCurrency.value === 'GBP' ? '\u00a3' : '$')
+function formatCurrency(value, options = {}) { return formatMoney(value, {currency:accountCurrency.value,...options}) }
+function formatSignedCurrency(value, options = {}) { return formatSignedMoney(value, {currency:accountCurrency.value,...options}) }
 
 const store = useAccountsStore()
 const tradesStore = useTradesStore()
@@ -605,6 +616,8 @@ const balanceClass = computed(() => {
   const diff = cashflow.value.summary.currentBalance - cashflow.value.summary.initialBalance
   return diff >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
 })
+
+function transactionAmount(tx) { return tx.signedAmount ?? (tx.transactionType === 'deposit' ? tx.amount : -tx.amount) }
 
 // Methods
 

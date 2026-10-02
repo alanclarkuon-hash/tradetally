@@ -596,6 +596,7 @@ class IBKRService {
       now
     });
     console.log(`[IBKR] Resolved date range: ${windows[0]?.start_date || 'none'} to ${windows[windows.length - 1]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'})`);
+    const cashSections = {statement_of_funds:[],cash_transactions:[],cash_report:[]};
     const tradeRecords = [];
     let openPositionRecords = [];
     let sawOpenPositionSection = false;
@@ -682,6 +683,7 @@ class IBKRService {
         latestWindowRetrieved = true;
         latestRetrievedEndDate = window.end_date;
       }
+      for (const key of Object.keys(cashSections)) cashSections[key].push(...(decoded.cash_sections?.[key] || []));
       tradeRecords.push(...decoded.trade_records);
       openPositionRecords = decoded.open_position_records;
       rawOpenPositionRows += decoded.open_position_records.length;
@@ -790,6 +792,8 @@ class IBKRService {
 
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
+    result.cashEvents = await require('./ibkrCashEvents').importCashEvents(connection,cashSections,{startDate,endDate});
+    warnings.push(...result.cashEvents.warnings);
     result.warnings = [...warnings, ...parseWarnings, ...openPositionResult.warnings];
     result.warningDetails = [
       ...warningDetails,
