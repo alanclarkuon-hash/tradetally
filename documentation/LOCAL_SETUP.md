@@ -121,6 +121,23 @@ Payments retain their original amounts and currencies; USD base reporting uses
 transaction FX rates returned by IBKR. Actual XML reports wrap
 StatementOfFundsLine rows in StmtFunds; both wrapper names are supported.
 
+IBKR cashflow uses saved BaseCurrency Statement of Funds rows when verified
+statement coverage reaches the managed opening date. Each report must reconcile
+its opening cash plus signed ledger entries to its reported ending cash within
+two cents before it is saved. Cash report summaries and per-currency copies are
+not additional transactions. Trade cash already includes commissions; displaying
+those fees does not deduct them again. FOREX net cash and FX translation entries
+are retained as currency effects, separately from dividends and interest.
+Overlapping report periods are selected as a non-overlapping set with maximal
+date coverage, preventing rolling sync reports from duplicating cash movements.
+Filtered views carry forward earlier cash rather than restarting the balance.
+The page compares calculated cash with the latest selected statement close and
+shows its date and difference. This is statement-date cash, not live broker cash.
+Source reports and ledger rows are private database/volume data, never Git files.
+
+The checked pre-reconciliation backup is
+`tradetally-backup-2026-10-02T14-20-21-596Z.json` (168 tables, 11,529 records).
+
 The pre-cashflow-migration backup is
 `tradetally-backup-2026-10-02T13-08-22-859Z.json` (167 tables, 9,984 records).
 It was parsed after creation; restoration has not been tested. The backup before

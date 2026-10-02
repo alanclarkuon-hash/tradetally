@@ -93,4 +93,4 @@ async function importCashEvents(connection, sections, range = {}) {
   });
   return {...counts,warnings:[...new Set(warnings)],rows:events.size};
 }
-module.exports = {cashEvent,importCashEvents};
+module.exports = {field,cashEvent,importCashEvents};

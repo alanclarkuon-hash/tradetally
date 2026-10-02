@@ -97,6 +97,17 @@
           <span>Withholding &amp; sales tax: {{ formatCurrency(cashflow.summary.totalWithholdingTax) }}</span>
         </div>
 
+        <div v-if="cashflow?.summary?.reconciliation" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
+          <span :class="cashflow.summary.reconciliation.matched ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
+            {{ cashflow.summary.reconciliation.matched ? 'Matches IBKR statement' : 'Balance needs review' }}
+          </span>
+          <span class="ml-2 text-gray-600 dark:text-gray-300">as of {{ formatDate(cashflow.summary.reconciliation.statementDate) }}:
+            {{ formatCurrency(cashflow.summary.reconciliation.reportedBalance) }}.
+            Difference: {{ cashflow.summary.reconciliation.matched ? formatCurrency(0) : formatSignedCurrency(cashflow.summary.reconciliation.difference) }}.
+            Currency conversion effects: {{ formatSignedCurrency(cashflow.summary.totalFxAdjustments) }}.
+          </span>
+        </div>
+
         <BalanceEquityCurve ref="balanceEquityCurve" />
 
         <PlaidReviewQueue
