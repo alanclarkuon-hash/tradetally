@@ -134,6 +134,14 @@ function plan(desired, existing) {
   // open trade ID; a partial sale alongside a remaining lot gets a separate ID.
   for (const item of plans) {
     if (item.old || !item.trade.exitTime) continue;
+    // Statements round timestamps to seconds. Match their broker position
+    // identity plus times, units and profit when it enters the API window.
+    const statements = existing.filter(r => !used.has(r.id) && r.exit_time &&
+      positionId(r) === item.trade.positionId &&
+      getExecutions(r)[0]?.etoro_statement_source &&
+      require('./etoroStatement').matches(r, item.trade));
+    if (statements.length > 1) throw new Error('Ambiguous eToro statement overlap.');
+    if (statements.length === 1) { item.old = statements[0]; used.add(item.old.id); continue; }
     const old = existing.find(r => !r.exit_time && !used.has(r.id) && positionId(r) === item.trade.positionId);
     if (old) { item.old = old; used.add(old.id); }
   }
@@ -159,6 +167,13 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
     result.updated = plans.filter(p => p.old).length;
     if (dryRun) return;
     for (const { trade: t, old } of plans) {
+      const original = old && getExecutions(old)[0];
+      if (original?.etoro_source_type) {
+        if (original.etoro_source_type === 'CFD') t.instrumentType = 'cfd';
+        t.executions = t.executions.map(e => ({ ...e, etoro_source_type: original.etoro_source_type,
+          etoro_copied_from: original.etoro_copied_from || null,
+          etoro_leverage: original.etoro_leverage || 1 }));
+      }
       const cost = t.entryPrice * t.quantity;
       const values = [connection.userId, t.symbol, (t.exitTime || t.entryTime).slice(0, 10),
         t.entryTime, t.exitTime, t.entryPrice, t.exitPrice, t.quantity, t.side,

@@ -48,6 +48,14 @@ test('preserves IDs on repeat sync and on a full closure', () => {
   const oldOpen = existing({ exitTime: null, executions: [{ etoro_record_key: 'open:2', etoro_position_id: '2' }] });
   expect(plan([t[1]], [oldOpen])[0].old.id).toBe('old');
 });
+test('later API sync reuses an imported statement trade despite timestamp precision', () => {
+  const t = mapSnapshot(payload()).trades[1];
+  const old = { id: 'historical', quantity: t.quantity, pnl: t.pnl,
+    entry_time: t.entryTime, exit_time: t.exitTime,
+    executions: [{ etoro_position_id: t.positionId, etoro_record_key: `statement:${t.positionId}`,
+      etoro_statement_source: true }] };
+  expect(plan([t],[old])[0].old.id).toBe('historical');
+});
 test('a partial closure does not consume the remaining open lot or drop earlier closed history', () => {
   const t = mapSnapshot(payload()).trades;
   const partial = { ...t[1], positionId: '1' };
