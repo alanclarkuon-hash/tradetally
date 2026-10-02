@@ -15,6 +15,7 @@ function formatAccount(account, { includeTradeCount = false } = {}) {
     accountName: account.account_name,
     accountIdentifier: account.account_identifier,
     broker: account.broker,
+    currency: account.currency,
     initialBalance: parseFloat(account.initial_balance),
     initialBalanceDate: account.initial_balance_date,
     isPrimary: account.is_primary,
@@ -184,6 +185,7 @@ const accountController = {
       }
 
       const account = await Account.create(req.user.id, {
+        currency: /^[A-Z]{3}$/.test(req.body.currency || '') ? req.body.currency : 'USD',
         accountName: accountName.trim(),
         accountIdentifier: accountIdentifier || null,
         broker: broker || null,
