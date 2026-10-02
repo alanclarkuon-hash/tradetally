@@ -45,4 +45,18 @@ describe('broker-reported holdings', () => {
       .rejects.toThrow('Incomplete');
     expect(db.query).not.toHaveBeenCalled();
   });
+  test('uses eToro USD stock and crypto snapshots consistently on holdings and dashboard', async () => {
+    const rows = [{ broker_type: 'etoro', account_identifier: 'eToro ****123', synced_at: '2026-10-02T12:00:00Z',
+      positions: [{ symbol: 'SYNTHCOIN', instrumentType: 'crypto', quantity: 0.5,
+        totalCost: 100, currentValue: 120, lotCount: 2, openedAt: '2022-01-01T10:00:00Z' }] }];
+    const holdings = await snapshotPositions(rows);
+    expect(holdings[0]).toMatchObject({ symbol: 'SYNTHCOIN', instrumentType: 'crypto',
+      totalShares: 0.5, totalCostBasis: 100, brokerCurrentPrice: 240, lotCount: 2 });
+    const lots = [{ id: 'lot', symbol: 'SYNTHCOIN', broker: 'etoro', account_identifier: 'eToro ****123',
+      side: 'long', quantity: 0.5, entry_price: 200, original_currency: 'USD', instrument_type: 'crypto' }];
+    const dashboard = Object.values(dashboardPositions(lots, rows));
+    expect(dashboard).toHaveLength(1);
+    expect(dashboard[0]).toMatchObject({ totalQuantity: 0.5, totalCost: 100, currency: 'USD',
+      brokerQuote: { c: 240, currency: 'USD' }, trades: lots });
+  });
 });

@@ -2994,7 +2994,7 @@ const tradeController = {
       console.log(`Found ${openTrades.length} open trades`);
 
       const brokerSnapshots = (await db.query(`SELECT * FROM broker_portfolio_snapshots
-        WHERE user_id=$1 AND broker_type='trading212'`, [req.user.id])).rows;
+        WHERE user_id=$1 AND broker_type IN ('trading212','etoro')`, [req.user.id])).rows;
       if (openTrades.length === 0 && brokerSnapshots.length === 0) {
         console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
         return res.json({

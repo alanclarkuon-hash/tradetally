@@ -157,6 +157,10 @@ class EtoroService {
       ON CONFLICT(user_id,broker_type,account_identifier) DO UPDATE
       SET connection_id=EXCLUDED.connection_id,payload=EXCLUDED.payload,captured_at=NOW()`,
     [connection.userId, `etoro:${connection.externalAccountId}`, connection.id, JSON.stringify(payload)]);
+    if (connection.brokerMetadata?.import_pending_review === false) {
+      const result = await require('./etoroReconcile').reconcile(connection, payload);
+      return { ...result, warnings: [HISTORY_WARNING], outcome: 'warning' };
+    }
     return { imported: 0, skipped: 0, duplicates: 0, failed: 0,
       tradeRows: history.length, openPositionRows: positions.length,
       warnings: [REVIEW_WARNING, HISTORY_WARNING], outcome: 'warning' };
