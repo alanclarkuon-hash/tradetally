@@ -8,7 +8,7 @@ const FundamentalDataService = require('../services/fundamentalDataService');
 const HoldingsService = require('../services/holdingsService');
 const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
-const plaidIncomeService = require('../services/plaid/plaidIncomeService');
+const investmentIncomeService = require('../services/investmentIncomeService');
 const db = require('../config/database');
 const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
 
@@ -846,15 +846,16 @@ const deleteLot = async (req, res) => {
 // ========================================
 
 /**
- * Get dividend/interest/fee income aggregated from Plaid investment activity
+ * Get dividend/interest/fee income from broker cashflow and Plaid activity
  * GET /api/investments/income
  */
 const getInvestmentIncome = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
-    const data = await plaidIncomeService.getIncomeSummary(req.user.id, {
+    const data = await investmentIncomeService.getIncomeSummary(req.user.id, {
       startDate: startDate || null,
-      endDate: endDate || null
+      endDate: endDate || null,
+      currency: await resolveDisplayCurrency(req.user.id)
     });
 
     res.json({ success: true, data });

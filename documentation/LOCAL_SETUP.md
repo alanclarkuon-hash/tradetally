@@ -200,6 +200,12 @@ pending-order reserves. Pie cash is a contextual breakdown and is not added
 again to account cash. Any discrepancy remains visible
 for review; no balancing transaction is inserted. Date filters carry earlier
 cash into the opening balance.
+The Investments Income tab reads the same imported broker cash events as
+Cashflow, alongside Plaid investment income. It converts payments at their
+historical dates into the selected display currency, keeps income separate from
+funding and preserves fee refunds. Matching payments reported by both broker
+sync and Plaid for one linked account are counted once. The default view covers
+the last year; select All for the full imported history.
 
 This configuration is for local use. A hosted instance needs HTTPS, a single
 owner account with registration disabled, persistent database and upload
