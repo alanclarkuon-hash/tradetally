@@ -192,6 +192,13 @@ amounts use net wallet payments, without adding gross or euro reference values.
 The original payment currency is preserved for Cashflow. A matching managed
 account is required. Review opening balances separately when importing funding
 history to avoid counting an original deposit twice.
+Cashflow uses each execution's native net wallet amount, preserving actual
+broker FX and fees without reconstructing cash from journal lots. Fees remain
+visible but are not subtracted twice. Split pairs are cash neutral. Saved wallet
+snapshots reject shortened history and are compared with broker cash including
+pending-order reserves and uninvested pie cash. Any discrepancy remains visible
+for review; no balancing transaction is inserted. Date filters carry earlier
+cash into the opening balance.
 
 This configuration is for local use. A hosted instance needs HTTPS, a single
 owner account with registration disabled, persistent database and upload
