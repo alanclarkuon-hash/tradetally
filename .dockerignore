@@ -35,6 +35,12 @@ release-assets/
 **/*.key
 
 # Temporary files
+tmp/
+temp/
+.tmp/
+**/*.dump
+**/*.backup
+**/data/backups/
 **/*.tmp
 **/*.log
 
