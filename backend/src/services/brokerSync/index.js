@@ -172,6 +172,7 @@ class BrokerSyncService {
           trade_rows: result.tradeRows || 0,
           open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
+          cash_events_imported: result.cashEventsImported || 0,
           manual_review_count: result.manualReviewCount || 0,
           manual_review_items: result.manualReviewItems || []
         }
