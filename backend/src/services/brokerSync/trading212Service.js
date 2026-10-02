@@ -104,6 +104,9 @@ class Trading212Service extends OAuthBrokerBase {
     }
     const cash = await require('./trading212CashEvents').importCashEvents(connection,cashSections);
     result.cashEventsImported = cash.imported;
+    const summary = await this.requestPage(`${getApiBase(connection.brokerEnvironment || 'live')}/equity/account/summary`,
+      {username:connection.trading212ApiKey,password:connection.trading212ApiSecret});
+    await require('./trading212CashLedger').saveCashReport(connection,rawExecutions,summary.data);
     return result;
   }
 

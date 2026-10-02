@@ -797,7 +797,8 @@ class Account {
     const ytdData = ytdResult.rows[0] || { ytd_deposits: 0, ytd_withdrawals: 0 };
 
     // Calculate running balance
-    const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
+    const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
+      await require('../services/brokerSync/trading212CashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
     let runningBalance = ledger ? ledger.openingBalance : (parseFloat(account.initial_balance) || 0);
     const cashRows = ledger ? ledger.rows : await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
     const cashflowData = cashRows.map(row => {
@@ -831,7 +832,7 @@ class Account {
       totalDeposits: cashflowData.reduce((sum, d) => sum + d.deposits, 0),
       totalWithdrawals: cashflowData.reduce((sum, d) => sum + d.withdrawals, 0),
       reconciliation: ledger?.reconciliation || null,
-      cashflowSource: ledger ? 'ibkr_statement' : 'trade_history',
+      cashflowSource: ledger ? (ledger.source || 'ibkr_statement') : 'trade_history',
       totalFxAdjustments: cashflowData.reduce((sum,d)=>sum+d.fxAdjustments,0),
       totalIncome: cashflowData.reduce((sum,d)=>sum+d.income,0),
       totalAccountFees: cashflowData.reduce((sum,d)=>sum+d.accountFees,0),
@@ -875,7 +876,8 @@ class Account {
     const account = await this.findById(accountId, userId);
     if (!account) return null;
 
-    const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date);
+    const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date) ||
+      await require('../services/brokerSync/trading212CashLedger').dayActivity(userId,account,date);
     if (ledgerDay) return ledgerDay;
 
     const multiplierExpr = `(
