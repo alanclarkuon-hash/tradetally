@@ -797,8 +797,9 @@ class Account {
     const ytdData = ytdResult.rows[0] || { ytd_deposits: 0, ytd_withdrawals: 0 };
 
     // Calculate running balance
-    let runningBalance = parseFloat(account.initial_balance) || 0;
-    const cashRows = await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
+    const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
+    let runningBalance = ledger ? ledger.openingBalance : (parseFloat(account.initial_balance) || 0);
+    const cashRows = ledger ? ledger.rows : await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
     const cashflowData = cashRows.map(row => {
       const net = parseFloat(row.net) || 0;
       runningBalance += net;
@@ -808,6 +809,7 @@ class Account {
         tradeInflow: parseFloat(row.trade_inflow) || 0,
         tradeOutflow: parseFloat(row.trade_outflow) || 0,
         fees: parseFloat(row.fees) || 0,
+        fxAdjustments: Number(row.fx_adjustments || 0),
         income: Number(row.income || 0),
         accountFees: Number(row.account_fees || 0),
         withholdingTax: Number(row.withholding_tax || 0),
@@ -828,6 +830,9 @@ class Account {
       totalOutflow: cashflowData.reduce((sum, d) => sum + d.outflow, 0),
       totalDeposits: cashflowData.reduce((sum, d) => sum + d.deposits, 0),
       totalWithdrawals: cashflowData.reduce((sum, d) => sum + d.withdrawals, 0),
+      reconciliation: ledger?.reconciliation || null,
+      cashflowSource: ledger ? 'ibkr_statement' : 'trade_history',
+      totalFxAdjustments: cashflowData.reduce((sum,d)=>sum+d.fxAdjustments,0),
       totalIncome: cashflowData.reduce((sum,d)=>sum+d.income,0),
       totalAccountFees: cashflowData.reduce((sum,d)=>sum+d.accountFees,0),
       totalWithholdingTax: cashflowData.reduce((sum,d)=>sum+d.withholdingTax,0),
@@ -869,6 +874,9 @@ class Account {
   static async getDayActivity(userId, accountId, date) {
     const account = await this.findById(accountId, userId);
     if (!account) return null;
+
+    const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date);
+    if (ledgerDay) return ledgerDay;
 
     const multiplierExpr = `(
       CASE
