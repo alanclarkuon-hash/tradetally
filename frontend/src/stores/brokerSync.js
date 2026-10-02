@@ -100,6 +100,19 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function addEtoroConnection(connection) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/broker-sync/connections/etoro', connection)
+      await fetchConnections()
+      return response.data.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to connect eToro'
+      throw new Error(error.value)
+    } finally { loading.value = false }
+  }
+
   async function addTrading212Connection(connection) {
     loading.value = true
     error.value = null
@@ -327,6 +340,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     fetchConnections,
     addIBKRConnection,
     addTrading212Connection,
+    addEtoroConnection,
     initSchwabOAuth,
     initBrokerOAuth,
     updateConnection,

@@ -12,6 +12,7 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   getConnectionAccounts: jest.fn(),
   addIBKRConnection: jest.fn(),
   addTrading212Connection: jest.fn(),
+  addEtoroConnection: jest.fn(),
   initSchwabOAuth: jest.fn((req, res) => {
     res.json({ success: true, auth_url: 'https://example.com/oauth' });
   }),

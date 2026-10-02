@@ -12,6 +12,7 @@ const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
 const trading212Service = require('./trading212Service');
+const etoroService = require('./etoroService');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
@@ -135,6 +136,9 @@ class BrokerSyncService {
           });
           break;
 
+        case 'etoro':
+          result = await etoroService.syncTrades(connection, { startDate, endDate, syncLogId: syncLog.id });
+          break;
         case 'trading212':
           result = await trading212Service.syncTrades(connection, {
             startDate,
@@ -148,7 +152,7 @@ class BrokerSyncService {
       }
 
       // Auto-close expired options after importing broker data
-      const expiredClosed = await this.closeExpiredOptions(connection.userId);
+      const expiredClosed = connection.brokerType === 'etoro' ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
       // Update sync log with results
@@ -327,6 +331,8 @@ class BrokerSyncService {
           message: alpacaService.isConfigured() ? 'Alpaca OAuth is configured' : 'Alpaca OAuth is not configured'
         };
 
+      case 'etoro':
+        return etoroService.validateCredentials(credentials.apiKey, credentials.userKey);
       case 'trading212':
         return trading212Service.validateCredentials(
           credentials.apiKey,

@@ -158,6 +158,14 @@
             </div>
 
             <!-- TradeStation Card -->
+            <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-green-500 dark:border-gray-600"
+              @click="store.error = null; showEtoroModal = true">
+              <div class="flex items-center space-x-4">
+                <span class="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-lg font-bold text-green-700 dark:bg-green-900/30 dark:text-green-400">eT</span>
+                <div><h4 class="font-medium text-gray-900 dark:text-white">eToro</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Stocks, ETFs and crypto · Read only</p></div>
+              </div>
+            </button>
             <div
               class="p-6 border-2 rounded-lg transition-colors"
               :class="brokerCardClass('tradestation')"
@@ -339,6 +347,9 @@
       @save="handleTrading212Save"
     />
 
+    <EtoroConnectionModal v-if="showEtoroModal" :loading="store.loading" :error="store.error"
+      @close="showEtoroModal = false; store.error = null" @save="handleEtoroSave" />
+
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -374,6 +385,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
+import EtoroConnectionModal from '@/components/broker-sync/EtoroConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
@@ -414,6 +426,7 @@ const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route
 
 const showIBKRModal = ref(false)
 const showTrading212Modal = ref(false)
+const showEtoroModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const schwabAccounts = ref([])
@@ -639,6 +652,14 @@ async function handleIBKRSave(credentials) {
   } catch (error) {
     // Error is handled by store
   }
+}
+
+async function handleEtoroSave(connection) {
+  try {
+    await store.addEtoroConnection(connection)
+    showEtoroModal.value = false
+    scheduleSuccessMessage('eToro connected. Run a sync to download your data for review.')
+  } catch { /* The form displays the safe error from the store. */ }
 }
 
 async function handleTrading212Save(connection) {
