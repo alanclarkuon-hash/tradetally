@@ -23,6 +23,13 @@ test('wallet snapshots cannot silently shorten history or switch accounts',async
     {id:1234,currency:'GBP',cash:{availableToTrade:10,reservedForOrders:2,inPies:1}})).rejects.toThrow('does not cover');
   expect(db.query).toHaveBeenCalledTimes(2);
 });
+test('pie cash is not added a second time to available cash and reserves',async()=>{
+  db.query.mockResolvedValueOnce({rows:[{id:'account',currency:'GBP',initial_balance:0,initial_balance_date:'2024-01-01'}]})
+    .mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});
+  await saveCashReport({userId:'owner',externalAccountId:'1234'},[item('b','BUY',10)],
+    {id:1234,currency:'GBP',cash:{availableToTrade:10,reservedForOrders:2,inPies:1}});
+  expect(db.query.mock.calls[2][1][6]).toBe(12);
+});
 test('native cash reconciles without double-subtracting fees and date filters carry the opening cash',async()=>{
   const report={currency:'GBP',to_date:'2024-01-03',ending_cash:102,records:walletRows([item('b','BUY',10),item('s','SELL',12,'2024-01-03')],'GBP')};
   db.query.mockResolvedValueOnce({rows:[report]}).mockResolvedValueOnce({rows:[{event_date:'2024-01-01',event_type:'deposit',amount:100,currency:'GBP'}]})

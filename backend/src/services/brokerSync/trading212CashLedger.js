@@ -52,7 +52,7 @@ async function saveCashReport(connection, history, summary) {
     ON CONFLICT(user_id,account_id,broker_type,from_date,to_date) DO UPDATE SET
     starting_cash=EXCLUDED.starting_cash,ending_cash=EXCLUDED.ending_cash,records=EXCLUDED.records,updated_at=NOW()`,
   [connection.userId,account.id,dateKey(account.initial_balance_date),new Date().toISOString().slice(0,10),account.currency,
-    Number(account.initial_balance || 0),Number(cash.availableToTrade)+Number(cash.reservedForOrders)+Number(cash.inPies),JSON.stringify(records)]);
+    Number(account.initial_balance || 0),Number(cash.availableToTrade)+Number(cash.reservedForOrders),JSON.stringify(records)]);
 }
 
 async function loadLedger(userId,account,start,end) {
