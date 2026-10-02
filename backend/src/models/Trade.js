@@ -1211,6 +1211,8 @@ class Trade {
         -- monetary columns are stored in: an import that converts leaves the
         -- stored values in USD, and exchange_rate is 1 exactly when it did not.
         t.original_currency,
+        t.broker,
+        t.account_identifier,
         -- Written only when an import converted the monetary columns to USD;
         -- that is the marker openPositionGrouping uses, not exchange_rate.
         t.original_entry_price_currency

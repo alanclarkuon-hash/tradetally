@@ -58,7 +58,7 @@ describe('investments portfolio controller', () => {
       benchmark: 'qqq',
       period: '1Y'
     });
-    expect(res.json).toHaveBeenCalledWith({ totalValue: 1234, positionCount: 2 });
+    expect(res.json).toHaveBeenCalledWith({ totalValue: 1234, positionCount: 2, display_currency: 'USD' });
   });
 
   test('getPortfolioSummary reshapes overview for legacy consumers', async () => {

@@ -9,6 +9,21 @@ const imageUpload = require('../middleware/upload');
 const { requiresTier } = require('../middleware/tierAuth');
 const { createRateLimiter } = require('../utils/rateLimit');
 
+// Historical import repairs can remove arithmetic-noise lots. Resolve their
+// links only for the authenticated owner, keeping the actual trade editable.
+async function resolveRepairedTrade(req, res, next) {
+  try {
+    if (req.user && /^[0-9a-f-]{36}$/i.test(req.params.id || '')) {
+      const result = await require('../config/database').query(
+        'SELECT target_trade_id FROM broker_trade_aliases WHERE source_trade_id=$1 AND user_id=$2',
+        [req.params.id, req.user.id]
+      );
+      if (result.rows[0]) req.params.id = result.rows[0].target_trade_id;
+    }
+    next();
+  } catch (error) { next(error); }
+}
+
 /**
  * @swagger
  * tags:
@@ -765,7 +780,7 @@ router.get('/sample-data/check', authenticate, tradeController.checkSampleData);
 
 // Chart data endpoint - MUST be before /:id route
 router.get('/tradingview/snapshot/:snapshotId', tradeController.proxyTradingViewSnapshot);
-router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
+router.get('/:id/chart-data', authenticate, resolveRepairedTrade, tradeController.getTradeChartData);
 
 /**
  * @swagger
@@ -824,7 +839,7 @@ router.get('/:id/chart-data', authenticate, tradeController.getTradeChartData);
  *       200:
  *         description: Trade deleted successfully
  */
-router.get('/:id', flexibleOptionalAuth, tradeController.getTrade);
+router.get('/:id', flexibleOptionalAuth, resolveRepairedTrade, tradeController.getTrade);
 router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTrade);
 /**

@@ -472,7 +472,7 @@ async function hydrateOpenTradePrices(trades, userId) {
 // same sources as the dashboard Open Positions table: the price_monitoring cache
 // (kept warm by the price monitor) first, then a single Finnhub quote. Never
 // throws - an open trade just keeps showing "Open" if no price is available.
-async function fetchCurrentPriceForSymbol(symbol, userId) {
+async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD', host) {
   if (!symbol) return null;
   try {
     const cached = await db.query(
@@ -482,15 +482,25 @@ async function fetchCurrentPriceForSymbol(symbol, userId) {
       [symbol]
     );
     const cachedPrice = cached.rows[0] ? parseFloat(cached.rows[0].current_price) : null;
-    if (Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
+    if (targetCurrency === 'USD' && Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
 
-    if (!finnhub.isConfigured()) return null;
+    if (!finnhub.isConfigured() || symbol.endsWith('.L')) {
+      const TierService = require('../services/tierService');
+      if (await TierService.isBillingEnabled(host)) return null;
+      const fallback = await yahooFinance.getQuote(symbol);
+      if (!fallback || !targetCurrency) return null;
+      const converted = await convertQuoteCurrency(fallback, targetCurrency);
+      return Number(converted.c) > 0 ? Number(converted.c) : null;
+    }
     const quote = await withTimeout(
       finnhub.getQuote(symbol, { source: 'trade_detail', priority: 0, userId }),
       TRADE_DETAIL_QUOTE_TIMEOUT_MS,
       'Trade detail Finnhub quote'
     );
-    const price = quote && Number.isFinite(Number(quote.c)) ? Number(quote.c) : null;
+    const converted = quote && targetCurrency
+      ? await convertQuoteCurrency({ ...quote, currency: quote.currency || 'USD' }, targetCurrency)
+      : null;
+    const price = converted && Number.isFinite(Number(converted.c)) ? Number(converted.c) : null;
     return Number.isFinite(price) && price > 0 ? price : null;
   } catch (error) {
     console.warn('[TRADE-DETAIL] current price lookup failed for', symbol, '-', error.message);
@@ -1025,7 +1035,10 @@ const tradeController = {
       // manually); best-effort, so any quote failure just leaves the trade as "Open".
       const isOpenPosition = !trade.exit_price && !trade.exit_time;
       if (isOpenPosition && trade.instrument_type !== 'option') {
-        const price = await fetchCurrentPriceForSymbol(trade.underlying_symbol || trade.symbol, req.user?.id);
+        const price = await fetchCurrentPriceForSymbol(
+          trade.underlying_symbol || trade.symbol, req.user?.id,
+          storedCurrency(trade), req.headers.host
+        );
         if (price != null) trade.current_price = price;
       }
       enrichOpenTradePnL(trade);
@@ -2980,7 +2993,9 @@ const tradeController = {
 
       console.log(`Found ${openTrades.length} open trades`);
 
-      if (openTrades.length === 0) {
+      const brokerSnapshots = (await db.query(`SELECT * FROM broker_portfolio_snapshots
+        WHERE user_id=$1 AND broker_type='trading212'`, [req.user.id])).rows;
+      if (openTrades.length === 0 && brokerSnapshots.length === 0) {
         console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
         return res.json({
           positions: [],
@@ -3009,11 +3024,20 @@ const tradeController = {
       // for legacy split positions live in utils/openPositionGrouping.js
       // (issue #339) so the logic is unit-testable. Every surviving position
       // carries a stable position_key.
-      const positionMap = groupTradesIntoPositions(openTrades);
+      const positionMap = require('../services/brokerSync/portfolioSnapshot')
+        .dashboardPositions(openTrades, brokerSnapshots, accountFilters || []);
 
       // If skipQuotes is requested, return positions immediately without Finnhub calls
       if (skipQuotes === 'true') {
         const positions = Object.values(positionMap).map(position => {
+          if (position.brokerQuote) {
+            const currentPrice = position.brokerQuote.c;
+            const currentValue = currentPrice * position.totalQuantity;
+            const unrealizedPnL = position.side === 'short' ? position.totalCost - currentValue : currentValue - position.totalCost;
+            return { ...position, currentPrice, currentValue, unrealizedPnL,
+              unrealizedPnLPercent: position.totalCost > 0 ? unrealizedPnL / position.totalCost * 100 : 0,
+              quotePending: false, quoteSource: 'broker', quoteTime: position.brokerQuote.asOf };
+          }
           if (position.instrumentType === 'option') {
             return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, requires_manual_price: true, quotePending: true };
           }
@@ -3022,9 +3046,9 @@ const tradeController = {
         console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
         return res.json({
           positions,
-          quotesAvailable: 0,
+          quotesAvailable: positions.filter(p => p.currentPrice != null).length,
           totalPositions: positions.length,
-          quotePending: positions.length > 0,
+          quotePending: positions.some(p => p.quotePending),
           quoteFetchedAt: null
         });
       }
@@ -3217,6 +3241,16 @@ const tradeController = {
         );
       }
 
+      // Broker snapshot costs use wallet currency. Provider cache quotes are
+      // USD-normalised, so restate them before comparing with those costs.
+      await Promise.all(Object.entries(positionMap).map(async ([key, position]) => {
+        if (!position.brokerQuote || convertedQuotesByPosition[key] || !quotes[position.symbol]) return;
+        try {
+          convertedQuotesByPosition[key] = await convertQuoteCurrency(
+            { ...quotes[position.symbol], currency: quotes[position.symbol].currency || 'USD' }, position.currency);
+        } catch (error) { delete quotes[position.symbol]; }
+      }));
+
       // Enhance positions with real-time data
       const enhancedPositions = Object.entries(positionMap).map(([posKey, position]) => {
         // Options: use Alpaca quotes keyed by position key
@@ -3256,7 +3290,7 @@ const tradeController = {
           };
         }
 
-        const quote = convertedQuotesByPosition[posKey] || quotes[position.symbol];
+        const quote = convertedQuotesByPosition[posKey] || quotes[position.symbol] || position.brokerQuote;
 
         if (quote) {
           const currentPrice = quote.c; // Current price
@@ -3335,9 +3369,7 @@ const tradeController = {
         account_currency: accountCurrency,
         // Fallback quotes are keyed per position rather than per symbol, so they
         // have to be counted alongside the provider's own.
-        quotesAvailable: Object.keys(quotes).length
-          + Object.keys(alpacaQuotes).length
-          + Object.keys(convertedQuotesByPosition).length,
+        quotesAvailable: normalisedPositions.filter(p => p.currentPrice != null).length,
         totalPositions: normalisedPositions.length,
         quotePending,
         quoteFetchedAt: new Date().toISOString()
@@ -4336,12 +4368,14 @@ const tradeController = {
       // a different source than the stored trade row's base currency. Scale
       // candles from that source and skip them in the row walker so price
       // bars and entry/exit markers land in the same display currency.
-      let candlesSource = 'USD';
-      try {
-        const FundamentalDataService = require('../services/fundamentalDataService');
-        const profile = await FundamentalDataService.getProfile(symbol);
-        candlesSource = String(profile?.currency || 'USD').toUpperCase();
-      } catch { /* provider currency unavailable - assume USD quotes */ }
+      let candlesSource = chartData.candles_currency || 'USD';
+      if (!chartData.candles_currency) {
+        try {
+          const FundamentalDataService = require('../services/fundamentalDataService');
+          const profile = await FundamentalDataService.getProfile(symbol);
+          candlesSource = String(profile?.currency || 'USD').toUpperCase();
+        } catch { /* provider currency unavailable - retain existing default */ }
+      }
       const convertedChart = await ChartService.convertTradeChartForDisplay(req, chartData, candlesSource);
       res.json(convertedChart);
     } catch (error) {

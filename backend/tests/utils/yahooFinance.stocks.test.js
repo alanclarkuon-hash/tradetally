@@ -12,6 +12,13 @@ const yahooFinance = require('../../src/utils/yahooFinance');
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+test('preserves UK listing identity for legacy Trading 212 symbols', () => {
+  expect(yahooFinance.getYahooSymbol('SPXLL_EQ')).toBe('SPXL.L');
+  expect(yahooFinance.getYahooSymbol('VUSA_GB_EQ')).toBe('VUSA.L');
+  expect(yahooFinance.getYahooSymbol('INTC_US_EQ')).toBe('INTC');
+  expect(yahooFinance.getYahooSymbol('SPXL')).toBe('SPXL');
+});
+
 function equityResponse(startSeconds, count, stepSeconds, instrumentType = 'EQUITY') {
   const timestamp = Array.from({ length: count }, (_, index) => startSeconds + index * stepSeconds);
   return {
@@ -19,7 +26,7 @@ function equityResponse(startSeconds, count, stepSeconds, instrumentType = 'EQUI
       chart: {
         error: null,
         result: [{
-          meta: { symbol: 'MP', instrumentType, exchangeTimezoneName: 'America/New_York' },
+          meta: { symbol: 'MP', instrumentType, currency: 'USD', exchangeTimezoneName: 'America/New_York' },
           timestamp,
           indicators: {
             quote: [{
@@ -69,6 +76,17 @@ describe('Yahoo Finance equity charts', () => {
     await expect(
       yahooFinance.getStockTradeChartData('MP', entry.toISOString(), null, '5')
     ).resolves.toMatchObject({ source: 'yahoo' });
+  });
+
+  test('normalizes London pence candles to pounds before display conversion', async () => {
+    const entry = new Date(Date.now() - 2 * DAY_MS);
+    const response = equityResponse(Math.floor(entry.getTime()/1000), 10, 86400);
+    response.data.chart.result[0].meta.currency = 'GBp';
+    axios.get.mockResolvedValue(response);
+    const result = await yahooFinance.getStockTradeChartData('VOD.L',entry.toISOString(),null,'D');
+    expect(result.candles_currency).toBe('GBP');
+    expect(result.candles[0].close).toBeCloseTo(0.605);
+    expect(result.candles[0].volume).toBe(1000);
   });
 
   test('the futures path still requires a futures instrument', async () => {

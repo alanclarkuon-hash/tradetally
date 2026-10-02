@@ -1,0 +1,127 @@
+# Local Docker installation
+
+This checkout uses `compose.local.yaml` to build the application from the local
+source and run PostgreSQL 16. Open <http://localhost:8088> after startup.
+The web port binds to `127.0.0.1` only; the database has no published port.
+
+## Start, stop and rebuild
+
+Run from the repository directory:
+
+```powershell
+docker compose -f compose.local.yaml up -d --build
+docker compose -f compose.local.yaml ps
+docker compose -f compose.local.yaml logs --tail 100 app
+docker compose -f compose.local.yaml stop
+```
+
+Docker Desktop must be running. Containers restart when Docker starts.
+Application uploads, runtime data, logs and PostgreSQL data use named volumes.
+Stopping or recreating containers preserves those volumes. Do not use
+`down --volumes` unless deliberately deleting the installation's data.
+
+## Secrets and first account
+
+The local `.env` is excluded from Git and from Docker build contexts. It contains
+independent generated database, JWT and broker encryption secrets. Preserve the
+broker encryption key with database backups; changing it prevents existing
+broker credentials from being decrypted. Never commit `.env` or database exports.
+
+Registration initially uses `approval`: the first account becomes the
+administrator, and later accounts require approval. Create the first account
+through the app, then change `REGISTRATION_MODE=disabled` in `.env` and apply it:
+
+```powershell
+docker compose -f compose.local.yaml up -d
+```
+
+Choose the account's display currency and timezone in the application settings.
+GBP and USD reporting are supported by the existing display-currency setting.
+API keys for market data are optional for startup; some quotes and charts require
+them. Broker connections require credentials entered through the app.
+
+## Trading 212 imports
+
+London listings retain their `.L` exchange suffix. Instrument prices are stored
+in their own major currency; GBX/pence prices are divided by 100 and stored in
+GBP. Account cash currency does not determine the currency of a share price.
+Yahoo Finance supplies local trade-detail quotes and stock charts when Finnhub
+is not configured. Charts and quotes normalize pence before display conversion.
+
+Partial fills allocate their quantity and fees across FIFO slices. Trading 212
+syncs reconcile full execution identities, preserving existing trade IDs and
+notes and updating open lots when later executions close them. Every trade fill
+must pass a quantity-conservation check before any writes. A date window that
+omits existing trades is rejected: use the complete imported history for syncs.
+Non-trade corporate actions are currently excluded and current holdings still
+need reconciliation with the broker's positions endpoint. The API key requires
+read permissions for historical orders and portfolio positions, without any
+order-placement permissions.
+
+Current portfolio positions use a saved read-only broker positions snapshot,
+refreshed after each Trading 212 sync. Snapshots override trade-derived holdings
+for that broker/account, including a genuinely empty portfolio. This avoids
+showing acquired/delisted shares as current holdings and preserves broker-reported
+quantities after stock splits. Wallet cost basis is converted through the same
+daily FX rates used for display; share counts are unchanged. Historical trade
+performance still needs corporate-action reconciliation. Actual dividends,
+interest and withholding-tax cash events are not yet imported by this connector.
+The dashboard Open Positions uses the same snapshots, replacing historical
+broker lots while retaining positions from other brokers. Broker wallet prices
+provide an immediate fallback; market quotes are converted to wallet currency
+before calculating open P&L. Original trade links remain attached where present.
+
+To replace a Trading 212 key through the UI, disconnect the old connection
+without deleting trades, then connect the same account using the new key.
+Retained trades lose their old connection ID. The next complete-history sync
+matches their account and exact execution identities, reattaches them to the
+replacement connection, and preserves their IDs and notes. A mismatched or
+incomplete history aborts reconciliation instead of duplicating retained data.
+
+The one-time import repair takes a database backup first. Its private history
+snapshot stays in the `app_data` volume. `backend/scripts/rebuild-trading212-import.js`
+defaults to a dry-run; `--apply` reconciles that snapshot in a transaction.
+
+## Local backups
+
+Automatic database exports are enabled daily with 30-day retention. The built-in
+scheduler runs at 02:00 in the container's Europe/London timezone while Docker
+and the app are running. A first export was created and its account, trade and
+broker-connection counts checked against the database. A restore has not yet
+been tested.
+
+Exports live in the persistent `app_data` volume under
+`/app/backend/src/data/backups`. They include private account data and encrypted
+broker credentials. These are database exports; uploaded images and the `.env`
+encryption secrets require separate preservation. Local volumes and local
+backups do not protect against losing this PC. Download exports through the
+admin backup page and preserve them with the encryption secrets in a secure
+backup location before relying on the installation long term.
+
+## Source updates
+
+Before starting a new feature or major repair, commit the current working source
+and push the checkpoint to the user's GitHub fork. Commit and push completed,
+verified changes in small batches. Never force-push a checkpoint away.
+Before migrations, bulk repairs or other major data changes, create a fresh
+database backup and verify it can be read. Record the backup filename with the
+change. A Git revert restores source only; data changes require a separate
+database recovery plan. Keep secrets and database exports out of GitHub.
+
+The pre-IBKR-cashflow backup created on 2026-10-02 is
+`tradetally-backup-2026-10-02T12-50-17-999Z.json` in the backup directory above.
+It contains 167 tables and 9,626 records and was parsed successfully after export.
+No restore test has yet been performed.
+
+`origin` should point to the user's fork; `upstream` points to
+`https://github.com/GeneBO98/tradetally.git`. Review upstream changes before
+integrating and rebuilding. `.gitattributes` preserves LF line endings for shell
+scripts so the Docker startup scripts also work after a Windows checkout.
+
+## Before cloud deployment
+
+This configuration is for local use. A hosted instance needs HTTPS, a single
+owner account with registration disabled, persistent database and upload
+storage, backups, and a review of public-sharing endpoints. Broker syncing runs
+inside the backend and cannot run while its host is asleep. Verify provider
+pricing, network restrictions and background execution before selecting a host.

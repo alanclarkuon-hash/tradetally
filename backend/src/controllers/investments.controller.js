@@ -10,7 +10,7 @@ const PortfolioService = require('../services/portfolioService');
 const DCFValuationService = require('../services/dcfValuationService');
 const plaidIncomeService = require('../services/plaid/plaidIncomeService');
 const db = require('../config/database');
-const { resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
+const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
 
 // Monetary fields (in a company's REPORTING currency) per statement shape.
 // Share counts, years, dates and ratios must never appear here - scaling
@@ -944,7 +944,7 @@ const getPortfolioOverview = async (req, res) => {
   try {
     const options = buildPortfolioOptions(req.query);
     const overview = await PortfolioService.getOverview(req.user.id, options);
-    res.json(overview);
+    res.json(await convertForDisplay(req, overview));
 
     // Alert persistence is ancillary to the overview payload. Running it after
     // the response removes an otherwise invisible rebalance/performance wait
@@ -966,7 +966,7 @@ const getPortfolioOverview = async (req, res) => {
 const getPortfolioPositions = async (req, res) => {
   try {
     const positions = await PortfolioService.getPositions(req.user.id, buildPortfolioOptions(req.query));
-    res.json(positions);
+    res.json(await convertForDisplay(req, positions));
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio positions error:', error);
     res.status(500).json({ error: error.message || 'Failed to get portfolio positions' });
@@ -994,7 +994,7 @@ const getPortfolioPerformance = async (req, res) => {
 const getPortfolioRebalance = async (req, res) => {
   try {
     const rebalance = await PortfolioService.getRebalancePlan(req.user.id, buildPortfolioOptions(req.query));
-    res.json(rebalance);
+    res.json(await convertForDisplay(req, rebalance));
   } catch (error) {
     console.error('[INVESTMENTS] Portfolio rebalance error:', error);
     res.status(500).json({ error: error.message || 'Failed to get rebalance plan' });

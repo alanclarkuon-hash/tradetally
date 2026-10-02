@@ -1112,6 +1112,8 @@ class PortfolioService {
   }
 
   static async _getTradePositions(userId, accounts) {
+    const snapshots = (await db.query(`SELECT * FROM broker_portfolio_snapshots
+      WHERE user_id=$1 AND broker_type='trading212'`, [userId])).rows;
     const params = [userId];
     const { clause } = buildAccountFilter('t.account_identifier', accounts, params, 2);
     const query = `
@@ -1158,6 +1160,9 @@ class PortfolioService {
         WHERE t.user_id = $1
           AND t.exit_price IS NULL
           AND t.side = 'long'
+          AND NOT EXISTS(SELECT 1 FROM broker_portfolio_snapshots bs
+            WHERE bs.user_id=t.user_id AND bs.broker_type=t.broker
+              AND bs.account_identifier=t.account_identifier)
           ${clause}
       )
       SELECT
@@ -1181,7 +1186,7 @@ class PortfolioService {
     `;
 
     const result = await db.query(query, params);
-    return result.rows.map(row => ({
+    const derived = result.rows.map(row => ({
       symbol: row.symbol,
       holdingId: null,
       source: 'trades',
@@ -1202,6 +1207,7 @@ class PortfolioService {
       contractSize: row.contract_size !== null ? parseFloat(row.contract_size) : null,
       pointValue: row.point_value !== null ? parseFloat(row.point_value) : null
     }));
+    return [...derived, ...await require('./brokerSync/portfolioSnapshot').snapshotPositions(snapshots, accounts)];
   }
 
   static _mergePositions(manualPositions, tradePositions, tradeDividendsBySymbol) {
@@ -1305,8 +1311,12 @@ class PortfolioService {
 
     for (const position of positions) {
       const cached = cachedPrices.get(position.symbol);
-      const currentPrice = cached && cached.price !== null ? cached.price : null;
-      const ageMs = cached?.updatedAt ? now - cached.updatedAt.getTime() : Infinity;
+      const brokerDate = position.brokerPriceAsOf ? new Date(position.brokerPriceAsOf) : null;
+      const useBroker = Number.isFinite(position.brokerCurrentPrice) &&
+        (!cached?.updatedAt || cached.updatedAt < brokerDate);
+      const currentPrice = useBroker ? position.brokerCurrentPrice : (cached && cached.price !== null ? cached.price : null);
+      const priceDate = useBroker ? brokerDate : cached?.updatedAt;
+      const ageMs = priceDate ? now - priceDate.getTime() : Infinity;
       const priceStale = currentPrice === null || ageMs > PRICE_FRESH_MS;
 
       if (priceStale) {
@@ -1334,7 +1344,7 @@ class PortfolioService {
       position.dividendYieldOnCost = position.totalCostBasis > 0 && position.totalDividendsReceived > 0
         ? (position.totalDividendsReceived / position.totalCostBasis) * 100
         : position.dividendYieldOnCost;
-      position.priceAsOf = cached?.updatedAt ? cached.updatedAt.toISOString() : null;
+      position.priceAsOf = priceDate ? priceDate.toISOString() : null;
       position.priceStale = priceStale;
     }
 

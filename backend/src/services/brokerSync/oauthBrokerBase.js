@@ -199,7 +199,9 @@ class OAuthBrokerBase {
       const lots = openLots.get(key);
       let remaining = Number(fill.quantity);
 
-      while (remaining > 0 && lots.length > 0 && lots[0].action !== fill.action) {
+      // API quantities have eight decimal places; discard only arithmetic
+      // noise below that precision, never a genuine fractional share.
+      while (remaining > 0.000000001 && lots.length > 0 && lots[0].action !== fill.action) {
         const lot = lots[0];
         const quantity = Math.min(remaining, lot.remainingQuantity);
         // The queued lot is always the chronological opener and the incoming
@@ -210,6 +212,12 @@ class OAuthBrokerBase {
         const entryFill = lot;
         const exitFill = fill;
         const side = lot.action === 'buy' ? 'long' : 'short';
+        const allocatedEntry = { ...entryFill, quantity,
+          commission: (entryFill.commission || 0) * (quantity / entryFill.quantity),
+          fees: (entryFill.fees || 0) * (quantity / entryFill.quantity) };
+        const allocatedExit = { ...exitFill, quantity,
+          commission: (exitFill.commission || 0) * (quantity / exitFill.quantity),
+          fees: (exitFill.fees || 0) * (quantity / exitFill.quantity) };
         const pnl = this.calculatePnL(entryFill.price, exitFill.price, quantity, side, entryFill.instrumentType);
 
         trades.push({
@@ -221,8 +229,8 @@ class OAuthBrokerBase {
           entryTime: entryFill.time,
           exitTime: exitFill.time,
           tradeDate: toDateOnly(exitFill.time),
-          commission: (entryFill.commission || 0) + (exitFill.commission || 0),
-          fees: (entryFill.fees || 0) + (exitFill.fees || 0),
+          commission: allocatedEntry.commission + allocatedExit.commission,
+          fees: allocatedEntry.fees + allocatedExit.fees,
           pnl,
           broker: this.config.brokerType,
           instrumentType: entryFill.instrumentType || fill.instrumentType || 'stock',
@@ -230,23 +238,26 @@ class OAuthBrokerBase {
           originalCurrency: entryFill.currency || fill.currency || null,
           exchangeRate: entryFill.fxRate || fill.fxRate || 1,
           executionData: [
-            this.toExecutionData(entryFill, 'entry'),
-            this.toExecutionData(exitFill, 'exit')
+            this.toExecutionData(allocatedEntry, 'entry'),
+            this.toExecutionData(allocatedExit, 'exit')
           ]
         });
 
         remaining -= quantity;
         lot.remainingQuantity -= quantity;
-        if (lot.remainingQuantity <= 0.000001) lots.shift();
+        if (lot.remainingQuantity <= 0.000000001) lots.shift();
       }
 
-      if (remaining > 0) {
+      if (remaining > 0.000000001) {
         lots.push({ ...fill, remainingQuantity: remaining });
       }
     }
 
     for (const lots of openLots.values()) {
       for (const lot of lots) {
+        const allocated = { ...lot, quantity: lot.remainingQuantity,
+          commission: (lot.commission || 0) * (lot.remainingQuantity / lot.quantity),
+          fees: (lot.fees || 0) * (lot.remainingQuantity / lot.quantity) };
         trades.push({
           symbol: lot.symbol,
           side: lot.action === 'buy' ? 'long' : 'short',
@@ -256,15 +267,15 @@ class OAuthBrokerBase {
           entryTime: lot.time,
           exitTime: null,
           tradeDate: toDateOnly(lot.time),
-          commission: lot.commission || 0,
-          fees: lot.fees || 0,
+          commission: allocated.commission,
+          fees: allocated.fees,
           pnl: null,
           broker: this.config.brokerType,
           instrumentType: lot.instrumentType || 'stock',
           accountIdentifier: lot.accountIdentifier || null,
           originalCurrency: lot.currency || null,
           exchangeRate: lot.fxRate || 1,
-          executionData: [this.toExecutionData(lot, 'entry')]
+          executionData: [this.toExecutionData(allocated, 'entry')]
         });
       }
     }
