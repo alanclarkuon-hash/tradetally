@@ -1836,6 +1836,7 @@ class IBKRService {
       '1019': 'Statement is being generated — please wait a moment and try again.',
       '1020': 'Invalid request. Please check your Flex Token and Query ID.',
       '1021': 'Statement could not be retrieved right now. Please try again shortly.',
+      '1025': 'IBKR has blocked Flex requests after too many failed attempts. Automatic retries are stopped; check the query in IBKR before retrying.',
     };
 
     return errorMessages[errorCode] || defaultMessage || `IBKR Error ${errorCode}: ${defaultMessage}`;

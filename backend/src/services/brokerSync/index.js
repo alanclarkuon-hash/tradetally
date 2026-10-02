@@ -15,12 +15,27 @@ const trading212Service = require('./trading212Service');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
+  constructor() {
+    this.activeSyncs = new Set();
+  }
+
+  async syncConnection(connectionId, options = {}) {
+    if (this.activeSyncs.has(connectionId)) {
+      return {success:false,alreadyRunning:true,imported:0,error:'A sync is already running for this connection.'};
+    }
+    this.activeSyncs.add(connectionId);
+    try {
+      return await this.runConnectionSync(connectionId,options);
+    } finally {
+      this.activeSyncs.delete(connectionId);
+    }
+  }
   /**
    * Sync trades for a specific connection
    * @param {string} connectionId - Connection ID
    * @param {object} options - Sync options
    */
-  async syncConnection(connectionId, options = {}) {
+  async runConnectionSync(connectionId, options = {}) {
     const { syncType = 'manual', endDate } = options;
     let { startDate } = options;
 
@@ -62,6 +77,15 @@ class BrokerSyncService {
         ? connection.syncStartDate.toISOString().slice(0, 10)
         : String(connection.syncStartDate).slice(0, 10);
       startDate = floor;
+    }
+
+    // A managed account's opening date is a safer default than requesting
+    // years of unavailable statements before that account existed.
+    if (!startDate && connection.brokerType === 'ibkr') {
+      const managed = await db.query(`SELECT MIN(initial_balance_date) AS opening_date
+        FROM user_accounts WHERE user_id=$1 AND broker='ibkr'`,[connection.userId]);
+      const opening = managed.rows[0]?.opening_date;
+      if (opening) startDate = opening instanceof Date ? opening.toISOString().slice(0,10) : String(opening).slice(0,10);
     }
 
     // Create sync log
@@ -205,7 +229,11 @@ class BrokerSyncService {
       });
 
       // Update connection failure status
-      await BrokerConnection.updateAfterFailure(connectionId, error.message);
+      if (error.errorCode === '1025') {
+        await BrokerConnection.updateAfterFailure(connectionId,error.message,{haltAutoRetries:true});
+      } else {
+        await BrokerConnection.updateAfterFailure(connectionId, error.message);
+      }
 
       // Auto-retry transient failures by bringing next_scheduled_sync
       // forward to 30 min from now. The scheduler will pick it up on its

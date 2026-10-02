@@ -474,7 +474,7 @@ class BrokerConnection {
   /**
    * Update connection after failed sync
    */
-  static async updateAfterFailure(connectionId, errorMessage) {
+  static async updateAfterFailure(connectionId, errorMessage, options = {}) {
     const query = `
       UPDATE broker_connections
       SET last_sync_status = 'failed',
@@ -482,6 +482,7 @@ class BrokerConnection {
           last_error_message = $2,
           consecutive_failures = consecutive_failures + 1,
           connection_status = CASE
+            WHEN $3 THEN 'error'
             WHEN consecutive_failures >= 2 THEN 'error'
             ELSE connection_status
           END,
@@ -490,7 +491,7 @@ class BrokerConnection {
       RETURNING *
     `;
 
-    const result = await db.query(query, [connectionId, errorMessage]);
+    const result = await db.query(query, [connectionId, errorMessage, options.haltAutoRetries === true]);
     if (result.rows.length === 0) return null;
 
     return this.formatConnection(result.rows[0], false);
