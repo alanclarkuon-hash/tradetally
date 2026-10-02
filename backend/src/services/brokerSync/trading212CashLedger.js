@@ -52,7 +52,7 @@ async function saveCashReport(connection, history, summary) {
     ON CONFLICT(user_id,account_id,broker_type,from_date,to_date) DO UPDATE SET
     starting_cash=EXCLUDED.starting_cash,ending_cash=EXCLUDED.ending_cash,records=EXCLUDED.records,updated_at=NOW()`,
   [connection.userId,account.id,dateKey(account.initial_balance_date),new Date().toISOString().slice(0,10),account.currency,
-    Number(account.initial_balance || 0),Number(cash.availableToTrade)+Number(cash.reservedForOrders),JSON.stringify(records)]);
+    Number(account.initial_balance || 0),Number(cash.availableToTrade)+Number(cash.reservedForOrders)+Number(cash.inPies),JSON.stringify(records)]);
 }
 
 async function loadLedger(userId,account,start,end) {
@@ -88,6 +88,9 @@ async function loadLedger(userId,account,start,end) {
     if(amount>=0) r.inflow+=amount; else r.outflow-=amount;
     if(event.event_type==='deposit') r.deposits+=amount;
     if(event.event_type==='withdrawal') r.withdrawals-=amount;
+    if(event.event_type==='corporate_action') {
+      if(amount>=0) r.trade_inflow+=amount; else r.trade_outflow-=amount;
+    }
     if(['interest','dividend'].includes(event.event_type)) r.income+=amount;
     if(event.event_type==='account_fee'){r.account_fees-=amount;r.fees-=amount;}
     if(event.event_type==='tax') r.withholding_tax-=amount;

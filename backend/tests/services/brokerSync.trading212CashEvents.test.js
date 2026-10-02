@@ -38,6 +38,15 @@ test('conflicting payment identities abort before any transaction',async()=>{
   await expect(importCashEvents({userId:'owner',externalAccountId:'1234'},{transactions:[row('DEPOSIT',10),row('DEPOSIT',20)],dividends:[]})).rejects.toThrow('Conflicting');
   expect(db.withTransaction).not.toHaveBeenCalled();
 });
+
+test('sync rejects changed statement-annotated payments rather than overwriting verified corrections',async()=>{
+  db.query.mockResolvedValue({rows:[{id:'account'}]});
+  const client={query:jest.fn().mockResolvedValue({rows:[]})};
+  db.withTransaction.mockImplementation(fn=>fn(client));
+  await expect(importCashEvents({userId:'owner',externalAccountId:'1234'},
+    {transactions:[row('DEPOSIT',10)],dividends:[]})).rejects.toThrow('differs from its statement annotation');
+  expect(client.query.mock.calls[0][0]).toContain("metadata->'statement_annotation'->>'apiAmount'");
+});
 test('cash pagination rejects cross-origin credential forwarding and malformed results',async()=>{
   const request=jest.spyOn(service,'requestPage').mockResolvedValue({data:{items:[],nextPagePath:'https://example.com/api/v0/equity/history/transactions'}});
   await expect(service.fetchCashHistory({},'transactions')).rejects.toThrow('pagination URL');

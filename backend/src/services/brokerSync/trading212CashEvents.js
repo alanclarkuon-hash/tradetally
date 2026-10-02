@@ -50,10 +50,18 @@ async function importCashEvents(connection, sections) {
         (user_id,account_id,broker_type,reference_id,event_type,event_date,amount,currency,amount_usd,description)
         VALUES($1,$2,'trading212',$3,$4,$5,$6,$7,$8,$9)
         ON CONFLICT(user_id,account_id,broker_type,reference_id) DO UPDATE SET
-        event_type=EXCLUDED.event_type,event_date=EXCLUDED.event_date,amount=EXCLUDED.amount,
-        currency=EXCLUDED.currency,amount_usd=EXCLUDED.amount_usd,description=EXCLUDED.description,updated_at=NOW()
+        event_type=CASE WHEN broker_cash_events.metadata ? 'statement_annotation' THEN broker_cash_events.event_type ELSE EXCLUDED.event_type END,
+        event_date=EXCLUDED.event_date,
+        amount=CASE WHEN broker_cash_events.metadata ? 'statement_annotation' THEN broker_cash_events.amount ELSE EXCLUDED.amount END,
+        currency=EXCLUDED.currency,
+        amount_usd=CASE WHEN broker_cash_events.metadata ? 'statement_annotation' THEN broker_cash_events.amount_usd ELSE EXCLUDED.amount_usd END,
+        description=CASE WHEN broker_cash_events.metadata ? 'statement_annotation' THEN broker_cash_events.description ELSE EXCLUDED.description END,updated_at=NOW()
+        WHERE NOT (broker_cash_events.metadata ? 'statement_annotation') OR
+          ((broker_cash_events.metadata->'statement_annotation'->>'apiAmount')::numeric=EXCLUDED.amount
+            AND broker_cash_events.currency=EXCLUDED.currency AND broker_cash_events.event_date=EXCLUDED.event_date)
         RETURNING (xmax=0) AS inserted`,
       [connection.userId,accounts[0].id,e.reference,e.type,e.date,e.amount,e.currency,e.usd,e.description]);
+      if(!result.rows.length) throw new Error('Trading 212 API payment differs from its statement annotation');
       if(result.rows[0].inserted) imported++; else matched++;
     }
     return {imported,matched,rows:prepared.length};

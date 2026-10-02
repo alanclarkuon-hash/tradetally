@@ -23,12 +23,12 @@ test('wallet snapshots cannot silently shorten history or switch accounts',async
     {id:1234,currency:'GBP',cash:{availableToTrade:10,reservedForOrders:2,inPies:1}})).rejects.toThrow('does not cover');
   expect(db.query).toHaveBeenCalledTimes(2);
 });
-test('pie cash is not added a second time to available cash and reserves',async()=>{
+test('total cash includes uninvested pie cash as well as available cash and order reserves',async()=>{
   db.query.mockResolvedValueOnce({rows:[{id:'account',currency:'GBP',initial_balance:0,initial_balance_date:'2024-01-01'}]})
     .mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});
   await saveCashReport({userId:'owner',externalAccountId:'1234'},[item('b','BUY',10)],
     {id:1234,currency:'GBP',cash:{availableToTrade:10,reservedForOrders:2,inPies:1}});
-  expect(db.query.mock.calls[2][1][6]).toBe(12);
+  expect(db.query.mock.calls[2][1][6]).toBe(13);
 });
 test('native cash reconciles without double-subtracting fees and date filters carry the opening cash',async()=>{
   const report={currency:'GBP',to_date:'2024-01-03',ending_cash:102,records:walletRows([item('b','BUY',10),item('s','SELL',12,'2024-01-03')],'GBP')};
@@ -48,4 +48,17 @@ test('mismatched broker cash remains visible rather than adding a balancing entr
   const ledger=await loadLedger('owner',{id:'account',broker:'trading212',currency:'GBP',initial_balance:0,initial_balance_date:'2024-01-01'},'2024-01-01','2024-01-03');
   expect(ledger.reconciliation).toMatchObject({matched:false,difference:-50});
   expect(ledger.rows).toHaveLength(0);
+});
+
+test('rights subscriptions affect investment cash rather than external funding',async()=>{
+  db.query.mockResolvedValueOnce({rows:[{currency:'GBP',to_date:'2024-01-03',ending_cash:88,records:[]}]})
+    .mockResolvedValueOnce({rows:[
+      {event_date:'2024-01-01',event_type:'deposit',amount:100,currency:'GBP'},
+      {event_date:'2024-01-02',event_type:'corporate_action',amount:-12,currency:'GBP'},
+      {event_date:'2024-01-03',event_type:'corporate_action',amount:0,currency:'GBP'}]})
+    .mockResolvedValueOnce({rows:[]});
+  const ledger=await loadLedger('owner',{id:'account',broker:'trading212',currency:'GBP',initial_balance:0,initial_balance_date:'2024-01-01'},'2024-01-01','2024-01-03');
+  expect(ledger.reconciliation).toMatchObject({matched:true});
+  expect(ledger.rows[1]).toMatchObject({trade_outflow:12,withdrawals:0});
+  expect(ledger.rows[2]).toMatchObject({deposits:0,inflow:0});
 });
