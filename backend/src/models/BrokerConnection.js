@@ -77,6 +77,8 @@ class BrokerConnection {
       schwabAccountId,
       trading212ApiKey,
       trading212ApiSecret,
+      etoroApiKey,
+      etoroUserKey,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -160,6 +162,21 @@ class BrokerConnection {
         JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
+    } else if (brokerType === 'etoro') {
+      query = `INSERT INTO broker_connections (
+        user_id,broker_type,connection_status,etoro_api_key,etoro_user_key,
+        external_account_id,broker_environment,broker_metadata,account_label,
+        auto_sync_enabled,sync_frequency,sync_time,sync_start_date)
+        VALUES($1,$2,'pending',$3,$4,$5,'real',$6,$7,false,'manual',$8,$9)
+        ON CONFLICT(user_id,(COALESCE(broker_environment,'real'))) WHERE broker_type='etoro'
+        DO UPDATE SET etoro_api_key=EXCLUDED.etoro_api_key,etoro_user_key=EXCLUDED.etoro_user_key,
+        external_account_id=EXCLUDED.external_account_id,broker_metadata=EXCLUDED.broker_metadata,
+        account_label=EXCLUDED.account_label,connection_status='pending',
+        auto_sync_enabled=false,sync_frequency='manual',next_scheduled_sync=NULL,
+        consecutive_failures=0,updated_at=NOW() RETURNING *`;
+      params = [userId,brokerType,encryptionService.encrypt(etoroApiKey),
+        encryptionService.encrypt(etoroUserKey),externalAccountId,
+        JSON.stringify(brokerMetadata || {}),accountLabel,syncTime,syncStartDate];
     } else if (brokerType === 'trading212') {
       query = `
         INSERT INTO broker_connections (
@@ -781,6 +798,14 @@ class BrokerConnection {
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
         }
+      }
+    } else if (row.broker_type === 'etoro') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerEnvironment = row.broker_environment || 'real';
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        connection.etoroApiKey = encryptionService.decrypt(row.etoro_api_key);
+        connection.etoroUserKey = encryptionService.decrypt(row.etoro_user_key);
       }
     } else if (row.broker_type === 'trading212') {
       connection.externalAccountId = row.external_account_id;

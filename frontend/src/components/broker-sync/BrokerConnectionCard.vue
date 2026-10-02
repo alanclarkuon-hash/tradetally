@@ -84,6 +84,11 @@
         </div>
       </div>
 
+      <p v-if="connection.brokerType === 'etoro' && connection.brokerMetadata?.import_pending_review"
+        class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
+        Initial import awaits review. Sync downloads your portfolio and recent trades privately; reports stay unchanged until the data has been checked.
+      </p>
+
       <!-- Last Sync Info -->
       <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
         <div class="flex items-center justify-between text-sm">
@@ -180,6 +185,12 @@ const brokerStyles = computed(() => {
         abbrev: props.connection.brokerEnvironment === 'paper' ? 'AP' : 'AL',
         bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
         textClass: 'text-cyan-600 dark:text-cyan-400'
+      }
+    case 'etoro':
+      return {
+        name: 'eToro', abbrev: 'eT',
+        bgClass: 'bg-green-100 dark:bg-green-900/30',
+        textClass: 'text-green-700 dark:text-green-400'
       }
     case 'trading212':
       return {

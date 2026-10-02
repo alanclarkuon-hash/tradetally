@@ -9,6 +9,7 @@ const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
 const trading212Service = require('../services/brokerSync/trading212Service');
+const etoroService = require('../services/brokerSync/etoroService');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
@@ -243,6 +244,25 @@ const brokerSyncController = {
   /**
    * Add a Trading 212 API-key connection.
    */
+  async addEtoroConnection(req, res, next) {
+    try {
+      const userId = req.user.id;
+      const access = await TierService.canCreateBrokerConnection(userId, req.headers?.host);
+      if (!access.allowed) return sendProRequired(res, access);
+      const validation = await etoroService.validateCredentials(req.body.api_key, req.body.user_key);
+      if (!validation.valid) return res.status(400).json({ success: false, error: validation.message });
+      const connection = await BrokerConnection.create(userId, {
+        brokerType: 'etoro', etoroApiKey: req.body.api_key, etoroUserKey: req.body.user_key,
+        externalAccountId: validation.accountId, brokerEnvironment: 'real',
+        brokerMetadata: { currency: 'USD', import_pending_review: true },
+        accountLabel: req.body.account_label || null, autoSyncEnabled: false, syncFrequency: 'manual'
+      });
+      await BrokerConnection.updateStatus(connection.id, 'active', 'Read connection validated; initial import awaits review');
+      return res.status(201).json({ success: true, data: await BrokerConnection.findById(connection.id, false),
+        message: 'eToro connected. Run a sync to download data for review.' });
+    } catch (error) { next(error); }
+  },
+
   async addTrading212Connection(req, res, next) {
     try {
       const userId = req.user.id;
@@ -715,6 +735,10 @@ const brokerSyncController = {
 
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
+      if (connection.brokerType === 'etoro' && connection.brokerMetadata?.import_pending_review && autoSyncEnabled) {
+        return res.status(400).json({ success: false,
+          error: 'eToro auto-sync will be available after the first import has been checked.' });
+      }
       const updates = {};
       if (Object.prototype.hasOwnProperty.call(req.body, 'autoSyncEnabled')) {
         updates.autoSyncEnabled = autoSyncEnabled;
@@ -948,6 +972,8 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'etoro') {
+        testResult = await etoroService.validateCredentials(connection.etoroApiKey, connection.etoroUserKey);
       } else if (connection.brokerType === 'trading212') {
         testResult = await trading212Service.validateCredentials(
           connection.trading212ApiKey,

@@ -777,6 +777,12 @@ const schemas = {
     syncStartDate: nullableDate
   }),
 
+  brokerSyncEtoroConnection: Joi.object({
+    api_key: Joi.string().trim().max(4096).required(),
+    user_key: Joi.string().trim().max(4096).required(),
+    account_label: nullableString(255)
+  }),
+
   brokerSyncTrading212Connection: Joi.object({
     api_key: Joi.string().trim().required(),
     api_secret: Joi.string().trim().required(),
