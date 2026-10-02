@@ -798,7 +798,8 @@ class Account {
 
     // Calculate running balance
     const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
-      await require('../services/brokerSync/trading212CashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
+      await require('../services/brokerSync/trading212CashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
+      await require('../services/brokerSync/etoroCashStatement').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
     let runningBalance = ledger ? ledger.openingBalance : (parseFloat(account.initial_balance) || 0);
     const cashRows = ledger ? ledger.rows : await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
     const cashflowData = cashRows.map(row => {
@@ -833,6 +834,7 @@ class Account {
       totalWithdrawals: cashflowData.reduce((sum, d) => sum + d.withdrawals, 0),
       reconciliation: ledger?.reconciliation || null,
       cashflowSource: ledger ? (ledger.source || 'ibkr_statement') : 'trade_history',
+      fundingPending: ledger?.fundingPending || false,
       totalFxAdjustments: cashflowData.reduce((sum,d)=>sum+d.fxAdjustments,0),
       totalIncome: cashflowData.reduce((sum,d)=>sum+d.income,0),
       totalAccountFees: cashflowData.reduce((sum,d)=>sum+d.accountFees,0),
@@ -877,7 +879,8 @@ class Account {
     if (!account) return null;
 
     const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date) ||
-      await require('../services/brokerSync/trading212CashLedger').dayActivity(userId,account,date);
+      await require('../services/brokerSync/trading212CashLedger').dayActivity(userId,account,date) ||
+      await require('../services/brokerSync/etoroCashStatement').dayActivity(userId,account,date);
     if (ledgerDay) return ledgerDay;
 
     const multiplierExpr = `(
