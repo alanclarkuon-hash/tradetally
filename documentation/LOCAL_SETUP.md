@@ -97,6 +97,19 @@ instead of creating duplicates. Missing fields or conflicting IDs stop the cash
 import with a warning. Cash events are stored separately from manual transfers;
 manual entries representing the same funding should not also be entered.
 
+Without an explicit IBKR sync start date, the sync orchestrator uses the earliest
+managed IBKR account opening date for that owner. This avoids requesting years
+before the account existed. An in-process guard prevents concurrent manual and
+scheduled syncs of the same connection. IBKR error 1025 (too many failed attempts)
+immediately puts the connection into an error state, stopping automatic retries.
+Do not keep requesting reports while IBKR returns that error; check the query in
+IBKR before reactivating the connection. The broker's reset timing is unknown.
+These guards apply to the single local app process; multiple app instances need
+a shared lock before deployment.
+
+Before updating the local sync floor, a checked backup was created:
+`tradetally-backup-2026-10-02T13-54-30-324Z.json` (168 tables, 11,099 records).
+
 Cashflow is calculated and labelled in the managed account's currency, rather
 than the general portfolio display preference. Trade values stored in USD are
 converted with historical exchange rates for GBP accounts. Native broker cash
