@@ -99,7 +99,14 @@ async function loadLedger(userId,account,start,end){
     r.net=r.inflow-r.outflow;r.balance=balance;rows.set(e.date,r);
   }
   const reportDate=dateKey(report.to_date),closed=reportDate<=end;
+  const connections=(await db.query(`SELECT broker_metadata->'cash_balance' AS cash FROM broker_connections
+    WHERE user_id=$1 AND broker_type='etoro' AND broker_metadata->'cash_balance'->>'accountIdentifier'=$2`,
+  [userId,account.account_identifier])).rows;
+  const cash=connections.length===1 ? connections[0].cash : null;
+  const liveCash=cash?.currency===account.currency && typeof cash.amount==='number' && Number.isFinite(cash.amount)
+    && Number.isFinite(Date.parse(cash.asOf)) ? {amount:cash.amount,currency:cash.currency,asOf:cash.asOf} : null;
   return {rows:[...rows.values()].filter(r=>r.date>=start),openingBalance,balance,report,source:'etoro_statement',
+    liveCash,
     reconciliation:closed?{statementDate:reportDate,reportedBalance:Number(report.ending_cash),calculatedBalance:balance,
       difference:balance-Number(report.ending_cash),matched:Math.abs(balance-Number(report.ending_cash))<.02}:null,
     fundingPending:false};

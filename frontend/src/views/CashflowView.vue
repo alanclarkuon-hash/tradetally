@@ -83,9 +83,12 @@
           </div>
           <!-- Current Balance -->
           <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
-            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.cashflowSource === 'etoro_statement' ? 'Statement cash balance' : 'Current Balance' }}</div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.liveCashBalance ? 'Latest synced USD cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Statement cash balance' : 'Current Balance' }}</div>
             <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
-              {{ formatCurrency(cashflow.summary.currentBalance) }}
+              {{ formatCurrency(cashflow.summary.liveCashBalance?.amount ?? cashflow.summary.currentBalance) }}
+            </div>
+            <div v-if="cashflow.summary.liveCashBalance" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Synced {{ new Date(cashflow.summary.liveCashBalance.asOf).toLocaleString() }}
             </div>
           </div>
         </div>
@@ -110,6 +113,7 @@
 
         <div v-if="cashflow?.summary?.cashflowSource === 'etoro_statement'" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-600 dark:text-gray-300">
           This shows only the USD investment account through the statement date. The separate GBP account balance is excluded.
+          The latest synced cash comes from the API; daily cashflow and income remain based on the statement.
           Account withdrawals include transfers out to your GBP account. Inflow and outflow also include movements within eToro and CopyTrader.
           Income includes staking rewards. Some income was credited inside copied investments rather than to available USD cash.
         </div>

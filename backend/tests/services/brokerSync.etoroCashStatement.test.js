@@ -46,3 +46,14 @@ test('withdrawal totals follow reported USD funding amounts while cash follows s
   expect(ledger.balance).toBe(70);
   expect(ledger.reconciliation.matched).toBe(true);
 });
+test('live API cash is separate from statement reconciliation and does not create income or cashflow',async()=>{
+  const p=prepare({'Account Activity':[row('Deposit',100,100)],Dividends:[]});
+  db.query.mockResolvedValueOnce({rows:[{records:p.records,starting_cash:0,ending_cash:100,currency:'USD',to_date:'2024-01-01'}]})
+    .mockResolvedValueOnce({rows:[{cash:{amount:120,currency:'USD',asOf:'2024-02-01T06:00:00Z'}}]});
+  const ledger=await loadLedger('owner',{id:'account',account_identifier:'masked-account',broker:'etoro',currency:'USD'},'2024-01-01','2024-02-01');
+  expect(ledger.liveCash.amount).toBe(120);
+  expect(ledger.balance).toBe(100);
+  expect(ledger.reconciliation.matched).toBe(true);
+  expect(ledger.rows).toHaveLength(1);
+  expect(db.query.mock.calls.at(-1)[1]).toEqual(['owner','masked-account']);
+});

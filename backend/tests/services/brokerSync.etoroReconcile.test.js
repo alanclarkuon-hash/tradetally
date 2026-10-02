@@ -1,7 +1,7 @@
 jest.mock('../../src/config/database', () => ({ withTransaction: jest.fn() }));
 jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
 const db = require('../../src/config/database');
-const { mapSnapshot, plan, reconcile } = require('../../src/services/brokerSync/etoroReconcile');
+const { mapSnapshot, plan, reconcile, cashSnapshot } = require('../../src/services/brokerSync/etoroReconcile');
 
 const open = { positionID: 1, instrumentID: 100, units: 2, initialUnits: 10,
   initialAmountInDollars: 1000, leverage: 1, isBuy: true, openRate: 80,
@@ -10,7 +10,7 @@ const open = { positionID: 1, instrumentID: 100, units: 2, initialUnits: 10,
 const closed = { positionId: 2, instrumentId: 200, units: 0.1, leverage: 1, isBuy: true,
   openRate: 100, closeRate: 120, investment: 10, initialInvestment: 10, netProfit: 2, fees: 0.5,
   openTimestamp: '2025-01-01T10:00:00Z', closeTimestamp: '2026-01-01T10:00:00Z', orderId: 20 };
-function payload() { return { positions: [open], history: [closed],
+function payload() { return { portfolio: {credit:500,bonusCredit:25}, positions: [open], history: [closed],
   instruments: [{ instrumentID: 100, symbolFull: 'SYNTH.L', instrumentTypeID: 1 },
     { instrumentID: 200, symbolFull: 'SYNTHCOIN', instrumentTypeID: 2 }],
   instrumentTypes: [{ instrumentTypeID: 1, instrumentTypeDescription: 'Stocks' },
@@ -78,4 +78,11 @@ test('import writes owner-scoped trades and holdings in one transaction; dry-run
   const [sql, args] = query.mock.calls.find(([sql]) => sql.includes('INSERT INTO broker_portfolio_snapshots'));
   expect(sql).toContain("'etoro'");
   expect(args.slice(0,3)).toEqual(['owner','eToro ****123','connection']);
+  const metadata=query.mock.calls.find(([sql])=>sql.includes('UPDATE broker_connections'))[1];
+  expect(JSON.parse(metadata[2]).cash_balance).toMatchObject({amount:500,currency:'USD',accountIdentifier:'eToro ****123'});
+});
+test('cash uses real USD credit, supports zero, and excludes bonus credit and reserved orders',()=>{
+  expect(cashSnapshot({Credit:0,bonusCredit:99,orders:[{amount:10}]},'account')).toMatchObject({amount:0,currency:'USD'});
+  expect(cashSnapshot({credit:'125.50',bonusCredit:99},'account').amount).toBe(125.5);
+  for(const credit of [null,undefined,'',true,'invalid']) expect(()=>cashSnapshot({credit},'account')).toThrow();
 });
