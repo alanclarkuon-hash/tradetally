@@ -828,6 +828,7 @@ class Account {
     const summary = {
       initialBalance: parseFloat(account.initial_balance) || 0,
       currentBalance: runningBalance,
+      liveCashBalance: ledger?.liveCash || null,
       totalInflow: cashflowData.reduce((sum, d) => sum + d.inflow, 0),
       totalOutflow: cashflowData.reduce((sum, d) => sum + d.outflow, 0),
       totalDeposits: cashflowData.reduce((sum, d) => sum + d.deposits, 0),

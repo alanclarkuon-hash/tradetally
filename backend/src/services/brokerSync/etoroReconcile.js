@@ -22,6 +22,15 @@ function getExecutions(row) {
 function identity(row) { return getExecutions(row)[0]?.etoro_record_key; }
 function positionId(row) { return String(getExecutions(row)[0]?.etoro_position_id); }
 
+function cashSnapshot(portfolio, accountIdentifier) {
+  const raw = field(portfolio, 'credit');
+  if (raw === '' || typeof raw === 'boolean') throw new Error('Invalid eToro cash balance.');
+  // Credit is the USD cash balance before reserving pending orders. Bonus
+  // credit, invested positions and the separate Money account are excluded.
+  return { amount: number(raw, 'cash balance'), currency: 'USD', accountIdentifier,
+    asOf: new Date().toISOString() };
+}
+
 function mapSnapshot(payload) {
   const instruments = new Map(payload.instruments.map(i => [String(field(i, 'instrumentId')), i]));
   const types = new Map(payload.instrumentTypes.map(t => [String(field(t, 'instrumentTypeId')), field(t, 'instrumentTypeDescription')]));
@@ -155,6 +164,7 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
   if (!connection.externalAccountId) throw new Error('Missing eToro account identity.');
   const mapped = mapSnapshot(payload);
   const account = `eToro ****${String(connection.externalAccountId).slice(-4)}`;
+  const cash = cashSnapshot(payload.portfolio, account);
   const result = { imported: 0, updated: 0, duplicates: 0, skipped: 0, failed: 0,
     tradeRows: payload.history.length, openPositionRows: mapped.trades.filter(t => !t.exitTime).length };
   await db.withTransaction(async client => {
@@ -197,10 +207,11 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
       DO UPDATE SET connection_id=EXCLUDED.connection_id,positions=EXCLUDED.positions,synced_at=NOW()`,
     [connection.userId, account, connection.id, JSON.stringify(mapped.positions)]);
     await client.query(`UPDATE broker_connections SET broker_metadata=COALESCE(broker_metadata,'{}'::jsonb)
-      || '{"import_pending_review":false}'::jsonb WHERE id=$1 AND user_id=$2`, [connection.id, connection.userId]);
+      || $3::jsonb WHERE id=$1 AND user_id=$2`, [connection.id, connection.userId,
+      JSON.stringify({import_pending_review:false,cash_balance:cash})]);
     await client.query('DELETE FROM analytics_cache WHERE user_id=$1', [connection.userId]);
   });
   if (!dryRun) await AnalyticsCache.invalidate(connection.userId);
   return result;
 }
-module.exports = { mapSnapshot, plan, reconcile };
+module.exports = { mapSnapshot, plan, reconcile, cashSnapshot };
