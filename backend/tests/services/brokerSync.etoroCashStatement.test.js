@@ -12,9 +12,10 @@ test('matches dividend adjustments in overnight rows once, retaining legitimate 
   expect(new Set(p.records.map(r=>r.reference)).size).toBe(4);
   expect(p.records.reduce((n,r)=>n+r.cash,0)).toBe(103);
 });
-test('retains actual transfer settlement without treating requests or conversion fees as funding or extra charges',()=>{
+test('counts funding leaving the USD account, while conversion fees do not create extra cash charges',()=>{
   const p=prepare({'Account Activity':[row('Deposit',100,100),row('Withdraw Request',-20,100),row('Withdrawal Conversion Fee',-.5,80),row('Transfer: USD > GBP',-20,80),row('Staking',3,80)],Dividends:[]});
-  expect(p.events.map(e=>e.type)).toEqual(['deposit','interest']);
+  expect(p.events.map(e=>e.type)).toEqual(['deposit','withdrawal','withdrawal','interest']);
+  expect(p.events[2].description).toBe('Transfer out: USD > GBP');
   expect(p.records[2].cash).toBe(-20);
   expect(p.endingCash).toBe(80);
 });
@@ -35,5 +36,13 @@ test('ledger uses statement cash deltas, does not add income twice and reconcile
   expect(ledger.balance).toBe(102);
   expect(ledger.rows[0].income).toBe(5);
   expect(ledger.reconciliation.matched).toBe(true);
-  expect(ledger.fundingPending).toBe(true);
+  expect(ledger.fundingPending).toBe(false);
+});
+test('withdrawal totals follow reported USD funding amounts while cash follows settlement timing',async()=>{
+  const p=prepare({'Account Activity':[row('Deposit',100,100),row('Withdraw Request',-20,100),row('Withdrawal Conversion Fee',-.5,80),row('Transfer: USD > GBP',-10,70)],Dividends:[]});
+  db.query.mockResolvedValue({rows:[{records:p.records,starting_cash:0,ending_cash:70,currency:'USD',to_date:'2024-01-01'}]});
+  const ledger=await loadLedger('user',{id:'account',broker:'etoro',currency:'USD'},'2024-01-01','2024-01-01');
+  expect(ledger.rows[0].withdrawals).toBe(30);
+  expect(ledger.balance).toBe(70);
+  expect(ledger.reconciliation.matched).toBe(true);
 });
