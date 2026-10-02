@@ -47,6 +47,17 @@ test('USD base accounts use IBKR transaction FX rates for sterling funding',asyn
   expect(client.query.mock.calls[0][1][7]).toBeCloseTo(1250.00,2);
   expect(fx.convertToUSD).not.toHaveBeenCalled();
 });
+test('base currency statement copies do not duplicate their native payment rows',async()=>{
+  db.query.mockResolvedValue({rows:[{id:'account',broker:'ibkr',account_identifier:'U1234',currency:'USD'}]});
+  const client={query:jest.fn().mockResolvedValue({rows:[{inserted:true}]})};
+  db.withTransaction.mockImplementation(fn=>fn(client));
+  const result=await importCashEvents({userId:'owner'},{statement_of_funds:[
+    {...row('DEP',1250),levelOfDetail:'BaseCurrency',currency:'USD',fxRateToBase:'1'},
+    {...row('DEP',1000),levelOfDetail:'Currency',currency:'GBP',fxRateToBase:'1.25'}]});
+  expect(result).toMatchObject({imported:1,rows:1,warnings:[]});
+  expect(client.query.mock.calls[0][1][5]).toBe(1000);
+  expect(client.query.mock.calls[0][1][6]).toBe('GBP');
+});
 test('cashflow includes signed fees and refunds without double-counting trading commission',async()=>{
   db.query.mockResolvedValue({rows:[{event_date:'2026-01-12',event_type:'account_fee',amount:-5,currency:'USD'},{event_date:'2026-01-12',event_type:'account_fee',amount:2,currency:'USD'},{event_date:'2026-01-13',event_type:'dividend',amount:10,currency:'USD'}]});
   const result=await enrichCashflow('owner','account',[{date:'2026-01-12',trade_inflow:100,trade_outflow:51,fees:1,inflow:100,outflow:51}], '2026-01-01','2026-01-31','USD');
