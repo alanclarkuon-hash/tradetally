@@ -38,14 +38,16 @@ function prepare(statement) {
     else if (['Overnight fee','Overnight refund','Weekend refund','Opening and Closing Spread'].includes(r.Type)) type='account_fee';
     else if (r.Type==='SDRT') type='tax';
     else if (r.Type==='Deposit') type='deposit';
-    // Withdrawal requests can be cancelled/reversed. Conversion fee rows can
-    // carry the whole settlement in Balance, while their Amount is only a fee.
-    // Keep actual USD balance deltas; never label GBP transfers as bank funding.
+    else if (['Withdraw Request','Transfer: USD > GBP'].includes(r.Type)) type='withdrawal';
+    // Funding is scoped to the USD investment account: transfers out to GBP
+    // are withdrawals from this account, without claiming a bank withdrawal.
+    // Conversion fee rows can carry the whole settlement in Balance while
+    // Amount is only a fee. Cash balance still uses actual Balance deltas.
     const signature=JSON.stringify([time,r.Type,r['Position ID'] ?? null,amount,number(r['Realized Equity Change'])]);
     const hash=crypto.createHash('sha256').update(signature).digest('hex');
     const occurrence=(counts.get(hash)||0)+1;counts.set(hash,occurrence);
     return {reference:`statement:${hash}:${occurrence}`,date,time,sourceType:r.Type,type,amount,cash,
-      description: r.Type==='Staking'?'Staking reward':r.Type,
+      description: r.Type==='Staking'?'Staking reward':r.Type==='Transfer: USD > GBP'?'Transfer out: USD > GBP':r.Type,
       positionId:r['Position ID'] == null ? null : String(r['Position ID'])};
   });
   return {records,events:records.filter(r=>r.type),from:records[0].date,to:records.at(-1).date,
@@ -89,6 +91,7 @@ async function loadLedger(userId,account,start,end){
     if(e.cash>=0)r.inflow+=e.cash;else r.outflow-=e.cash;
     if(['Open Position','Position closed'].includes(e.sourceType)){if(e.cash>=0)r.trade_inflow+=e.cash;else r.trade_outflow-=e.cash;}
     if(e.type==='deposit')r.deposits+=e.amount;
+    if(e.type==='withdrawal')r.withdrawals-=e.amount;
     if(['interest','dividend'].includes(e.type))r.income+=e.amount;
     if(e.type==='account_fee'){r.account_fees-=e.amount;r.fees-=e.amount;}
     if(e.type==='tax')r.withholding_tax-=e.amount;
@@ -99,7 +102,7 @@ async function loadLedger(userId,account,start,end){
   return {rows:[...rows.values()].filter(r=>r.date>=start),openingBalance,balance,report,source:'etoro_statement',
     reconciliation:closed?{statementDate:reportDate,reportedBalance:Number(report.ending_cash),calculatedBalance:balance,
       difference:balance-Number(report.ending_cash),matched:Math.abs(balance-Number(report.ending_cash))<.02}:null,
-    fundingPending:true};
+    fundingPending:false};
 }
 async function dayActivity(userId,account,date){
   const ledger=await loadLedger(userId,account,date,date);if(!ledger)return null;

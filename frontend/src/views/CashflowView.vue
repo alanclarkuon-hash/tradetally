@@ -60,7 +60,7 @@
               </div>
             </div>
             <div>
-              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Withdrawals</div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.cashflowSource === 'etoro_statement' ? 'YTD USD account withdrawals' : 'YTD Withdrawals' }}</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-red-600 dark:text-red-400">
                 {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
               </div>
@@ -108,9 +108,9 @@
           </span>
         </div>
 
-        <div v-if="cashflow?.summary?.fundingPending" class="mb-4 rounded-lg border border-amber-300 dark:border-amber-700 p-3 text-sm text-amber-800 dark:text-amber-200">
-          This shows the USD investment account through the statement date. Inflow and outflow include movements within eToro and CopyTrader.
-          Withdrawals to your bank need the separate GBP account history; transfers between your eToro accounts are not bank withdrawals.
+        <div v-if="cashflow?.summary?.cashflowSource === 'etoro_statement'" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-600 dark:text-gray-300">
+          This shows only the USD investment account through the statement date. The separate GBP account balance is excluded.
+          Account withdrawals include transfers out to your GBP account. Inflow and outflow also include movements within eToro and CopyTrader.
           Income includes staking rewards. Some income was credited inside copied investments rather than to available USD cash.
         </div>
 
