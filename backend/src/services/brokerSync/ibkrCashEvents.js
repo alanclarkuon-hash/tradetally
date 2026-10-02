@@ -38,7 +38,11 @@ function cashEvent(row, isFunds) {
 }
 
 async function importCashEvents(connection, sections, range = {}) {
-  const funds = sections.statement_of_funds || [];
+  const rawFunds = sections.statement_of_funds || [];
+  const nativeAccounts = new Set(rawFunds.filter(row => field(row,'levelOfDetail').toLowerCase() === 'currency')
+    .map(row => field(row,'accountId','account')));
+  const funds = rawFunds.filter(row => field(row,'levelOfDetail').toLowerCase() !== 'basecurrency' ||
+    !nativeAccounts.has(field(row,'accountId','account')));
   // Statement of Funds is the authoritative cash ledger. Cash Transactions is
   // a fallback only for accounts absent from that ledger, never an extra total.
   const covered = new Set(funds.map(row => field(row,'accountId','account')));
