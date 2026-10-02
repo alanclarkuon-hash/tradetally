@@ -196,7 +196,8 @@ Cashflow uses each execution's native net wallet amount, preserving actual
 broker FX and fees without reconstructing cash from journal lots. Fees remain
 visible but are not subtracted twice. Split pairs are cash neutral. Saved wallet
 snapshots reject shortened history and are compared with broker cash including
-pending-order reserves and uninvested pie cash. Any discrepancy remains visible
+pending-order reserves. Pie cash is a contextual breakdown and is not added
+again to account cash. Any discrepancy remains visible
 for review; no balancing transaction is inserted. Date filters carry earlier
 cash into the opening balance.
 
