@@ -46,6 +46,7 @@ router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncI
 // Add Trading 212 API-key connection
 router.post('/connections/trading212', brokerSyncLimiter, validate(schemas.brokerSyncTrading212Connection), brokerSyncController.addTrading212Connection);
 router.post('/connections/etoro', brokerSyncLimiter, validate(schemas.brokerSyncEtoroConnection), brokerSyncController.addEtoroConnection);
+router.post('/connections/okx', brokerSyncLimiter, validate(schemas.brokerSyncOkxConnection), brokerSyncController.addOkxConnection);
 
 // Initialize Schwab OAuth flow
 router.post('/connections/schwab/init', brokerSyncLimiter, brokerSyncController.initSchwabOAuth);

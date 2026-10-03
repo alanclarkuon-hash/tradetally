@@ -157,6 +157,14 @@
               </div>
             </div>
 
+            <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-primary-500 dark:border-gray-600"
+              @click="store.error = null; showOkxModal = true">
+              <div class="flex items-center space-x-4">
+                <span class="flex h-12 w-12 items-center justify-center rounded-lg bg-gray-900 text-sm font-bold text-white dark:bg-gray-700">OKX</span>
+                <div><h4 class="font-medium text-gray-900 dark:text-white">OKX</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Spot crypto · Read only</p></div>
+              </div>
+            </button>
             <!-- TradeStation Card -->
             <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-green-500 dark:border-gray-600"
               @click="store.error = null; showEtoroModal = true">
@@ -369,6 +377,8 @@
     <EtoroConnectionModal v-if="showEtoroModal" :loading="store.loading" :error="store.error"
       @close="showEtoroModal = false; store.error = null" @save="handleEtoroSave" />
 
+    <OkxConnectionModal v-if="showOkxModal" :loading="store.loading" :error="store.error"
+      @close="showOkxModal = false; store.error = null" @save="handleOkxSave" />
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -406,6 +416,7 @@ import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
 import EtoroConnectionModal from '@/components/broker-sync/EtoroConnectionModal.vue'
+import OkxConnectionModal from '@/components/broker-sync/OkxConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
@@ -449,6 +460,7 @@ const pricingLink = computed(() => `/pricing?redirect=${encodeURIComponent(route
 const showIBKRModal = ref(false)
 const showTrading212Modal = ref(false)
 const showEtoroModal = ref(false)
+const showOkxModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const schwabAccounts = ref([])
@@ -677,6 +689,13 @@ async function handleIBKRSave(credentials) {
   }
 }
 
+async function handleOkxSave(connection) {
+  try {
+    await store.addOkxConnection(connection)
+    showOkxModal.value = false
+    successMessage.value = 'OKX connected. Run Sync Now to download your balances and recent history for reconciliation.'
+  } catch { /* The form displays the store error. */ }
+}
 async function handleEtoroSave(connection) {
   try {
     await store.addEtoroConnection(connection)
