@@ -60,4 +60,9 @@ async function getCategories(symbol) {
   queue=job.catch(()=>{});
   return job;
 }
-module.exports={getCategories,cleanCategories,primaryCategory};
+async function getCachedCategories(symbol) {
+  await load();
+  const record=records[CRYPTO_TO_COINGECKO[String(symbol).toUpperCase()]];
+  return record ? result(record) : null;
+}
+module.exports={getCategories,getCachedCategories,cleanCategories,primaryCategory};

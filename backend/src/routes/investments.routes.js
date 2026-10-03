@@ -14,6 +14,10 @@ const { validate, schemas } = require('../middleware/validation');
 // All investment routes require authentication and Pro tier
 router.use(authenticate);
 router.use(requiresTier('pro'));
+router.get('/assets/:symbol',async(req,res,next)=>{
+  try {res.json(await require('../services/assetDetailsService').getDetails(req.user.id,req.params.symbol,req.query));}
+  catch(error){next(error);}
+});
 
 // ========================================
 // 8 PILLARS ANALYSIS
