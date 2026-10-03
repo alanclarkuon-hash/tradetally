@@ -48,7 +48,7 @@ const route=useRoute(),router=useRouter(),input=ref(String(route.query.symbol||'
 const populated=computed(()=>asset.value?.sections.filter(s=>s.count)||[]),empty=computed(()=>asset.value?.sections.filter(s=>!s.count)||[])
 const label=key=>String(key).replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())
 const date=value=>value?new Date(value).toLocaleString():'date unavailable'
-const recordDate=r=>date(r.updated_at||r.fetched_at||r.last_updated||r.analysis_date||r.price_date||r.entry_time||r.payment_date||r.created_at)
+const recordDate=r=>date(r.updated_at||r.fetched_at||r.last_updated||r.synced_at||r.analysis_date||r.price_date||r.entry_time||r.payment_date||r.added_at||r.purchase_date||r.split_date||r.ts||r.timestamp||r.last_checked_at||r.created_at)
 async function search(){
   loading.value=true;error.value='';asset.value=null
   const symbol=input.value.trim().toUpperCase()
