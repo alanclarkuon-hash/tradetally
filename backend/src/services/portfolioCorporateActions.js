@@ -8,7 +8,8 @@ const aliases={
  // https://infomemo.theocc.com/infomemos?number=55886
  SQ:'XYZ',
  // User-confirmed listing / permanent broker-key corrections.
- RHMD_EQ:'RHM.DE',IPOE:'SOFI',UBNT:'UI'
+ RHMD_EQ:'RHM.DE',IPOE:'SOFI',UBNT:'UI',
+ 'BRK.B':'BRK-B'
 };
 const splits={
  DNA:[{date:'2024-08-20',ratio:1/40,source:'https://www.prnewswire.com/news-releases/ginkgo-regains-compliance-with-nyse-minimum-bid-price-requirement-302238512.html'}],
@@ -24,4 +25,8 @@ function historySplits(symbol,providerSplits=[]) {
  for(const split of splits[symbol]||[])if(!result.some(s=>s.date===split.date))result.push({...split});
  return result.sort((a,b)=>a.date.localeCompare(b.date));
 }
-module.exports={historySymbol,historySplits};
+function historicalMarketSymbol(symbol,instrumentType,date) {
+ if(instrumentType==='crypto')return `${['MIOT','MIOTA'].includes(symbol)?'IOTA':symbol}-USD`;
+ return historySymbol(symbol,date);
+}
+module.exports={historySymbol,historySplits,historicalMarketSymbol};

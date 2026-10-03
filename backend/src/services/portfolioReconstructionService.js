@@ -3,7 +3,7 @@ const axios=require('axios');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const {assetCode,nativeWalletCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
-const {historySymbol,historySplits}=require('./portfolioCorporateActions');
+const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
 const {STABLE,FIAT}=require('./portfolioDashboardService');
 const date=v=>new Date(v).toISOString().slice(0,10);
 const days=(from,to)=>{const result=[];for(let t=Date.parse(from);t<=Date.parse(to);t+=86400000)result.push(date(t));return result;};
@@ -153,7 +153,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type))need.add(t.instrument_type==='crypto'?t.symbol+'-USD':t.symbol);
+    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type))need.add(historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date)));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
@@ -204,7 +204,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
       const opened=date(t.entry_time||t.trade_date),closed=t.exit_time?date(t.exit_time):null;
       if(opened>d||(closed&&closed<=d))continue;
       if(!['stock','crypto'].includes(t.instrument_type)||t.side!=='long') {value.issues.push(`Historical derivative valuation unavailable: ${t.symbol}`);continue;}
-      const s=t.instrument_type==='crypto'?t.symbol+'-USD':t.symbol,series=market.get(s);
+      const s=historicalMarketSymbol(t.symbol,t.instrument_type,opened),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a
       // dated broker split allocation, avoid claiming a pre-split valuation.
       if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d))){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
