@@ -12,7 +12,6 @@ const trading212Service = require('../services/brokerSync/trading212Service');
 const etoroService = require('../services/brokerSync/etoroService');
 const okxService = require('../services/brokerSync/okxService');
 const krakenService = require('../services/brokerSync/krakenService');
-const igService = require('../services/brokerSync/igService');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
@@ -248,22 +247,6 @@ const brokerSyncController = {
   /**
    * Add a Trading 212 API-key connection.
    */
-  async addIgConnection(req,res,next) {
-    try {
-      const access=await TierService.canCreateBrokerConnection(req.user.id,req.headers?.host);
-      if(!access.allowed)return sendProRequired(res,access);
-      const {api_key,username,password,broker_environment='live',account_id,account_label,sync_start_date='2025-09-01'}=req.body;
-      const validation=await igService.validateCredentials(api_key,username,password,broker_environment,account_id || undefined);
-      if(!validation.valid)return res.status(400).json({success:false,error:validation.message});
-      const connection=await BrokerConnection.create(req.user.id,{brokerType:'ig',igApiKey:api_key,igUsername:username,igPassword:password,
-        externalAccountId:validation.accountId,brokerEnvironment:broker_environment,accountLabel:account_label || 'IG Spread Betting',
-        syncStartDate:sync_start_date,brokerMetadata:{import_pending_review:true,scope:'spread_betting',currency:validation.currency},
-        autoSyncEnabled:false,syncFrequency:'manual'});
-      await BrokerConnection.updateStatus(connection.id,'active','IG read access validated');
-      res.status(201).json({success:true,data:await BrokerConnection.findById(connection.id,false),
-        message:'IG connected. Run Sync Now to download your spread-betting history for reconciliation.'});
-    } catch(error){next(error);}
-  },
   async addKrakenConnection(req,res,next) {
     try {
       const access = await TierService.canCreateBrokerConnection(req.user.id,req.headers?.host);
@@ -787,7 +770,7 @@ const brokerSyncController = {
 
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
-      if ((connection.brokerType === 'ig' || (['etoro','okx','kraken'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review)) && autoSyncEnabled) {
+      if (['etoro','okx','kraken'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review && autoSyncEnabled) {
         return res.status(400).json({ success: false,
           error: 'Auto-sync will be available after the first import has been checked.' });
       }
@@ -1024,9 +1007,6 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
-      } else if (connection.brokerType === 'ig') {
-        testResult=await igService.validateCredentials(connection.igApiKey,connection.igUsername,connection.igPassword,
-          connection.brokerEnvironment,connection.externalAccountId);
       } else if (connection.brokerType === 'kraken') {
         testResult = await krakenService.validateCredentials(connection.krakenApiKey,connection.krakenApiSecret);
       } else if (connection.brokerType === 'okx') {

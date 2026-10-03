@@ -84,9 +84,6 @@ class BrokerConnection {
       okxPassphrase,
       krakenApiKey,
       krakenApiSecret,
-      igApiKey,
-      igUsername,
-      igPassword,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -170,17 +167,6 @@ class BrokerConnection {
         JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
-    } else if (brokerType === 'ig') {
-      query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,ig_api_key,ig_username,ig_password,
-        external_account_id,broker_environment,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_start_date)
-        VALUES($1,'ig','pending',$2,$3,$4,$5,$6,$7,$8,false,'manual',$9)
-        ON CONFLICT(user_id,(COALESCE(broker_environment,'live'))) WHERE broker_type='ig'
-        DO UPDATE SET ig_api_key=EXCLUDED.ig_api_key,ig_username=EXCLUDED.ig_username,ig_password=EXCLUDED.ig_password,
-        external_account_id=EXCLUDED.external_account_id,broker_metadata=EXCLUDED.broker_metadata,
-        account_label=EXCLUDED.account_label,sync_start_date=EXCLUDED.sync_start_date,connection_status='pending',
-        auto_sync_enabled=false,sync_frequency='manual',next_scheduled_sync=NULL,consecutive_failures=0,updated_at=NOW() RETURNING *`;
-      params=[userId,encryptionService.encrypt(igApiKey),encryptionService.encrypt(igUsername),encryptionService.encrypt(igPassword),
-        externalAccountId,brokerEnvironment || 'live',JSON.stringify(brokerMetadata || {}),accountLabel,syncStartDate];
     } else if (brokerType === 'kraken') {
       query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,kraken_api_key,kraken_api_secret,
         external_account_id,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_time)
@@ -840,15 +826,6 @@ class BrokerConnection {
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
         }
-      }
-    } else if (row.broker_type === 'ig') {
-      connection.externalAccountId = row.external_account_id;
-      connection.brokerEnvironment = row.broker_environment || 'live';
-      connection.brokerMetadata = row.broker_metadata || {};
-      if (includeCredentials) {
-        connection.igApiKey = encryptionService.decrypt(row.ig_api_key);
-        connection.igUsername = encryptionService.decrypt(row.ig_username);
-        connection.igPassword = encryptionService.decrypt(row.ig_password);
       }
     } else if (row.broker_type === 'kraken') {
       connection.externalAccountId = row.external_account_id;

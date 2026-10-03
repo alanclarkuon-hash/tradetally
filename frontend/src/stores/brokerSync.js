@@ -100,18 +100,6 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
-  async function addIgConnection(connection) {
-    loading.value = true
-    error.value = null
-    try {
-      const response = await api.post('/broker-sync/connections/ig', connection)
-      await fetchConnections()
-      return response.data.data
-    } catch (err) {
-      error.value = err.response?.data?.error || 'Failed to connect IG'
-      throw new Error(error.value)
-    } finally { loading.value = false }
-  }
   async function addKrakenConnection(connection) {
     loading.value = true
     error.value = null
@@ -372,7 +360,6 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     trading212Connections,
     addOkxConnection,
     addKrakenConnection,
-    addIgConnection,
     isConnectionSyncing,
 
     // Actions
