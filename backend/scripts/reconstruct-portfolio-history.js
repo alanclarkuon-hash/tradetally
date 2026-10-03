@@ -5,6 +5,8 @@ const {reconstruct}=require('../src/services/portfolioReconstructionService');
 (async()=>{
  if(process.env.APP_ENVIRONMENT!=='test')throw Error('Historical reconstruction is restricted to test');
  const users=(await db.query('SELECT id FROM users')).rows;
- for(const user of users)console.log(JSON.stringify(await reconstruct(user.id,{apply:process.argv.includes('--apply'),fetchPrices:process.argv.includes('--prices'),onProgress:p=>console.log(JSON.stringify(p))})));
+ const broker=process.argv.find(a=>a.startsWith('--broker='))?.slice('--broker='.length)||null;
+ if(broker&&!['trading212','etoro','kraken','okx','ibkr','ig'].includes(broker))throw Error('Unsupported reconstruction broker');
+ for(const user of users)console.log(JSON.stringify(await reconstruct(user.id,{broker,apply:process.argv.includes('--apply'),fetchPrices:process.argv.includes('--prices'),onProgress:p=>console.log(JSON.stringify(p))})));
  await db.pool.end();
 })().catch(()=>{console.error('Historical reconstruction failed; previous reports were preserved.');process.exit(1);});

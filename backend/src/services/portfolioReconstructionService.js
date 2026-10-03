@@ -3,6 +3,7 @@ const axios=require('axios');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const {assetCode,nativeWalletCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
+const {historySymbol,historySplits}=require('./portfolioCorporateActions');
 const {STABLE,FIAT}=require('./portfolioDashboardService');
 const date=v=>new Date(v).toISOString().slice(0,10);
 const days=(from,to)=>{const result=[];for(let t=Date.parse(from);t<=Date.parse(to);t+=86400000)result.push(date(t));return result;};
@@ -93,8 +94,9 @@ function replayShares(fills,splits,from,to) {
  return result;
 }
 
-async function reconstruct(userId,{fetchPrices=false,apply=false,onProgress=()=>{}}={}) {
- const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows;
+async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,onProgress=()=>{}}={}) {
+ const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>!broker||a.broker===broker);
+ if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
  const fx=await loadFx(from,end,{fetchPrices});
  const krakenPayload=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' LIMIT 1",[userId])).rows[0]?.payload;
@@ -140,7 +142,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,onProgress=()=>
    if(account.broker==='trading212') {
     const report=(await db.query("SELECT * FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='trading212' ORDER BY updated_at DESC LIMIT 1",[userId,account.id])).rows[0];
     const mapping=new Map((portfolio?.positions||[]).map(p=>[p.instrument.ticker,currentSymbol(p.instrument)]));
-    fills=(report?.records||[]).map(r=>({date:r.date,symbol:mapping.get(r.symbol)||normalizeTicker(r.symbol),quantity:Number(r.quantity)*(r.side==='BUY'?1:-1)}));
+    fills=(report?.records||[]).map(r=>({date:r.date,symbol:historySymbol(mapping.get(r.symbol)||normalizeTicker(r.symbol),r.date),quantity:Number(r.quantity)*(r.side==='BUY'?1:-1)}));
     // Only an explicitly annotated subscription can create new shares. The
     // public prospectus supplies the issue price; native cash supplies units.
     // https://www.nationalgrid.com/document/152061/download (645p per share)
@@ -169,7 +171,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,onProgress=()=>
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   let shareIssues=new Map();
   if(account.broker==='trading212') {
-   for(const s of need)for(const split of market.get(s)?.splits||[])splits.push({...split,symbol:s});
+   for(const s of need)for(const split of historySplits(s,market.get(s)?.splits||[]))splits.push({...split,symbol:s});
    native=replayShares(fills,splits,start,end);
    const totals=replayShares(fills,splits,start,today).at(-1)?.quantities||{};
    const current=Object.fromEntries((portfolio?.positions||[]).map(p=>[currentSymbol(p.instrument),Number(p.quantity)]));
