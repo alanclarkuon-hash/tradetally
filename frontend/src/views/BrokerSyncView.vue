@@ -175,6 +175,19 @@
                   <p class="text-sm text-gray-500 dark:text-gray-400">Spot crypto and Earn/staking · Read only</p></div>
               </div>
             </button>
+            <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-red-500 dark:border-gray-600"
+              @click="store.error = null; showIgModal = true">
+              <div class="flex items-center space-x-4">
+                <span class="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100 text-lg font-bold text-red-700 dark:bg-red-900/30 dark:text-red-300">IG</span>
+                <div><h4 class="font-medium text-gray-900 dark:text-white">IG spread betting</h4>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Read-only history downloads</p></div>
+              </div>
+            </button>
+            <div class="rounded-lg border border-gray-200 p-6 dark:border-gray-700">
+              <h4 class="font-medium text-gray-900 dark:text-white">IG share dealing</h4>
+              <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">Separate statement import. Download your full Account/Ledger Summary CSV and latest monthly statement from MyIG. IG’s public API excludes share dealing.</p>
+              <a href="https://www.ig.com/uk/help-and-support/articles/687076-what-statements-will-i-receive" target="_blank" rel="noopener noreferrer" class="mt-3 inline-block text-sm underline">Find your IG statements</a>
+            </div>
             <!-- TradeStation Card -->
             <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-green-500 dark:border-gray-600"
               @click="store.error = null; showEtoroModal = true">
@@ -391,6 +404,8 @@
       @close="showOkxModal = false; store.error = null" @save="handleOkxSave" />
     <KrakenConnectionModal v-if="showKrakenModal" :loading="store.loading" :error="store.error"
       @close="showKrakenModal = false; store.error = null" @save="handleKrakenSave" />
+    <IgConnectionModal v-if="showIgModal" :loading="store.loading" :error="store.error"
+      @close="showIgModal = false; store.error = null" @save="handleIgSave" />
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -431,6 +446,7 @@ import Trading212ConnectionModal from '@/components/broker-sync/Trading212Connec
 import EtoroConnectionModal from '@/components/broker-sync/EtoroConnectionModal.vue'
 import OkxConnectionModal from '@/components/broker-sync/OkxConnectionModal.vue'
 import KrakenConnectionModal from '@/components/broker-sync/KrakenConnectionModal.vue'
+import IgConnectionModal from '@/components/broker-sync/IgConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
@@ -476,6 +492,7 @@ const showTrading212Modal = ref(false)
 const showEtoroModal = ref(false)
 const showOkxModal = ref(false)
 const showKrakenModal = ref(false)
+const showIgModal = ref(false)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const schwabAccounts = ref([])
@@ -704,6 +721,13 @@ async function handleIBKRSave(credentials) {
   }
 }
 
+async function handleIgSave(connection) {
+  try {
+    await store.addIgConnection(connection)
+    showIgModal.value = false
+    scheduleSuccessMessage('IG connected. Run Sync Now to download spread-betting history for reconciliation.')
+  } catch { /* Store displays the sanitized error; credentials stay in the modal. */ }
+}
 async function handleKrakenSave(connection) {
   try {
     await store.addKrakenConnection(connection)
