@@ -3,6 +3,11 @@ const crypto = require('crypto');
 const {prepare,pairTransfers,cents} = require('./igStatement');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const dateKey = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value).slice(0,10);
+function sameCash(a,b) {
+  // PostgreSQL JSONB reorders keys. Compare financial fields rather than the
+  // serialization order, while still refusing changed dates or descriptions.
+  return !!a && !!b && ['reference','time','date','amount','cash','type','description'].every(key=>a[key]===b[key]);
+}
 
 async function importAccounts(userId,inputs,{dryRun=true}={}) {
   const accounts = inputs.map(prepare), pairs = pairTransfers(accounts);
@@ -31,7 +36,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       const current=new Map(a.records.map(r=>[r.reference,r]));
       for(const report of reports) for(const record of report.records) {
         const next=current.get(record.reference);
-        if(!next || hash(next)!==hash(record)) throw Error('An existing IG cash record changed or full history is missing');
+        if(!sameCash(next,record)) throw Error('An existing IG cash record changed or full history is missing');
       }
       const previous=(await client.query("SELECT id,executions FROM trades WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       const byKey=new Map(previous.map(t=>[t.executions?.[0]?.ig_record_key,t]));
@@ -104,4 +109,4 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   } catch(error) { await client.query('ROLLBACK');throw error; }
   finally {client.release();}
 }
-module.exports={importAccounts};
+module.exports={importAccounts,sameCash};
