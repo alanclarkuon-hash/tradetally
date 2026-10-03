@@ -5,6 +5,18 @@ vi.mock('@/lib/chartSetup',()=>({Chart:class {constructor(canvas,config){capture
 import PortfolioValueChart from './PortfolioValueChart.vue'
 
 describe('portfolio value chart',()=>{
+  it('labels individual account histories without inventing an incomplete combined value',async()=>{
+    const point={date:'2026-01-01',value:100,holdings:60,cash:40,stablecoins:0,reconstructedAccounts:1}
+    const history={series:[{date:point.date,value:null}],events:[],accountSeries:[{name:'First',series:[point]},{name:'Second',series:[]}],coverage:{recordedDays:0,partialDays:1,missingEventFx:0,accounts:[]}}
+    const wrapper=mount(PortfolioValueChart,{props:{history}});await flushPromises()
+    const config=captured.at(-1)
+    expect(config.data.datasets[0].data[0].y).toBeNull()
+    expect(config.data.datasets[1]).toMatchObject({accountName:'First',spanGaps:false})
+    expect(config.options.scales.value.display).toBe(true)
+    expect(wrapper.text()).toContain('No complete combined portfolio values')
+    expect(wrapper.text()).toContain('Show individual account histories')
+    wrapper.unmount()
+  })
   it('places today and past funding on real dates without waiting for background-tab animations',async()=>{
     const history={change:null,series:[{date:'2026-10-03',value:120,holdings:80,cash:30,stablecoins:10}],
       events:[{date:'2024-03-27',type:'deposit',amount:50,nativeAmount:50,nativeCurrency:'GBP',account:'Example'}],

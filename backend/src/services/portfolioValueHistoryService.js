@@ -61,10 +61,11 @@ async function captureToday(userId,query={}) {
 // explicit gaps, never zero balances or a carry-forward estimate.
 function combineValues(rows,accounts,currency) {
   const dates=[...new Set(rows.map(r=>day(r.value_date)))].sort();
+  const index=new Map(rows.map(r=>[`${day(r.value_date)}:${r.account_identifier}`,r]));
   return dates.map(date=>{
     const active=accounts.filter(a=>!a.initial_balance_date||day(a.initial_balance_date)<=date);
-    const values=active.map(a=>rows.find(r=>day(r.value_date)===date&&r.account_identifier===a.account_identifier));
-    const missing=values.filter(r=>!r || (currency==='GBP'&&!(Number(r.gbp_per_usd)>0))).length;
+    const values=active.map(a=>index.get(`${date}:${a.account_identifier}`));
+    const missing=values.filter(r=>!r || r.holdings_usd==null || r.cash_usd==null || r.stablecoins_usd==null || (currency==='GBP'&&!(Number(r.gbp_per_usd)>0))).length;
     if(missing||!active.length)return {date,value:null,missingAccounts:missing,stalePrices:0};
     let total=0,holdings=0,cash=0,stablecoins=0,stalePrices=0;
     for(const r of values) {
@@ -73,7 +74,8 @@ function combineValues(rows,accounts,currency) {
       stalePrices+=Number(r.stale_prices||0);
     }
     total=holdings+cash+stablecoins;
-    return {date,value:money(total),holdings:money(holdings),cash:money(cash),stablecoins:money(stablecoins),missingAccounts:0,stalePrices};
+    return {date,value:money(total),holdings:money(holdings),cash:money(cash),stablecoins:money(stablecoins),missingAccounts:0,stalePrices,
+      reconstructedAccounts:values.filter(r=>r.source==='reconstructed').length};
   });
 }
 
@@ -82,7 +84,19 @@ async function getHistory(userId,query={}) {
   if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
   const accounts=await accountsFor(userId,query);
   const identifiers=accounts.map(a=>a.account_identifier);
-  const rows=(await db.query(`SELECT * FROM portfolio_value_history WHERE user_id=$1 AND account_identifier=ANY($2)
+  const rows=(await db.query(`SELECT * FROM (
+    SELECT user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,stale_prices,
+      'recorded' AS source,'[]'::jsonb AS issues FROM portfolio_value_history
+    UNION ALL
+    SELECT s.user_id,s.account_identifier,s.value_date,s.holdings_usd,s.cash_usd,s.stablecoins_usd,s.gbp_per_usd,0,
+      'statement' AS source,'[]'::jsonb AS issues FROM portfolio_statement_values s
+    WHERE NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=s.user_id AND o.account_identifier=s.account_identifier AND o.value_date=s.value_date)
+    UNION ALL
+    SELECT r.user_id,r.account_identifier,r.value_date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,0,
+      'reconstructed' AS source,r.issues FROM portfolio_reconstructed_values r
+    WHERE NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=r.user_id AND o.account_identifier=r.account_identifier AND o.value_date=r.value_date)
+      AND NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=r.user_id AND s.account_identifier=r.account_identifier AND s.value_date=r.value_date)
+    ) history WHERE user_id=$1 AND account_identifier=ANY($2)
     AND ($3::date IS NULL OR value_date>=$3) AND ($4::date IS NULL OR value_date<=$4) ORDER BY value_date`,
   [userId,identifiers,range?.start_date||null,range?.end_date||null])).rows;
   const pairs=(await db.query('SELECT * FROM broker_transfer_matches WHERE user_id=$1',[userId])).rows;
@@ -110,7 +124,10 @@ async function getHistory(userId,query={}) {
   const series=combineValues(rows,accounts,currency);
   const valid=series.filter(p=>p.value!=null);
   return {currency,range,series,events:events.sort((a,b)=>a.date.localeCompare(b.date)),accountCount:accounts.length,
+    accountSeries:accounts.map(a=>({name:a.account_name,series:combineValues(rows.filter(r=>r.account_identifier===a.account_identifier),[a],currency)})),
     coverage:{firstValueDate:valid[0]?.date||null,lastValueDate:valid.at(-1)?.date||null,recordedDays:valid.length,
+      reconstructedDays:valid.filter(p=>p.reconstructedAccounts>0).length,
+      accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:false},
     change:valid.length>=2?money(valid.at(-1).value-valid[0].value):null};
