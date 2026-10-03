@@ -1,7 +1,7 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 const {prepare,pairTransfers}=require('../../src/services/brokerSync/igStatement');
 const {calculate}=require('../../src/services/brokerSync/igCashLedger');
-const {sameCash}=require('../../src/services/brokerSync/igImport');
+const {sameCash,tradeHash}=require('../../src/services/brokerSync/igImport');
 const encode=rows=>rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
 const header=['TextDate','MarketName','Transaction type','Reference','PL Amount','DateUtc','CurrencyIsoCode'];
 function cash(type,ref,amount,name,time='2026-06-01T12:00:00'){return ['',name,type,ref,amount,time,'GBP'];}
@@ -50,4 +50,9 @@ test('repeat validation tolerates PostgreSQL JSONB key ordering but refuses chan
   expect(sameCash(a,b)).toBe(true);
   expect(sameCash(a,{...b,cash:8})).toBe(false);
   expect(sameCash(undefined,b)).toBe(false);
+});
+test('monthly holding valuations can change while acquisition cost remains immutable',()=>{
+  const t={key:'holding:synthetic',entryPrice:3,quantity:2,holding:{cost:6,quantity:2,value:7,asOf:'2026-06-01T00:00:00Z'}};
+  expect(tradeHash(t)).toBe(tradeHash({...t,holding:{...t.holding,value:8,asOf:'2026-07-01T00:00:00Z'}}));
+  expect(tradeHash(t)).not.toBe(tradeHash({...t,holding:{...t.holding,cost:8}}));
 });
