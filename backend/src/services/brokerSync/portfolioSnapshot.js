@@ -27,7 +27,7 @@ async function snapshotPositions(rows, accounts = []) {
   for (const row of rows) {
     if (accounts.length && !accounts.includes(row.account_identifier)) continue;
     for (const p of row.positions) {
-      if (['etoro','okx','kraken'].includes(row.broker_type)) {
+      if (['etoro','okx','kraken','ig'].includes(row.broker_type)) {
         positions.push({ symbol: p.symbol, holdingId: null, source: 'trades', positionSource: 'broker',
           notes: p.notes || null, sector: null, targetAllocationPercent: null, totalShares: p.quantity,
           totalCostBasis: p.totalCost, averageCostBasis: p.totalCost / p.quantity,
@@ -66,7 +66,7 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
     t.broker === row.broker_type && t.account_identifier === row.account_identifier));
   const synthetic = [];
   for (const row of covered) for (const p of row.positions) {
-    if (['etoro','okx','kraken'].includes(row.broker_type)) {
+    if (['etoro','okx','kraken','ig'].includes(row.broker_type)) {
       const related = openTrades.filter(t => t.broker === row.broker_type &&
         t.account_identifier === row.account_identifier && t.symbol === p.symbol);
       synthetic.push({ symbol: p.symbol, side: 'long', quantity: p.quantity,

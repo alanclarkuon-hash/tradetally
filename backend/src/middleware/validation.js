@@ -218,8 +218,8 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive().required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').optional(), // Accept snake_case for API compatibility
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex', 'spread_bet').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex', 'spread_bet').optional(), // Accept snake_case for API compatibility
     commission: Joi.number().default(0),  // Can be negative for rebates
     entryCommission: Joi.number().default(0),  // Can be negative for rebates
     exitCommission: Joi.number().default(0),  // Can be negative for rebates
@@ -323,8 +323,8 @@ const schemas = {
   createShellTrade: Joi.object({
     symbol: Joi.string().max(20).required(),
     side: Joi.string().valid('long', 'short').required(),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').default('stock'),
-    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex').optional(),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex', 'spread_bet').default('stock'),
+    instrument_type: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex', 'spread_bet').optional(),
     broker: Joi.string().max(50).allow(''),
     account_identifier: Joi.string().max(50).allow(''),
     strategy: Joi.string().max(100).allow(''),
@@ -377,7 +377,7 @@ const schemas = {
     exitPrice: Joi.number().min(0).allow(null, ''),
     quantity: Joi.number().positive(),
     side: Joi.string().valid('long', 'short'),
-    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex'),
+    instrumentType: Joi.string().valid('stock', 'option', 'future', 'crypto', 'cfd', 'forex', 'spread_bet'),
     commission: Joi.number(),  // Can be negative for rebates
     entryCommission: Joi.number(),  // Can be negative for rebates
     exitCommission: Joi.number(),  // Can be negative for rebates
