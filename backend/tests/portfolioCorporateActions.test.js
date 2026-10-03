@@ -6,6 +6,14 @@ test('old permanent broker key maps to DNA only after the name change',()=>{
  expect(historySymbol('SRNG','2021-09-16')).toBe('SRNG');
  expect(historySymbol('MSFT','2024-01-01')).toBe('MSFT');
 });
+test('uses continuous Yahoo histories for permanent Facebook and Square broker keys',()=>{
+ expect(historySymbol('FB','2024-05-10')).toBe('META');
+ expect(historySymbol('SQ','2024-05-10')).toBe('XYZ');
+ const rows=replayShares([{date:'2024-05-10',symbol:historySymbol('FB','2024-05-10'),quantity:2},
+ {date:'2024-06-01',symbol:historySymbol('FB','2024-06-01'),quantity:-2}],[],'2024-05-10','2024-06-01');
+ expect(rows[0].quantities.META).toBe(2);
+ expect(rows.at(-1).quantities.META).toBe(0);
+});
 test('reverse splits reconcile later sales without zeroing pre-delisting holdings',()=>{
  const fills=[{date:'2024-06-01',symbol:'TWOU',quantity:60},{date:'2024-10-01',symbol:'TWOU',quantity:-2}];
  const rows=replayShares(fills,historySplits('TWOU').map(s=>({...s,symbol:'TWOU'})),'2024-06-01','2024-10-02');
