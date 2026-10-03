@@ -7,7 +7,7 @@ function number(value) {
   if (value == null || value === '' || !Number.isFinite(Number(value))) throw Error('Incomplete eToro cash statement');
   return Number(value);
 }
-function prepare(statement) {
+function prepare(statement, {startingCash=0}={}) {
   const activity = statement['Account Activity'], dividends = statement.Dividends;
   if (!Array.isArray(activity) || !activity.length || !Array.isArray(dividends)) throw Error('Missing eToro cash sheets');
   const queues = new Map(), dividendIndexes = new Set();
@@ -20,13 +20,13 @@ function prepare(statement) {
   });
   // Match occurrences, not just equal amounts: identical legitimate payments
   // must survive, while a duplicated detail row must not create extra cash.
-  let unmatchedDividendDetails=0;
+  let unmatchedDividendDetails=0;const unmatchedDividendDates=[];
   for (const r of dividends) {
     const date=statementDate(`${r['Date of Payment']} 00:00:00`).slice(0,10);
     const q=queues.get(key(date,r['Position ID'],number(r['Net Dividend Received (USD)'])));
-    if (q?.length) dividendIndexes.add(q.shift()); else unmatchedDividendDetails++;
+    if (q?.length) dividendIndexes.add(q.shift()); else {unmatchedDividendDetails++;unmatchedDividendDates.push(date);}
   }
-  const counts=new Map(); let previousBalance=0,previousTime='';
+  const counts=new Map(); let previousBalance=number(startingCash),previousTime='';
   const records=activity.map((r,i) => {
     const time=statementDate(r.Date),date=time.slice(0,10),amount=number(r.Amount),balance=number(r.Balance);
     if (time<previousTime) throw Error('eToro cash activity is not chronological');
@@ -51,7 +51,7 @@ function prepare(statement) {
       positionId:r['Position ID'] == null ? null : String(r['Position ID'])};
   });
   return {records,events:records.filter(r=>r.type),from:records[0].date,to:records.at(-1).date,
-    endingCash:previousBalance,unmatchedDividendDetails};
+    endingCash:previousBalance,unmatchedDividendDetails,unmatchedDividendDates};
 }
 
 async function importStatement(connection, statement, {dryRun=false}={}) {

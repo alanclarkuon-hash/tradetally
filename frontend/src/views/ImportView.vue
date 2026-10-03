@@ -2,9 +2,9 @@
   <div class="content-wrapper py-8">
     <div class="mb-8 flex items-start justify-between">
       <div>
-        <h1 class="heading-page">Import Trades</h1>
+        <h1 class="heading-page">Import</h1>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-          Import your trades from files exported from major brokers.
+          Import trade history or update statement cashflow and income.
         </p>
       </div>
       <router-link to="/broker-sync" class="mt-1 btn-secondary inline-flex items-center gap-2">
@@ -31,7 +31,37 @@
       <!-- Import Form (primary action, shown first) -->
       <div class="card">
         <div class="card-body">
-          <form @submit.prevent="handleImport" class="space-y-6">
+            <div>
+              <label for="broker" class="label">Broker Format</label>
+              <BaseSelect
+                v-model="selectedBroker"
+                noun="brokers"
+                :options="brokerFormatOptions"
+              />
+
+              <!-- Quick-pick chips (drive the same state as the dropdown) -->
+              <div class="mt-2 flex items-center gap-1.5 pb-1 h-scroll-fade">
+                <span class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">Quick pick:</span>
+                <button
+                  v-for="brokerOption in popularBrokerOptions"
+                  :key="brokerOption.value"
+                  type="button"
+                  class="flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition"
+                  :class="selectedBroker === brokerOption.value
+                    ? 'bg-primary-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'"
+                  @click="selectQuickBroker(brokerOption.value)"
+                >
+                  {{ brokerOption.label }}
+                </button>
+              </div>
+              <p v-if="selectedBroker !== 'etoro_statement'" class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
+                We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
+              </p>
+            </div>
+
+          <EtoroStatementImport v-if="selectedBroker === 'etoro_statement'" />
+          <form v-else @submit.prevent="handleImport" class="space-y-6">
             <!-- File Upload Drop Zone -->
             <div>
               <div
@@ -91,35 +121,6 @@
                   Clear
                 </button>
               </div>
-            </div>
-
-            <div>
-              <label for="broker" class="label">Broker Format</label>
-              <BaseSelect
-                v-model="selectedBroker"
-                noun="brokers"
-                :options="brokerFormatOptions"
-              />
-
-              <!-- Quick-pick chips (drive the same state as the dropdown) -->
-              <div class="mt-2 flex items-center gap-1.5 pb-1 h-scroll-fade">
-                <span class="flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">Quick pick:</span>
-                <button
-                  v-for="brokerOption in popularBrokerOptions"
-                  :key="brokerOption.value"
-                  type="button"
-                  class="flex-shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium transition"
-                  :class="selectedBroker === brokerOption.value
-                    ? 'bg-primary-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700/60 dark:text-gray-300 dark:hover:bg-gray-700'"
-                  @click="selectQuickBroker(brokerOption.value)"
-                >
-                  {{ brokerOption.label }}
-                </button>
-              </div>
-              <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400">
-                We'll automatically detect your broker from the CSV file. Select a specific broker only if auto-detection doesn't work.
-              </p>
             </div>
 
             <!-- Contextual broker export guide: only appears once a broker is chosen -->
@@ -1266,6 +1267,7 @@
 </template>
 
 <script setup>
+import EtoroStatementImport from '@/components/import/EtoroStatementImport.vue'
 import { ref, defineAsyncComponent, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
@@ -1418,6 +1420,7 @@ const brokerFormatOptions = computed(() => {
     {
       label: 'Or select your broker',
       options: [
+        { value: 'etoro_statement', label: 'eToro cashflow & income (XLSX)' },
         { value: 'generic', label: 'Generic CSV' },
         { value: 'lightspeed', label: 'Lightspeed Trader' },
         { value: 'schwab', label: 'Charles Schwab' },
@@ -1500,6 +1503,7 @@ const showDemoDataCta = ref(false)
 
 const popularBrokerOptions = [
   { value: 'auto', label: 'Auto-Detect' },
+  { value: 'etoro_statement', label: 'eToro cashflow & income' },
   { value: 'schwab', label: 'Schwab' },
   { value: 'thinkorswim', label: 'thinkorswim' },
   { value: 'ibkr', label: 'IBKR' },

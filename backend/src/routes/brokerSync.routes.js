@@ -32,6 +32,7 @@ router.get('/connections', brokerSyncController.getConnections);
 router.get('/logs', brokerSyncController.getAllSyncLogs);
 router.get('/transfers', brokerSyncController.getTransfers);
 router.use('/ig-files', brokerSyncLimiter, require('./igUploads.routes'));
+router.use('/etoro-statements', brokerSyncLimiter, require('./etoroUploads.routes'));
 
 // Get a specific connection
 router.get('/connections/:id', brokerSyncController.getConnection);
