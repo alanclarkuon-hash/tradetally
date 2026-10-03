@@ -36,8 +36,8 @@
           </div></div>
         </div><p v-else class="empty">No priced holdings for these accounts.</p>
         <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span>{{ focus.industry }}</span><span>Value <b>{{ money(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ signedMoney(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
-        <details v-if="focus?.categories?.length" class="coverage"><summary>CoinGecko categories for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
-        <p class="scope-note">Crypto uses one theme per coin to avoid double counting. Select a coin to see all its CoinGecko categories; AI takes priority when listed.</p>
+        <details v-if="focus?.categories?.length" class="coverage"><summary>{{ focus.categorySource }} labels for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
+        <p class="scope-note">Funds & ETFs use Yahoo Finance fund categories; unavailable labels stay Unclassified. Crypto uses one CoinGecko theme per coin, with AI taking priority. Each holding is counted once. Select a holding to see its available labels.</p>
       </section>
       <div v-if="incomplete || data.coverage.missingPnl || data.coverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="data.coverage.missingPnl"> {{ data.coverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="data.coverage.unclassified"> {{ data.coverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps.</p>
@@ -66,7 +66,7 @@ const groups=computed(()=>{
   return treemap([...map.values()],{x:0,y:0,w:1000,h:560}).map(g=>{
     const height=Math.max(g.h-26,1)
     const normalize=t=>({...t,x:t.x/g.w*100,y:t.y/height*100,w:t.w/g.w*100,h:t.h/height*100,area:t.w*t.h,pixelW:t.w})
-    if(g.name!=='Crypto assets')return {...g,categories:[],tiles:treemap(g.items,{x:0,y:0,w:g.w,h:height}).map(normalize)}
+    if(!['Crypto assets','Funds & ETFs'].includes(g.name))return {...g,categories:[],tiles:treemap(g.items,{x:0,y:0,w:g.w,h:height}).map(normalize)}
     const subgroups=new Map()
     for(const item of g.items){const name=item.category||'Unclassified';const category=subgroups.get(name)||{name,value:0,items:[]};category.value+=item.value||0;category.items.push(item);subgroups.set(name,category)}
     const categories=treemap([...subgroups.values()],{x:0,y:0,w:g.w,h:height})

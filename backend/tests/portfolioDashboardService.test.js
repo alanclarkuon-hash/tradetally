@@ -5,11 +5,22 @@ jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockTradeChartData:jest.fn()}));
 jest.mock('../src/utils/currencyConverter',()=>({getForexRate:jest.fn()}));
 jest.mock('../src/services/cryptoCategoriesService',()=>({getCategories:jest.fn().mockResolvedValue({categories:[],primaryCategory:null})}));
+jest.mock('../src/services/fundCategoriesService',()=>({getCategories:jest.fn()}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
 const position={symbol:'USDT',instrumentType:'crypto',totalShares:100,currentValue:100,totalCostBasis:100,unrealizedPnL:0,unrealizedPnLPercent:0};
 beforeEach(()=>jest.resetAllMocks());
+test('fund identity overrides cached industry and keeps value counted once',async()=>{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE.L',instrumentType:'stock'}]);
+  getRatesToDisplay.mockResolvedValue({USD:1});
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('classifications')?[{symbol:'EXAMPLE.L',industry:'Incorrect stock industry'}]:[]}));
+  require('../src/utils/yahooFinance').getSymbolProfile.mockResolvedValue({quoteType:'ETF'});
+  require('../src/services/fundCategoriesService').getCategories.mockResolvedValue({primaryCategory:'Technology',categories:['Fund Category: Technology'],source:'Yahoo Finance'});
+  const result=await getDashboard('test-user',{currency:'USD'});
+  expect(result.holdings[0]).toMatchObject({assetClass:'Funds & ETFs',category:'Technology',categorySource:'Yahoo Finance'});
+  expect(result.totals.holdingsValue).toBe(100);expect(result.holdings).toHaveLength(1);
+});
 test('stablecoin wallet is counted once and selected accounts stay isolated',async()=>{
   Portfolio.getPositions.mockResolvedValue([position]);getRatesToDisplay.mockResolvedValue({USD:1});
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM user_accounts')?[{id:'one',account_identifier:'okx-demo',account_name:'Example',broker:'okx',currency:'USD'},{id:'two',account_identifier:'other',broker:'ibkr',currency:'USD'}]:[]}));
