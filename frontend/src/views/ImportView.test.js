@@ -162,6 +162,20 @@ describe('ImportView remembered import preferences', () => {
     wrapper.unmount()
   })
 
+  it('opens the statement workflow from the eToro quick pick and returns to CSV trade imports', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    const button = wrapper.findAll('button').find(node => node.text() === 'eToro cashflow & income')
+    expect(button).toBeDefined()
+    await button.trigger('click')
+    expect(wrapper.find('etoro-statement-import-stub').exists()).toBe(true)
+    expect(wrapper.find('#file-upload').exists()).toBe(false)
+    await wrapper.findAll('select')[0].setValue('generic')
+    expect(wrapper.find('etoro-statement-import-stub').exists()).toBe(false)
+    expect(wrapper.find('#file-upload').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('restores remembered choices on mount', async () => {
     localStorage.setItem('import_strategy_handling', '__blank__')
     localStorage.setItem('import_notes_and_descriptions', 'true')

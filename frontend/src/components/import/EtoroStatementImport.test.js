@@ -1,0 +1,10 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {beforeEach,expect,it,vi} from 'vitest'
+vi.mock('@/services/api',()=>({default:{get:vi.fn(),post:vi.fn()}}))
+import api from '@/services/api'
+import Component from './EtoroStatementImport.vue'
+beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue({data:{data:[{id:'a',name:'eToro USD',through:'2026-01-02'}]}});api.post.mockResolvedValue({data:{data:{token:'checked',newRecords:1,matchedRecords:2,closingCash:105,previousCash:102,newIncome:3,through:'2026-01-03'}}})})
+async function ready(){const w=mount(Component);await flushPromises();const f=w.get('input[type=file]');Object.defineProperty(f.element,'files',{configurable:true,value:[new File(['synthetic'],'statement.xlsx')]});await f.trigger('change');return w}
+it('requires preview before apply and posts only the checked token',async()=>{const w=await ready();expect(w.text()).not.toContain('Apply statement update');await w.get('form').trigger('submit');await flushPromises();expect(w.text()).toContain('Cash reconciles');expect(api.post).toHaveBeenCalledWith('/broker-sync/etoro-statements/preview',expect.any(FormData),expect.any(Object));await w.findAll('button').find(b=>b.text()==='Apply statement update').trigger('click');await flushPromises();expect(api.post).toHaveBeenLastCalledWith('/broker-sync/etoro-statements/apply',{token:'checked'},expect.any(Object));})
+it('changing a file invalidates the preview',async()=>{const w=await ready();await w.get('form').trigger('submit');await flushPromises();await w.get('input[type=file]').trigger('change');expect(w.text()).not.toContain('Apply statement update');})
+it('shows reconciliation failures without offering apply',async()=>{const w=await ready();api.post.mockRejectedValueOnce({response:{data:{message:'Statement overlap differs'}}});await w.get('form').trigger('submit');await flushPromises();expect(w.get('[role=alert]').text()).toContain('overlap differs');expect(w.text()).not.toContain('Apply statement update');})
