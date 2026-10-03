@@ -42,6 +42,7 @@ services:
     ports:
       - "127.0.0.1:8089:80"
     volumes:
+      - ./backend/config:/app/backend/config:ro
       - uploads:/app/backend/uploads
       - app_data:/app/backend/src/data
       - app_logs:/app/backend/src/logs

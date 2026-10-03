@@ -86,7 +86,8 @@ async function getDetails(userId,input,query={}) {
   }
   const sections=await Promise.all(SOURCES.map(s=>readSource(userId,symbol,s)));
   const profile=sections.find(s=>s.key==='symbol_categories').records[0];
-  const reference=sections.find(s=>s.key==='asset_reference_classifications').records[0];
+  const providerReference=sections.find(s=>s.key==='asset_reference_classifications').records[0];
+  const reference=require('./classificationOverrides').applyOverrides([symbol],new Map(providerReference?[[symbol,providerReference]]:[])).get(symbol);
   const trades=sections.find(s=>s.key==='trades').records;
   const isCrypto=trades.some(t=>t.instrument_type==='crypto')||(!profile&&Boolean(CRYPTO_TO_COINGECKO[symbol]));
   const crypto=await require('./cryptoCategoriesService').getCachedCategories(symbol);
