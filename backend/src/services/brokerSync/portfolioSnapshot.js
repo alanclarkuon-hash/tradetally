@@ -27,13 +27,13 @@ async function snapshotPositions(rows, accounts = []) {
   for (const row of rows) {
     if (accounts.length && !accounts.includes(row.account_identifier)) continue;
     for (const p of row.positions) {
-      if (row.broker_type === 'etoro') {
+      if (['etoro','okx'].includes(row.broker_type)) {
         positions.push({ symbol: p.symbol, holdingId: null, source: 'trades', positionSource: 'broker',
-          notes: null, sector: null, targetAllocationPercent: null, totalShares: p.quantity,
+          notes: p.notes || null, sector: null, targetAllocationPercent: null, totalShares: p.quantity,
           totalCostBasis: p.totalCost, averageCostBasis: p.totalCost / p.quantity,
           totalDividendsReceived: 0, dividendYieldOnCost: null, lastDividendDate: null,
           accountIdentifiers: [row.account_identifier], lotCount: p.lotCount || 1, openedAt: p.openedAt,
-          brokers: 'etoro', instrumentType: p.instrumentType, contractSize: 1, pointValue: null,
+          brokers: row.broker_type, instrumentType: p.instrumentType, contractSize: 1, pointValue: null,
           brokerCurrentPrice: p.currentValue / p.quantity, brokerPriceAsOf: new Date(row.synced_at).toISOString() });
         continue;
       }
@@ -66,12 +66,12 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
     t.broker === row.broker_type && t.account_identifier === row.account_identifier));
   const synthetic = [];
   for (const row of covered) for (const p of row.positions) {
-    if (row.broker_type === 'etoro') {
-      const related = openTrades.filter(t => t.broker === 'etoro' &&
+    if (['etoro','okx'].includes(row.broker_type)) {
+      const related = openTrades.filter(t => t.broker === row.broker_type &&
         t.account_identifier === row.account_identifier && t.symbol === p.symbol);
       synthetic.push({ symbol: p.symbol, side: 'long', quantity: p.quantity,
         entry_price: p.totalCost / p.quantity, entry_time: p.openedAt, original_currency: 'USD',
-        instrument_type: p.instrumentType, broker: 'etoro', account_identifier: row.account_identifier,
+        instrument_type: p.instrumentType, broker: row.broker_type, account_identifier: row.account_identifier,
         _brokerRelatedTrades: related, _brokerQuote: { c: p.currentValue / p.quantity,
           currency: 'USD', asOf: new Date(row.synced_at).toISOString() } });
       continue;
