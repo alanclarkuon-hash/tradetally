@@ -34,3 +34,8 @@ test('a file for another account is rejected and incomplete reports never reach 
   await expect(service.preview('user-f',[{...files()[0],fieldname:'87654321-1234-1234-1234-123456789abc:transactions'}])).rejects.toThrow(/selected account/);
   await expect(service.preview('user-f',[files()[0]])).rejects.toThrow(/every requested report/);expect(importAccounts).not.toHaveBeenCalled();
 });
+test('multiple earlier execution PDFs are read privately alongside the required latest statements',async()=>{
+  const extras=[1,2].map(n=>({fieldname:`${id}:execution`,size:10,buffer:Buffer.from(`earlier-${n}`)}));
+  await service.preview('user-g',[...files(),...extras]);expect(pdf.text).toHaveBeenCalledTimes(4);
+  expect(importAccounts).toHaveBeenCalledWith('user-g',expect.arrayContaining([expect.objectContaining({shareTrades:[]})]),{dryRun:true});
+});

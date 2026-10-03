@@ -24,19 +24,24 @@ async function preview(userId,files) {
     if(!files.length||files.reduce((sum,f)=>sum+f.size,0)>30*1024*1024)reject('Upload up to 30 MB of reports in total.');
     const base=await saved(userId),uploads=new Map();
     for(const f of files) {
-      const match=f.fieldname.match(/^([0-9a-f-]{36}):(transactions|activity|breakdown|trading|ledger)$/);
+      const match=f.fieldname.match(/^([0-9a-f-]{36}):(transactions|activity|breakdown|trading|ledger|execution)$/);
       if(!match||!base.rows.some(r=>r.id===match[1]))reject('An uploaded file does not belong to a selected account.');
       if(!uploads.has(match[1]))uploads.set(match[1],{});
       const fields=uploads.get(match[1]);
-      if(fields[match[2]])reject('Upload one file for each report type.');
-      fields[match[2]]=f;
+      if(match[2]==='execution') {
+        if(base.rows.find(r=>r.id===match[1]).payload.igFileInput.kind!=='share_dealing')reject('Earlier trade statements are for share-dealing accounts.');
+        (fields.execution||=[]).push(f);
+      } else {
+        if(fields[match[2]])reject('Upload one file for each report type.');
+        fields[match[2]]=f;
+      }
     }
     const inputs=[];
     for(const row of base.rows) {
       const original=row.payload.igFileInput,fields=uploads.get(row.id);
       if(!fields){inputs.push(original);continue;}
       const needed=required(original.kind);
-      if(needed.some(k=>!fields[k])||Object.keys(fields).some(k=>!needed.includes(k)))reject('Please include every requested report for each selected account.');
+      if(needed.some(k=>!fields[k])||Object.keys(fields).some(k=>!needed.includes(k)&&k!=='execution'))reject('Please include every requested report for each selected account.');
       const updated={...original};
       for(const k of needed.filter(k=>!['trading','ledger'].includes(k)))updated[k]=fields[k].buffer.toString('utf8');
       const trading=await pdf.text(fields.trading.buffer),ledger=await pdf.text(fields.ledger.buffer);
@@ -44,6 +49,7 @@ async function preview(userId,files) {
         const shares=require('./igShares');
         updated.shareLegacyHoldings=original.shareLegacyHoldings||original.confirmation.holdings;
         updated.shareTrades=shares.mergeTrades(original.shareTrades||[],shares.statementTrades(trading));
+        for(const f of fields.execution||[])updated.shareTrades=shares.mergeTrades(updated.shareTrades,shares.statementTrades(await pdf.text(f.buffer)));
       }
       updated.confirmation=pdf.confirmation(original,trading,ledger,updated.transactions);
       if(original.kind==='share_dealing')updated.shareSecurities=[...new Map([
