@@ -29,3 +29,10 @@ following the global single-account filter, without changing other page filters.
 Validation covers stablecoin double-counting, account isolation, unavailable cash,
 dated price conversion, period cost basis and treemap area/overlap behavior.
 No private statements, identifiers, credentials or screenshots belong in this branch.
+
+Crypto remains a single asset class with category subgroups. CoinGecko category
+labels are cached for 24 hours in the test data volume. One display theme is
+chosen per coin (AI, RWA, DeFi, Meme, L2, L1, then other descriptive labels),
+while all provider labels remain available in holding details. This is a display
+convention, not an exclusive classification. Missing categories remain unknown.
+Provider failures preserve cached labels; rate limiting pauses further requests.

@@ -114,11 +114,16 @@ async function getDashboard(userId, query={}) {
     }
   }
   const holdings=[],stablecoins=[];
+  const categoryService=require('./cryptoCategoriesService');
+  const categoriesBySymbol=new Map(await Promise.all(positions.filter(p=>p.instrumentType==='crypto' && !STABLE.has(p.symbol) && !FIAT.has(p.symbol)).map(async p=>[p.symbol,await categoryService.getCategories(p.symbol)])));
   let missingPrices=0;
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
     const result=periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
-    const row={symbol:p.symbol,industry:industriesBySymbol.get(p.symbol)||p.sector||(p.instrumentType==='crypto'?'Crypto assets':'Unclassified'),
+    const metadata=categoriesBySymbol.get(p.symbol);
+    const row={symbol:p.symbol,industry:p.instrumentType==='crypto'?(metadata?.primaryCategory?`Crypto · ${metadata.primaryCategory}`:'Crypto · Unclassified'):industriesBySymbol.get(p.symbol)||p.sector||'Unclassified',
+      assetClass:p.instrumentType==='crypto'?'Crypto assets':null,category:metadata?.primaryCategory||'Unclassified',
+      categories:metadata?.categories||[],categorySource:metadata?.source||null,categoryAsOf:metadata?.asOf||null,categoryStale:metadata?.stale||false,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
       quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,accounts:p.accountIdentifiers};

@@ -4,6 +4,7 @@ jest.mock('../src/models/Account',()=>({getCashflow:jest.fn()}));
 jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockTradeChartData:jest.fn()}));
 jest.mock('../src/utils/currencyConverter',()=>({getForexRate:jest.fn()}));
+jest.mock('../src/services/cryptoCategoriesService',()=>({getCategories:jest.fn().mockResolvedValue({categories:[],primaryCategory:null})}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
