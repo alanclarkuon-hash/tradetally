@@ -1234,6 +1234,22 @@ class PortfolioService {
         return;
       }
 
+      // Preserve the sum of broker valuations when the same asset is held
+      // at multiple brokers. A component without a dated quote requires the
+      // normal market-price fallback for the whole combined position.
+      const existingQuoteDate = Date.parse(existing.brokerPriceAsOf);
+      const incomingQuoteDate = Date.parse(position.brokerPriceAsOf);
+      if (Number.isFinite(existing.brokerCurrentPrice) && Number.isFinite(position.brokerCurrentPrice) &&
+          Number.isFinite(existingQuoteDate) && Number.isFinite(incomingQuoteDate) &&
+          existing.totalShares + position.totalShares > 0) {
+        existing.brokerCurrentPrice = (existing.totalShares * existing.brokerCurrentPrice +
+          position.totalShares * position.brokerCurrentPrice) / (existing.totalShares + position.totalShares);
+        // Freshness reflects the oldest component of a blended valuation.
+        existing.brokerPriceAsOf = new Date(Math.min(existingQuoteDate, incomingQuoteDate)).toISOString();
+      } else {
+        existing.brokerCurrentPrice = null;
+        existing.brokerPriceAsOf = null;
+      }
       existing.totalShares += position.totalShares;
       existing.totalCostBasis += position.totalCostBasis;
       existing.averageCostBasis = existing.totalShares > 0
