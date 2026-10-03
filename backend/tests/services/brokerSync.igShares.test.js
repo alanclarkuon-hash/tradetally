@@ -20,6 +20,9 @@ test('reads purchase prices in pence and exact UK execution time independently o
 test('matches new GBP-priced purchases with fees to the exact debit',()=>{
   expect(statementTrades(statement('Bought',2,5,1,-11))[0]).toMatchObject({priceCurrency:'GBP',priceGBP:5,fees:1,cash:-11});
 });
+test('company names containing Market remain intact when removing the order type',()=>{
+  expect(statementTrades(statement().replace('Synthetic PLC','Synthetic Market PLC'))[0].name).toBe('Synthetic Market PLC');
+});
 test.each(['cash','price','quantity','date'])('refuses a %s mismatch between contract and settlement',kind=>{
   const x=input();if(kind==='cash')x.shareTrades[0].cash=-3;
   if(kind==='price')x.shareTrades[0].reportedPrice=101;
