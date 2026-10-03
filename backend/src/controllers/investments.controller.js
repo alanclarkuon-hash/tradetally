@@ -246,6 +246,7 @@ const analyzeStock = async (req, res) => {
           totalSupply: coin.market_data?.total_supply,
           maxSupply: coin.market_data?.max_supply,
           circulatingSupply: coin.market_data?.circulating_supply,
+          categories: require('../services/cryptoCategoriesService').cleanCategories(coin.categories),
           priceChange24h: coin.market_data?.price_change_24h,
           priceChangePercent24h: coin.market_data?.price_change_percentage_24h,
           ath: coin.market_data?.ath?.usd,
