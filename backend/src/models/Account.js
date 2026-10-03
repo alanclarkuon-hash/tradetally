@@ -797,7 +797,8 @@ class Account {
     const ytdData = ytdResult.rows[0] || { ytd_deposits: 0, ytd_withdrawals: 0 };
 
     // Calculate running balance
-    const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
+    const ledger = await require('../services/brokerSync/igCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
+      await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
       await require('../services/brokerSync/trading212CashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
       await require('../services/brokerSync/etoroCashStatement').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
       await require('../services/brokerSync/okxAssetLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
@@ -815,6 +816,8 @@ class Account {
         fees: parseFloat(row.fees) || 0,
         fxAdjustments: Number(row.fx_adjustments || 0),
         income: Number(row.income || 0),
+        transferIn: Number(row.transfer_in || 0),
+        transferOut: Number(row.transfer_out || 0),
         accountFees: Number(row.account_fees || 0),
         withholdingTax: Number(row.withholding_tax || 0),
         deposits: parseFloat(row.deposits) || 0,
@@ -833,6 +836,8 @@ class Account {
       liveCashBalance: ledger?.liveCash || null,
       totalInflow: cashflowData.reduce((sum, d) => sum + d.inflow, 0),
       totalOutflow: cashflowData.reduce((sum, d) => sum + d.outflow, 0),
+      totalTransfersIn: cashflowData.reduce((sum,d)=>sum+d.transferIn,0),
+      totalTransfersOut: cashflowData.reduce((sum,d)=>sum+d.transferOut,0),
       totalDeposits: cashflowData.reduce((sum, d) => sum + d.deposits, 0),
       totalWithdrawals: cashflowData.reduce((sum, d) => sum + d.withdrawals, 0),
       reconciliation: ledger?.reconciliation || null,
@@ -881,7 +886,8 @@ class Account {
     const account = await this.findById(accountId, userId);
     if (!account) return null;
 
-    const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date) ||
+    const ledgerDay = await require('../services/brokerSync/igCashLedger').dayActivity(userId,account,date) ||
+      await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date) ||
       await require('../services/brokerSync/trading212CashLedger').dayActivity(userId,account,date) ||
       await require('../services/brokerSync/etoroCashStatement').dayActivity(userId,account,date) ||
       await require('../services/brokerSync/okxAssetLedger').dayActivity(userId,account,date) ||

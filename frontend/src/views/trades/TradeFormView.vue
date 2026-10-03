@@ -95,7 +95,7 @@
               <label for="instrumentType" class="label">Instrument Type *</label>
               <BaseSelect
                 v-model="form.instrumentType"
-                :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }, { value: 'cfd', label: 'CFD' }, { value: 'forex', label: 'Forex' }]"
+                :options="[{ value: 'stock', label: 'Stock' }, { value: 'option', label: 'Option' }, { value: 'future', label: 'Future' }, { value: 'crypto', label: 'Crypto' }, { value: 'cfd', label: 'CFD' }, { value: 'forex', label: 'Forex' }, { value: 'spread_bet', label: 'Spread bet' }]"
               />
             </div>
 

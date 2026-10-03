@@ -894,7 +894,7 @@ const instrumentTypeOptions = [
   { value: 'future', label: 'Futures' },
   { value: 'crypto', label: 'Crypto' },
   { value: 'cfd', label: 'CFDs' },
-  { value: 'forex', label: 'Forex' }
+  { value: 'forex', label: 'Forex' }, { value: 'spread_bet', label: 'Spread bet' }
 ]
 
 // Option type options
