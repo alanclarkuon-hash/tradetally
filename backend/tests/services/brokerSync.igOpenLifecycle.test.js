@@ -47,3 +47,31 @@ test('changed opening cost or missing closed history rolls back before touching 
   await expect(importAccounts('owner',[account([])])).rejects.toThrow('Full IG trade history');
   expect(client.query.mock.calls.some(([sql])=>sql.startsWith('DELETE FROM trades'))).toBe(false);expect(client.query).toHaveBeenCalledWith('ROLLBACK');
 });
+function stock(){const t=open();delete t.openBet;return {...t,key:'holding:GB0000000001',type:'stock',
+  shareLot:{reference:'SYNTHOPEN',executionVerified:true,reportedPriceGBP:100,settlementTime:'2026-06-03T12:00:00.000Z'},
+  holding:{symbol:'SYNTH.EPIC',name:'Synthetic',isin:'GB0000000001',quantity:1,cost:100,value:110,asOf:'2026-06-03T21:00:00.000Z'}};}
+test('a legacy share seed gains its verified trade date without replacing its journal ID or cash cost',async()=>{
+  const t=stock();t.legacyTrade={key:t.key,symbol:t.symbol,type:'stock',market:t.market,quantity:2,entryPrice:100,
+    exitPrice:null,pnl:null,fees:0,side:'long',entryTime:t.shareLot.settlementTime,exitTime:null,holding:{...t.holding,quantity:2,cost:200,value:220}};
+  const old={id:'existing-share',exit_time:null,executions:[{ig_record_key:t.key,ig_source_hash:tradeHash(t.legacyTrade)}]};
+  setup([old]);const a={...account([t]),kind:'share_dealing'};const r=await importAccounts('owner',[a]);
+  expect(r).toMatchObject({updatedSharePositions:1,importedTrades:0});
+  const update=client.query.mock.calls.find(([sql])=>sql.startsWith('UPDATE trades SET quantity=$1,entry_time'));
+  expect(update[1][1]).toBe(signature.entryTime);expect(update[1][5]).toBe(100);expect(update[1].slice(-2)).toEqual(['owner','existing-share']);
+});
+test('later contract evidence can correct a seed settlement date only when acquisition quantities and cash cost match',async()=>{
+  const t=stock(),settledSignature={...signature,entryTime:t.shareLot.settlementTime};
+  const old={id:'existing-share',exit_time:null,executions:[{ig_record_key:t.key,ig_source_hash:'previous',ig_open_share:true,
+    ig_opening_hash:openingHash(settledSignature),ig_share_execution_time_verified:false,ig_share_settlement_time:t.shareLot.settlementTime}]};
+  setup([old]);expect((await importAccounts('owner',[{...account([t]),kind:'share_dealing'}])).updatedSharePositions).toBe(1);
+  old.executions[0].ig_opening_hash=openingHash({...settledSignature,entryPrice:101});setup([old]);
+  await expect(importAccounts('owner',[{...account([t]),kind:'share_dealing'}])).rejects.toThrow('acquisition changed');
+});
+test('a stock full close preserves the original journal ID and removes the open stock snapshot',async()=>{
+  const t=stock(),old={id:'existing-share',exit_time:null,executions:[{ig_record_key:t.key,ig_source_hash:tradeHash(t),ig_open_share:true,
+    ig_opening_hash:openingHash(signature),ig_share_execution_time_verified:true}]};setup([old]);
+  const {shareLot,holding,openingSignature,...closed}=t;Object.assign(closed,{key:'share-close:SYNTHOPEN:SELL',exitTime:'2026-06-03T12:00:00.000Z',exitPrice:110,pnl:10,shareSettlement:{buy:'SYNTHOPEN',sell:'SELL'}});
+  const a={...account([closed]),kind:'share_dealing',openingSignatures:[{key:'SYNTHOPEN',openKey:t.key,signature,executionVerified:true}]};
+  const r=await importAccounts('owner',[a]);expect(r.closedOpenPositions).toBe(1);expect(r.importedTrades).toBe(0);
+  expect(client.query.mock.calls.find(([sql])=>sql.startsWith('UPDATE trades SET trade_date'))[1].slice(-2)).toEqual(['owner','existing-share']);
+});

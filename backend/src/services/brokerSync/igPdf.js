@@ -61,7 +61,7 @@ function confirmation(base,tradingText,ledgerText,transactions) {
   const end=new Date(localToUTC(`${day}T23:59:59`,'Europe/London')).toISOString();
   const beginning=new Date(Date.parse(localToUTC(`${day}T00:00:00`,'Europe/London'))-1).toISOString();
   if(new Date(`${day}T00:00:00Z`).toISOString().slice(0,10)!==day)reject('Invalid statement date.');
-  const value=tradingText.match(base.kind==='spread_bet'?/\bFunds\s+([\d,]+\.\d{2})/:/Cash balance GBP\s+([\d,]+\.\d{2})/)?.[1];
+  const value=tradingText.match(base.kind==='spread_bet'?/\bFunds\s+([\d,]+\.\d{2})/:/Cash balance GBP\s+([\d,]+\.\d{2})/i)?.[1];
   if(!value)reject('The statement GBP cash balance could not be read.');
   const cash=cents(value)/100,rows=csv(transactions,'TextDate');
   const matches=cutoff=>rows.filter(r=>Date.parse(r.DateUtc+'Z')<=Date.parse(cutoff)).reduce((sum,r)=>sum+cents(r['PL Amount']),0)===cents(cash);
@@ -74,14 +74,14 @@ function confirmation(base,tradingText,ledgerText,transactions) {
   if(base.kind==='spread_bet') {
     openBets=spreadPositions(tradingText,new Date(localToUTC(`${day}T22:00:00`,'Europe/London')).toISOString());
   } else {
-    const known=new Map((base.confirmation.holdings||[]).map(h=>[h.isin,h]));
+    const known=new Map([...(base.shareSecurities||[]),...(base.confirmation.holdings||[])].map(h=>[h.isin,h]));
     for(const line of tradingText.split('\n')) {
       const h=line.match(/^(.+?)\s+([A-Z]{2}[A-Z0-9]{9}\d)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s+([\d,.]+)\s+-?[\d,.]+\s+-?[\d,.]+\s*$/);
       if(!h)continue;
-      if(!known.has(h[2]))reject('A new share holding needs its execution history before it can be imported.');
       const valuationDay=cutoff===beginning?new Date(Date.parse(day+'T12:00:00Z')-86400000).toISOString().slice(0,10):day;
       const asOf=localToUTC(`${valuationDay}T22:00:00`,'Europe/London');
-      holdings.push({...known.get(h[2]),quantity:Number(h[3].replace(/,/g,'')),cost:cents(h[4])/100,value:cents(h[6])/100,asOf:new Date(asOf).toISOString()});
+      holdings.push({...known.get(h[2]),name:known.get(h[2])?.name||h[1].trim(),isin:h[2],symbol:known.get(h[2])?.symbol||h[2],
+        quantity:Number(h[3].replace(/,/g,'')),cost:cents(h[4])/100,value:cents(h[6])/100,asOf:new Date(asOf).toISOString()});
     }
     const total=tradingText.match(/Value of GBP assets\s+([\d,]+\.\d{2})/)?.[1];
     if(total==null||holdings.reduce((sum,h)=>sum+cents(h.value),0)!==cents(total))reject('The holdings table could not be completely reconciled.');

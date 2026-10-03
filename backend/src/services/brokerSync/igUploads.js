@@ -40,7 +40,16 @@ async function preview(userId,files) {
       const updated={...original};
       for(const k of needed.filter(k=>!['trading','ledger'].includes(k)))updated[k]=fields[k].buffer.toString('utf8');
       const trading=await pdf.text(fields.trading.buffer),ledger=await pdf.text(fields.ledger.buffer);
+      if(original.kind==='share_dealing') {
+        const shares=require('./igShares');
+        updated.shareLegacyHoldings=original.shareLegacyHoldings||original.confirmation.holdings;
+        updated.shareTrades=shares.mergeTrades(original.shareTrades||[],shares.statementTrades(trading));
+      }
       updated.confirmation=pdf.confirmation(original,trading,ledger,updated.transactions);
+      if(original.kind==='share_dealing')updated.shareSecurities=[...new Map([
+        ...updated.shareTrades.map(t=>({name:t.name,isin:t.isin,symbol:t.isin})),
+        ...(original.shareSecurities||original.confirmation.holdings),...updated.confirmation.holdings
+      ].map(h=>[h.isin,{name:h.name,symbol:h.symbol,isin:h.isin}])).values()];
       prepare(updated);inputs.push(updated);
     }
     const result=await importAccounts(userId,inputs,{dryRun:true});

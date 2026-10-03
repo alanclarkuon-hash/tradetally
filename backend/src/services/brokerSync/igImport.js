@@ -7,7 +7,9 @@ function openingHash(s) {
   return hash({symbol:s.symbol,entryTime:s.entryTime,entryPrice:s.entryPrice,side:s.side,originalQuantity:s.originalQuantity});
 }
 function tradeHash(t) {
-  if(t.openBet)return hash({key:t.key,quantity:t.quantity,openingHash:openingHash(t.openingSignature)});
+  if(t.openBet||t.shareLot)return hash({key:t.key,quantity:t.quantity,openingHash:openingHash(t.openingSignature)});
+  if(t.shareSettlement)return hash({key:t.key,symbol:t.symbol,entryTime:t.entryTime,exitTime:t.exitTime,entryPrice:t.entryPrice,exitPrice:t.exitPrice,
+    quantity:t.quantity,pnl:t.pnl,fees:t.fees,openingKey:t.openingKey,buy:t.shareSettlement.buy,sell:t.shareSettlement.sell});
   if(!t.holding)return hash(t);
   // Monthly valuations can change without changing the acquired holding.
   const {value,asOf,name,symbol,isin,quantity,cost,...extra}=t.holding;
@@ -15,10 +17,10 @@ function tradeHash(t) {
   // so stored fingerprints remain valid when inputs come back from the DB.
   return hash({...t,holding:{name,symbol,isin,quantity,cost,...extra}});
 }
-function sameCash(a,b) {
+function sameCash(a,b,shareMigration=false) {
   // PostgreSQL JSONB reorders keys. Compare financial fields rather than the
   // serialization order, while still refusing changed dates or descriptions.
-  return !!a && !!b && ['reference','time','date','amount','cash','type','description'].every(key=>a[key]===b[key]);
+  return !!a && !!b && ['reference','time','date','amount','cash',...(shareMigration?[]:['type','description'])].every(key=>a[key]===b[key]);
 }
 
 async function importAccounts(userId,inputs,{dryRun=true}={}) {
@@ -36,7 +38,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`ig-file:${userId}`]);
-    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,closedOpenPositions:0};
+    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,updatedSharePositions:0,closedOpenPositions:0};
     for (const a of accounts) {
       let old = (await client.query("SELECT * FROM user_accounts WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       if (old.length>1) throw Error('Ambiguous managed IG account');
@@ -48,14 +50,19 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       const current=new Map(a.records.map(r=>[r.reference,r]));
       for(const report of reports) for(const record of report.records) {
         const next=current.get(record.reference);
-        if(!sameCash(next,record)) throw Error('An existing IG cash record changed or full history is missing');
+        const shareMigration=a.kind==='share_dealing'&&record.type==='asset_adjustment'&&next?.type==='share_trade';
+        if(!sameCash(next,record,shareMigration)) throw Error('An existing IG cash record changed or full history is missing');
       }
       const previous=(await client.query("SELECT id,executions,exit_time FROM trades WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       const byKey=new Map(previous.map(t=>[t.executions?.[0]?.ig_record_key,t]));
       if(byKey.size!==previous.length || byKey.has(undefined)) throw Error('Unrecognised existing IG journal entry');
       for(const oldTrade of previous.filter(t=>!a.trades.some(next=>next.key===t.executions[0].ig_record_key))) {
-        const e=oldTrade.executions[0],opening=a.openingSignatures.find(o=>`open:${o.key}`===e.ig_record_key);
-        if(!e.ig_open_bet||oldTrade.exit_time||!opening||e.ig_opening_hash!==openingHash(opening.signature))throw Error('Full IG trade history is required');
+        const e=oldTrade.executions[0],opening=a.openingSignatures.find(o=>(o.openKey||`open:${o.key}`)===e.ig_record_key);
+        const verifiedLegacy=opening?.legacyTrade&&e.ig_source_hash===tradeHash(opening.legacyTrade);
+        const verifiedDate=opening?.executionVerified&&e.ig_open_share&&e.ig_share_execution_time_verified===false&&
+          e.ig_opening_hash===openingHash({...opening.signature,entryTime:e.ig_share_settlement_time});
+        if(oldTrade.exit_time||!opening||(!(e.ig_open_bet||e.ig_open_share)&&!verifiedLegacy)||
+          (!verifiedLegacy&&!verifiedDate&&e.ig_opening_hash!==openingHash(opening.signature)))throw Error('Full IG trade history is required');
         // Reuse the existing journal ID for the final newly closed portion.
         // This preserves notes, tags and attachments on the open journal row.
         const finalClose=a.trades.filter(t=>t.exitTime&&t.openingKey===opening.key&&!byKey.has(t.key))
@@ -67,6 +74,29 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       for(const t of a.trades) {
         const oldTrade=byKey.get(t.key), sourceHash=tradeHash(t);
         if(oldTrade&&!oldTrade.replaceOpen) {
+          if(t.shareLot) {
+            const prior=oldTrade.executions[0],legacy=t.legacyTrade&&prior.ig_source_hash===tradeHash(t.legacyTrade);
+            const verifiedDate=t.shareLot.executionVerified&&prior.ig_open_share&&prior.ig_share_execution_time_verified===false&&
+              prior.ig_opening_hash===openingHash({...t.openingSignature,entryTime:prior.ig_share_settlement_time});
+            if(oldTrade.exit_time||(!legacy&&!verifiedDate&&(!prior.ig_open_share||prior.ig_opening_hash!==openingHash(t.openingSignature))))throw Error('An IG share acquisition changed; review required');
+            if(prior.ig_source_hash!==sourceHash) {
+              const rate=rates.get(t.entryTime.slice(0,10));
+              const executions=oldTrade.executions.map(e=>({...e,quantity:t.quantity,price:t.entryPrice*rate,datetime:t.entryTime,
+                ig_source_hash:sourceHash,ig_open_share:true,ig_share_reference:t.openingKey,ig_opening_hash:openingHash(t.openingSignature),
+                ig_share_execution_time_verified:t.shareLot.executionVerified,ig_share_reported_price_gbp:t.shareLot.reportedPriceGBP,
+                ig_share_settlement_time:t.shareLot.settlementTime}));
+              await client.query(`UPDATE trades SET quantity=$1,entry_time=$2,trade_date=$3,entry_price=$4,exchange_rate=$5,
+                original_entry_price_currency=$6,executions=$7::jsonb,
+                notes=CASE WHEN notes=$8 OR notes='IG share purchase. Original execution statement not supplied; journal date is the cash settlement date.'
+                  THEN $9 ELSE notes END WHERE user_id=$10 AND id=$11 AND exit_time IS NULL`,
+                [t.quantity,t.entryTime,t.entryTime.slice(0,10),t.entryPrice*rate,rate,t.entryPrice,JSON.stringify(executions),
+                  'IG statement-confirmed holding following share consolidation; cost preserved from cash adjustment.',
+                  t.shareLot.executionVerified?'IG share purchase. Cost includes settled charges; trade and cash settlement dates are recorded separately.':
+                    'IG share purchase. Original execution statement not supplied; journal date is the cash settlement date.',userId,oldTrade.id]);
+              result.updatedSharePositions++;
+            }
+            result.matchedTrades++;continue;
+          }
           if(t.openBet) {
             if(oldTrade.exit_time||!oldTrade.executions[0].ig_open_bet||oldTrade.executions[0].ig_opening_hash!==openingHash(t.openingSignature))throw Error('An IG open-bet acquisition changed; review required');
             if(oldTrade.executions[0].ig_source_hash!==sourceHash) {
@@ -88,7 +118,10 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         const rate=rates.get((t.exitTime || t.entryTime).slice(0,10));
         const common={ig_record_key:t.key,ig_source_hash:sourceHash,ig_market:t.market,ig_opening_reference:t.openingKey,
           ig_reported_total_gbp:t.sourceTotal,ig_original_currency:'GBP',ig_file_source:true,
-          ...(t.openBet?{ig_open_bet:true,ig_opening_hash:openingHash(t.openingSignature)}:{})};
+          ...(t.openBet?{ig_open_bet:true,ig_opening_hash:openingHash(t.openingSignature)}:{}),
+          ...(t.shareLot?{ig_open_share:true,ig_share_reference:t.openingKey,ig_opening_hash:openingHash(t.openingSignature),
+            ig_share_execution_time_verified:t.shareLot.executionVerified,ig_share_reported_price_gbp:t.shareLot.reportedPriceGBP,
+            ig_share_settlement_time:t.shareLot.settlementTime}:{})};
         const executions=[{...common,type:'entry',action:t.side==='long'?'buy':'sell',quantity:t.quantity,
           price:t.entryPrice*rate,datetime:t.entryTime,ig_native_level:t.entryPrice}];
         if(t.exitTime) executions.push({...common,type:'exit',action:t.side==='long'?'sell':'buy',quantity:t.quantity,
@@ -112,10 +145,10 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
             t.entryPrice,t.exitPrice,t.pnl,t.fees,JSON.stringify(executions),t.type==='spread_bet'
               ?(t.openBet?`IG remaining open stake: ${t.market}. Quantity is GBP per point; funding stays in cashflow until allocated by the closed report.`:
                 `IG spread bet: ${t.market}. Quantity is GBP stake per point. Reported settled P&L includes funding/borrowing/stop fees; dividends are separate income.`)
-              :'IG statement-confirmed holding following share consolidation; cost preserved from cash adjustment.']);
+              :'IG share purchase or sale. Cost and proceeds include settled charges; cashflow retains the separate settlement date.']);
         result.importedTrades++;
       }
-      for(const e of a.records.filter(r=>!['trade','asset_adjustment'].includes(r.type))) {
+      for(const e of a.records.filter(r=>!['trade','asset_adjustment','share_trade'].includes(r.type))) {
         const oldEvent=(await client.query("SELECT amount,event_type,event_date FROM broker_cash_events WHERE user_id=$1 AND account_id=$2 AND broker_type='ig' AND reference_id=$3",[userId,account.id,e.reference])).rows[0];
         if(oldEvent && (cents(oldEvent.amount)!==cents(e.amount) || oldEvent.event_type!==e.type || dateKey(oldEvent.event_date)!==e.date)) throw Error('Existing IG cash event changed');
         const insert=await client.query(`INSERT INTO broker_cash_events(user_id,account_id,broker_type,reference_id,event_type,event_date,amount,currency,amount_usd,description,metadata)
@@ -126,13 +159,21 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       await client.query(`INSERT INTO broker_cash_reports(user_id,account_id,broker_type,from_date,to_date,currency,starting_cash,ending_cash,records)
         VALUES($1,$2,'ig',$3,$4,'GBP',0,$5,$6::jsonb) ON CONFLICT(user_id,account_id,broker_type,from_date,to_date)
         DO UPDATE SET ending_cash=EXCLUDED.ending_cash,records=EXCLUDED.records,updated_at=NOW()`,[userId,account.id,a.from,a.to,a.endingCash,JSON.stringify(a.records)]);
-      const holdings = a.trades.filter(t=>t.holding).map(t=>{
+      const stockLots = a.trades.filter(t=>t.holding).map(t=>{
         const rate=rates.get(t.entryTime.slice(0,10)),valuationRate=rates.get(t.holding.asOf.slice(0,10));
         // Statement prices are explicitly dated, never presented as live quotes.
         return {symbol:t.symbol,quantity:t.quantity,totalCost:t.entryPrice*t.quantity*rate,
           currentValue:Number(t.holding.value)*valuationRate,instrumentType:'stock',openedAt:t.entryTime,
           notes:'IG monthly statement valuation; updated by file import',lotCount:1};
       });
+      const groupedHoldings=new Map();
+      for(const p of stockLots) {
+        const previous=groupedHoldings.get(p.symbol);
+        if(previous){previous.quantity+=p.quantity;previous.totalCost+=p.totalCost;previous.currentValue+=p.currentValue;previous.lotCount++;
+          if(p.openedAt<previous.openedAt)previous.openedAt=p.openedAt;}
+        else groupedHoldings.set(p.symbol,{...p});
+      }
+      const holdings=[...groupedHoldings.values()];
       for(const t of a.trades.filter(t=>t.openBet)) {
         const p=t.openBet,rate=rates.get(p.asOf.slice(0,10));
         holdings.push({symbol:t.symbol,quantity:t.quantity,side:t.side,instrumentType:'spread_bet',

@@ -39,7 +39,7 @@ function london(text) {
   if (new Date(`${naive}Z`).toISOString().slice(0, 19) !== naive) fail('invalid breakdown date');
   return new Date(localToUTC(naive, 'Europe/London')).toISOString();
 }
-function classify(row) {
+function classify(row,kind) {
   const text = row.MarketName, code = row['Transaction type'];
   if (code === 'DEAL') return ['trade', 'Closed spread bet'];
   if (/Funds Transfer (?:to|from)/i.test(text)) return [cents(row['PL Amount']) >= 0 ? 'transfer_in' : 'transfer_out', 'Transfer between IG accounts'];
@@ -48,6 +48,7 @@ function classify(row) {
   if (/withholding|witholding/i.test(text)) return ['tax', 'Dividend withholding tax'];
   if (/Interest for|Stock Borrowing|CRPREM/i.test(text)) return ['account_fee', 'Position funding or borrowing / stop premium'];
   if (/Reabold.*CONS/i.test(text)) return ['asset_adjustment', 'Share consolidation adjustment'];
+  if(kind==='share_dealing'&&require('./igShares').descriptor(row))return ['asset_adjustment','Share settlement'];
   if (/Bank Deposit|Card payment/i.test(text) && code === 'DEPO') return ['deposit', 'Bank or card deposit'];
   if (/Returned to card|Bank Withdrawal|Bank payment/i.test(text) && code === 'WITH') return ['withdrawal', 'Bank or card withdrawal'];
   fail('unrecognised cash transaction type');
@@ -60,7 +61,7 @@ function prepare(input) {
   const records = rows.map(r => {
     if (r.CurrencyIsoCode !== 'GBP' || !r.Reference || seen.has(r.Reference)) fail('duplicate reference or unsupported currency');
     seen.add(r.Reference);
-    const [type, description] = classify(r), time = utc(r.DateUtc), amount = cents(r['PL Amount']) / 100;
+    const [type, description] = classify(r,input.kind), time = utc(r.DateUtc), amount = cents(r['PL Amount']) / 100;
     if (['deposit','transfer_in'].includes(type) && amount < 0 || ['withdrawal','transfer_out','tax'].includes(type) && amount > 0) fail('cash direction mismatch');
     return { reference: r.Reference, time, date: time.slice(0,10), amount, cash: amount, type, description };
   }).sort((a,b) => a.time.localeCompare(b.time) || a.reference.localeCompare(b.reference));
@@ -147,15 +148,9 @@ function prepare(input) {
     }
   } else {
     if (records.some(r => r.type === 'trade')) fail('share trades require a share execution report');
-    for (const h of confirmation.holdings || []) {
-      if (!h.symbol || !/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(h.isin) || number(h.quantity) <= 0 || number(h.cost) < 0 || number(h.value)<0 || !Number.isFinite(Date.parse(h.asOf))) fail('incomplete share holding');
-      const adjustment = records.filter(r => r.type === 'asset_adjustment');
-      if (adjustment.length !== 1 || cents(h.cost) !== -cents(adjustment[0].cash)) fail('share consolidation needs verified cost history');
-      trades.push({key: `holding:${h.isin}`, symbol:h.symbol, type:'stock', market:h.name, quantity:number(h.quantity),
-        entryPrice:number(h.cost)/number(h.quantity), exitPrice:null, pnl:null, fees:0, side:'long',
-        entryTime:adjustment[0].time, exitTime:null, holding:h});
-    }
-    if (records.filter(r => r.type === 'asset_adjustment').length !== trades.length) fail('unreconciled share adjustment');
+    for(const h of confirmation.holdings||[])if(!h.symbol||!/^[A-Z]{2}[A-Z0-9]{9}\d$/.test(h.isin)||number(h.quantity)<=0||number(h.cost)<0||number(h.value)<0||!Number.isFinite(Date.parse(h.asOf)))fail('incomplete share holding');
+    const shares=require('./igShares').build(input,rows,records);
+    trades.push(...shares.trades);openingSignatures.push(...shares.openingSignatures);
   }
   const identifier = `IG ${input.kind === 'spread_bet' ? 'SB' : 'SD'} ${input.identity}`;
   const fingerprint = crypto.createHash('sha256').update(JSON.stringify({records,trades})).digest('hex');

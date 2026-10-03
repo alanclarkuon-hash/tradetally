@@ -8,6 +8,11 @@ function calculate(report,start,end) {
     const r=rows.get(e.date)||{date:e.date,trade_inflow:0,trade_outflow:0,fees:0,deposits:0,withdrawals:0,income:0,account_fees:0,withholding_tax:0,inflow:0,outflow:0,transfer_in:0,transfer_out:0};
     if(e.cash>=0)r.inflow+=e.cash;else r.outflow-=e.cash;
     if(e.type==='trade'){if(e.cash>=0)r.trade_inflow+=e.cash;else r.trade_outflow-=e.cash;}
+    if(e.type==='share_trade') {
+      const fee=e.shareFees||0;r.fees+=fee;
+      if(e.cash>=0){r.trade_inflow+=e.cash+fee;r.inflow+=fee;r.outflow+=fee;}
+      else r.trade_outflow+=-e.cash-fee;
+    }
     if(e.type==='deposit')r.deposits+=e.cash;
     if(e.type==='withdrawal')r.withdrawals-=e.cash;
     if(e.type==='transfer_in')r.transfer_in+=e.cash;
