@@ -45,6 +45,7 @@
           </table>
         </div>
         <p class="text-sm text-gray-600 dark:text-gray-400">{{ preview.importedTrades }} new trade or holding records · {{ preview.importedEvents }} new cash events · {{ preview.transfers }} internal transfers linked across your accounts.</p>
+        <p v-if="preview.updatedOpenPositions || preview.closedOpenPositions" class="text-sm text-gray-600 dark:text-gray-400">{{ preview.updatedOpenPositions || 0 }} remaining spread-bet stakes updated · {{ preview.closedOpenPositions || 0 }} positions now fully closed.</p>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ preview.notice }} A private database backup is taken before importing. Existing matching records are skipped.</p>
         <button type="button" class="btn-primary" :disabled="!!busy" @click="apply">{{ busy === 'apply' ? 'Backing up and importing…' : 'Import checked reports' }}</button>
       </div>
@@ -78,7 +79,7 @@ async function apply(){
   if(!preview.value||busy.value)return
   busy.value='apply';error.value=''
   try{const result=(await api.post('/broker-sync/ig-files/apply',{token:preview.value.token},{timeout:180000})).data.data
-    success.value=`Import finished: ${result.importedTrades} new trade or holding records and ${result.importedEvents} new cash events. Your balances are reconciled.`;preview.value=null}
+    success.value=`Import finished: ${result.importedTrades} new trade or holding records and ${result.importedEvents} new cash events. ${result.updatedOpenPositions || 0} open stakes updated; ${result.closedOpenPositions || 0} positions fully closed. Your balances are reconciled.`;preview.value=null}
   catch(e){error.value=message(e)}finally{busy.value=''}
 }
 onMounted(async()=>{try{accounts.value=(await api.get('/broker-sync/ig-files/accounts')).data.data}catch(e){error.value=message(e)}finally{loading.value=false}})

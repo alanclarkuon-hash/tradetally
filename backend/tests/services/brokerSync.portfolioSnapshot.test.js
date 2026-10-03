@@ -59,4 +59,14 @@ describe('broker-reported holdings', () => {
     expect(dashboard[0]).toMatchObject({ totalQuantity: 0.5, totalCost: 100, currency: 'USD',
       brokerQuote: { c: 240, currency: 'USD' }, trades: lots });
   });
+  test('spread-bet statements show separate long/short exposure and do not inflate owned investments',async()=>{
+    const rows=[{broker_type:'ig',account_identifier:'IG SB SYNTH',synced_at:'2026-06-03T21:00:00Z',positions:[
+      {symbol:'SYNTH.EPIC',quantity:.5,side:'long',totalCost:50,currentValue:55,unrealizedPnL:4.5,instrumentType:'spread_bet',openedAt:'2026-06-01T12:00:00Z'},
+      {symbol:'SYNTH.EPIC',quantity:.25,side:'long',totalCost:25,currentValue:27.5,unrealizedPnL:2.25,instrumentType:'spread_bet',openedAt:'2026-06-01T12:00:00Z'},
+      {symbol:'SYNTH.EPIC',quantity:.5,side:'short',totalCost:60,currentValue:55,unrealizedPnL:5,instrumentType:'spread_bet',openedAt:'2026-06-02T12:00:00Z'}]}];
+    expect(await snapshotPositions(rows)).toEqual([]);
+    const p=Object.values(dashboardPositions([],rows));expect(p).toHaveLength(2);
+    expect(p.find(x=>x.side==='long')).toMatchObject({totalQuantity:.75,brokerQuote:{c:110,unrealizedPnL:6.75,notional:true}});
+    expect(p.find(x=>x.side==='short')).toMatchObject({totalQuantity:.5,brokerQuote:{c:110,unrealizedPnL:5}});
+  });
 });
