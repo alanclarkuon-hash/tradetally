@@ -1,6 +1,13 @@
 // Public security reference data used only by historical reconstruction.
 // Broker execution keys and original trades are deliberately preserved.
-const aliases={SRNG:'DNA'};
+const aliases={
+ SRNG:'DNA',
+ // Yahoo stores the continuous same-share price history under the new ticker.
+ // https://investor.atmeta.com/investor-news/press-release-details/2022/Meta-Platforms-Inc.-to-Change-Ticker-Symbol-to-META-on-June-9/default.aspx
+ FB:'META',
+ // https://infomemo.theocc.com/infomemos?number=55886
+ SQ:'XYZ'
+};
 const splits={
  DNA:[{date:'2024-08-20',ratio:1/40,source:'https://www.prnewswire.com/news-releases/ginkgo-regains-compliance-with-nyse-minimum-bid-price-requirement-302238512.html'}],
  TWOU:[{date:'2024-06-14',ratio:1/30,source:'https://www.nasdaqtrader.com/TraderNews.aspx?id=ECA2024-278'}]
