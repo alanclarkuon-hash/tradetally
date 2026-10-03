@@ -15,6 +15,28 @@ beforeEach(()=>{
 });
 afterEach(()=>jest.restoreAllMocks());
 
+test('history pacing stays within Kraken’s lowest-tier counter replenishment',()=>{
+  for(const path of ['/0/private/TradesHistory','/0/private/Ledgers']) {
+    expect(service.requestInterval(path)*0.33/1000).toBeGreaterThanOrEqual(2);
+  }
+  expect(service.requestInterval('/0/private/BalanceEx')*0.33/1000).toBeGreaterThanOrEqual(1);
+});
+
+test('rate-limited reads wait a full minute and retry without restarting downloaded history',async()=>{
+  jest.useFakeTimers();
+  try {
+    const spy=jest.spyOn(service,'privateRead').mockRejectedValueOnce(Object.assign(new Error('Rate limited'),{rateLimited:true}))
+      .mockResolvedValueOnce({ledger:{a:{time:1}},count:1});
+    const pending=service.read(connection,'/0/private/Ledgers',{ofs:'50'});
+    await jest.advanceTimersByTimeAsync(59999);
+    expect(spy).toHaveBeenCalledTimes(1);
+    await jest.advanceTimersByTimeAsync(1);
+    expect(await pending).toMatchObject({count:1});
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy.mock.calls[1][2]).toEqual({ofs:'50'});
+  } finally {jest.useRealTimers();}
+});
+
 test('signature matches Kraken’s published authentication example',()=>{
   // Public example from Kraken docs; never a user API credential.
   const secret='kQH5HW/8p1uGOVjbgWA7FunAmGO8lsSUXNsu3eow76sz84Q18fWxnyRzBHCd3pd5nE9qa99HAZtuZuj6F1huXg==';
