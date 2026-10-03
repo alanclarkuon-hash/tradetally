@@ -126,12 +126,12 @@ class KrakenService {
     } catch (error) { return { valid: false, message: error.message }; }
   }
 
-  async history(connection, path, field, end) {
+  async history(connection, path, field, end, start = 0) {
     const entries = new Map();
     let expectedCount;
     for (let page = 0, offset = 0; page < 10000; page++) {
       // A fixed end prevents new activity shifting offset pages during a sync.
-      const data = await this.read(connection, path, { type: 'all', start: '0', end: String(end), ofs: String(offset),
+      const data = await this.read(connection, path, { type: 'all', start: String(start), end: String(end), ofs: String(offset),
         ...(field === 'trades' ? { consolidate_taker: 'false', ledgers: 'true', limit: '50' } : {}) });
       if (!data[field] || typeof data[field] !== 'object' || Array.isArray(data[field]) ||
           !Number.isSafeInteger(Number(data.count)) || Number(data.count) < 0 || data.count === null) {
@@ -155,6 +155,14 @@ class KrakenService {
     throw new Error('Kraken history exceeded the maximum supported pages.');
   }
 
+  mergeHistory(previous, incoming) {
+    for (const [id,row] of Object.entries(incoming)) {
+      if (Object.hasOwn(previous,id) && !isDeepStrictEqual(previous[id],row))
+        throw new Error('Kraken changed a previously reconciled history entry. Full history review is required.');
+    }
+    return {...previous,...incoming};
+  }
+
   async syncTrades(connection) {
     const info = keyInfo(await this.read(connection, '/0/private/GetApiKeyInfo'));
     if (info.accountId !== connection.externalAccountId) throw new Error('Kraken account identity changed. Reconnect the correct account.');
@@ -167,16 +175,24 @@ class KrakenService {
     // marker for review; never claim it is a complete reconciled portfolio.
     const allocationMayBeTruncated = Boolean(allocations.next_cursor);
     const positions = await this.read(connection, '/0/private/OpenPositions');
-    const trades = await this.history(connection, '/0/private/TradesHistory', 'trades', end);
-    const ledger = await this.history(connection, '/0/private/Ledgers', 'ledger', end);
+    const previous = (await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' AND account_identifier=$2 AND connection_id=$3",
+      [connection.userId,`Kraken ****${info.accountId.slice(-4)}`,connection.id])).rows[0]?.payload;
+    const reusable = previous?.reconciled === true && previous.historyDownloaded === true &&
+      Number.isSafeInteger(previous.historyEnd) && previous.historyEnd > 0 && previous.historyEnd <= end &&
+      previous.trades && previous.ledger;
+    // Inclusive one-second overlap catches fractional timestamps at the cutoff.
+    // Only a fully reconciled, same-owner/same-connection snapshot is reusable.
+    const start = reusable ? Math.max(0,previous.historyEnd-1) : 0;
+    const incomingTrades = await this.history(connection, '/0/private/TradesHistory', 'trades', end, start);
+    const incomingLedger = await this.history(connection, '/0/private/Ledgers', 'ledger', end, start);
+    const trades = reusable ? this.mergeHistory(previous.trades,incomingTrades) : incomingTrades;
+    const ledger = reusable ? this.mergeHistory(previous.ledger,incomingLedger) : incomingLedger;
     for (const value of Object.values(balances)) {
       if (!value || !Number.isFinite(Number(value.balance))) throw new Error('Kraken returned an invalid asset balance.');
     }
     const payload = {balances,allocations,positions,trades,ledger,asOf,historyEnd:end,
       historyDownloaded:true,allocationMayBeTruncated,reconciled:false};
     if (!connection.brokerMetadata?.import_pending_review) {
-      const previous = (await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' AND account_identifier=$2",
-        [connection.userId,`Kraken ****${info.accountId.slice(-4)}`])).rows[0]?.payload;
       payload.valuation = await require('./krakenValuation').collect({...payload,valuation:previous?.valuation});
       return require('./krakenImport').reconcile(connection,payload);
     }

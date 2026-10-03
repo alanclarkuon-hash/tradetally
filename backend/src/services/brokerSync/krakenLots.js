@@ -5,7 +5,8 @@ const day=time=>new Date(Number(time)*1000).toISOString().slice(0,10);
 const iso=time=>new Date(Number(time)*1000).toISOString();
 function prepare(payload) {
   const check=audit(payload);
-  if(check.blockers.length || !payload.valuation?.complete)throw Error('Kraken native balances or price coverage have not passed reconciliation');
+  if(check.blockers.length)throw Error(`Kraken reconciliation blocked: ${check.blockers.join('; ')}`);
+  if(!payload.valuation?.complete)throw Error('Kraken historical price coverage is incomplete; previous reports were preserved');
   const rates=payload.valuation.rates,rate=(symbol,time)=>{
     const value=symbol==='USD'?1:rates[symbol]?.[day(time)];
     if(!(value>0))throw Error(`Missing Kraken historical price: ${symbol}`);return value;

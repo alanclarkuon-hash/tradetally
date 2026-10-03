@@ -40,7 +40,7 @@ test('migrations preserve historical cost and do not create a sale',()=>{
   expect(m.positions[0].totalCost).toBeCloseTo(24.24,10);
 });
 test('missing balances or valuation cannot enter reports',()=>{
-  const p=fixture();p.valuation.complete=false;expect(()=>prepare(p)).toThrow('reconciliation');
+  const p=fixture();p.valuation.complete=false;expect(()=>prepare(p)).toThrow('historical price coverage');
   const q=fixture();q.balances.TEST.balance='100';expect(()=>prepare(q)).toThrow('reconciliation');
 });
 module.exports={fixture};

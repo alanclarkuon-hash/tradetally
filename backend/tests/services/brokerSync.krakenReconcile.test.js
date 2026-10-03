@@ -55,3 +55,19 @@ test('saves only owner-scoped audit metadata while keeping the reporting gate cl
   expect(client.query.mock.calls[1][1].slice(1)).toEqual(['synthetic-account','owner','connection']);
   expect(client.query.mock.calls.some(([sql])=>/INSERT INTO trades|UPDATE broker_connections/.test(sql))).toBe(false);
 });
+
+test('Bitcoin aliases reconcile within the same Earn wallet, preserving spot separation',()=>{
+  const p=snapshot();p.allocations.items=[];
+  p.balances={ 'XBT.B':{balance:'1'}, XXBT:{balance:'2'} };
+  p.ledger={earn:row('XXBT.B','1','1'),spot:row('XBT','2','2')};
+  expect(audit(p).blockers).toEqual([]);
+  p.balances['XBT.B'].balance='2';p.balances.XXBT.balance='1';
+  expect(audit(p).nativeBalancesMatched).toBe(false);
+});
+
+test('duplicate balance aliases remain blocked rather than double-counted',()=>{
+  const p=snapshot();p.allocations.items=[];
+  p.balances={'XXBT.B':{balance:'1'},'XBT.B':{balance:'1'}};
+  p.ledger={earn:row('XXBT.B','1','1')};
+  expect(audit(p).blockers).toContain('Duplicate native balance aliases: BTC');
+});
