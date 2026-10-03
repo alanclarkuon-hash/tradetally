@@ -74,6 +74,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/dashboard/portfolio',
+      name: 'portfolio-dashboard',
+      component: () => import('@/views/PortfolioDashboardView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/trades',
       name: 'trades',
       component: () => import('@/views/trades/TradeListView.vue'),

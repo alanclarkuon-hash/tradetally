@@ -179,6 +179,7 @@ router.get('/income', investmentsController.getInvestmentIncome);
  * @access Pro
  */
 router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
+router.get('/portfolio/dashboard', investmentsController.getPortfolioDashboard);
 
 /**
  * @route GET /api/investments/portfolio/positions
