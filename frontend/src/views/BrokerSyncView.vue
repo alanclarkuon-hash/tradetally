@@ -170,7 +170,7 @@
               <div class="flex items-center space-x-4">
                 <span class="flex h-12 w-12 items-center justify-center rounded-lg bg-violet-100 text-lg font-bold text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">K</span>
                 <div><h4 class="font-medium text-gray-900 dark:text-white">Kraken</h4>
-                  <p class="text-sm text-gray-500 dark:text-gray-400">Spot crypto and staking · Read only</p></div>
+                  <p class="text-sm text-gray-500 dark:text-gray-400">Spot crypto and Earn/staking · Read only</p></div>
               </div>
             </button>
             <!-- TradeStation Card -->
@@ -705,7 +705,7 @@ async function handleKrakenSave(connection) {
   try {
     await store.addKrakenConnection(connection)
     showKrakenModal.value = false
-    scheduleSuccessMessage('Kraken connected. Run Sync Now to download your spot and staking history for reconciliation.')
+    scheduleSuccessMessage('Kraken connected. Run Sync Now to download your spot and Earn/staking history for reconciliation.')
   } catch { /* store.error is displayed in the modal */ }
 }
 async function handleOkxSave(connection) {
