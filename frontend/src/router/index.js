@@ -346,6 +346,12 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {
+      path: '/analysis/assets',
+      name: 'assets',
+      component: () => import('@/views/AssetsView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
       path: '/analysis/analyze/:symbol',
       name: 'stock-analysis',
       component: () => import('@/views/StockAnalysisView.vue'),
