@@ -13,7 +13,7 @@
       <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ error }}</p>
       <p v-if="success" role="status" class="rounded-lg bg-green-50 p-3 text-sm text-green-700 dark:bg-green-900/20 dark:text-green-300">{{ success }}</p>
       <form v-if="accounts.length" class="space-y-4" @submit.prevent="previewFiles">
-        <fieldset :disabled="busy" class="space-y-3">
+        <fieldset :disabled="!!busy" class="space-y-3">
           <legend class="sr-only">Accounts and statement files</legend>
           <div v-for="account in accounts" :key="account.id" class="rounded-lg border border-gray-200 dark:border-gray-700">
             <label class="flex cursor-pointer items-center gap-3 p-4">
