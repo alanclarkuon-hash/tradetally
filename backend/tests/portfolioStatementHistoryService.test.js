@@ -23,6 +23,13 @@ test('rejects a different statement account before any writes',async()=>{
  await expect(captureEtoroStatement('owner','account',Buffer.alloc(0))).rejects.toThrow('identity');
  expect(db.withTransaction).not.toHaveBeenCalled();
 });
+test('recorded holdings snapshots take precedence over estimates without double-counting cash',async()=>{
+ read.mockResolvedValue({...await read(),holdingsTotals:[{date:'2025-01-02',holdingsUSD:42}]});
+ const client={query:jest.fn(sql=>Promise.resolve({rows:sql.includes('fx_daily_rates')?[{rates:{GBP:.8}}]:[]}))};
+ db.withTransaction.mockImplementation(fn=>fn(client));
+ expect(await captureEtoroStatement('owner','account',Buffer.alloc(0))).toEqual({captured:3});
+ expect(client.query.mock.calls.filter(([sql])=>sql.includes('INSERT')).at(-1)[1].slice(2,5)).toEqual(['2025-01-02',42,120]);
+});
 test('rejects changed cash history instead of inventing a statement valuation',async()=>{
  prepare.mockReturnValue({records:[{reference:'different',cash:20}]});
  await expect(captureEtoroStatement('owner','account',Buffer.alloc(0))).rejects.toThrow('differs');

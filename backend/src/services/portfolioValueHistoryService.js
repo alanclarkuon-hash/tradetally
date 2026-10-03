@@ -87,11 +87,11 @@ async function getHistory(userId,query={}) {
   const identifiers=accounts.map(a=>a.account_identifier);
   const rows=(await db.query(`SELECT * FROM (
     SELECT user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,stale_prices,
-      'recorded' AS source,'[]'::jsonb AS issues FROM portfolio_value_history
+      'recorded' AS source,'[]'::jsonb AS issues FROM portfolio_value_history o
+    WHERE NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=o.user_id AND s.account_identifier=o.account_identifier AND s.value_date=o.value_date)
     UNION ALL
     SELECT s.user_id,s.account_identifier,s.value_date,s.holdings_usd,s.cash_usd,s.stablecoins_usd,s.gbp_per_usd,0,
       'statement' AS source,'[]'::jsonb AS issues FROM portfolio_statement_values s
-    WHERE NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=s.user_id AND o.account_identifier=s.account_identifier AND o.value_date=s.value_date)
     UNION ALL
     SELECT r.user_id,r.account_identifier,r.value_date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,0,
       'reconstructed' AS source,r.issues FROM portfolio_reconstructed_values r
