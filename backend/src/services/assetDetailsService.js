@@ -45,9 +45,9 @@ async function readSource(userId,symbol,source,offset=0) {
   const [table,title,owned,date]=source;
   if(table==='broker_portfolio_snapshots') {
     const rows=(await db.query('SELECT broker_type,account_identifier,positions,synced_at FROM broker_portfolio_snapshots WHERE user_id=$1',[userId])).rows;
-    const normalizeTicker=require('./brokerSync/trading212Service').normalizeTicker;
+    const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
     const records=rows.flatMap(row=>(Array.isArray(row.positions)?row.positions:[]).filter(p=>
-      (row.broker_type==='trading212'?normalizeTicker(p.instrument?.ticker):String(p.symbol||'').toUpperCase())===symbol
+      (row.broker_type==='trading212'?[normalizeTicker(p.instrument?.ticker),currentSymbol(p.instrument)].includes(symbol):String(p.symbol||'').toUpperCase()===symbol)
     ).map(position=>({broker:row.broker_type,account_identifier:row.account_identifier,synced_at:row.synced_at,position})));
     return {key:table,title,count:records.length,offset,records:records.slice(offset,offset+25)};
   }
@@ -67,8 +67,19 @@ async function readSource(userId,symbol,source,offset=0) {
     ]);
     return {key:table,title,count:count.rows[0].count,offset,records:rows.rows};
   }
-  const where=`symbol=$1${owned?' AND user_id=$2':''}`;
+  let where=`symbol=$1${owned?' AND user_id=$2':''}`;
   const params=owned?[symbol,userId]:[symbol];
+  if(table==='trades') {
+    const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
+    const snapshots=(await db.query("SELECT positions FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type='trading212'",[userId])).rows;
+    const aliases=[...new Set(snapshots.flatMap(row=>(Array.isArray(row.positions)?row.positions:[])
+      .filter(p=>currentSymbol(p.instrument)===symbol)
+      .map(p=>normalizeTicker(p.instrument?.ticker))).filter(alias=>alias!==symbol))];
+    if(aliases.length) {
+      params.push(aliases);
+      where="(symbol=$1 OR (broker='trading212' AND instrument_type='stock' AND symbol=ANY($3))) AND user_id=$2";
+    }
+  }
   const [count,records]=await Promise.all([
     db.query(`SELECT count(*)::int AS count FROM ${table} WHERE ${where}`,params),
     db.query(`SELECT * FROM ${table} WHERE ${where} ORDER BY ${date} DESC NULLS LAST LIMIT 25 OFFSET $${params.length+1}`,[...params,offset])
@@ -98,7 +109,8 @@ async function getDetails(userId,input,query={}) {
   const metadata=isCrypto?require('./categoryOverrides').applyCategoryOverride(symbol,'crypto',crypto):isFund?fundMetadata:null;
   const storedLabels=isCrypto?[]:[...new Set(sections.filter(s=>['symbol_categories','global_enrichment_cache','enrichment_cache','eight_pillars_analysis'].includes(s.key)).flatMap(s=>s.records.flatMap(r=>
     ['finnhub_industry','gics_sector','gics_group','gics_industry','gics_sub_industry','sector','industry','country'].filter(k=>r[k]).map(k=>`${k.replace('finnhub_','').replaceAll('_',' ')}: ${r[k]}`))))];
-  return {symbol,name:isCrypto?symbol:profile?.company_name||yahoo?.name||symbol,
+  const brokerName=sections.find(s=>s.key==='broker_portfolio_snapshots').records.find(r=>r.broker==='trading212')?.position?.instrument?.name;
+  return {symbol,name:isCrypto?symbol:brokerName||profile?.company_name||yahoo?.name||symbol,
     kind:isCrypto?'Crypto':isFund?'Fund / ETF':'Stock or other asset',
     labels:[...new Set([...(metadata?.categories||[]),...storedLabels])],labelSource:[metadata?.source,storedLabels.length?'Saved database classifications':null].filter(Boolean).join(' · ')||null,labelAsOf:metadata?.asOf||profile?.updated_at||null,
     referenceClassification:isCrypto||isFund?null:reference||null,

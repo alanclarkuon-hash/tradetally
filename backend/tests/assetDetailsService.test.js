@@ -8,6 +8,13 @@ test('symbols are exact and preserve their exchange suffix',()=>{
   expect(validateSymbol(' example.l ')).toBe('EXAMPLE.L');
   expect(()=>validateSymbol("ABC';DROP TABLE trades")).toThrow('valid asset symbol');
 });
+test('current Trading 212 ticker finds broker metadata and original stock trades without rewriting records',async()=>{
+  const snapshot={positions:[{instrument:{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'}}]};
+  db.query.mockImplementation((sql)=>Promise.resolve({rows:sql.includes('SELECT positions FROM broker_portfolio_snapshots')?[snapshot]:sql.includes('count(*)')?[{count:1}]:[{symbol:'OLD',broker:'trading212',instrument_type:'stock'}]}));
+  const result=await getDetails('owner','NEW',{source:'trades'});
+  expect(result.records[0].symbol).toBe('OLD');
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining("broker='trading212' AND instrument_type='stock' AND symbol=ANY($3)"),['NEW','owner',['OLD']]);
+});
 test('private asset records require the signed-in owner on every page',async()=>{
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('count(*)')?[{count:26}]:[{symbol:'EXAMPLE.L',user_id:'owner',broker_connection_id:'private-link',quantity:2}]}));
   const result=await getDetails('owner','example.l',{source:'trades',offset:25});
