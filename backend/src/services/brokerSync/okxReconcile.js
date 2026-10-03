@@ -1,5 +1,6 @@
 const db=require('../../config/database');
 const AnalyticsCache=require('../analyticsCache');
+const {isDeepStrictEqual}=require('util');
 const number=(v,label)=>{if(v==null || v==='' || !Number.isFinite(Number(v)))throw new Error(`Incomplete OKX ${label}`);return Number(v);};
 const date=ts=>new Date(Number(ts)).toISOString().slice(0,10);
 function mergeRows(previous,current,key='billId') {
@@ -7,7 +8,7 @@ function mergeRows(previous,current,key='billId') {
   for(const row of [...previous,...current]) {
     if(!row[key])throw new Error('Missing OKX history identity');
     const id=String(row[key]);const old=rows.get(id);
-    if(old && JSON.stringify(old)!==JSON.stringify(row))throw new Error('Conflicting OKX history identity');
+    if(old && !isDeepStrictEqual(old,row))throw new Error('Conflicting OKX history identity');
     rows.set(id,row);
   }
   return [...rows.values()];

@@ -28,6 +28,7 @@ test('rejects missing settlements, missing FX, missing acquisitions and mismatch
 });
 test('history merge retains records outside the API window and rejects changes to existing identities',()=>{
   expect(mergeRows([buy],[buy,sell])).toEqual([buy,sell]);
+  expect(mergeRows([buy],[Object.fromEntries(Object.entries(buy).reverse())])).toHaveLength(1);
   expect(()=>mergeRows([buy],[{...buy,fillPx:'9'}])).toThrow('Conflicting');
 });
 test('USDT wallet remains an asset valuation and excludes transfers from deposits and income',()=>{

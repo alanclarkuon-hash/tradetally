@@ -1,5 +1,6 @@
 const axios = require('axios');
 const {createHmac} = require('crypto');
+const {isDeepStrictEqual} = require('util');
 const db = require('../../config/database');
 
 const ORIGINS = {global:'https://www.okx.com',eea:'https://eea.okx.com',us:'https://us.okx.com'};
@@ -63,7 +64,7 @@ class OkxService {
       for(const row of data) {
         if(!row.billId) throw new Error('OKX returned a history row without its bill identity.');
         const id=String(row.billId),old=rows.get(id);
-        if(old && JSON.stringify(old)!==JSON.stringify(row)) throw new Error('OKX returned conflicting bill identities.');
+        if(old && !isDeepStrictEqual(old,row)) throw new Error('OKX returned conflicting bill identities.');
         rows.set(id,row);
       }
       if(data.length<100) return [...rows.values()];
