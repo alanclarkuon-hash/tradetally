@@ -15,7 +15,9 @@ async function getIncomeSummary(userId,{startDate=null,endDate=null,currency='US
   const records=broker.map(e=>({date:dateKey(e.event_date),currency:e.currency,
     category:fee(e)?'fee':e.event_type,value:Number(e.amount)*(fee(e)?-1:1),
     symbol:e.event_type==='dividend' && e.broker_type==='trading212' && e.description?.includes(': ')
-      ? normalizeTicker(e.description.split(': ').slice(1).join(': ')) : `${e.account_name || e.broker_type} cash`}));
+      ? normalizeTicker(e.description.split(': ').slice(1).join(': '))
+      : e.broker_type==='kraken' && e.event_type==='interest' && e.description?.startsWith('Kraken Earn/staking: ')
+        ? `${e.description.split(': ')[1].split(';')[0]} (Kraken Earn)` : `${e.account_name || e.broker_type} cash`}));
   if(await PlaidConnection.hasSchema()) {
     const plaid=(await db.query(`SELECT pt.*,pa.linked_account_id,COALESCE(ps.ticker_symbol,ps.name) AS symbol
       FROM plaid_transactions pt JOIN plaid_accounts pa ON pa.id=pt.plaid_account_row_id AND pa.user_id=pt.user_id

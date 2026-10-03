@@ -32,10 +32,13 @@ History uses a fixed end timestamp, checks row counts on every page, and rejects
 repeated, conflicting or incomplete pages. Native amounts, fee currencies,
 staking balance suffixes and transaction identities remain intact.
 
-The current release stages the complete download in the private
-`broker_import_snapshots` table. It does **not** yet import Kraken into trades,
-holdings, income or cashflow. Auto-sync remains disabled until the first real
-account data is reconciled and the reporting importer is implemented.
+The initial connection stages the complete download in the private
+`broker_import_snapshots` table. After the first account review, the reporting
+importer requires native balance and valuation checks to pass, reconstructs
+FIFO lots from authoritative ledger settlement groups, and imports holdings,
+trades, income and fiat cashflow atomically. Repeat imports update stable
+identities rather than duplicate records. They cannot remove a closed trade.
+Auto-sync is available only after this initial reconciliation succeeds.
 
 Reconciliation must distinguish rewards from transfers into/out of staking,
 avoid adding staking allocation totals to the overlapping extended balances,
@@ -58,6 +61,31 @@ activity is flagged separately even when no margin position is currently open.
 under a transaction lock. It does not create trades, accounts or income records,
 does not enable auto-sync, and does not mark the reporting importer ready.
 
+The USD reporting account includes both GBP and USD fiat cash. Its cash ledger
+uses actual wallet movements and GBP/USD valuation adjustments. USDT and other
+coins remain investments. Earn rewards are net of native fees and recorded as
+income valued at receipt-date daily UTC closing prices; income paid in coins
+does not increase fiat cash. Internal staking movements and fiat conversions
+are excluded from external deposits and income. External crypto transfers
+remove/add inventory without creating new combined-portfolio funding.
+Incoming transferred coins use receipt-date values for account performance,
+with the unknown original acquisition/tax basis noted explicitly.
+
+Token migrations preserve lot cost through MATIC/POL, FTM/S, EOS/A and MKR/SKY
+conversion pairs; native quantities must reconcile exactly after mapping.
+Single-asset rounding adjustments alter inventory without inventing a sale.
+The supported closed historical USDT margin short is valued from its complete
+ledger settlements and native fees; unsupported margin structures are blocked.
+
+Public quotes use Kraken market metadata, never stock ticker lookup. Historical
+values use daily UTC closes, with the current day valued at timestamped last
+trades rather than an unfinished daily candle. The bounded archive reader fetches
+only the ZIP index and selected daily CSV from Kraken's official archive and
+checks the CSV CRC. Legacy MATIC dates missing from that retired market use
+explicitly estimated POL/USD values based on the documented 1:1 migration.
+These estimates are labelled in source metadata, affected trade notes and
+income descriptions. Neither a stablecoin peg nor an unknown price is assumed.
+
 Financial downloads, snapshots, keys and backups belong in private local storage,
 never in Git. Only synthetic data and Kraken's public authentication example
 are used in tests.
@@ -70,3 +98,6 @@ References:
 - [Staking allocations](https://docs.kraken.com/api-reference/earn/list-earn-allocations)
 - [Ledger history](https://docs.kraken.com/api-reference/account-data/get-ledgers-info)
 - [Trade history](https://docs.kraken.com/api-reference/account-data/get-trades-history)
+- [Daily candle coverage](https://docs.kraken.com/api-reference/market-data/get-ohlc-data)
+- [Official historical price archive](https://support.kraken.com/articles/360047124832-downloadable-historical-ohlcvt-open-high-low-close-volume-trades-data)
+- [MATIC/POL migration](https://blog.kraken.com/product/pol-on-the-polygon-network-is-now-available-for-funding)

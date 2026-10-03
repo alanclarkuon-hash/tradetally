@@ -1121,7 +1121,7 @@ class PortfolioService {
 
   static async _getTradePositions(userId, accounts) {
     const snapshots = (await db.query(`SELECT * FROM broker_portfolio_snapshots
-      WHERE user_id=$1 AND broker_type IN ('trading212','etoro','okx')`, [userId])).rows;
+      WHERE user_id=$1 AND broker_type IN ('trading212','etoro','okx','kraken')`, [userId])).rows;
     const params = [userId];
     const { clause } = buildAccountFilter('t.account_identifier', accounts, params, 2);
     const query = `

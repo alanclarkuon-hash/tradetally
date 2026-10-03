@@ -26,6 +26,12 @@ test('converts currencies using payment dates and preserves fee/tax refunds',asy
   expect(fx.getForexRate).toHaveBeenCalledWith('USD','GBP','2025-02-01');
   expect(r.byMonth).toEqual([{month:'2025-02',dividends:0,interest:8,fees:4}]);
 });
+test('Kraken Earn income retains the coin label rather than being described as fiat cash',async()=>{
+  db.query.mockResolvedValue({rows:[event('interest',10,{currency:'USD',broker_type:'kraken',description:'Kraken Earn/staking: ADA; net 2 coins'})]});
+  const result=await service.getIncomeSummary('owner',{currency:'USD'});
+  expect(result.summary.totalInterest).toBe(10);
+  expect(result.bySymbol[0].symbol).toBe('ADA (Kraken Earn)');
+});
 test('Plaid sign conventions remain intact and matching linked broker income is not duplicated',async()=>{
   Plaid.hasSchema.mockResolvedValue(true);
   db.query.mockResolvedValueOnce({rows:[event('interest',2)]}).mockResolvedValueOnce({rows:[

@@ -800,7 +800,8 @@ class Account {
     const ledger = await require('../services/brokerSync/ibkrCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
       await require('../services/brokerSync/trading212CashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
       await require('../services/brokerSync/etoroCashStatement').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
-      await require('../services/brokerSync/okxAssetLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
+      await require('../services/brokerSync/okxAssetLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate) ||
+      await require('../services/brokerSync/krakenCashLedger').loadLedger(userId,account,effectiveStartDate,effectiveEndDate);
     let runningBalance = ledger ? ledger.openingBalance : (parseFloat(account.initial_balance) || 0);
     const cashRows = ledger ? ledger.rows : await require('../services/brokerSync/cashflowEvents').enrichCashflow(userId,accountId,result.rows,effectiveStartDate,effectiveEndDate,account.currency);
     const cashflowData = cashRows.map(row => {
@@ -883,7 +884,8 @@ class Account {
     const ledgerDay = await require('../services/brokerSync/ibkrCashLedger').dayActivity(userId,account,date) ||
       await require('../services/brokerSync/trading212CashLedger').dayActivity(userId,account,date) ||
       await require('../services/brokerSync/etoroCashStatement').dayActivity(userId,account,date) ||
-      await require('../services/brokerSync/okxAssetLedger').dayActivity(userId,account,date);
+      await require('../services/brokerSync/okxAssetLedger').dayActivity(userId,account,date) ||
+      await require('../services/brokerSync/krakenCashLedger').dayActivity(userId,account,date);
     if (ledgerDay) return ledgerDay;
 
     const multiplierExpr = `(
