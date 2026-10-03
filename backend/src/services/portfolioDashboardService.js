@@ -125,10 +125,13 @@ async function getDashboard(userId, query={}) {
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
     const result=periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
-    const metadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
+    const categoryKind=p.instrumentType==='crypto'?'crypto':funds.has(p.symbol)?'fund':null;
+    const providerMetadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
+    const metadata=categoryKind?require('./categoryOverrides').applyCategoryOverride(p.symbol,categoryKind,providerMetadata):providerMetadata;
     const row={symbol:p.symbol,industry:p.instrumentType==='crypto'?(metadata?.primaryCategory?`Crypto · ${metadata.primaryCategory}`:'Crypto · Unclassified'):industriesBySymbol.get(p.symbol)||p.sector||'Unclassified',
       assetClass:p.instrumentType==='crypto'?'Crypto assets':industriesBySymbol.get(p.symbol)==='Funds & ETFs'?'Funds & ETFs':null,category:metadata?.primaryCategory||'Unclassified',
       categories:metadata?.categories||[],categorySource:metadata?.source||null,categoryAsOf:metadata?.asOf||null,categoryStale:metadata?.stale||false,
+      categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
       quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,accounts:p.accountIdentifiers};
@@ -154,7 +157,7 @@ async function getDashboard(userId, query={}) {
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
     coverage:{missingCash:cashRows.filter(a=>a.amount==null).length,missingPrices,
       missingPnl:holdings.filter(p=>p.pnl==null).length,unclassified:holdings.filter(p=>p.industry==='Unclassified').length,
-      classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||null},
+      classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||holdings.find(p=>p.categoryWarning)?.categoryWarning||null},
     accountCount:managed.length};
 }
 module.exports={getDashboard,periodResult,STABLE};

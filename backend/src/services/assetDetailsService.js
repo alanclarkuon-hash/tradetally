@@ -93,13 +93,17 @@ async function getDetails(userId,input,query={}) {
   const crypto=await require('./cryptoCategoriesService').getCachedCategories(symbol);
   const fund=cache.get('yahoo_fund_labels',symbol);
   const yahoo=cache.get('yahoo_symbol_profile',symbol);
-  const metadata=crypto?.categories?.length?crypto:fund?.categories?.length?fund:null;
+  const fundMetadata=require('./categoryOverrides').applyCategoryOverride(symbol,'fund',fund);
+  const isFund=Boolean(fund)||['ETF','MUTUALFUND'].includes(yahoo?.quoteType)||fundMetadata?.source==='Manual override';
+  const metadata=isCrypto?require('./categoryOverrides').applyCategoryOverride(symbol,'crypto',crypto):isFund?fundMetadata:null;
   const storedLabels=isCrypto?[]:[...new Set(sections.filter(s=>['symbol_categories','global_enrichment_cache','enrichment_cache','eight_pillars_analysis'].includes(s.key)).flatMap(s=>s.records.flatMap(r=>
     ['finnhub_industry','gics_sector','gics_group','gics_industry','gics_sub_industry','sector','industry','country'].filter(k=>r[k]).map(k=>`${k.replace('finnhub_','').replaceAll('_',' ')}: ${r[k]}`))))];
   return {symbol,name:isCrypto?symbol:profile?.company_name||yahoo?.name||symbol,
-    kind:isCrypto?'Crypto':fund||['ETF','MUTUALFUND'].includes(yahoo?.quoteType)?'Fund / ETF':'Stock or other asset',
+    kind:isCrypto?'Crypto':isFund?'Fund / ETF':'Stock or other asset',
     labels:[...new Set([...(metadata?.categories||[]),...storedLabels])],labelSource:[metadata?.source,storedLabels.length?'Saved database classifications':null].filter(Boolean).join(' · ')||null,labelAsOf:metadata?.asOf||profile?.updated_at||null,
-    referenceClassification:isCrypto?null:reference||null,
+    referenceClassification:isCrypto||isFund?null:reference||null,
+    categoryOverride:metadata?.source==='Manual override'?metadata:null,
+    categoryWarning:metadata?.override_warning||null,
     cachedProfile:yahoo||null,sections,recordCount:sections.reduce((n,s)=>n+s.count,0),
     warning:isCrypto&&profile?'Some older symbol-only database records may describe a stock with the same ticker. Check their source before using them as crypto classifications.':null};
 }
