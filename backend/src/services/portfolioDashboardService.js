@@ -77,13 +77,16 @@ async function getDashboard(userId, query={}) {
   const industriesBySymbol=new Map(industries.rows.map(r=>[r.symbol,r.industry||r.sector]));
   // Use the existing exact-symbol profile cache/provider. Fund holdings are
   // grouped as funds rather than pretending their entire value is one industry.
-  const candidates=positions.filter(p=>p.instrumentType!=='crypto' && !industriesBySymbol.has(p.symbol));
+  const candidates=positions.filter(p=>p.instrumentType!=='crypto');
+  const funds=new Map();
   const yahoo=require('../utils/yahooFinance');
   for(let i=0;i<candidates.length;i+=4) {
     await Promise.all(candidates.slice(i,i+4).map(async p=>{
       const profile=await yahoo.getSymbolProfile(p.symbol);
-      if(profile?.industry)industriesBySymbol.set(p.symbol,profile.industry);
-      else if(['ETF','MUTUALFUND'].includes(profile?.quoteType))industriesBySymbol.set(p.symbol,'Funds & ETFs');
+      if(['ETF','MUTUALFUND'].includes(profile?.quoteType)) {
+        industriesBySymbol.set(p.symbol,'Funds & ETFs');
+        funds.set(p.symbol,await require('./fundCategoriesService').getCategories(p.symbol));
+      } else if(profile?.industry)industriesBySymbol.set(p.symbol,profile.industry);
     }));
   }
   const cryptoRates={};
@@ -120,9 +123,9 @@ async function getDashboard(userId, query={}) {
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
     const result=periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
-    const metadata=categoriesBySymbol.get(p.symbol);
+    const metadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
     const row={symbol:p.symbol,industry:p.instrumentType==='crypto'?(metadata?.primaryCategory?`Crypto · ${metadata.primaryCategory}`:'Crypto · Unclassified'):industriesBySymbol.get(p.symbol)||p.sector||'Unclassified',
-      assetClass:p.instrumentType==='crypto'?'Crypto assets':null,category:metadata?.primaryCategory||'Unclassified',
+      assetClass:p.instrumentType==='crypto'?'Crypto assets':industriesBySymbol.get(p.symbol)==='Funds & ETFs'?'Funds & ETFs':null,category:metadata?.primaryCategory||'Unclassified',
       categories:metadata?.categories||[],categorySource:metadata?.source||null,categoryAsOf:metadata?.asOf||null,categoryStale:metadata?.stale||false,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
