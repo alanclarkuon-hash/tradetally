@@ -6,9 +6,9 @@ jest.mock('../../src/services/backup.service',()=>({createFullSiteBackup:jest.fn
 const db=require('../../src/config/database'),pdf=require('../../src/services/brokerSync/igPdf'),{importAccounts}=require('../../src/services/brokerSync/igImport');
 const service=require('../../src/services/brokerSync/igUploads'),backup=require('../../src/services/backup.service');
 const id='12345678-1234-1234-1234-123456789abc';
-function rows(){return [{id,account_name:'Synthetic',captured_at:'2026-06-01',payload:{igFileInput:{name:'Synthetic',kind:'share_dealing',ledgerAccountId:'SYNTH'}}}];}
+function rows(){return [{id,account_name:'Synthetic',captured_at:'2026-06-01',payload:{igFileInput:{name:'Synthetic',kind:'share_dealing',ledgerAccountId:'SYNTH',confirmation:{holdings:[]}}}}];}
 function files(){return ['transactions','trading','ledger'].map(f=>({fieldname:`${id}:${f}`,size:10,buffer:Buffer.from('synthetic')}));}
-beforeEach(()=>{jest.clearAllMocks();db.query.mockResolvedValue({rows:rows()});pdf.text.mockResolvedValue('PDF');pdf.confirmation.mockReturnValue({cash:25});importAccounts.mockResolvedValue({accounts:[{name:'Synthetic',cash:25}],importedTrades:0,importedEvents:0});backup.createFullSiteBackup.mockResolvedValue({});});
+beforeEach(()=>{jest.clearAllMocks();db.query.mockResolvedValue({rows:rows()});pdf.text.mockResolvedValue('PDF');pdf.confirmation.mockReturnValue({cash:25,holdings:[]});importAccounts.mockResolvedValue({accounts:[{name:'Synthetic',cash:25}],importedTrades:0,importedEvents:0});backup.createFullSiteBackup.mockResolvedValue({});});
 test('preview runs rollback-only validation; another user cannot apply its token',async()=>{
   const p=await service.preview('user-a',files());
   expect(importAccounts).toHaveBeenCalledWith('user-a',expect.any(Array),{dryRun:true});
