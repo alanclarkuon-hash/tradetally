@@ -491,6 +491,7 @@ const navItems = computed(() => {
       icon: HomeIcon,
       items: [
         { name: 'Trading Dashboard', to: '/dashboard', route: 'dashboard' },
+        { name: 'Portfolio', to: '/dashboard/portfolio', route: 'portfolio-dashboard' },
         { name: 'Trading Journal', to: '/diary', route: 'diary' },
         { name: 'Account & Cashflow', to: '/cashflow', route: 'cashflow' },
         { name: 'Leaderboard', to: '/leaderboard', route: 'leaderboard' },

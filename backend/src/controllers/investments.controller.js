@@ -11,6 +11,10 @@ const { parseReportDateRange } = require('../utils/reportDateRange');
 const DCFValuationService = require('../services/dcfValuationService');
 const investmentIncomeService = require('../services/investmentIncomeService');
 const db = require('../config/database');
+const getPortfolioDashboard = async (req,res) => {
+  try {res.json(await require('../services/portfolioDashboardService').getDashboard(req.user.id,req.query));}
+  catch(error){res.status(error.status||500).json({error:error.message||'Portfolio unavailable'});}
+};
 const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
 
 // Monetary fields (in a company's REPORTING currency) per statement shape.
@@ -1658,6 +1662,7 @@ module.exports = {
 
   // Portfolio
   getPortfolioOverview,
+  getPortfolioDashboard,
   getPortfolioPositions,
   getPortfolioPerformance,
   getPortfolioRebalance,
