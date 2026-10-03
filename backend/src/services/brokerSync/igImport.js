@@ -100,6 +100,10 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         VALUES($1,'ig',$2,$3::jsonb,$4) ON CONFLICT(user_id,broker_type,account_identifier)
         DO UPDATE SET positions=EXCLUDED.positions,synced_at=EXCLUDED.synced_at`,
         [userId,a.identifier,JSON.stringify(holdings),a.confirmation.holdings?.[0]?.asOf || a.confirmation.cutoff]);
+      await client.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,payload,captured_at)
+        VALUES($1,'ig',$2,$3::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
+        DO UPDATE SET payload=EXCLUDED.payload,captured_at=NOW()`,
+        [userId,a.identifier,JSON.stringify({igFileInput:inputs.find(input=>prepare(input).identifier===a.identifier)})]);
       result.accounts.push({name:a.name,cash:a.endingCash,closedTrades:a.trades.filter(t=>t.exitTime).length,holdings:a.trades.filter(t=>!t.exitTime).length});
     }
     for(const {out,incoming} of pairs) {
