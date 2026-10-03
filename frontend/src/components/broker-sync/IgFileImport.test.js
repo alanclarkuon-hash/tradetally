@@ -11,10 +11,17 @@ async function ready(){const w=mount(IgFileImport);await flushPromises();await w
   for(const input of w.findAll('input[type=file]')){Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['synthetic'],'synthetic.csv')]});await input.trigger('change')}
   return w}
 it('requires a successful preview before apply and sends only its server token',async()=>{
-  const w=await ready();expect(w.text()).not.toContain('Import checked reports');await w.get('form').trigger('submit');await flushPromises();
+  const w=await ready();expect(w.get('fieldset').element.disabled).toBe(false);expect(w.text()).not.toContain('Import checked reports');await w.get('form').trigger('submit');
+  await flushPromises();expect(w.get('fieldset').element.disabled).toBe(false);
   expect(w.text()).toContain('Balance checks passed');expect(api.post).toHaveBeenCalledWith('/broker-sync/ig-files/preview',expect.any(FormData),expect.any(Object));
   await w.findAll('button').find(b=>b.text()==='Import checked reports').trigger('click');await flushPromises();
   expect(api.post).toHaveBeenLastCalledWith('/broker-sync/ig-files/apply',{token:'preview-token'},expect.any(Object));expect(w.text()).toContain('Import finished');
+})
+it('disables account controls only while a preview is running',async()=>{
+  const w=await ready();let finish;api.post.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}));
+  await w.get('form').trigger('submit');expect(w.get('fieldset').element.disabled).toBe(true);
+  finish({data:{data:{token:'preview-token',accounts:[],notice:'Checked'}}});await flushPromises();
+  expect(w.get('fieldset').element.disabled).toBe(false);
 })
 it('changing a file invalidates the preview and removes the apply action',async()=>{
   const w=await ready();await w.get('form').trigger('submit');await flushPromises();expect(w.text()).toContain('Import checked reports');
