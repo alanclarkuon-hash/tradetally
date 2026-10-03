@@ -84,9 +84,9 @@
         </div>
       </div>
 
-      <p v-if="['etoro','okx'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review"
+      <p v-if="['etoro','okx','kraken'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review"
         class="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-900/20 dark:text-amber-200">
-        Initial import awaits review. Sync downloads your portfolio and recent trades privately; reports stay unchanged until the data has been checked.
+        Initial import awaits review. Sync downloads your portfolio and available history privately; reports stay unchanged until the data has been checked.
       </p>
 
       <!-- Last Sync Info -->
@@ -186,6 +186,8 @@ const brokerStyles = computed(() => {
         bgClass: 'bg-cyan-100 dark:bg-cyan-900/30',
         textClass: 'text-cyan-600 dark:text-cyan-400'
       }
+    case 'kraken':
+      return {name:'Kraken',abbrev:'K',bgClass:'bg-violet-100 dark:bg-violet-900/30',textClass:'text-violet-700 dark:text-violet-300'}
     case 'okx':
       return {name:'OKX',abbrev:'OKX',bgClass:'bg-gray-900 dark:bg-gray-700',textClass:'text-white'}
     case 'etoro':

@@ -47,6 +47,7 @@ router.post('/connections/ibkr', brokerSyncLimiter, validate(schemas.brokerSyncI
 router.post('/connections/trading212', brokerSyncLimiter, validate(schemas.brokerSyncTrading212Connection), brokerSyncController.addTrading212Connection);
 router.post('/connections/etoro', brokerSyncLimiter, validate(schemas.brokerSyncEtoroConnection), brokerSyncController.addEtoroConnection);
 router.post('/connections/okx', brokerSyncLimiter, validate(schemas.brokerSyncOkxConnection), brokerSyncController.addOkxConnection);
+router.post('/connections/kraken', brokerSyncLimiter, validate(schemas.brokerSyncKrakenConnection), brokerSyncController.addKrakenConnection);
 
 // Initialize Schwab OAuth flow
 router.post('/connections/schwab/init', brokerSyncLimiter, brokerSyncController.initSchwabOAuth);

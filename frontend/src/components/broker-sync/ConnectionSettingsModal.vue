@@ -444,6 +444,8 @@ const brokerStyles = computed(() => {
                 bgClass: "bg-blue-100 dark:bg-blue-900/30",
                 textClass: "text-blue-600 dark:text-blue-400",
             };
+        case "kraken":
+            return {name:"Kraken",abbrev:"K",bgClass:"bg-violet-100 dark:bg-violet-900/30",textClass:"text-violet-700 dark:text-violet-300"};
         case "okx":
             return {name:"OKX",abbrev:"OKX",bgClass:"bg-gray-900 dark:bg-gray-700",textClass:"text-white"};
         case "trading212":

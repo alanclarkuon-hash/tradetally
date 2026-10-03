@@ -82,6 +82,8 @@ class BrokerConnection {
       okxApiKey,
       okxApiSecret,
       okxPassphrase,
+      krakenApiKey,
+      krakenApiSecret,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -165,6 +167,17 @@ class BrokerConnection {
         JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
+    } else if (brokerType === 'kraken') {
+      query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,kraken_api_key,kraken_api_secret,
+        external_account_id,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_time)
+        VALUES($1,'kraken','pending',$2,$3,$4,$5,$6,false,'manual',$7)
+        ON CONFLICT(user_id) WHERE broker_type='kraken'
+        DO UPDATE SET kraken_api_key=EXCLUDED.kraken_api_key,kraken_api_secret=EXCLUDED.kraken_api_secret,
+        external_account_id=EXCLUDED.external_account_id,broker_metadata=EXCLUDED.broker_metadata,
+        account_label=EXCLUDED.account_label,connection_status='pending',auto_sync_enabled=false,
+        sync_frequency='manual',next_scheduled_sync=NULL,consecutive_failures=0,updated_at=NOW() RETURNING *`;
+      params = [userId,encryptionService.encrypt(krakenApiKey),encryptionService.encrypt(krakenApiSecret),
+        externalAccountId,JSON.stringify(brokerMetadata || {}),accountLabel,syncTime];
     } else if (brokerType === 'okx') {
       query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,okx_api_key,okx_api_secret,okx_passphrase,
         external_account_id,broker_environment,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_time)
@@ -813,6 +826,13 @@ class BrokerConnection {
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
         }
+      }
+    } else if (row.broker_type === 'kraken') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        connection.krakenApiKey = encryptionService.decrypt(row.kraken_api_key);
+        connection.krakenApiSecret = encryptionService.decrypt(row.kraken_api_secret);
       }
     } else if (row.broker_type === 'okx') {
       connection.externalAccountId = row.external_account_id;
