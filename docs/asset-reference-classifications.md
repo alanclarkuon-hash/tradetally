@@ -19,3 +19,27 @@ The heatmap hierarchy is Stocks → Sector → Industry → Holding. Industry gr
 Code matching validates the taxonomy label, not the company's assignment. The source dataset can contain incorrect or obsolete labels (the October 2026 lookup, for example, assigned PANW to Financials). Both Assets and the portfolio explicitly identify these as community reference classifications. Native provider labels remain separately available for comparison. No inferred corrections are written. Supplemental job failures do not stop native categorisation.
 
 Rollout is test-only. Migration 271 creates the separate table. `backend/scripts/enrichAssetClassifications.js` refuses to write unless both the app environment and database name identify the isolated test server. Do not deploy this prototype to production without the owner's explicit approval. Database backups remain outside Git.
+
+## Local correction file
+
+Edit `backend/config/stock-classification-overrides.json`. The file starts empty; no company assignments are changed until an entry is supplied. For example:
+
+```json
+{
+  "version": 1,
+  "overrides": {
+    "MSFT": {
+      "industry_code": "451030",
+      "reason": "Reviewed: Software industry"
+    }
+  }
+}
+```
+
+Use the exact uppercase symbol, including exchange suffix. The six-digit industry code derives its four-digit group and two-digit sector and all three names from the bundled hierarchy. You may include explicit `sector_code`, `sector_name`, `industry_group_code`, `industry_group_name` or `industry_name`, but they must agree with that branch. Codes must be quoted strings. An optional `reason` explains the correction. No sub-industry is used.
+
+The file overrides FinanceDatabase for display and grouping only. It never overwrites database rows, provider labels or financial calculations. The Assets page marks the result Manual override and offers the original provider classification for comparison. Valid entries still work if another entry is invalid; malformed JSON falls back to provider data with a visible warning.
+
+The test compose file mounts this file read-only inside the app. Save it and refresh the Assets/Portfolio page to apply changes, without rebuilding or restarting. Removing an entry restores the provider on the next page refresh. The existing 30-day FinanceDatabase refresh cannot overwrite a correction because overrides are applied after provider reads and writes. If this is later deployed elsewhere, mount the same file or rebuild the image after edits. Production deployment still requires explicit approval.
+
+The correction file is versioned in Git so public classification decisions can be reviewed and reverted. Put only symbols, classification fields and a non-sensitive reason in it; never account identifiers, financial records or credentials.

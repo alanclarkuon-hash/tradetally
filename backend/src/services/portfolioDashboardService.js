@@ -140,7 +140,7 @@ async function getDashboard(userId, query={}) {
       row.referenceClassification=reference||null;
       row.categories=reference?[`Sector: ${reference.sector_name||'Unavailable'}`,`Industry group: ${reference.industry_group_name||'Unavailable'}`,`Industry: ${reference.industry_name||'Unavailable'}`]:[];
       row.categorySource=reference?.source||null;
-      row.categoryAsOf=reference?.fetched_at||null;
+      row.categoryAsOf=reference?.override_updated_at||reference?.fetched_at||null;
     }
     if(row.value==null)missingPrices++;
     (p.instrumentType==='crypto' && STABLE.has(p.symbol)?stablecoins:holdings).push(row);
@@ -153,7 +153,8 @@ async function getDashboard(userId, query={}) {
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
     coverage:{missingCash:cashRows.filter(a=>a.amount==null).length,missingPrices,
-      missingPnl:holdings.filter(p=>p.pnl==null).length,unclassified:holdings.filter(p=>p.industry==='Unclassified').length},
+      missingPnl:holdings.filter(p=>p.pnl==null).length,unclassified:holdings.filter(p=>p.industry==='Unclassified').length,
+      classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||null},
     accountCount:managed.length};
 }
 module.exports={getDashboard,periodResult,STABLE};

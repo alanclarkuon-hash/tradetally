@@ -16,10 +16,13 @@
       <p v-if="asset.warning" class="asset-notice">{{ asset.warning }}</p>
       <section v-if="asset.referenceClassification" class="asset-section mb-5">
         <h3>Stock classification</h3>
-        <p class="text-xs text-gray-500 dark:text-gray-400">FinanceDatabase · saved {{ date(asset.referenceClassification.fetched_at) }} · codes mapped to MSCI GICS</p>
-        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Community reference labels; these may be outdated or incorrect. Matching a GICS code verifies the label, not the company's assignment.</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400">{{ asset.referenceClassification.source }} · {{ asset.referenceClassification.status==='manual_override' ? 'file updated' : 'saved' }} {{ date(asset.referenceClassification.override_updated_at||asset.referenceClassification.fetched_at) }} · codes mapped to MSCI GICS</p>
+        <p v-if="asset.referenceClassification.status!=='manual_override'" class="text-xs text-gray-500 dark:text-gray-400 mt-2">Community reference labels; these may be outdated or incorrect. Matching a GICS code verifies the label, not the company's assignment.</p>
+        <p v-else class="text-xs text-gray-500 dark:text-gray-400 mt-2">Your local correction takes priority over the provider. {{ asset.referenceClassification.override_reason }}</p>
+        <p v-if="asset.referenceClassification.override_warning" class="asset-notice" role="alert">{{ asset.referenceClassification.override_warning }}</p>
         <dl class="asset-fields"><div v-for="level in classificationLevels" :key="level.key"><dt>{{ level.label }}</dt><dd>{{ asset.referenceClassification[level.key+'_name'] || 'Unavailable' }} <span v-if="asset.referenceClassification[level.key+'_code']" class="asset-chip ml-2">{{ asset.referenceClassification[level.key+'_code'] }}</span></dd></div></dl>
-        <p v-if="asset.referenceClassification.status!=='matched'" class="text-xs text-gray-500 dark:text-gray-400 mt-3">{{ asset.referenceClassification.status==='unmapped' ? 'Some source labels do not match the published GICS hierarchy. Unverified codes remain unavailable.' : 'No unambiguous classification is available in this reference dataset.' }}</p>
+        <p v-if="!['matched','manual_override'].includes(asset.referenceClassification.status)" class="text-xs text-gray-500 dark:text-gray-400 mt-3">{{ asset.referenceClassification.status==='unmapped' ? 'Some source labels do not match the published GICS hierarchy. Unverified codes remain unavailable.' : 'No unambiguous classification is available in this reference dataset.' }}</p>
+        <details v-if="asset.referenceClassification.provider_classification" class="mt-4"><summary class="text-sm cursor-pointer">Original provider classification</summary><AssetDataValue :value="asset.referenceClassification.provider_classification" /></details>
       </section>
       <section v-if="asset.labels.length" class="asset-labels">
         <h3>Categories & labels</h3><p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{ asset.labelSource }} · saved {{ date(asset.labelAsOf) }}</p>
@@ -27,7 +30,7 @@
       </section>
       <p v-else class="asset-notice">No saved category labels for this asset yet.</p>
       <details v-if="asset.cachedProfile" class="asset-section"><summary>Saved Yahoo Finance identity</summary><dl class="asset-fields"><div v-for="(value,key) in asset.cachedProfile" :key="key"><dt>{{ label(key) }}</dt><dd><AssetDataValue :value="value" /></dd></div></dl></details>
-      <p v-if="!asset.recordCount && !asset.labels.length && !asset.cachedProfile" class="asset-notice">No saved details found for {{ asset.symbol }}. Check the symbol and exchange suffix. This does not mean the asset does not exist.</p>
+      <p v-if="!asset.recordCount && !asset.labels.length && !asset.cachedProfile && !asset.referenceClassification" class="asset-notice">No saved details found for {{ asset.symbol }}. Check the symbol and exchange suffix. This does not mean the asset does not exist.</p>
       <div class="asset-layout">
         <nav class="asset-index" aria-label="Saved information sections"><h3>Saved information</h3><a v-for="section in populated" :key="section.key" :href="'#asset-'+section.key">{{ section.title }} <span>{{ section.count.toLocaleString() }}</span></a></nav>
         <div class="min-w-0 space-y-4">

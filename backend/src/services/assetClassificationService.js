@@ -73,15 +73,15 @@ async function getClassifications(symbols, {refresh=false}={}) {
     catch (_) { /* Preserve last known metadata during a public dataset outage. */ }
     finally { pending.delete(symbol); }
   }
-  return result;
+  return require('./classificationOverrides').applyOverrides(wanted,result);
 }
 async function enrichExistingStocks() {
   const result=await db.query(`SELECT DISTINCT symbol FROM trades WHERE COALESCE(instrument_type,'stock')='stock'
     UNION SELECT h.symbol FROM investment_holdings h WHERE NOT EXISTS
     (SELECT 1 FROM trades t WHERE t.symbol=h.symbol AND t.instrument_type='crypto')`);
   const rows=await getClassifications(result.rows.map(row=>row.symbol));
-  return {total:result.rows.length,matched:[...rows.values()].filter(row=>row.status==='matched').length,
+  return {total:result.rows.length,matched:[...rows.values()].filter(row=>['matched','manual_override'].includes(row.status)).length,
     unmapped:[...rows.values()].filter(row=>row.status==='unmapped').length,
-    unavailable:result.rows.length-[...rows.values()].filter(row=>['matched','unmapped'].includes(row.status)).length};
+    unavailable:result.rows.length-[...rows.values()].filter(row=>['matched','manual_override','unmapped'].includes(row.status)).length};
 }
 module.exports={getClassifications,classify,exchangesFor,enrichExistingStocks};
