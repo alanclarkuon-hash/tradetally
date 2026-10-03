@@ -3,6 +3,12 @@ const crypto = require('crypto');
 const {prepare,pairTransfers,cents} = require('./igStatement');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const dateKey = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value).slice(0,10);
+function tradeHash(t) {
+  if(!t.holding)return hash(t);
+  // Monthly valuations can change without changing the acquired holding.
+  const {value,asOf,...acquisition}=t.holding;
+  return hash({...t,holding:acquisition});
+}
 function sameCash(a,b) {
   // PostgreSQL JSONB reorders keys. Compare financial fields rather than the
   // serialization order, while still refusing changed dates or descriptions.
@@ -43,9 +49,15 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       if(byKey.size!==previous.length || byKey.has(undefined)) throw Error('Unrecognised existing IG journal entry');
       if(previous.some(t=>!a.trades.some(next=>next.key===t.executions[0].ig_record_key))) throw Error('Full IG trade history is required');
       for(const t of a.trades) {
-        const oldTrade=byKey.get(t.key), sourceHash=hash(t);
+        const oldTrade=byKey.get(t.key), sourceHash=tradeHash(t);
         if(oldTrade) {
-          if(oldTrade.executions[0].ig_source_hash!==sourceHash) throw Error('An overlapping IG trade needs review');
+          if(oldTrade.executions[0].ig_source_hash!==sourceHash) {
+            // Upgrade the original, statement-confirmed stock fingerprint to
+            // exclude valuations; only allow the exact original input here.
+            if(!t.holding || oldTrade.executions[0].ig_source_hash!==hash(t)) throw Error('An overlapping IG trade needs review');
+            const executions=oldTrade.executions.map(e=>({...e,ig_source_hash:sourceHash}));
+            await client.query('UPDATE trades SET executions=$1::jsonb WHERE user_id=$2 AND id=$3',[JSON.stringify(executions),userId,oldTrade.id]);
+          }
           result.matchedTrades++;continue;
         }
         const rate=rates.get((t.exitTime || t.entryTime).slice(0,10));
@@ -109,4 +121,4 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   } catch(error) { await client.query('ROLLBACK');throw error; }
   finally {client.release();}
 }
-module.exports={importAccounts,sameCash};
+module.exports={importAccounts,sameCash,tradeHash};
