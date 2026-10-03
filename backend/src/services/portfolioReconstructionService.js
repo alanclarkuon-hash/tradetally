@@ -117,6 +117,8 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
   const trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND broker=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows;
   let native=[],cashRows=[],cashOpening=Number(account.initial_balance||0),cutoff=end,method,blockers=[];
   const market=new Map(),cryptoRates=snapshot?.payload?.valuation?.rates||{},payload=snapshot?.payload;
+  const marketSymbolFor=t=>account.broker==='etoro'&&t.instrument_type!=='crypto'&&etoroLots.get(t)?.marketSymbol?
+   historySymbol(etoroLots.get(t).marketSymbol,date(t.entry_time||t.trade_date)):historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date));
   const need=new Set();
   let fills=[],splits=[],etoroSplits=[],etoroLots=new Map();
   if(account.broker==='etoro') {
@@ -161,7 +163,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))need.add(historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date)));
+    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))need.add(marketSymbolFor(t));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
@@ -218,11 +220,11 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
       // do not inspect splits for an unrelated similarly named Yahoo stock.
       const unsupportedContract=isEtoroCfd&&(['OIL','GOLD','SILVER','COPPER','NGAS','NATGAS','PLATINUM','PALLADIUM'].includes(t.symbol)||t.symbol.endsWith('.FUT'));
       if(unsupportedContract){value.issues.push(priceIssue(t.symbol,zeroMissingPrices));continue;}
-      const s=historicalMarketSymbol(t.symbol,t.instrument_type,opened),series=market.get(s);
+      const s=marketSymbolFor(t),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a
       // dated broker split allocation, avoid claiming a pre-split valuation.
       let quantity=Number(t.quantity);
-      if(account.broker==='etoro')quantity=historicalLotQuantity(t,d,opened,closed,etoroLots.get(t)?.splits||[],series?.splits||[]);
+      if(account.broker==='etoro')quantity=historicalLotQuantity(t,d,opened,closed,etoroLots.get(t)?.splits||[],series?.splits||[],etoroLots.get(t));
       else if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d)))quantity=null;
       if(quantity==null){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
       const p=stockPrice(s,d);

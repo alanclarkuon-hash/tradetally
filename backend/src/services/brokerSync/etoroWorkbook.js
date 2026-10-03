@@ -80,7 +80,24 @@ async function read(buffer) {
   if(!statement['Account Activity'].length||required.some(k=>!(k in statement['Account Activity'][0])))fail('Missing account-activity fields.');
   for(const row of statement['Account Activity']){const time=statementDate(row.Date);if(time<start||time>end)fail('Activity lies outside the statement period.');}
   const equity={openingTotalUSD:Number(controls['Beginning Unrealized Equity']),closingTotalUSD:Number(controls['Ending Unrealized Equity'])};
+  const holdingsTotals=[];
+  if(sheets.has('Holdings')) {
+    const data=sheet('Holdings'),headers=data[0]||[];
+    const column=name=>headers.indexOf(name);
+    const dateColumn=column('Snapshot Date'),valueColumn=column('Value in USD'),idColumn=column('Position ID');
+    if([dateColumn,valueColumn,idColumn].some(c=>c<0))fail('Missing holdings snapshot fields.');
+    const totals=new Map(),seen=new Set();
+    for(const row of data.slice(1).filter(r=>r.some(v=>v!=null&&v!==''))) {
+      const serial=row[dateColumn],value=row[valueColumn],id=row[idColumn];
+      if(typeof serial!=='number'||!Number.isFinite(serial)||serial<1||serial>100000||typeof value!=='number'||!Number.isFinite(value)||id==null)fail('Invalid holdings snapshot.');
+      const day=new Date(Date.UTC(1899,11,30)+Math.floor(serial)*86400000).toISOString().slice(0,10);
+      const key=[day,id].join('|');if(seen.has(key))fail('Duplicate holdings snapshot position.');seen.add(key);
+      if(day<start.slice(0,10)||day>end.slice(0,10))fail('Holdings snapshot lies outside the statement period.');
+      totals.set(day,(totals.get(day)||0)+value);
+    }
+    for(const [date,holdingsUSD] of totals)holdingsTotals.push({date,holdingsUSD});
+  }
   return {statement,username:controls.Username.trim().toLowerCase(),start:start.slice(0,10),end:end.slice(0,10),
-    equity:Number.isFinite(equity.openingTotalUSD)&&Number.isFinite(equity.closingTotalUSD)?equity:null};
+    holdingsTotals,equity:Number.isFinite(equity.openingTotalUSD)&&Number.isFinite(equity.closingTotalUSD)?equity:null};
 }
 module.exports={read,validateZip};

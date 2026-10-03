@@ -16,15 +16,17 @@ async function captureEtoroStatement(userId,accountId,buffer) {
  const prepared=prepare(upload.statement,{startingCash:opening});
  const saved=report.records.slice(first).filter(r=>r.date<=upload.end);
  if(saved.length!==prepared.records.length||prepared.records.some((r,i)=>r.reference!==saved[i].reference||Math.abs(r.cash-saved[i].cash)>.00001))throw Error('Statement cash activity differs from saved records');
- const endpoints=[{date:day(Date.parse(upload.start)-86400000),total:upload.equity.openingTotalUSD}, {date:upload.end,total:upload.equity.closingTotalUSD}];
+ const endpoints=[{date:day(Date.parse(upload.start)-86400000),total:upload.equity.openingTotalUSD}, {date:upload.end,total:upload.equity.closingTotalUSD},
+  ...(upload.holdingsTotals||[]).map(p=>({date:p.date,holdings:p.holdingsUSD}))];
  let captured=0;
  await db.withTransaction(async client=>{
   for(const point of endpoints) {
    if(point.date<day(account.initial_balance_date))continue;
    const cash=Number(report.starting_cash)+report.records.filter(r=>r.date<=point.date).reduce((s,r)=>s+r.cash,0);
-   if(!(point.total>=cash-.02)||!Number.isFinite(point.total))throw Error('Statement equity does not cover its cash balance');
+   const holdings=point.holdings??(point.total-cash);
+   if(!Number.isFinite(holdings)||holdings<-.02)throw Error('Statement equity does not cover its cash balance');
    const fx=(await client.query("SELECT rates FROM fx_daily_rates WHERE base_code='USD' AND rate_date<=$1 AND rate_date >= $1::date-7 ORDER BY rate_date DESC LIMIT 1",[point.date])).rows[0]?.rates.GBP;
-   await client.query(`INSERT INTO portfolio_statement_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,gbp_per_usd) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,account_identifier,value_date) DO UPDATE SET holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,gbp_per_usd=EXCLUDED.gbp_per_usd`,[userId,account.account_identifier,point.date,point.total-cash,cash,fx||null]);
+   await client.query(`INSERT INTO portfolio_statement_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,gbp_per_usd) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(user_id,account_identifier,value_date) DO UPDATE SET holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,gbp_per_usd=EXCLUDED.gbp_per_usd`,[userId,account.account_identifier,point.date,holdings,cash,fx||null]);
    captured++;
   }
  });

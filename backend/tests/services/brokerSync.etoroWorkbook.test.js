@@ -3,6 +3,15 @@ const {read}=require('../../src/services/brokerSync/etoroWorkbook');
 async function fixture(currency='USD',formula=false){const w=new ExcelJS.Workbook();const s=w.addWorksheet('Account Summary');s.addRows([['Username','synthetic'],['Currency',currency],['Start Date','01/01/2026 00:00:00'],['End Date','31/01/2026 23:59:59']]);w.addWorksheet('Account Activity').addRows([['Date','Type','Amount','Balance','Position ID','Realized Equity Change'],['02/01/2026 12:00:00','Interest Payment',formula?{formula:'1+1',result:2}:2,102,'synthetic',2]]);w.addWorksheet('Dividends').addRow(['Date of Payment','Position ID','Net Dividend Received (USD)']);return Buffer.from(await w.xlsx.writeBuffer());}
 test('reads the original XLSX cash sheets and period without retaining the file',async()=>{const p=await read(await fixture());expect(p).toMatchObject({username:'synthetic',start:'2026-01-01',end:'2026-01-31'});expect(p.statement['Account Activity'][0].Amount).toBe(2);});
 test('rejects invalid files, non-USD statements and formula cells',async()=>{await expect(read(Buffer.from('csv'))).rejects.toThrow(/XLSX/);await expect(read(await fixture('GBP'))).rejects.toThrow(/USD/);await expect(read(await fixture('USD',true))).rejects.toThrow(/unsupported cell/);});
+test('aggregates dated holdings values once and rejects duplicate position snapshots',async()=>{
+ const workbook=new ExcelJS.Workbook();await workbook.xlsx.load(await fixture());
+ const holdings=workbook.addWorksheet('Holdings');
+ holdings.addRows([['Snapshot Date','Position ID','Value in USD'],[46038,'synthetic-a',10],[46038,'synthetic-b',20]]);
+ const valid=await read(Buffer.from(await workbook.xlsx.writeBuffer()));
+ expect(valid.holdingsTotals).toEqual([{date:'2026-01-16',holdingsUSD:30}]);
+ holdings.addRow([46038,'synthetic-a',10]);
+ await expect(read(Buffer.from(await workbook.xlsx.writeBuffer()))).rejects.toThrow('Duplicate holdings');
+});
 
 test('reads namespace-prefixed eToro exports with GBP display columns',async()=>{
   const {createRequire}=require('module');const JSZip=createRequire(require.resolve('exceljs'))('jszip');
