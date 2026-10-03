@@ -221,6 +221,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
 
       const assetClass = cleanString(read('AssetClass', 'Asset Class', 'AssetCategory', 'Asset Category')).toUpperCase();
+      // Currency conversions belong to the cash ledger, not stock/option trades.
+      if (assetClass === 'CASH') {
+        if (diagnostics) diagnostics.currencyConversionRows = (diagnostics.currencyConversionRows || 0) + 1;
+        continue;
+      }
       const optionAssetClasses = ['OPT', 'OPTION', 'OPTIONS', 'EQUITY AND INDEX OPTIONS'];
       const supportedAssetClasses = new Set(['', 'STK', 'STOCK', 'STOCKS', ...optionAssetClasses, 'FUT', 'FUTURE', 'FUTURES']);
       if (!supportedAssetClasses.has(assetClass)) {
@@ -783,6 +788,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             currentTrade.newExecutionsAdded++;
           }
         } else {
+          if (diagnostics) diagnostics.matchedExecutionRows = (diagnostics.matchedExecutionRows || 0) + 1;
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
           // Skip position and value updates for duplicate transactions
           console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);

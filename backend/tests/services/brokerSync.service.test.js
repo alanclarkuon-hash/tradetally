@@ -1092,6 +1092,27 @@ describe('broker sync duplicate protection', () => {
     }
   });
 
+  test.each([
+    [1, 1, 'success'],
+    [0, 2, 'success'],
+    [0, 1, 'warning']
+  ])('IBKR accounts for %i matched executions and %i currency rows without hiding unprocessed trades', async (matchedExecutionRows, currencyConversionRows, outcome) => {
+    const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport').mockResolvedValue({ referenceCode: 'ref-1' });
+    const fetchSpy = jest.spyOn(ibkrService, 'fetchGeneratedReport').mockResolvedValue({
+      content: '<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1" fromDate="20260715" toDate="20260715"><OpenPositions /><Trades><Trade assetCategory="STK" symbol="TEST" tradeID="T1" dateTime="20260715;093000"/><Trade assetCategory="CASH" symbol="GBP.USD" tradeID="T2" dateTime="20260715;094000"/></Trades></FlexStatement></FlexStatements></FlexQueryResponse>', format: 'xml'
+    });
+    const contextSpy = jest.spyOn(ibkrService, 'getExistingContext').mockResolvedValue({ existingPositions: {}, existingExecutions: {} });
+    const importSpy = jest.spyOn(ibkrService, 'importTrades').mockResolvedValue({ imported: 0, updated: 0, skipped: 0, failed: 0, duplicates: 0 });
+    parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [], matchedExecutionRows, currencyConversionRows } });
+    try {
+      const result = await ibkrService.syncTrades({ id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query' }, { startDate: '2026-07-15', endDate: '2026-07-15' });
+      expect(result).toMatchObject({ outcome, matchedExecutionRows, currencyConversionRows, cashEventsImported: 0, cashEventsMatched: 0 });
+      expect(result.warningDetails.some(w => w.code === 'NONEMPTY_REPORT_NOT_IMPORTED')).toBe(outcome === 'warning');
+    } finally {
+      requestSpy.mockRestore(); fetchSpy.mockRestore(); contextSpy.mockRestore(); importSpy.mockRestore();
+    }
+  });
+
   test('IBKR does not import any window when a later backfill window fails', async () => {
     const requestSpy = jest.spyOn(ibkrService, 'requestFlexReport')
       .mockResolvedValueOnce({ referenceCode: 'ref-1' })
