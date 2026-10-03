@@ -108,3 +108,11 @@ a complete value on that date. It never labels a changing subset of accounts
 as the total portfolio. Coverage and missing-information reasons are available
 below the chart. Reconstruction is separate from automatic daily recording;
 new statement equity capture currently uses the test-only script.
+
+Trading 212 reconstruction maps the permanent SRNG broker key to DNA for
+post-merger fills and applies dated DNA and TWOU reverse splits from public
+company/exchange notices when provider split data is absent. These adjustments
+preserve original execution records. Delisting alone never sets a holding to
+zero: replayed quantities must reconcile to the broker's current positions.
+The reconstruction script accepts `--broker=trading212` to limit a rebuild to
+that broker. Missing pre-delisting prices remain explicit gaps.
