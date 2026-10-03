@@ -6,11 +6,12 @@ jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockT
 jest.mock('../src/utils/currencyConverter',()=>({getForexRate:jest.fn()}));
 jest.mock('../src/services/cryptoCategoriesService',()=>({getCategories:jest.fn().mockResolvedValue({categories:[],primaryCategory:null})}));
 jest.mock('../src/services/fundCategoriesService',()=>({getCategories:jest.fn()}));
+jest.mock('../src/services/assetClassificationService',()=>({getClassifications:jest.fn()}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
 const position={symbol:'USDT',instrumentType:'crypto',totalShares:100,currentValue:100,totalCostBasis:100,unrealizedPnL:0,unrealizedPnLPercent:0};
-beforeEach(()=>jest.resetAllMocks());
+beforeEach(()=>{jest.resetAllMocks();require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
 test('fund identity overrides cached industry and keeps value counted once',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE.L',instrumentType:'stock'}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
@@ -51,5 +52,15 @@ test('dated stock candles are converted to USD before comparing portfolio prices
   const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
   expect(result.holdings[0].pnl).toBe(125);expect(result.holdings[0].pnlPercent).toBe(100);
   expect(require('../src/utils/currencyConverter').getForexRate).toHaveBeenCalledWith('GBP','USD','2026-01-01');
+});
+
+test('stock reference grouping does not change valuation or reuse provider industry',async()=>{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'MSFT',instrumentType:'stock'}]);
+  getRatesToDisplay.mockResolvedValue({USD:1});db.query.mockResolvedValue({rows:[]});
+  require('../src/utils/yahooFinance').getSymbolProfile.mockResolvedValue({quoteType:'EQUITY',industry:'Software—Infrastructure'});
+  require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map([['MSFT',{sector_name:'Information Technology',industry_name:'Software',industry_group_name:'Software & Services',source:'FinanceDatabase'}]]));
+  const result=await getDashboard('test-user',{currency:'USD'});
+  expect(result.holdings[0]).toMatchObject({assetClass:'Stocks',sector:'Information Technology',industry:'Software',value:100});
+  expect(result.totals.holdingsValue).toBe(100);
 });
 

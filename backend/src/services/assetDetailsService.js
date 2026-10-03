@@ -5,6 +5,7 @@ const {CRYPTO_TO_COINGECKO} = require('../utils/cryptoAssets');
 // Explicit sources keep unrelated application data and broker credentials out.
 const SOURCES = [
   ['symbol_categories','Asset profile',false,'updated_at'],
+  ['asset_reference_classifications','FinanceDatabase classification',false,'fetched_at'],
   ['price_monitoring','Saved market quote',false,'last_updated'],
   ['eight_pillars_analysis','Fundamental analysis',false,'analysis_date'],
   ['stock_financials_cache','Financial statements',false,'fetched_at'],
@@ -85,6 +86,7 @@ async function getDetails(userId,input,query={}) {
   }
   const sections=await Promise.all(SOURCES.map(s=>readSource(userId,symbol,s)));
   const profile=sections.find(s=>s.key==='symbol_categories').records[0];
+  const reference=sections.find(s=>s.key==='asset_reference_classifications').records[0];
   const trades=sections.find(s=>s.key==='trades').records;
   const isCrypto=trades.some(t=>t.instrument_type==='crypto')||(!profile&&Boolean(CRYPTO_TO_COINGECKO[symbol]));
   const crypto=await require('./cryptoCategoriesService').getCachedCategories(symbol);
@@ -96,6 +98,7 @@ async function getDetails(userId,input,query={}) {
   return {symbol,name:isCrypto?symbol:profile?.company_name||yahoo?.name||symbol,
     kind:isCrypto?'Crypto':fund||['ETF','MUTUALFUND'].includes(yahoo?.quoteType)?'Fund / ETF':'Stock or other asset',
     labels:[...new Set([...(metadata?.categories||[]),...storedLabels])],labelSource:[metadata?.source,storedLabels.length?'Saved database classifications':null].filter(Boolean).join(' · ')||null,labelAsOf:metadata?.asOf||profile?.updated_at||null,
+    referenceClassification:isCrypto?null:reference||null,
     cachedProfile:yahoo||null,sections,recordCount:sections.reduce((n,s)=>n+s.count,0),
     warning:isCrypto&&profile?'Some older symbol-only database records may describe a stock with the same ticker. Check their source before using them as crypto classifications.':null};
 }

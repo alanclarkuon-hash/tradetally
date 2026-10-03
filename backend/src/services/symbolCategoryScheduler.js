@@ -48,6 +48,11 @@ class SymbolCategoryScheduler extends IntervalScheduler {
 
     console.log(`${logPrefix} Starting scheduled symbol categorization...`);
 
+    // Independent supplemental metadata, even when native profiles are fresh.
+    await require('./assetClassificationService').enrichExistingStocks().catch(()=>{
+      console.warn(`${logPrefix} Supplemental reference metadata unavailable; continuing native categorisation.`);
+    });
+
     const result = await symbolCategories.categorizeNewSymbols();
 
     this.lastRunDate = new Date().toISOString();

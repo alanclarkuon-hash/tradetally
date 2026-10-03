@@ -26,18 +26,20 @@
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section>
       <section class="heatmap-section">
-        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Grouped by industry · area shows value · colour shows holding P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
+        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holding P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
+        <p class="subtitle">Stock classifications are community reference data from FinanceDatabase and may be outdated or incorrect.</p>
         <div v-if="groups.length" class="heatmap" aria-label="Holdings heatmap">
           <div v-for="group in groups" :key="group.name" class="industry" :style="rectStyle(group)"><div class="industry-label" :title="group.name">{{ group.name }} <span>{{ money(group.value) }}</span></div><div class="industry-tiles">
-            <div v-for="category in group.categories" :key="category.name" :style="{left:category.x+'%',top:category.y+'%',width:category.w+'%'}" class="crypto-category-label" :title="category.name">{{ category.name }}</div>
+            <div v-for="sector in group.sectors" :key="sector.name" :style="{left:sector.x+'%',top:sector.y+'%',width:sector.w+'%',height:sector.h+'%'}" class="stock-sector" :title="sector.name"><span :style="{height:sector.labelHeight+'%'}">{{ sector.name }}</span></div>
+            <template v-for="category in group.categories" :key="category.key||category.name"><div v-if="category.showLabel" :style="{left:category.x+'%',top:category.y+'%',width:category.w+'%',height:category.labelHeight+'%'}" class="crypto-category-label" :title="category.name">{{ category.name }}</div></template>
             <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${money(tile.value)}, ${percent(tile.pnlPercent)}`" :title="`${tile.symbol} · ${money(tile.value)} · ${percent(tile.pnlPercent)}`">
               <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}</span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ money(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}</span>
             </button>
           </div></div>
         </div><p v-else class="empty">No priced holdings for these accounts.</p>
-        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span>{{ focus.industry }}</span><span>Value <b>{{ money(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ signedMoney(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
+        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span>{{ focus.sector ? `${focus.sector} → ` : '' }}{{ focus.industry }}</span><span>Value <b>{{ money(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ signedMoney(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
         <details v-if="focus?.categories?.length" class="coverage"><summary>{{ focus.categorySource }} labels for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
-        <p class="scope-note">Funds & ETFs use Yahoo Finance fund categories; unavailable labels stay Unclassified. Crypto uses one CoinGecko theme per coin, with AI taking priority. Each holding is counted once. Select a holding to see its available labels.</p>
+        <p class="scope-note">Stocks use separate FinanceDatabase classifications: sector, industry group and industry. Funds & ETFs use Yahoo Finance fund categories. Crypto uses one CoinGecko theme per coin, with AI taking priority. Unavailable classifications stay Unclassified; each holding is counted once.</p>
       </section>
       <div v-if="incomplete || data.coverage.missingPnl || data.coverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="data.coverage.missingPnl"> {{ data.coverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="data.coverage.unclassified"> {{ data.coverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps.</p>
@@ -49,7 +51,7 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
-import { treemap, pnlColor } from '@/utils/portfolioTreemap'
+import { holdingGroups, pnlColor } from '@/utils/portfolioTreemap'
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const selected=ref(selectedAccount.value?[selectedAccount.value]:[]),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=new Date().toISOString().slice(0,10),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
@@ -60,19 +62,7 @@ const percent=v=>v==null?'Unavailable':`${v>=0?'+':''}${Number(v).toFixed(2)}%`
 const pnlClass=v=>v==null?'muted':v>=0?'gain':'loss'
 const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data.value.coverage.missingPrices))
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
-const groups=computed(()=>{
-  const map=new Map()
-  for(const h of data.value?.holdings||[]){const name=h.assetClass||h.industry;const group=map.get(name)||{name,value:0,items:[]};group.value+=h.value||0;group.items.push(h);map.set(name,group)}
-  return treemap([...map.values()],{x:0,y:0,w:1000,h:560}).map(g=>{
-    const height=Math.max(g.h-26,1)
-    const normalize=t=>({...t,x:t.x/g.w*100,y:t.y/height*100,w:t.w/g.w*100,h:t.h/height*100,area:t.w*t.h,pixelW:t.w})
-    if(!['Crypto assets','Funds & ETFs'].includes(g.name))return {...g,categories:[],tiles:treemap(g.items,{x:0,y:0,w:g.w,h:height}).map(normalize)}
-    const subgroups=new Map()
-    for(const item of g.items){const name=item.category||'Unclassified';const category=subgroups.get(name)||{name,value:0,items:[]};category.value+=item.value||0;category.items.push(item);subgroups.set(name,category)}
-    const categories=treemap([...subgroups.values()],{x:0,y:0,w:g.w,h:height})
-    return {...g,categories:categories.map(normalize),tiles:categories.flatMap(c=>treemap(c.items,{x:c.x,y:c.y+Math.min(20,c.h/3),w:c.w,h:Math.max(c.h-Math.min(20,c.h/3),.01)}).map(normalize))}
-  })
-})
+const groups=computed(()=>holdingGroups(data.value?.holdings||[]))
 // Group coordinates use the canvas; tile coordinates use their parent.
 const rectStyle=r=>({left:(r.name?r.x/10:r.x)+'%',top:(r.name?r.y/5.6:r.y)+'%',width:(r.name?r.w/10:r.w)+'%',height:(r.name?r.h/5.6:r.h)+'%'})
 async function load(){
@@ -101,4 +91,4 @@ onMounted(async()=>{await fetchAccounts();load()})
 
 
 
-<style scoped>.crypto-category-label{position:absolute;height:20px;line-height:20px;background:#19222c;color:#afbecd;font-size:9px;white-space:nowrap;overflow:hidden;padding:0 4px;border:1px solid #0e151c;pointer-events:none;z-index:1}</style>
+<style scoped>.crypto-category-label{position:absolute;height:18px;line-height:18px;background:#19222c;color:#afbecd;font-size:9px;white-space:nowrap;overflow:hidden;padding:0 4px;border:1px solid #0e151c;pointer-events:none;z-index:1}.stock-sector{position:absolute;border:1px solid #8290a155;pointer-events:none;z-index:1;overflow:hidden}.stock-sector span{display:block;height:22px;line-height:22px;background:#24313b;color:#e0edf0;font-size:10px;font-weight:600;padding:0 5px;white-space:nowrap;overflow:hidden}</style>

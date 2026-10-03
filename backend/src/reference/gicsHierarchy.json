@@ -1,0 +1,501 @@
+{
+  "source": "MSCI GICS structure, definitions updated February 2025",
+  "url": "https://www.msci.com/documents/1296102/23c8ec04-fd1c-3518-e04c-4aa37027889d",
+  "sectors": {
+    "10": "Energy",
+    "15": "Materials",
+    "20": "Industrials",
+    "25": "Consumer Discretionary",
+    "30": "Consumer Staples",
+    "35": "Health Care",
+    "40": "Financials",
+    "45": "Information Technology",
+    "50": "Communication Services",
+    "55": "Utilities",
+    "60": "Real Estate"
+  },
+  "groups": {
+    "1010": {
+      "name": "Energy",
+      "sector": "10"
+    },
+    "1510": {
+      "name": "Materials",
+      "sector": "15"
+    },
+    "2010": {
+      "name": "Capital Goods",
+      "sector": "20"
+    },
+    "2020": {
+      "name": "Commercial & Professional Services",
+      "sector": "20"
+    },
+    "2030": {
+      "name": "Transportation",
+      "sector": "20"
+    },
+    "2510": {
+      "name": "Automobiles & Components",
+      "sector": "25"
+    },
+    "2520": {
+      "name": "Consumer Durables & Apparel",
+      "sector": "25"
+    },
+    "2530": {
+      "name": "Consumer Services",
+      "sector": "25"
+    },
+    "2550": {
+      "name": "Consumer Discretionary Distribution & Retail (New Name)",
+      "sector": "25"
+    },
+    "3010": {
+      "name": "Consumer Staples Distribution & Retail (New Name)",
+      "sector": "30"
+    },
+    "3020": {
+      "name": "Food, Beverage & Tobacco",
+      "sector": "30"
+    },
+    "3030": {
+      "name": "Household & Personal Products",
+      "sector": "30"
+    },
+    "3510": {
+      "name": "Health Care Equipment & Services",
+      "sector": "35"
+    },
+    "3520": {
+      "name": "Pharmaceuticals, Biotechnology & Life Sciences",
+      "sector": "35"
+    },
+    "4010": {
+      "name": "Banks",
+      "sector": "40"
+    },
+    "4020": {
+      "name": "Financial Services (New Name)",
+      "sector": "40"
+    },
+    "4030": {
+      "name": "Insurance",
+      "sector": "40"
+    },
+    "4510": {
+      "name": "Software & Services",
+      "sector": "45"
+    },
+    "4520": {
+      "name": "Technology Hardware & Equipment",
+      "sector": "45"
+    },
+    "4530": {
+      "name": "Semiconductors & Semiconductor Equipment",
+      "sector": "45"
+    },
+    "5010": {
+      "name": "Telecommunication Services",
+      "sector": "50"
+    },
+    "5020": {
+      "name": "Media & Entertainment",
+      "sector": "50"
+    },
+    "5510": {
+      "name": "Utilities",
+      "sector": "55"
+    },
+    "6010": {
+      "name": "Equity Real Estate Investment Trusts (REITs) (New Name)",
+      "sector": "60"
+    },
+    "6020": {
+      "name": "Real Estate Management & Development (New)",
+      "sector": "60"
+    }
+  },
+  "industries": {
+    "101010": {
+      "name": "Energy Equipment & Services",
+      "group": "1010",
+      "sector": "10"
+    },
+    "101020": {
+      "name": "Oil, Gas & Consumable Fuels",
+      "group": "1010",
+      "sector": "10"
+    },
+    "151010": {
+      "name": "Chemicals",
+      "group": "1510",
+      "sector": "15"
+    },
+    "151020": {
+      "name": "Construction Materials",
+      "group": "1510",
+      "sector": "15"
+    },
+    "151030": {
+      "name": "Containers & Packaging",
+      "group": "1510",
+      "sector": "15"
+    },
+    "151040": {
+      "name": "Metals & Mining",
+      "group": "1510",
+      "sector": "15"
+    },
+    "151050": {
+      "name": "Paper & Forest Products",
+      "group": "1510",
+      "sector": "15"
+    },
+    "201010": {
+      "name": "Aerospace & Defense",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201020": {
+      "name": "Building Products",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201030": {
+      "name": "Construction & Engineering",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201040": {
+      "name": "Electrical Equipment",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201050": {
+      "name": "Industrial Conglomerates",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201060": {
+      "name": "Machinery",
+      "group": "2010",
+      "sector": "20"
+    },
+    "201070": {
+      "name": "Trading Companies & Distributors",
+      "group": "2010",
+      "sector": "20"
+    },
+    "202010": {
+      "name": "Commercial Services & Supplies",
+      "group": "2020",
+      "sector": "20"
+    },
+    "202020": {
+      "name": "Professional Services",
+      "group": "2020",
+      "sector": "20"
+    },
+    "203010": {
+      "name": "Air Freight & Logistics",
+      "group": "2030",
+      "sector": "20"
+    },
+    "203020": {
+      "name": "Passenger Airlines (New name)",
+      "group": "2030",
+      "sector": "20"
+    },
+    "203030": {
+      "name": "Marine Transportation (New Name)",
+      "group": "2030",
+      "sector": "20"
+    },
+    "203040": {
+      "name": "Ground Transportation (New Name)",
+      "group": "2030",
+      "sector": "20"
+    },
+    "203050": {
+      "name": "Transportation Infrastructure",
+      "group": "2030",
+      "sector": "20"
+    },
+    "251010": {
+      "name": "Automobile Components (New Name)",
+      "group": "2510",
+      "sector": "25"
+    },
+    "251020": {
+      "name": "Automobiles",
+      "group": "2510",
+      "sector": "25"
+    },
+    "252010": {
+      "name": "Household Durables",
+      "group": "2520",
+      "sector": "25"
+    },
+    "252020": {
+      "name": "Leisure Products",
+      "group": "2520",
+      "sector": "25"
+    },
+    "252030": {
+      "name": "Textiles, Apparel & Luxury Goods",
+      "group": "2520",
+      "sector": "25"
+    },
+    "253010": {
+      "name": "Hotels, Restaurants & Leisure",
+      "group": "2530",
+      "sector": "25"
+    },
+    "253020": {
+      "name": "Diversified Consumer Services",
+      "group": "2530",
+      "sector": "25"
+    },
+    "255010": {
+      "name": "Distributors",
+      "group": "2550",
+      "sector": "25"
+    },
+    "255020": {
+      "name": "Internet & Direct Marketing Retail (Discontinued)",
+      "group": "2550",
+      "sector": "25"
+    },
+    "255030": {
+      "name": "Broadline Retail (New Name)",
+      "group": "2550",
+      "sector": "25"
+    },
+    "255040": {
+      "name": "Specialty Retail",
+      "group": "2550",
+      "sector": "25"
+    },
+    "301010": {
+      "name": "Consumer Staples Distribution & Retail (New Name)",
+      "group": "3010",
+      "sector": "30"
+    },
+    "302010": {
+      "name": "Beverages",
+      "group": "3020",
+      "sector": "30"
+    },
+    "302020": {
+      "name": "Food Products",
+      "group": "3020",
+      "sector": "30"
+    },
+    "302030": {
+      "name": "Tobacco",
+      "group": "3020",
+      "sector": "30"
+    },
+    "303010": {
+      "name": "Household Products",
+      "group": "3030",
+      "sector": "30"
+    },
+    "303020": {
+      "name": "Personal Care Products (New Name)",
+      "group": "3030",
+      "sector": "30"
+    },
+    "351010": {
+      "name": "Health Care Equipment & Supplies",
+      "group": "3510",
+      "sector": "35"
+    },
+    "351020": {
+      "name": "Health Care Providers & Services",
+      "group": "3510",
+      "sector": "35"
+    },
+    "351030": {
+      "name": "Health Care Technology",
+      "group": "3510",
+      "sector": "35"
+    },
+    "352010": {
+      "name": "Biotechnology",
+      "group": "3520",
+      "sector": "35"
+    },
+    "352020": {
+      "name": "Pharmaceuticals",
+      "group": "3520",
+      "sector": "35"
+    },
+    "352030": {
+      "name": "Life Sciences Tools & Services",
+      "group": "3520",
+      "sector": "35"
+    },
+    "401010": {
+      "name": "Banks",
+      "group": "4010",
+      "sector": "40"
+    },
+    "401020": {
+      "name": "Thrifts & Mortgage Finance (Discontinued)",
+      "group": "4010",
+      "sector": "40"
+    },
+    "402010": {
+      "name": "Financial Services (New Name)",
+      "group": "4020",
+      "sector": "40"
+    },
+    "402020": {
+      "name": "Consumer Finance",
+      "group": "4020",
+      "sector": "40"
+    },
+    "402030": {
+      "name": "Capital Markets",
+      "group": "4020",
+      "sector": "40"
+    },
+    "402040": {
+      "name": "Mortgage Real Estate Investment Trusts (REITs)",
+      "group": "4020",
+      "sector": "40"
+    },
+    "403010": {
+      "name": "Insurance",
+      "group": "4030",
+      "sector": "40"
+    },
+    "451020": {
+      "name": "IT Services",
+      "group": "4510",
+      "sector": "45"
+    },
+    "451030": {
+      "name": "Software",
+      "group": "4510",
+      "sector": "45"
+    },
+    "452010": {
+      "name": "Communications Equipment",
+      "group": "4520",
+      "sector": "45"
+    },
+    "452020": {
+      "name": "Technology Hardware, Storage & Peripherals",
+      "group": "4520",
+      "sector": "45"
+    },
+    "452030": {
+      "name": "Electronic Equipment, Instruments & Components",
+      "group": "4520",
+      "sector": "45"
+    },
+    "453010": {
+      "name": "Semiconductors & Semiconductor Equipment",
+      "group": "4530",
+      "sector": "45"
+    },
+    "501010": {
+      "name": "Diversified Telecommunication Services",
+      "group": "5010",
+      "sector": "50"
+    },
+    "501020": {
+      "name": "Wireless Telecommunication Services",
+      "group": "5010",
+      "sector": "50"
+    },
+    "502010": {
+      "name": "Media",
+      "group": "5020",
+      "sector": "50"
+    },
+    "502020": {
+      "name": "Entertainment",
+      "group": "5020",
+      "sector": "50"
+    },
+    "502030": {
+      "name": "Interactive Media & Services",
+      "group": "5020",
+      "sector": "50"
+    },
+    "551010": {
+      "name": "Electric Utilities",
+      "group": "5510",
+      "sector": "55"
+    },
+    "551020": {
+      "name": "Gas Utilities",
+      "group": "5510",
+      "sector": "55"
+    },
+    "551030": {
+      "name": "Multi-Utilities",
+      "group": "5510",
+      "sector": "55"
+    },
+    "551040": {
+      "name": "Water Utilities",
+      "group": "5510",
+      "sector": "55"
+    },
+    "551050": {
+      "name": "Independent Power and Renewable Electricity Producers",
+      "group": "5510",
+      "sector": "55"
+    },
+    "601010": {
+      "name": "Diversified REITs (New Name)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601025": {
+      "name": "Industrial REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601030": {
+      "name": "Hotel & Resort REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601040": {
+      "name": "Office REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601050": {
+      "name": "Health Care REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601060": {
+      "name": "Residential REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601070": {
+      "name": "Retail REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "601080": {
+      "name": "Specialized REITs (New)",
+      "group": "6010",
+      "sector": "60"
+    },
+    "602010": {
+      "name": "Real Estate Management & Development (New Code)",
+      "group": "6020",
+      "sector": "60"
+    }
+  }
+}

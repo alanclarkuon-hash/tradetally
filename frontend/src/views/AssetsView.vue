@@ -14,6 +14,13 @@
         <div class="text-right"><strong class="text-2xl tabular-nums">{{ asset.recordCount.toLocaleString() }}</strong><p class="text-sm text-gray-500 dark:text-gray-400">saved records</p></div>
       </section>
       <p v-if="asset.warning" class="asset-notice">{{ asset.warning }}</p>
+      <section v-if="asset.referenceClassification" class="asset-section mb-5">
+        <h3>Stock classification</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400">FinanceDatabase · saved {{ date(asset.referenceClassification.fetched_at) }} · codes mapped to MSCI GICS</p>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">Community reference labels; these may be outdated or incorrect. Matching a GICS code verifies the label, not the company's assignment.</p>
+        <dl class="asset-fields"><div v-for="level in classificationLevels" :key="level.key"><dt>{{ level.label }}</dt><dd>{{ asset.referenceClassification[level.key+'_name'] || 'Unavailable' }} <span v-if="asset.referenceClassification[level.key+'_code']" class="asset-chip ml-2">{{ asset.referenceClassification[level.key+'_code'] }}</span></dd></div></dl>
+        <p v-if="asset.referenceClassification.status!=='matched'" class="text-xs text-gray-500 dark:text-gray-400 mt-3">{{ asset.referenceClassification.status==='unmapped' ? 'Some source labels do not match the published GICS hierarchy. Unverified codes remain unavailable.' : 'No unambiguous classification is available in this reference dataset.' }}</p>
+      </section>
       <section v-if="asset.labels.length" class="asset-labels">
         <h3>Categories & labels</h3><p class="text-xs text-gray-500 dark:text-gray-400 mb-4">{{ asset.labelSource }} · saved {{ date(asset.labelAsOf) }}</p>
         <div class="flex flex-wrap gap-2"><span v-for="label in asset.labels" :key="label" class="asset-chip">{{ label }}</span></div>
@@ -45,6 +52,7 @@ import {useRoute,useRouter} from 'vue-router'
 import api from '@/services/api'
 import AssetDataValue from '@/components/AssetDataValue.vue'
 const route=useRoute(),router=useRouter(),input=ref(String(route.query.symbol||'')),asset=ref(null),loading=ref(false),error=ref(''),pageLoading=ref('')
+const classificationLevels=[{key:'sector',label:'Sector · 2 digits'},{key:'industry_group',label:'Industry group · 4 digits'},{key:'industry',label:'Industry · 6 digits'}]
 const populated=computed(()=>asset.value?.sections.filter(s=>s.count)||[]),empty=computed(()=>asset.value?.sections.filter(s=>!s.count)||[])
 const label=key=>String(key).replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())
 const date=value=>value?new Date(value).toLocaleString():'date unavailable'

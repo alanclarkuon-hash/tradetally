@@ -89,6 +89,8 @@ async function getDashboard(userId, query={}) {
       } else if(profile?.industry)industriesBySymbol.set(p.symbol,profile.industry);
     }));
   }
+  const stockClassifications=await require('./assetClassificationService').getClassifications(
+    candidates.filter(p=>p.instrumentType==='stock' && !funds.has(p.symbol)).map(p=>p.symbol));
   const cryptoRates={};
   for(const row of snapshots.rows)Object.assign(cryptoRates,row.payload.valuation?.rates || {});
   const lotMap=new Map();
@@ -130,6 +132,16 @@ async function getDashboard(userId, query={}) {
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
       quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,accounts:p.accountIdentifiers};
+    if(p.instrumentType==='stock' && !funds.has(p.symbol)) {
+      const reference=stockClassifications.get(p.symbol);
+      row.assetClass='Stocks';
+      row.sector=reference?.sector_name||'Unclassified';
+      row.industry=reference?.industry_name||'Unclassified';
+      row.referenceClassification=reference||null;
+      row.categories=reference?[`Sector: ${reference.sector_name||'Unavailable'}`,`Industry group: ${reference.industry_group_name||'Unavailable'}`,`Industry: ${reference.industry_name||'Unavailable'}`]:[];
+      row.categorySource=reference?.source||null;
+      row.categoryAsOf=reference?.fetched_at||null;
+    }
     if(row.value==null)missingPrices++;
     (p.instrumentType==='crypto' && STABLE.has(p.symbol)?stablecoins:holdings).push(row);
   }
