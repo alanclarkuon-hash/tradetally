@@ -38,6 +38,7 @@ release-assets/
 tmp/
 temp/
 .tmp/
+.local/
 **/*.dump
 **/*.backup
 **/data/backups/
