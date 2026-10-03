@@ -102,8 +102,8 @@ to the preceding day's end, not the statement's first day. These observations
 take priority over derived values; live recorded snapshots take priority over
 both. Original statements and source financial records are never Git artifacts.
 
-The chart can show individual selected-account histories while the combined
-line has gaps. A combined point requires every active selected account to have
+The chart shows one combined line for the selected accounts. A combined point
+requires every active selected account to have
 a complete value on that date. It never labels a changing subset of accounts
 as the total portfolio. Coverage and missing-information reasons are available
 below the chart. Reconstruction is separate from automatic daily recording;

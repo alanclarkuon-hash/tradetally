@@ -124,7 +124,6 @@ async function getHistory(userId,query={}) {
   const series=combineValues(rows,accounts,currency);
   const valid=series.filter(p=>p.value!=null);
   return {currency,range,series,events:events.sort((a,b)=>a.date.localeCompare(b.date)),accountCount:accounts.length,
-    accountSeries:accounts.map(a=>({name:a.account_name,series:combineValues(rows.filter(r=>r.account_identifier===a.account_identifier),[a],currency)})),
     coverage:{firstValueDate:valid[0]?.date||null,lastValueDate:valid.at(-1)?.date||null,recordedDays:valid.length,
       reconstructedDays:valid.filter(p=>p.reconstructedAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
