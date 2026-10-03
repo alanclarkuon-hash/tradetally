@@ -1,4 +1,8 @@
-# Kraken spot and staking sync
+# Kraken spot and Earn/staking sync
+
+Earn allocations are already read using Query Funds. The API key's Earn
+permission is for moving funds into and out of Earn; it is not needed to read
+allocations or rewards. Keep it disabled on the dedicated read-only key.
 
 The connection uses Kraken Spot REST read endpoints only. Create a dedicated
 key with Query Funds, Query Open Orders & Trades, Query Closed Orders & Trades
@@ -39,6 +43,20 @@ and preserve external crypto transfers rather than count them as new money.
 An allocation cursor returned by Kraken is flagged for coverage review because
 the documented allocation request currently exposes no cursor parameter.
 Profit calculations must not invent the original cost basis of transferred coins.
+
+`krakenReconcile.audit` checks native ledger totals against extended balances
+using fixed decimal integer arithmetic and checks the final ledger balances
+exactly. It tolerates at most one historical native precision unit of rounding
+in the aggregate. Staking allocations are checked as a subset of normalized
+balances. Reserved balances stay in total equity. Staking rewards preserve gross,
+fees and net coin amounts; wallet movements and spend/receive conversions are
+classified separately from income and external funding. Single-asset settlement
+groups remain present for rounding reconciliation. Closed historical margin
+activity is flagged separately even when no margin position is currently open.
+
+`saveAudit` records this reconciliation in the owner-scoped private snapshot
+under a transaction lock. It does not create trades, accounts or income records,
+does not enable auto-sync, and does not mark the reporting importer ready.
 
 Financial downloads, snapshots, keys and backups belong in private local storage,
 never in Git. Only synthetic data and Kraken's public authentication example
