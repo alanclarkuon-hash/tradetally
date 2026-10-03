@@ -1,4 +1,4 @@
-const SENSITIVE_KEY_PATTERN = /(pass(word)?|secret|token|api[_-]?key|authorization|cookie|session|signedtransactioninfo|receipt|clientsecret|webhooksecret|x-api-key|private[_-]?key|^username$|^ig[_-]?username$)/i;
+const SENSITIVE_KEY_PATTERN = /(pass(word)?|secret|token|api[_-]?key|authorization|cookie|session|signedtransactioninfo|receipt|clientsecret|webhooksecret|x-api-key|private[_-]?key)/i;
 
 function sanitizeString(value) {
   if (typeof value !== 'string') {
