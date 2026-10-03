@@ -1,5 +1,7 @@
 jest.mock('axios',()=>({post:jest.fn()}));
 jest.mock('../../src/config/database',()=>({connect:jest.fn(),query:jest.fn()}));
+jest.mock('../../src/services/brokerSync/krakenValuation',()=>({collect:jest.fn()}));
+jest.mock('../../src/services/brokerSync/krakenImport',()=>({reconcile:jest.fn()}));
 const axios=require('axios');
 const db=require('../../src/config/database');
 const service=require('../../src/services/brokerSync/krakenService');
@@ -99,6 +101,14 @@ test('repeating, changing or truncated pages fail rather than silently omitting 
   await expect(service.history(connection,'/0/private/Ledgers','ledger',100)).rejects.toThrow('ended');
 });
 
+test('incremental history includes the requested overlap and merges only unchanged identities',async()=>{
+  const spy=jest.spyOn(service,'read').mockResolvedValue({count:1,ledger:{a:{time:99.5,amount:'1'}}});
+  const incoming=await service.history(connection,'/0/private/Ledgers','ledger',200,99);
+  expect(spy.mock.calls[0][2]).toMatchObject({start:'99',end:'200'});
+  expect(service.mergeHistory({a:{time:99.5,amount:'1'},older:{time:1}},incoming)).toEqual({a:{time:99.5,amount:'1'},older:{time:1}});
+  expect(()=>service.mergeHistory({a:{time:99.5,amount:'2'}},incoming)).toThrow('previously reconciled');
+});
+
 function stagedReads(c,path) {
   if(path.endsWith('GetApiKeyInfo'))return info;
   if(path.endsWith('BalanceEx'))return {'ETH.S':{balance:'1.1'},ZGBP:{balance:'50'}};
@@ -109,10 +119,11 @@ function stagedReads(c,path) {
 }
 test('stages native staking, fiat and rewards once; never double-adds allocations to balances',async()=>{
   jest.spyOn(service,'read').mockImplementation(stagedReads);
+  db.query.mockResolvedValue({rows:[]});
   const output=await service.syncTrades(connection);
   expect(output).toMatchObject({imported:0,outcome:'warning'});
-  expect(db.query).toHaveBeenCalledTimes(1);
-  const [,params]=db.query.mock.calls[0];
+  expect(db.query).toHaveBeenCalledTimes(2);
+  const [,params]=db.query.mock.calls[1];
   expect(params.slice(0,3)).toEqual(['owner',`Kraken ****${connection.externalAccountId.slice(-4)}`,'connection']);
   const payload=JSON.parse(params[3]);
   expect(payload.balances['ETH.S'].balance).toBe('1.1');
@@ -128,4 +139,21 @@ test('changed account or a failed staking read preserves the previous snapshot',
   spy.mockImplementation((c,path)=>{if(path.endsWith('Allocations'))throw Error('staking read failed');return stagedReads(c,path);});
   await expect(service.syncTrades(connection)).rejects.toThrow('staking read failed');
   expect(db.query).not.toHaveBeenCalled();
+});
+
+test.each([true,false])('only reconciled history is reused (reconciled=%s)',async reconciled=>{
+  const previous={reconciled,historyDownloaded:true,historyEnd:100,trades:{oldTrade:{time:1}},ledger:{oldLedger:{time:1}},valuation:{rates:{}}};
+  db.query.mockResolvedValue({rows:[{payload:previous}]});
+  jest.spyOn(service,'read').mockImplementation(stagedReads);
+  const history=jest.spyOn(service,'history');
+  require('../../src/services/brokerSync/krakenValuation').collect.mockResolvedValue({complete:true});
+  const importer=require('../../src/services/brokerSync/krakenImport').reconcile.mockResolvedValue({imported:0});
+  await service.syncTrades({...connection,brokerMetadata:{import_pending_review:false}});
+  expect(history.mock.calls.every(call=>call[4]===(reconciled?99:0))).toBe(true);
+  expect(history).toHaveBeenCalledTimes(2);
+  const payload=importer.mock.calls[0][1];
+  expect(Object.hasOwn(payload.trades,'oldTrade')).toBe(reconciled);
+  expect(Object.hasOwn(payload.ledger,'oldLedger')).toBe(reconciled);
+  expect(db.query.mock.calls[0][1]).toEqual(['owner',`Kraken ****${connection.externalAccountId.slice(-4)}`,'connection']);
+  expect(db.query.mock.calls[0][0]).toContain('connection_id=$3');
 });
