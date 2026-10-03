@@ -1,4 +1,11 @@
 // Squarified rectangles preserve holding area without producing long strips.
+// Group rectangles use canvas pixels; holdings use parent percentages.
+// An asset's company name must never determine its coordinate system.
+export function heatmapRectStyle(rect, canvas = false) {
+  return {left:(canvas?rect.x/10:rect.x)+'%',top:(canvas?rect.y/5.6:rect.y)+'%',
+    width:(canvas?rect.w/10:rect.w)+'%',height:(canvas?rect.h/5.6:rect.h)+'%'}
+}
+
 export function treemap(items, box) {
   const sorted = items.filter(x => x.value > 0).sort((a,b) => b.value-a.value)
   const total = sorted.reduce((s,x) => s+x.value,0)
