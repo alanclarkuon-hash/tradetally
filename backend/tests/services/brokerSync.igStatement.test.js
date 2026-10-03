@@ -55,4 +55,5 @@ test('monthly holding valuations can change while acquisition cost remains immut
   const t={key:'holding:synthetic',entryPrice:3,quantity:2,holding:{cost:6,quantity:2,value:7,asOf:'2026-06-01T00:00:00Z'}};
   expect(tradeHash(t)).toBe(tradeHash({...t,holding:{...t.holding,value:8,asOf:'2026-07-01T00:00:00Z'}}));
   expect(tradeHash(t)).not.toBe(tradeHash({...t,holding:{...t.holding,cost:8}}));
+  expect(tradeHash(t)).toBe(tradeHash({...t,holding:{asOf:t.holding.asOf,value:7,quantity:2,cost:6}}));
 });

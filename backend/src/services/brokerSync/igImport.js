@@ -6,8 +6,10 @@ const dateKey = value => value instanceof Date ? value.toISOString().slice(0,10)
 function tradeHash(t) {
   if(!t.holding)return hash(t);
   // Monthly valuations can change without changing the acquired holding.
-  const {value,asOf,...acquisition}=t.holding;
-  return hash({...t,holding:acquisition});
+  const {value,asOf,name,symbol,isin,quantity,cost,...extra}=t.holding;
+  // JSONB changes object key order. Keep the original acquisition field order
+  // so stored fingerprints remain valid when inputs come back from the DB.
+  return hash({...t,holding:{name,symbol,isin,quantity,cost,...extra}});
 }
 function sameCash(a,b) {
   // PostgreSQL JSONB reorders keys. Compare financial fields rather than the
