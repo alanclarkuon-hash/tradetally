@@ -4,7 +4,8 @@ const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const {assetCode,nativeWalletCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
 const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
-const {statementSplits,historicalLotQuantity}=require('./etoroHistoricalSplits');
+const {statementSplits,historicalLotQuantity,statementLotMetadata}=require('./etoroHistoricalSplits');
+const {cfdEquity}=require('./etoroHistoricalCfd');
 const {STABLE,FIAT}=require('./portfolioDashboardService');
 const date=v=>new Date(v).toISOString().slice(0,10);
 const days=(from,to)=>{const result=[];for(let t=Date.parse(from);t<=Date.parse(to);t+=86400000)result.push(date(t));return result;};
@@ -117,14 +118,12 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
   let native=[],cashRows=[],cashOpening=Number(account.initial_balance||0),cutoff=end,method,blockers=[];
   const market=new Map(),cryptoRates=snapshot?.payload?.valuation?.rates||{},payload=snapshot?.payload;
   const need=new Set();
-  let fills=[],splits=[],etoroSplits=[],etoroLotSplits=new Map();
+  let fills=[],splits=[],etoroSplits=[],etoroLots=new Map();
   if(account.broker==='etoro') {
    const reports=(await db.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='etoro'",[userId,account.id])).rows;
-   etoroSplits=statementSplits(reports.flatMap(r=>r.records||[]));
-   for(const t of trades) {
-    const ids=new Set((t.executions||[]).flatMap(e=>[e.etoro_position_id,e.etoro_parent_position_id]).filter(v=>v!=null).map(String));
-    etoroLotSplits.set(t,etoroSplits.filter(s=>ids.has(s.positionId)));
-   }
+   const records=reports.flatMap(r=>r.records||[]);
+   etoroSplits=statementSplits(records);
+   etoroLots=statementLotMetadata(trades,records,etoroSplits);
   }
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');
@@ -162,13 +161,13 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type))need.add(historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date)));
+    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))need.add(historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date)));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,today,{fetchPrices}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,end,{fetchPrices}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
   if(account.broker==='kraken'&&fetchPrices&&cryptoPairs)for(const s of symbols) {
    const coin=s.slice(0,-4),pair=Object.entries(cryptoPairs).find(([,p])=>assetCode(p.base)===coin&&assetCode(p.quote)==='USD');
    if(!pair)continue;
@@ -212,15 +211,31 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
      for(const t of trades) {
       const opened=date(t.entry_time||t.trade_date),closed=t.exit_time?date(t.exit_time):null;
       if(opened>d||(closed&&closed<=d))continue;
-      if(!['stock','crypto'].includes(t.instrument_type)||t.side!=='long') {value.issues.push(`Historical derivative valuation unavailable: ${t.symbol}`);continue;}
+      const isEtoroCfd=account.broker==='etoro'&&t.instrument_type==='cfd';
+      if(!isEtoroCfd&&(!['stock','crypto'].includes(t.instrument_type)||t.side!=='long')) {value.issues.push(`Historical derivative valuation unavailable: ${t.symbol}`);continue;}
+      // These broker contract names are not listed-security identifiers.
+      // Missing contract prices use the explicitly approved zero estimate;
+      // do not inspect splits for an unrelated similarly named Yahoo stock.
+      const unsupportedContract=isEtoroCfd&&(['OIL','GOLD','SILVER','COPPER','NGAS','NATGAS','PLATINUM','PALLADIUM'].includes(t.symbol)||t.symbol.endsWith('.FUT'));
+      if(unsupportedContract){value.issues.push(priceIssue(t.symbol,zeroMissingPrices));continue;}
       const s=historicalMarketSymbol(t.symbol,t.instrument_type,opened),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a
       // dated broker split allocation, avoid claiming a pre-split valuation.
       let quantity=Number(t.quantity);
-      if(account.broker==='etoro')quantity=historicalLotQuantity(t,d,opened,closed,etoroLotSplits.get(t),series?.splits||[]);
+      if(account.broker==='etoro')quantity=historicalLotQuantity(t,d,opened,closed,etoroLots.get(t)?.splits||[],series?.splits||[]);
       else if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d)))quantity=null;
       if(quantity==null){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
-      const p=stockPrice(s,d);if(!(p>0))value.issues.push(priceIssue(t.symbol,zeroMissingPrices));
+      const p=stockPrice(s,d);
+      if(!(p>0))value.issues.push(priceIssue(t.symbol,zeroMissingPrices));
+      else if(isEtoroCfd) {
+       const currency=etoroLots.get(t)?.currency;
+       const unit=currency?normaliseMinorUnit(currency):null;
+       if(!unit&&series.currency!=='USD'){value.issues.push(`Historical CFD entry currency unavailable: ${t.symbol}`);continue;}
+       if(unit&&unit.code!==series.currency){value.issues.push(`Historical CFD currency mismatch: ${t.symbol}`);continue;}
+       const equity=cfdEquity(t,quantity,historicalPrice(series,d),fx(series.currency,d),{nativeDivisor:unit?.divisor||1});
+       if(equity==null)value.issues.push(`Historical CFD collateral or entry basis unavailable: ${t.symbol}`);
+       else value.holdings_usd+=equity;
+      }
       else if(t.instrument_type==='crypto'&&STABLE.has(t.symbol))value.stablecoins_usd+=quantity*p;
       else value.holdings_usd+=quantity*p;
      }
