@@ -796,6 +796,13 @@ const schemas = {
     syncStartDate: nullableDate
   }),
 
+  brokerSyncOkxConnection: Joi.object({
+    api_key: Joi.string().trim().max(4096).required(),
+    api_secret: Joi.string().trim().max(4096).required(),
+    passphrase: Joi.string().max(4096).required(),
+    region: Joi.string().valid('global','eea','us').default('global'),
+    account_label: nullableString(255)
+  }),
   brokerSyncEtoroConnection: Joi.object({
     api_key: Joi.string().trim().max(4096).required(),
     user_key: Joi.string().trim().max(4096).required(),

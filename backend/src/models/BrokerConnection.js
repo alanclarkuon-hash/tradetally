@@ -79,6 +79,9 @@ class BrokerConnection {
       trading212ApiSecret,
       etoroApiKey,
       etoroUserKey,
+      okxApiKey,
+      okxApiSecret,
+      okxPassphrase,
       oauthAccessToken,
       oauthRefreshToken,
       oauthTokenExpiresAt,
@@ -162,6 +165,18 @@ class BrokerConnection {
         JSON.stringify(brokerMetadata || {}), accountLabel,
         autoSyncEnabled, syncFrequency, syncTime, syncStartDate
       ];
+    } else if (brokerType === 'okx') {
+      query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,okx_api_key,okx_api_secret,okx_passphrase,
+        external_account_id,broker_environment,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_time)
+        VALUES($1,'okx','pending',$2,$3,$4,$5,$6,$7,$8,false,'manual',$9)
+        ON CONFLICT(user_id,(COALESCE(broker_environment,'global'))) WHERE broker_type='okx'
+        DO UPDATE SET okx_api_key=EXCLUDED.okx_api_key,okx_api_secret=EXCLUDED.okx_api_secret,
+        okx_passphrase=EXCLUDED.okx_passphrase,external_account_id=EXCLUDED.external_account_id,
+        broker_metadata=EXCLUDED.broker_metadata,account_label=EXCLUDED.account_label,connection_status='pending',
+        auto_sync_enabled=false,sync_frequency='manual',next_scheduled_sync=NULL,consecutive_failures=0,updated_at=NOW() RETURNING *`;
+      params = [userId,encryptionService.encrypt(okxApiKey),encryptionService.encrypt(okxApiSecret),
+        encryptionService.encrypt(okxPassphrase),externalAccountId,brokerEnvironment || 'global',
+        JSON.stringify(brokerMetadata || {}),accountLabel,syncTime];
     } else if (brokerType === 'etoro') {
       query = `INSERT INTO broker_connections (
         user_id,broker_type,connection_status,etoro_api_key,etoro_user_key,
@@ -798,6 +813,15 @@ class BrokerConnection {
         if (row.schwab_refresh_token) {
           connection.schwabRefreshToken = encryptionService.decrypt(row.schwab_refresh_token);
         }
+      }
+    } else if (row.broker_type === 'okx') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerEnvironment = row.broker_environment || 'global';
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials) {
+        connection.okxApiKey = encryptionService.decrypt(row.okx_api_key);
+        connection.okxApiSecret = encryptionService.decrypt(row.okx_api_secret);
+        connection.okxPassphrase = encryptionService.decrypt(row.okx_passphrase);
       }
     } else if (row.broker_type === 'etoro') {
       connection.externalAccountId = row.external_account_id;
