@@ -803,6 +803,15 @@ const schemas = {
     region: Joi.string().valid('global','eea','us').default('global'),
     account_label: nullableString(255)
   }),
+  brokerSyncIgConnection: Joi.object({
+    api_key: Joi.string().trim().max(4096).required(),
+    username: Joi.string().trim().pattern(/^[A-Za-z0-9_-]{1,30}$/).required().messages({'string.pattern.base':'Enter your IG login identifier (letters, numbers, hyphen or underscore; at most 30 characters).'}),
+    password: Joi.string().max(350).required(),
+    broker_environment: Joi.string().valid('live','demo').default('live'),
+    account_id: Joi.string().trim().pattern(/^[A-Za-z0-9_-]{1,50}$/).allow('',null),
+    account_label: nullableString(255),
+    sync_start_date: Joi.string().isoDate().default('2025-09-01')
+  }),
   brokerSyncKrakenConnection: Joi.object({
     api_key: Joi.string().trim().max(4096).required(),
     api_secret: Joi.string().trim().max(4096).required(),

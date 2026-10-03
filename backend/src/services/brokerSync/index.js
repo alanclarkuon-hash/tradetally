@@ -15,6 +15,7 @@ const trading212Service = require('./trading212Service');
 const etoroService = require('./etoroService');
 const okxService = require('./okxService');
 const krakenService = require('./krakenService');
+const igService = require('./igService');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
@@ -138,6 +139,10 @@ class BrokerSyncService {
           });
           break;
 
+        case 'ig':
+          if(syncType === 'scheduled')throw Error('IG reports need reconciliation before scheduled imports can run.');
+          result = await igService.syncTrades(connection, {startDate,endDate});
+          break;
         case 'kraken':
           result = await krakenService.syncTrades(connection);
           break;
@@ -168,7 +173,7 @@ class BrokerSyncService {
       }
 
       // Auto-close expired options after importing broker data
-      const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
+      const expiredClosed = ['etoro','okx','kraken','ig'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
       // Update sync log with results

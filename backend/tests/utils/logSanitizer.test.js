@@ -5,6 +5,10 @@ const {
 } = require('../../src/utils/logSanitizer');
 
 describe('logSanitizer', () => {
+  test('redacts IG login identifiers alongside passwords and API keys', () => {
+    expect(sanitizeForLogging({username:'synthetic-login',ig_username:'synthetic-login',password:'synthetic-password',api_key:'synthetic-key'}))
+      .toEqual({username:'[REDACTED]',ig_username:'[REDACTED]',password:'[REDACTED]',api_key:'[REDACTED]'});
+  });
   test('redacts nested sensitive object fields', () => {
     const sanitized = sanitizeForLogging({
       apiKey: 'secret-key',
