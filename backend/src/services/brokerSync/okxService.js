@@ -84,6 +84,10 @@ class OkxService {
     const bills=await this.pages(connection,'/api/v5/account/bills-archive');
     const deposits=await this.get(connection,'/api/v5/asset/deposit-history',{limit:'100'});
     const withdrawals=await this.get(connection,'/api/v5/asset/withdrawal-history',{limit:'100'});
+    if(!connection.brokerMetadata?.import_pending_review) {
+      const rates=await this.indexRates(connection,trading);
+      return require('./okxReconcile').reconcile(connection,{trading,funding,positions,fills,bills,deposits,withdrawals,asOf:new Date().toISOString()},rates);
+    }
     await db.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload,captured_at)
       VALUES($1,'okx',$2,$3,$4::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,payload=EXCLUDED.payload,captured_at=NOW()`,
@@ -93,6 +97,20 @@ class OkxService {
     return {imported:0,skipped:0,failed:0,duplicates:0,warnings:[HISTORY_WARNING,
       'OKX balances and recent history downloaded privately for reconciliation. Reports are unchanged until this account’s history is checked.'],
       outcome:'warning',tradeRows:fills.length,openPositionRows:trading[0].details.length};
+  }
+  async indexRates(connection,trading) {
+    const origin=ORIGINS[connection.brokerEnvironment||'global'];
+    if(!origin)throw new Error('Unsupported OKX region');
+    let response;
+    try {response=await axios.get(origin+'/api/v5/market/history-index-candles',
+      {params:{instId:'USDT-USD',bar:'1Dutc',limit:'100'},timeout:30000,maxRedirects:0});}
+    catch {throw new Error('Unable to retrieve the historical OKX USDT/USD index. Previous reports were preserved.');}
+    if(response.data?.code!=='0'||!Array.isArray(response.data.data))throw new Error('Invalid OKX USDT/USD index');
+    const rates={};
+    for(const candle of response.data.data){const rate=Number(candle[4]);if(!(rate>0))throw new Error('Invalid OKX index price');rates[new Date(Number(candle[0])).toISOString().slice(0,10)]=rate;}
+    const usdt=trading[0].details.find(x=>x.ccy==='USDT');
+    if(Number(usdt?.cashBal)>0)rates[new Date().toISOString().slice(0,10)]=Number(usdt.eqUsd)/Number(usdt.cashBal);
+    return rates;
   }
 }
 module.exports=new OkxService();

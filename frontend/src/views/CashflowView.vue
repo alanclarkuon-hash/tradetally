@@ -92,7 +92,7 @@
           </div>
           <!-- Current Balance -->
           <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
-            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.liveCashBalance ? 'Latest synced USD cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Statement cash balance' : 'Current Balance' }}</div>
+            <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'USDT wallet · USD equivalent' : cashflow.summary.liveCashBalance ? 'Latest synced USD cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Statement cash balance' : 'Current Balance' }}</div>
             <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
               {{ formatCurrency(cashflow.summary.liveCashBalance?.amount ?? cashflow.summary.currentBalance) }}
             </div>
@@ -111,7 +111,7 @@
 
         <div v-if="cashflow?.summary?.reconciliation" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
           <span :class="cashflow.summary.reconciliation.matched ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
-            {{ cashflow.summary.reconciliation.matched ? (cashflow.summary.cashflowSource === 'trading212_wallet' ? 'Matches Trading 212 cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Matches eToro USD statement' : 'Matches IBKR statement') : 'Balance needs review' }}
+            {{ cashflow.summary.reconciliation.matched ? (cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'Matches OKX USDT valuation' : cashflow.summary.cashflowSource === 'trading212_wallet' ? 'Matches Trading 212 cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Matches eToro USD statement' : 'Matches IBKR statement') : 'Balance needs review' }}
           </span>
           <span class="ml-2 text-gray-600 dark:text-gray-300">as of {{ formatDate(cashflow.summary.reconciliation.statementDate) }}:
             {{ formatCurrency(cashflow.summary.reconciliation.reportedBalance) }}.
@@ -120,6 +120,9 @@
           </span>
         </div>
 
+        <div v-if="cashflow?.summary?.cashflowSource === 'okx_usdt_wallet'" class="mb-4 rounded-lg border border-gray-200 p-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
+          OKX holds coins and stablecoins, not fiat. This table tracks USDT in USD equivalents. Transfers are excluded from deposit and income totals. All assets, including USDT, appear in Holdings; do not add this wallet value to the portfolio total again.
+        </div>
         <div v-if="cashflow?.summary?.cashflowSource === 'etoro_statement'" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-600 dark:text-gray-300">
           This shows only the USD investment account through the statement date. The separate GBP account balance is excluded.
           The latest synced cash comes from the API; daily cashflow and income remain based on the statement.

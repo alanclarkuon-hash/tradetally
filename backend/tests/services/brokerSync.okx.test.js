@@ -4,7 +4,7 @@ const axios=require('axios');
 const db=require('../../src/config/database');
 const {createHmac}=require('crypto');
 const service=require('../../src/services/brokerSync/okxService');
-const connection={id:'connection',userId:'owner',externalAccountId:'1234',okxApiKey:'test-key',okxApiSecret:'test-secret',okxPassphrase:'test-passphrase',brokerEnvironment:'global'};
+const connection={id:'connection',userId:'owner',externalAccountId:'1234',okxApiKey:'test-key',okxApiSecret:'test-secret',okxPassphrase:'test-passphrase',brokerEnvironment:'global',brokerMetadata:{import_pending_review:true}};
 beforeEach(()=>{jest.clearAllMocks();service.queue=Promise.resolve();service.lastRequestAt=-Infinity;});
 
 test('signs the exact GET path including query parameters and disables redirects',async()=>{
