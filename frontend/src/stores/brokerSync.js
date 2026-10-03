@@ -100,6 +100,18 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     }
   }
 
+  async function addKrakenConnection(connection) {
+    loading.value = true
+    error.value = null
+    try {
+      const response = await api.post('/broker-sync/connections/kraken', connection)
+      await fetchConnections()
+      return response.data.data
+    } catch (err) {
+      error.value = err.response?.data?.error || 'Failed to connect Kraken'
+      throw new Error(error.value)
+    } finally { loading.value = false }
+  }
   async function addOkxConnection(connection) {
     loading.value = true
     error.value = null
@@ -347,6 +359,7 @@ export const useBrokerSyncStore = defineStore('brokerSync', () => {
     schwabConnection,
     trading212Connections,
     addOkxConnection,
+    addKrakenConnection,
     isConnectionSyncing,
 
     // Actions

@@ -803,6 +803,11 @@ const schemas = {
     region: Joi.string().valid('global','eea','us').default('global'),
     account_label: nullableString(255)
   }),
+  brokerSyncKrakenConnection: Joi.object({
+    api_key: Joi.string().trim().max(4096).required(),
+    api_secret: Joi.string().trim().max(4096).required(),
+    account_label: nullableString(255)
+  }),
   brokerSyncEtoroConnection: Joi.object({
     api_key: Joi.string().trim().max(4096).required(),
     user_key: Joi.string().trim().max(4096).required(),

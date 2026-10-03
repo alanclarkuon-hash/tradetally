@@ -11,6 +11,7 @@ const alpacaService = require('../services/brokerSync/alpacaService');
 const trading212Service = require('../services/brokerSync/trading212Service');
 const etoroService = require('../services/brokerSync/etoroService');
 const okxService = require('../services/brokerSync/okxService');
+const krakenService = require('../services/brokerSync/krakenService');
 const brokerSyncService = require('../services/brokerSync');
 const TierService = require('../services/tierService');
 const AnalyticsCache = require('../services/analyticsCache');
@@ -246,6 +247,22 @@ const brokerSyncController = {
   /**
    * Add a Trading 212 API-key connection.
    */
+  async addKrakenConnection(req,res,next) {
+    try {
+      const access = await TierService.canCreateBrokerConnection(req.user.id,req.headers?.host);
+      if(!access.allowed) return sendProRequired(res,access);
+      const {api_key,api_secret,account_label}=req.body;
+      const validation=await krakenService.validateCredentials(api_key,api_secret);
+      if(!validation.valid) return res.status(400).json({success:false,error:validation.message});
+      const connection=await BrokerConnection.create(req.user.id,{brokerType:'kraken',krakenApiKey:api_key,
+        krakenApiSecret:api_secret,externalAccountId:validation.accountId,
+        accountLabel:account_label || null,brokerMetadata:{import_pending_review:true,scope:'spot_staking'},
+        autoSyncEnabled:false,syncFrequency:'manual'});
+      await BrokerConnection.updateStatus(connection.id,'active','Read-only connection validated');
+      return res.status(201).json({success:true,data:await BrokerConnection.findById(connection.id,false),
+        message:'Kraken connected. Run a sync to download trades, balances and staking history for reconciliation.'});
+    } catch(error) { next(error); }
+  },
   async addOkxConnection(req,res,next) {
     try {
       const access = await TierService.canCreateBrokerConnection(req.user.id,req.headers?.host);
@@ -753,7 +770,7 @@ const brokerSyncController = {
 
       // Update settings. syncStartDate and accountLabel may be explicitly null
       // (meaning "all time" / "clear label"), so only forward them when present.
-      if (['etoro','okx'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review && autoSyncEnabled) {
+      if (['etoro','okx','kraken'].includes(connection.brokerType) && connection.brokerMetadata?.import_pending_review && autoSyncEnabled) {
         return res.status(400).json({ success: false,
           error: 'Auto-sync will be available after the first import has been checked.' });
       }
@@ -990,6 +1007,8 @@ const brokerSyncController = {
             testResult = { valid: false, message: `Schwab connection test failed: ${error.message}` };
           }
         }
+      } else if (connection.brokerType === 'kraken') {
+        testResult = await krakenService.validateCredentials(connection.krakenApiKey,connection.krakenApiSecret);
       } else if (connection.brokerType === 'okx') {
         testResult = await okxService.validateCredentials(connection.okxApiKey,connection.okxApiSecret,
           connection.okxPassphrase,connection.brokerEnvironment);

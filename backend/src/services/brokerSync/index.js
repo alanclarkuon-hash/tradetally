@@ -14,6 +14,7 @@ const alpacaService = require('./alpacaService');
 const trading212Service = require('./trading212Service');
 const etoroService = require('./etoroService');
 const okxService = require('./okxService');
+const krakenService = require('./krakenService');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
@@ -137,6 +138,9 @@ class BrokerSyncService {
           });
           break;
 
+        case 'kraken':
+          result = await krakenService.syncTrades(connection);
+          break;
         case 'okx':
           result = await okxService.syncTrades(connection, {startDate,endDate,syncLogId:syncLog.id});
           break;
@@ -156,7 +160,7 @@ class BrokerSyncService {
       }
 
       // Auto-close expired options after importing broker data
-      const expiredClosed = ['etoro','okx'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
+      const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
       // Update sync log with results
