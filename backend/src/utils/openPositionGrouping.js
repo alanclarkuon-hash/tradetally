@@ -88,6 +88,9 @@ function getPositionKey(trade) {
   if (trade.instrument_type === 'option') {
     return `${OPTION_FALLBACK_PREFIX}${trade.symbol}|${currency}`;
   }
+  if (trade.instrument_type === 'crypto') {
+    return `crypto:${trade.symbol}|${currency}`;
+  }
   return `${trade.symbol}|${currency}`;
 }
 
