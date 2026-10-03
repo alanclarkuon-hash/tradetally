@@ -1,5 +1,9 @@
 <template>
-  <div id="app" style="width: 100%; min-width: 100%; overflow-x: visible;">
+  <div id="app" :class="{ 'app-test': isTestEnvironment }" style="width: 100%; min-width: 100%; overflow-x: visible;">
+    <div v-if="isTestEnvironment" class="test-environment-banner" role="status">
+      <strong>TEST ENVIRONMENT</strong>
+      <span>Separate data copy · Automatic syncs off</span>
+    </div>
     <div v-if="runtimeError" class="min-h-screen bg-white dark:bg-gray-950">
       <div class="content-wrapper py-16">
         <div class="max-w-lg">
@@ -163,6 +167,7 @@
 
 <script setup>
 import { computed, onMounted, onUnmounted, watch, ref } from 'vue'
+const isTestEnvironment = window.__APP_CONFIG__?.APP_ENVIRONMENT === 'test'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useVersionStore } from '@/stores/version'
@@ -391,3 +396,28 @@ onUnmounted(() => {
   window.removeEventListener('rate-limit-exceeded', handleRateLimitExceeded)
 })
 </script>
+
+<style>
+.app-test { padding-top: 40px; }
+.test-environment-banner {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 10000;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 12px;
+  background: #fbbf24;
+  color: #292013;
+  border-bottom: 1px solid #d97706;
+  font-size: 12px;
+}
+.test-environment-banner strong { letter-spacing: .08em; }
+.app-test .sidebar { top: 40px; }
+.app-test .sticky.top-0 { top: 40px; }
+@media (max-width: 480px) {
+  .test-environment-banner { gap: 8px; font-size: 10px; }
+}
+</style>

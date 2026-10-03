@@ -14,6 +14,7 @@ export RUN_MIGRATIONS="${RUN_MIGRATIONS:-true}"
 # Expose selected runtime config values to the static frontend bundle.
 node <<'EOF' > /usr/share/nginx/html/runtime-config.js
 const config = {
+  APP_ENVIRONMENT: process.env.APP_ENVIRONMENT || '',
   VITE_POSTHOG_ENABLED: process.env.VITE_POSTHOG_ENABLED || '',
   VITE_POSTHOG_KEY: process.env.VITE_POSTHOG_KEY || '',
   VITE_POSTHOG_HOST: process.env.VITE_POSTHOG_HOST || '',

@@ -1,0 +1,60 @@
+name: tradetally-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-trader}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Use the private test environment file}
+      POSTGRES_DB: tradetally_test
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-trader} -d tradetally_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        VITE_API_URL: /api
+    image: tradetally-test:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .local/backup-secrets/test-server.env
+    environment:
+      DB_HOST: postgres
+      DB_NAME: tradetally_test
+      FRONTEND_URL: http://127.0.0.1:8089
+      API_BASE_URL: http://127.0.0.1:8089/api
+      APP_ENVIRONMENT: test
+      DISABLE_BACKGROUND_JOBS: "true"
+      ENABLE_BROKER_SYNC_SCHEDULER: "false"
+      ENABLE_PRICE_MONITORING: "false"
+      EMAIL_HOST: ""
+      EMAIL_USER: ""
+      EMAIL_PASS: ""
+      VITE_POSTHOG_ENABLED: "false"
+    ports:
+      - "127.0.0.1:8089:80"
+    volumes:
+      - uploads:/app/backend/uploads
+      - app_data:/app/backend/src/data
+      - app_logs:/app/backend/src/logs
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  uploads:
+  app_data:
+  app_logs:
