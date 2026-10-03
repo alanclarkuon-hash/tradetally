@@ -39,4 +39,30 @@ function historicalLotQuantity(trade,day,opened,closed,splits,marketSplits=[]) {
  for(const s of events)if(s.date>day)quantity/=s.ratio;
  return Number.isFinite(quantity)&&quantity>=0?quantity:null;
 }
-module.exports={statementSplits,historicalLotQuantity};
+function statementLotMetadata(trades,records,splits) {
+ const openings=new Map();
+ for(const r of records) {
+  if(r.sourceType!=='Open Position'||!r.positionId)continue;
+  const match=/^([^/]+)\/([A-Z]{3})/.exec(r.details||'');if(!match)continue;
+  const key=[match[1].toUpperCase(),String(r.time).slice(0,19)].join('|');
+  const entries=openings.get(key)||new Map();entries.set(String(r.positionId),{...r,currency:match[2]});openings.set(key,entries);
+ }
+ const result=new Map();
+ for(const t of trades) {
+  const ids=new Set((t.executions||[]).flatMap(e=>[e.etoro_position_id,e.etoro_parent_position_id]).filter(v=>v!=null).map(String));
+  const direct=splits.filter(s=>ids.has(s.positionId));
+  const candidates=[...(openings.get([t.symbol.toUpperCase(),new Date(t.entry_time).toISOString().slice(0,19)].join('|'))?.values()||[])];
+  const closed=t.exit_time?new Date(t.exit_time).toISOString().slice(0,10):null;
+  const profiles=candidates.map(o=>splits.filter(s=>s.positionId===o.positionId&&(!closed||s.date<=closed)));
+  const signature=events=>JSON.stringify(events.map(s=>[s.symbol,s.date,s.ratio]).sort());
+  // Unique openings or unanimous candidate allocations establish a link.
+  // A symbol alone, or conflicting simultaneous openings, never does.
+  const unanimous=profiles.length&&profiles.every(p=>signature(p)===signature(profiles[0]));
+  const inherited=unanimous&&ids.size?profiles[0].map(s=>({...s,positionId:[...ids][0]})):[];
+  const currencies=new Set(candidates.map(o=>o.currency));
+  result.set(t,{splits:statementSplitsLike([...direct,...inherited]),currency:currencies.size===1?[...currencies][0]:null});
+ }
+ return result;
+}
+function statementSplitsLike(splits){return [...new Map(splits.map(s=>[[s.positionId,s.symbol,s.date,s.ratio].join('|'),s])).values()];}
+module.exports={statementSplits,historicalLotQuantity,statementLotMetadata};

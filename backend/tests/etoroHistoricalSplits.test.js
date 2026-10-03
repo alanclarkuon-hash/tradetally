@@ -1,7 +1,21 @@
-const {statementSplits,historicalLotQuantity}=require('../src/services/etoroHistoricalSplits');
+const {statementSplits,historicalLotQuantity,statementLotMetadata}=require('../src/services/etoroHistoricalSplits');
 const trade={symbol:'TEST',quantity:20,executions:[{etoro_position_id:'synthetic-lot'}]};
 const records=[{sourceType:'corp action: Split',details:'TEST/USD 10:1',positionId:'synthetic-lot',date:'2024-06-09'}];
 const market=[{date:'2024-06-10',ratio:10}];
+test('recovers a partial lot from a unique statement opening without changing trade identity',()=>{
+ const child={...trade,entry_time:'2024-01-01T10:00:00.500Z',executions:[{etoro_position_id:'child'}]};
+ const metadata=statementLotMetadata([child],[{sourceType:'Open Position',positionId:'synthetic-lot',details:'TEST/USD',time:'2024-01-01T10:00:00.000Z'}],statementSplits(records)).get(child);
+ expect(historicalLotQuantity(child,'2024-06-01','2024-01-01',null,metadata.splits,market)).toBe(2);
+ expect(metadata.currency).toBe('USD');
+ expect(child.executions[0].etoro_position_id).toBe('child');
+});
+test('conflicting simultaneous opening allocations stay unresolved',()=>{
+ const child={...trade,entry_time:'2024-01-01T10:00:00Z',executions:[{etoro_position_id:'child'}]};
+ const openings=['synthetic-lot','other'].map(positionId=>({positionId,sourceType:'Open Position',details:'TEST/USD',time:'2024-01-01T10:00:00Z'}));
+ expect(statementLotMetadata([child],openings,statementSplits(records)).get(child).splits).toEqual([]);
+ const all=statementSplits([...records,{...records[0],positionId:'other'}]);
+ expect(statementLotMetadata([child],openings,all).get(child).splits).toHaveLength(1);
+});
 test('deduplicates overlapping statements and retains position allocation',()=>{
  expect(statementSplits([...records,...records])).toHaveLength(1);
  expect(statementSplits([{...records[0],details:'invalid'}])).toEqual([]);
