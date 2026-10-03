@@ -46,6 +46,21 @@ describe('IBKR Flex report decoding', () => {
     ]);
   });
 
+  test('reports existing executions separately from cash conversions and unsupported assets', async () => {
+    const records = decodeIBKRFlexReport(fixture).trade_records.filter(record => record.Symbol === 'AAPL');
+    const first = await parseIBKRRecords(records, {}, 'ibkr');
+    const repeat = await parseIBKRRecords([...records,
+      { ...records[0], AssetClass: 'CASH', Symbol: 'GBP.USD' },
+      { ...records[0], AssetClass: 'BOND', Symbol: 'TEST-BOND' }
+    ], { existingExecutions: { AAPL: first.trades[0].executions } }, 'ibkr');
+
+    expect(repeat.trades).toHaveLength(0);
+    expect(repeat.diagnostics).toMatchObject({ matchedExecutionRows: 2, currencyConversionRows: 1, skippedRows: 1 });
+    expect(repeat.diagnostics.skippedReasons).toEqual([
+      expect.objectContaining({ reason: 'Unsupported IBKR asset class: BOND' })
+    ]);
+  });
+
   test('converts timezone-less Flex executions using the user timezone', async () => {
     const decoded = decodeIBKRFlexReport([
       '<FlexQueryResponse><FlexStatements><FlexStatement><Trades>',

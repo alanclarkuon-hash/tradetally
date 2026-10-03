@@ -761,6 +761,8 @@ class IBKRService {
       : [];
     const parseWarnings = parseResult?.diagnostics?.warnings || [];
     const skippedReasons = parseResult?.diagnostics?.skippedReasons || [];
+    const matchedExecutionRows = parseResult?.diagnostics?.matchedExecutionRows || 0;
+    const currencyConversionRows = parseResult?.diagnostics?.currencyConversionRows || 0;
     console.log(`[IBKR] Parsed ${trades.length} trades`);
     if (manualReviewItems.length > 0) {
       console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
@@ -796,6 +798,8 @@ class IBKRService {
     // Import trades
     const result = await this.importTrades(connection.userId, trades, existingContext);
     result.cashEvents = await require('./ibkrCashEvents').importCashEvents(connection,cashSections,{startDate,endDate});
+    result.cashEventsImported = result.cashEvents.imported || 0;
+    result.cashEventsMatched = result.cashEvents.matched || 0;
     warnings.push(...result.cashEvents.warnings);
     for (const report of cashReports) await require('./ibkrCashLedger').saveCashReports(connection,report);
     result.warnings = [...warnings, ...parseWarnings, ...openPositionResult.warnings];
@@ -821,11 +825,13 @@ class IBKRService {
     result.latestRetrievedEndDate = latestRetrievedEndDate;
     result.returnedRanges = returnedRanges;
     result.tradeRows = tradeRecords.length;
+    result.matchedExecutionRows = matchedExecutionRows;
+    result.currencyConversionRows = currencyConversionRows;
     result.openPositionRows = rawOpenPositionRows;
 
-    if (tradeRecords.length > 0 &&
+    if (tradeRecords.length > matchedExecutionRows + currencyConversionRows &&
         result.imported === 0 && (result.updated || 0) === 0 && result.duplicates === 0 &&
-        result.excluded === 0 && manualReviewItems.length === 0) {
+        (result.excluded || 0) === 0 && manualReviewItems.length === 0) {
       const message = 'IBKR returned trade rows, but none could be imported or matched as duplicates.';
       result.warnings.push(message);
       result.warningDetails.push({ code: 'NONEMPTY_REPORT_NOT_IMPORTED', message });

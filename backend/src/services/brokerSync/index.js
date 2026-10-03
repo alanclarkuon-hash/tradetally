@@ -190,10 +190,13 @@ class BrokerSyncService {
           latest_window_retrieved: result.latestWindowRetrieved !== false,
           latest_retrieved_end_date: result.latestRetrievedEndDate || null,
           trade_rows: result.tradeRows || 0,
+          matched_execution_rows: result.matchedExecutionRows || 0,
+          currency_conversion_rows: result.currencyConversionRows || 0,
           excluded_trade_count: result.excluded || 0,
           open_position_rows: result.openPositionRows || 0,
           open_positions_parsed: result.openPositionsParsed || 0,
           cash_events_imported: result.cashEventsImported || 0,
+          cash_events_matched: result.cashEventsMatched || 0,
           manual_review_count: result.manualReviewCount || 0,
           manual_review_items: result.manualReviewItems || []
         }
