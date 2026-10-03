@@ -1142,6 +1142,12 @@ const brokerSyncController = {
     }
   },
 
+  async getTransfers(req, res, next) {
+    try {
+      res.json(await require('../services/brokerSync/transferMatches').list(req.user.id));
+    } catch (error) { next(error); }
+  },
+
   async listExcludedTrades(req, res, next) {
     try {
       const exclusions = await BrokerTradeExclusions.list(req.user.id);

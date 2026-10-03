@@ -86,6 +86,8 @@
         </div>
       </div>
 
+      <TransferLinks :revision="JSON.stringify(store.connections.map(connection => connection.lastSyncAt))" />
+
       <!-- Add New Connection (Pro only) -->
       <div v-if="canCreate" class="card">
         <div class="card-body">
@@ -422,6 +424,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import api from '@/services/api'
+import TransferLinks from '@/components/broker-sync/TransferLinks.vue'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'

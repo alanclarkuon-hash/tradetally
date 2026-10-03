@@ -30,6 +30,7 @@ router.get('/connections', brokerSyncController.getConnections);
 
 // Get all sync logs for current user
 router.get('/logs', brokerSyncController.getAllSyncLogs);
+router.get('/transfers', brokerSyncController.getTransfers);
 
 // Get a specific connection
 router.get('/connections/:id', brokerSyncController.getConnection);

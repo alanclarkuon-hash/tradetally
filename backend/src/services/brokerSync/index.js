@@ -159,6 +159,14 @@ class BrokerSyncService {
           throw new Error(`Unknown broker type: ${connection.brokerType}`);
       }
 
+      if (['kraken','okx'].includes(connection.brokerType)) {
+        try {
+          result.transferMatches = await require('./transferMatches').save(connection.userId);
+        } catch {
+          result.warnings = [...(result.warnings || []), 'Transfer links need review; broker imports completed but transfer matching was not updated.'];
+        }
+      }
+
       // Auto-close expired options after importing broker data
       const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
