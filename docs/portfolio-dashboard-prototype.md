@@ -118,9 +118,14 @@ The reconstruction script accepts `--broker=trading212` to limit a rebuild to
 that broker. Missing pre-delisting prices remain explicit gaps.
 
 For this prototype the owner has authorized `--zero-missing-prices` for
-Trading 212 reconstruction. Missing security prices then contribute zero,
+historical reconstruction. Missing security prices then contribute zero,
 with per-day missing symbols retained in `issues`. Such days and chart
 tooltips are explicitly labeled as estimates. Observed and statement totals
 still take priority, and missing cash FX, negative quantities, unsupported
 derivatives and reconciliation failures remain gaps. Confirmed broker keys
 RHMD_EQ, IPOE and UBNT use RHM.DE, SOFI and UI historical series respectively.
+eToro's MIOT/MIOTA crypto keys use IOTA-USD and BRK.B uses BRK-B. The provider
+symbol is used consistently when fetching and valuing history; original
+broker keys remain unchanged. Halted NVTKL.L remains its own security, with
+missing historical prices treated as labeled zero-price estimates when that
+mode is selected, not as a disposal or a confirmed zero-value asset.

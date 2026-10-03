@@ -1,5 +1,5 @@
 jest.mock('../src/config/database',()=>({query:jest.fn()}));
-const {historySymbol,historySplits}=require('../src/services/portfolioCorporateActions');
+const {historySymbol,historySplits,historicalMarketSymbol}=require('../src/services/portfolioCorporateActions');
 const {replayShares}=require('../src/services/portfolioReconstructionService');
 test('old permanent broker key maps to DNA only after the name change',()=>{
  expect(historySymbol('SRNG','2024-01-01')).toBe('DNA');
@@ -18,6 +18,13 @@ test('maps confirmed Rheinmetall, SoFi and Ubiquiti keys to their Yahoo historie
  expect(historySymbol('RHMD_EQ','2024-05-10')).toBe('RHM.DE');
  expect(historySymbol('IPOE','2024-05-10')).toBe('SOFI');
  expect(historySymbol('UBNT','2024-05-10')).toBe('UI');
+});
+test('eToro IOTA aliases and Berkshire share class use the correct provider symbol',()=>{
+ expect(historicalMarketSymbol('MIOTA','crypto','2024-01-01')).toBe('IOTA-USD');
+ expect(historicalMarketSymbol('MIOT','crypto','2024-01-01')).toBe('IOTA-USD');
+ expect(historicalMarketSymbol('BTC','crypto','2024-01-01')).toBe('BTC-USD');
+ expect(historicalMarketSymbol('BRK.B','stock','2024-01-01')).toBe('BRK-B');
+ expect(historicalMarketSymbol('NVTKL.L','stock','2024-01-01')).toBe('NVTKL.L');
 });
 test('reverse splits reconcile later sales without zeroing pre-delisting holdings',()=>{
  const fills=[{date:'2024-06-01',symbol:'TWOU',quantity:60},{date:'2024-10-01',symbol:'TWOU',quantity:-2}];
