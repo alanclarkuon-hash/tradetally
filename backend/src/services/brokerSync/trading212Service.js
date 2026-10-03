@@ -22,14 +22,7 @@ function toDateOnly(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString().slice(0, 10);
 }
 
-function normalizeTicker(ticker) {
-  const raw = String(ticker || '').trim();
-  // Trading 212 uses a lowercase exchange suffix, e.g. VODl_EQ. Preserve
-  // London listing identity; SPXL.L is a different fund from US-listed SPXL.
-  const london = raw.match(/^(.+)l_EQ$/) || raw.match(/^(.+)_GB_EQ$/i);
-  if (london) return `${london[1].toUpperCase()}.L`;
-  return raw.replace(/_US_EQ$/i, '').toUpperCase();
-}
+const {normalizeTicker, enrichPositions} = require('./trading212Instruments');
 
 function numericTaxAmount(tax) {
   if (!tax || typeof tax !== 'object') return 0;
@@ -95,7 +88,7 @@ class Trading212Service extends OAuthBrokerBase {
     if (syncLogId) await BrokerConnection.updateSyncLog(syncLogId, 'importing');
     // Reconcile complete execution identities rather than treating any shared
     // fill as a duplicate. A sell can legitimately close several entry lots.
-    const positions = await this.fetchPositions(connection);
+    const positions = enrichPositions(await this.fetchPositions(connection), await this.fetchInstruments(connection));
     const result = await require('./trading212Reconcile').reconcileSnapshot(connection, rawExecutions, trades);
     await require('./portfolioSnapshot').saveTrading212Snapshot(connection, positions);
     const cashSections = {};
@@ -138,6 +131,13 @@ class Trading212Service extends OAuthBrokerBase {
       auth: { username: connection.trading212ApiKey, password: connection.trading212ApiSecret }, timeout: 15000
     });
     if (!Array.isArray(response.data)) throw new Error('Invalid Trading 212 positions response');
+    return response.data;
+  }
+
+  async fetchInstruments(connection) {
+    const response = await this.requestPage(`${getApiBase(connection.brokerEnvironment || 'live')}/equity/metadata/instruments`,
+      {username: connection.trading212ApiKey, password: connection.trading212ApiSecret});
+    if (!Array.isArray(response.data)) throw new Error('Invalid Trading 212 instrument catalogue');
     return response.data;
   }
 

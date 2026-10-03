@@ -36,3 +36,22 @@ chosen per coin (AI, RWA, DeFi, Meme, L2, L1, then other descriptive labels),
 while all provider labels remain available in holding details. This is a display
 convention, not an exclusive classification. Missing categories remain unknown.
 Provider failures preserve cached labels; rate limiting pauses further requests.
+# Trading 212 current instrument names
+
+Trading 212's instrument `ticker` is a permanent API identifier. Current
+holdings use `shortName` and `name` from `/equity/metadata/instruments`, refreshed
+on each successful sync. For US and London listings the short ticker supplies
+the market-data symbol; London retains `.L`. Unsupported exchanges and missing
+or invalid short tickers retain the existing symbol rather than guessing.
+
+Catalogue entries must match the exact broker ticker, with an ISIN mismatch
+rejected. Execution history, fill identities, quantities, costs and cash records
+are unchanged. Portfolio and dashboard views use the current symbol while
+retaining the original symbol for matching historical lots and dividends. The
+Assets page can find the original Trading 212 stock trades under the current
+symbol. The original broker identifier remains stored in the snapshot.
+
+For existing test snapshots, `backend/scripts/refresh-trading212-labels.js`
+refreshes instrument labels only. It defaults to preview; `--apply` writes
+metadata. It refuses any environment other than the isolated test database,
+preserves valuation timestamps and refuses a concurrent snapshot change.

@@ -12,6 +12,16 @@ const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
 const position={symbol:'USDT',instrumentType:'crypto',totalShares:100,currentValue:100,totalCostBasis:100,unrealizedPnL:0,unrealizedPnLPercent:0};
 beforeEach(()=>{jest.resetAllMocks();require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+test('current ticker uses original account lots for period P&L and current market symbol for charts',async()=>{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEW',name:'Current company',sourceSymbols:['OLD'],accountIdentifiers:['demo'],instrumentType:'stock',currentPrice:3}]);
+  getRatesToDisplay.mockResolvedValue({USD:1});
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'OLD',account_identifier:'demo',quantity:100,price:1,acquired:'2025-01-01'}]:[]}));
+  require('../src/utils/yahooFinance').getStockTradeChartData.mockResolvedValue({candles_currency:'USD',candles:[{time:Date.parse('2026-01-01')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]});
+  require('../src/utils/currencyConverter').getForexRate.mockResolvedValue(1);
+  const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
+  expect(result.holdings[0]).toMatchObject({symbol:'NEW',name:'Current company',pnl:100,pnlPercent:100});
+  expect(require('../src/utils/yahooFinance').getStockTradeChartData).toHaveBeenCalledWith('NEW',expect.any(String),expect.any(String),'D');
+});
 test('fund identity overrides cached industry and keeps value counted once',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE.L',instrumentType:'stock'}]);
   getRatesToDisplay.mockResolvedValue({USD:1});

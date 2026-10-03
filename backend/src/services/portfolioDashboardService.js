@@ -44,7 +44,7 @@ async function getDashboard(userId, query={}) {
   if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
   const selected=String(query.accounts || '').split(',').map(x=>x.trim()).filter(Boolean);
   const positions=await Portfolio.getPositions(userId,{accounts:selected.join(',')});
-  const symbols=positions.map(p=>p.symbol);
+  const symbols=[...new Set(positions.flatMap(p=>[p.symbol,...(p.sourceSymbols||[])]))];
   const [accounts,industries,snapshots,tradeLots,manualLots]=await Promise.all([
     db.query('SELECT id,account_name,account_identifier,broker,currency FROM user_accounts WHERE user_id=$1 AND is_archived=false',[userId]),
     db.query(`SELECT DISTINCT ON(symbol) symbol,industry,sector FROM (
@@ -54,7 +54,7 @@ async function getDashboard(userId, query={}) {
     ) classifications WHERE symbol=ANY($1) AND (industry IS NOT NULL OR sector IS NOT NULL)
       ORDER BY symbol,updated_at DESC`,[symbols]),
     db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken'",[userId]),
-    range ? db.query(`SELECT symbol,quantity,entry_price AS price,entry_time AS acquired FROM trades
+    range ? db.query(`SELECT symbol,account_identifier,quantity,entry_price AS price,entry_time AS acquired FROM trades
       WHERE user_id=$1 AND exit_time IS NULL AND side='long' AND symbol=ANY($2)
       AND ($3::text[]='{}' OR account_identifier=ANY($3))`,[userId,symbols,selected]) : {rows:[]},
     range ? db.query(`SELECT h.symbol,l.shares AS quantity,l.cost_per_share AS price,l.purchase_date AS acquired
@@ -94,7 +94,12 @@ async function getDashboard(userId, query={}) {
   const cryptoRates={};
   for(const row of snapshots.rows)Object.assign(cryptoRates,row.payload.valuation?.rates || {});
   const lotMap=new Map();
-  for(const lot of [...tradeLots.rows,...manualLots.rows]){const list=lotMap.get(lot.symbol)||[];list.push(lot);lotMap.set(lot.symbol,list);}
+  for(const lot of [...tradeLots.rows,...manualLots.rows]){
+    const matching=positions.find(p=>p.symbol===lot.symbol ||
+      (p.sourceSymbols?.includes(lot.symbol) && p.accountIdentifiers?.includes(lot.account_identifier)));
+    const symbol=matching?.symbol||lot.symbol;
+    const list=lotMap.get(symbol)||[];list.push(lot);lotMap.set(symbol,list);
+  }
   if(range) {
     const equities=positions.filter(p=>p.instrumentType==='stock' && lotMap.has(p.symbol));
     const converter=require('../utils/currencyConverter');
@@ -128,7 +133,7 @@ async function getDashboard(userId, query={}) {
     const categoryKind=p.instrumentType==='crypto'?'crypto':funds.has(p.symbol)?'fund':null;
     const providerMetadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
     const metadata=categoryKind?require('./categoryOverrides').applyCategoryOverride(p.symbol,categoryKind,providerMetadata):providerMetadata;
-    const row={symbol:p.symbol,industry:p.instrumentType==='crypto'?(metadata?.primaryCategory?`Crypto · ${metadata.primaryCategory}`:'Crypto · Unclassified'):industriesBySymbol.get(p.symbol)||p.sector||'Unclassified',
+    const row={symbol:p.symbol,name:p.name||null,industry:p.instrumentType==='crypto'?(metadata?.primaryCategory?`Crypto · ${metadata.primaryCategory}`:'Crypto · Unclassified'):industriesBySymbol.get(p.symbol)||p.sector||'Unclassified',
       assetClass:p.instrumentType==='crypto'?'Crypto assets':industriesBySymbol.get(p.symbol)==='Funds & ETFs'?'Funds & ETFs':null,category:metadata?.primaryCategory||'Unclassified',
       categories:metadata?.categories||[],categorySource:metadata?.source||null,categoryAsOf:metadata?.asOf||null,categoryStale:metadata?.stale||false,
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,

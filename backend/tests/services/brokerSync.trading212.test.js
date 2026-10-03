@@ -53,6 +53,14 @@ describe('Trading 212 broker sync', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
+  test('fetches current instrument catalogue using the selected environment', async () => {
+    axios.get.mockResolvedValue({data:[{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'}]});
+    expect(await trading212Service.fetchInstruments({brokerEnvironment:'demo',trading212ApiKey:'key',trading212ApiSecret:'secret'}))
+      .toEqual([{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'}]);
+    expect(axios.get).toHaveBeenCalledWith('https://demo.trading212.com/api/v0/equity/metadata/instruments',expect.objectContaining({auth:{username:'key',password:'secret'}}));
+    axios.get.mockResolvedValue({data:{}});
+    await expect(trading212Service.fetchInstruments({})).rejects.toThrow('Invalid Trading 212 instrument catalogue');
+  });
 
   test('validates credentials against the selected environment', async () => {
     axios.get.mockResolvedValue({ data: { id: 12345678, currency: 'GBP' } });
