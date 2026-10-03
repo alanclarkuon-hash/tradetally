@@ -172,14 +172,21 @@ class KrakenService {
     for (const value of Object.values(balances)) {
       if (!value || !Number.isFinite(Number(value.balance))) throw new Error('Kraken returned an invalid asset balance.');
     }
+    const payload = {balances,allocations,positions,trades,ledger,asOf,historyEnd:end,
+      historyDownloaded:true,allocationMayBeTruncated,reconciled:false};
+    if (!connection.brokerMetadata?.import_pending_review) {
+      const previous = (await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' AND account_identifier=$2",
+        [connection.userId,`Kraken ****${info.accountId.slice(-4)}`])).rows[0]?.payload;
+      payload.valuation = await require('./krakenValuation').collect({...payload,valuation:previous?.valuation});
+      return require('./krakenImport').reconcile(connection,payload);
+    }
     // Preserve native balances, fee currencies and staking ledger identities.
     // Balances and staking allocations are overlapping views, not additive.
     await db.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload,captured_at)
       VALUES($1,'kraken',$2,$3,$4::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,payload=EXCLUDED.payload,captured_at=NOW()`,
     [connection.userId, `Kraken ****${info.accountId.slice(-4)}`, connection.id,
-      JSON.stringify({ balances, allocations, positions, trades, ledger, asOf, historyEnd: end,
-        historyDownloaded: true, allocationMayBeTruncated, reconciled: false })]);
+      JSON.stringify(payload)]);
     return { imported: 0, skipped: 0, failed: 0, duplicates: 0, outcome: 'warning',
       tradeRows: Object.keys(trades).length, openPositionRows: Object.keys(balances).length,
       warnings: ['Kraken spot trades, balances, staking allocations and the complete available ledger were downloaded privately. Holdings, staking rewards, fees and transfers await reconciliation before entering reports.',

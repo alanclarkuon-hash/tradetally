@@ -111,7 +111,7 @@
 
         <div v-if="cashflow?.summary?.reconciliation" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
           <span :class="cashflow.summary.reconciliation.matched ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
-            {{ cashflow.summary.reconciliation.matched ? (cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'Matches OKX USDT valuation' : cashflow.summary.cashflowSource === 'trading212_wallet' ? 'Matches Trading 212 cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Matches eToro USD statement' : 'Matches IBKR statement') : 'Balance needs review' }}
+            {{ cashflow.summary.reconciliation.matched ? (cashflow.summary.cashflowSource === 'kraken_fiat_wallets' ? 'Matches Kraken fiat cash' : cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'Matches OKX USDT valuation' : cashflow.summary.cashflowSource === 'trading212_wallet' ? 'Matches Trading 212 cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Matches eToro USD statement' : 'Matches IBKR statement') : 'Balance needs review' }}
           </span>
           <span class="ml-2 text-gray-600 dark:text-gray-300">as of {{ formatDate(cashflow.summary.reconciliation.statementDate) }}:
             {{ formatCurrency(cashflow.summary.reconciliation.reportedBalance) }}.
@@ -120,6 +120,10 @@
           </span>
         </div>
 
+        <div v-if="cashflow?.summary?.cashflowSource === 'kraken_fiat_wallets'" class="mb-4 rounded-lg border border-gray-200 p-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
+          Kraken cash includes its GBP and USD wallets, shown in USD. Coins and stablecoins are included in investments.
+          Earn rewards are shown as income paid in coins and do not increase fiat cash. Transfers from another exchange or wallet are not new deposits.
+        </div>
         <div v-if="cashflow?.summary?.cashflowSource === 'okx_usdt_wallet'" class="mb-4 rounded-lg border border-gray-200 p-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
           OKX holds coins and stablecoins, not fiat. This table tracks USDT in USD equivalents. Transfers are excluded from deposit and income totals. All assets, including USDT, appear in Holdings; do not add this wallet value to the portfolio total again.
         </div>
