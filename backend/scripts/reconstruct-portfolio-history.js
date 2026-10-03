@@ -7,6 +7,6 @@ const {reconstruct}=require('../src/services/portfolioReconstructionService');
  const users=(await db.query('SELECT id FROM users')).rows;
  const broker=process.argv.find(a=>a.startsWith('--broker='))?.slice('--broker='.length)||null;
  if(broker&&!['trading212','etoro','kraken','okx','ibkr','ig'].includes(broker))throw Error('Unsupported reconstruction broker');
- for(const user of users)console.log(JSON.stringify(await reconstruct(user.id,{broker,apply:process.argv.includes('--apply'),fetchPrices:process.argv.includes('--prices'),onProgress:p=>console.log(JSON.stringify(p))})));
+ for(const user of users)console.log(JSON.stringify(await reconstruct(user.id,{broker,zeroMissingPrices:process.argv.includes('--zero-missing-prices'),apply:process.argv.includes('--apply'),fetchPrices:process.argv.includes('--prices'),onProgress:p=>console.log(JSON.stringify(p))})));
  await db.pool.end();
 })().catch(()=>{console.error('Historical reconstruction failed; previous reports were preserved.');process.exit(1);});

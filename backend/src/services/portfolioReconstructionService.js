@@ -30,16 +30,19 @@ function historicalPrice(series,d,continuous=false) {
  return p.close;
 }
 
-function valueQuantities(quantities,d,price,fx) {
+const estimatePrefix='Estimated at zero: missing historical price for ';
+const priceIssue=(symbol,zeroMissingPrices)=>zeroMissingPrices?estimatePrefix+symbol:`Missing dated price: ${symbol}`;
+const blocksValue=issues=>issues.some(issue=>!issue.startsWith(estimatePrefix));
+function valueQuantities(quantities,d,price,fx,{zeroMissingPrices=false}={}) {
  let holdings=0,cash=0,stablecoins=0;const issues=[];
  for(const [symbol,q] of Object.entries(quantities)) {
   if(Math.abs(q)<1e-9)continue;
   if(q<0){issues.push(`Negative reconstructed quantity: ${symbol}`);continue;}
   const p=FIAT.has(symbol)?fx(symbol,d):price(symbol,d);
-  if(!(p>0)){issues.push(`Missing dated price: ${symbol}`);continue;}
+  if(!(p>0)){issues.push(priceIssue(symbol,zeroMissingPrices&&!FIAT.has(symbol)));continue;}
   if(FIAT.has(symbol))cash+=q*p;else if(STABLE.has(symbol))stablecoins+=q*p;else holdings+=q*p;
  }
- return {holdings_usd:issues.length?null:holdings,cash_usd:issues.length?null:cash,stablecoins_usd:issues.length?null:stablecoins,issues};
+ return {holdings_usd:blocksValue(issues)?null:holdings,cash_usd:blocksValue(issues)?null:cash,stablecoins_usd:blocksValue(issues)?null:stablecoins,issues};
 }
 
 // Yahoo daily closes are split-adjusted, not dividend-adjusted. Undo later
@@ -94,7 +97,7 @@ function replayShares(fills,splits,from,to) {
  return result;
 }
 
-async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,onProgress=()=>{}}={}) {
+async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zeroMissingPrices=false,onProgress=()=>{}}={}) {
  const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>!broker||a.broker===broker);
  if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
@@ -184,7 +187,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,onP
    if(['kraken','okx'].includes(account.broker)) {
     const quantities=native.find(r=>r.date===d)?.quantities||{};
     const price=(s,day)=>Number(cryptoRates[s]?.[day])||Number(publicCryptoRates[s]?.[day])||(s==='USDT'?Number(payload.rates?.[day])||null:stockPrice(s+'-USD',day));
-    const crypto=valueQuantities(quantities,d,price,fx);value={...crypto,issues:[...value.issues,...crypto.issues]};
+    const crypto=valueQuantities(quantities,d,price,fx,{zeroMissingPrices});value={...crypto,issues:[...value.issues,...crypto.issues]};
    }else {
     const balance=latest(cashRows,d)?.balance??cashOpening,rate=fx(account.currency,d);
     if(!(rate>0))value.issues.push('Missing dated cash exchange rate');else value.cash_usd=balance*rate;
@@ -193,7 +196,8 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,onP
      for(const [s,q] of Object.entries(quantities)) {
       if(Math.abs(q)<1e-8)continue;
       if(shareIssues.has(s)){value.issues.push(`${s}: ${shareIssues.get(s)}`);continue;}
-      const p=stockPrice(s,d);if(!(p>0)||q<0)value.issues.push(`Missing historical security value: ${s}`);else value.holdings_usd+=q*p;
+      if(q<0){value.issues.push(`Negative reconstructed quantity: ${s}`);continue;}
+      const p=stockPrice(s,d);if(!(p>0))value.issues.push(zeroMissingPrices?priceIssue(s,true):`Missing historical security value: ${s}`);else value.holdings_usd+=q*p;
      }
     }else {
      for(const t of trades) {
@@ -204,22 +208,22 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,onP
       // Statement lot quantities may be adjusted to a later split. Without a
       // dated broker split allocation, avoid claiming a pre-split valuation.
       if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d))){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
-      const p=stockPrice(s,d);if(!(p>0))value.issues.push(`Missing dated price: ${t.symbol}`);
+      const p=stockPrice(s,d);if(!(p>0))value.issues.push(priceIssue(t.symbol,zeroMissingPrices));
       else if(t.instrument_type==='crypto'&&STABLE.has(t.symbol))value.stablecoins_usd+=Number(t.quantity)*p;
       else value.holdings_usd+=Number(t.quantity)*p;
      }
     }
    }
    value.issues=[...new Set(value.issues)];
-   if(value.issues.length)value.holdings_usd=value.cash_usd=value.stablecoins_usd=null;
+   if(blocksValue(value.issues))value.holdings_usd=value.cash_usd=value.stablecoins_usd=null;
    rows.push({...value,date:d,gbp_per_usd:fx('GBP',d)>0?1/fx('GBP',d):null});
   }
   if(apply)await db.withTransaction(async client=>{
    await client.query('DELETE FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2',[userId,identifier]);
    for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
   });
-  const valid=rows.filter(r=>!r.issues.length);
-  summaries.push({broker:account.broker,days:valid.length,first:valid[0]?.date,last:valid.at(-1)?.date,gaps:rows.length-valid.length,issues:[...new Set(rows.flatMap(r=>r.issues))]});
+  const valid=rows.filter(r=>r.holdings_usd!=null);
+  summaries.push({broker:account.broker,days:valid.length,estimatedDays:valid.filter(r=>r.issues.length).length,first:valid[0]?.date,last:valid.at(-1)?.date,gaps:rows.length-valid.length,issues:[...new Set(rows.flatMap(r=>r.issues))]});
   onProgress({broker:account.broker,stage:'complete',days:valid.length,gaps:rows.length-valid.length});
  }
  return summaries;

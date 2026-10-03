@@ -75,7 +75,8 @@ function combineValues(rows,accounts,currency) {
     }
     total=holdings+cash+stablecoins;
     return {date,value:money(total),holdings:money(holdings),cash:money(cash),stablecoins:money(stablecoins),missingAccounts:0,stalePrices,
-      reconstructedAccounts:values.filter(r=>r.source==='reconstructed').length};
+      reconstructedAccounts:values.filter(r=>r.source==='reconstructed').length,
+      estimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated at zero:'))).length};
   });
 }
 
@@ -126,6 +127,7 @@ async function getHistory(userId,query={}) {
   return {currency,range,series,events:events.sort((a,b)=>a.date.localeCompare(b.date)),accountCount:accounts.length,
     coverage:{firstValueDate:valid[0]?.date||null,lastValueDate:valid.at(-1)?.date||null,recordedDays:valid.length,
       reconstructedDays:valid.filter(p=>p.reconstructedAccounts>0).length,
+      estimatedDays:valid.filter(p=>p.estimatedAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:false},

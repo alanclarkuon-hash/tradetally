@@ -6,7 +6,9 @@ const aliases={
  // https://investor.atmeta.com/investor-news/press-release-details/2022/Meta-Platforms-Inc.-to-Change-Ticker-Symbol-to-META-on-June-9/default.aspx
  FB:'META',
  // https://infomemo.theocc.com/infomemos?number=55886
- SQ:'XYZ'
+ SQ:'XYZ',
+ // User-confirmed listing / permanent broker-key corrections.
+ RHMD_EQ:'RHM.DE',IPOE:'SOFI',UBNT:'UI'
 };
 const splits={
  DNA:[{date:'2024-08-20',ratio:1/40,source:'https://www.prnewswire.com/news-releases/ginkgo-regains-compliance-with-nyse-minimum-bid-price-requirement-302238512.html'}],
