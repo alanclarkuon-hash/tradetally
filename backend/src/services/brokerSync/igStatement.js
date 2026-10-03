@@ -69,9 +69,9 @@ function prepare(input) {
   if (!confirmation || !/^\d{4}-\d{2}-\d{2}T/.test(confirmation.cutoff)) fail('missing statement balance verification');
   const checkpoint = records.filter(r => r.time <= confirmation.cutoff).reduce((sum,r) => sum + cents(r.cash), 0);
   if (checkpoint !== cents(confirmation.cash)) fail('cash history does not reconcile with statement');
-  const trades = [];
+  const trades = [],openingSignatures=[];
   if (input.kind === 'spread_bet') {
-    if (!input.breakdown || !input.activity || confirmation.holdings?.length) fail('spread-bet imports require closed history and activity; open positions need a separate statement');
+    if (!input.breakdown || !input.activity || confirmation.holdings?.length) fail('spread-bet imports require closed history and activity');
     const breakdownAccount = String(input.breakdown).match(/Account\s*:\s*([^"\r\n,]+)/)?.[1]?.trim();
     if (breakdownAccount !== input.identity) fail('breakdown belongs to another account');
     const detail = csv(input.breakdown, 'Closing Ref');
@@ -103,15 +103,47 @@ function prepare(input) {
     if (trades.length !== deals.length) fail('missing trade breakdown');
     const allocations = new Map();
     for (const t of trades) allocations.set(t.openingKey, (allocations.get(t.openingKey) || 0) + t.quantity);
+    const openBets=confirmation.openBets||[],usedBets=new Set();
     for (const [key, qty] of allocations) {
       const a = activity.filter(r => /(?:opened|rolled):/.test(r.Result) && (r.DealId.endsWith(key) || r.Result.endsWith(key)) && r.ActionStatus === 'ACCEPT');
-      if (a.length !== 1 || Math.abs(Math.abs(number(a[0].Size)) - qty) > .000001) fail('history has a missing close or open spread bet');
+      if (a.length !== 1 || Math.abs(number(a[0].Size)) + .000001 < qty) fail('history has an overclosed or ambiguous spread bet');
     }
     const openings = activity.filter(r => /(?:opened|rolled):/.test(r.Result) && r.ActionStatus === 'ACCEPT');
-    if (openings.some(r => ![...allocations.keys()].some(key => r.DealId.endsWith(key) || r.Result.endsWith(key)))) fail('opening activity is absent from closed history');
+    const openingIds=new Set();
+    for(const a of openings) {
+      const key=a.Result.match(/(?:opened|rolled):\s*([A-Z0-9]+)/)?.[1];
+      if(!key||openingIds.has(key))fail('duplicated or missing opening identity');openingIds.add(key);
+      const closed=[...allocations].filter(([k])=>a.DealId.endsWith(k)||a.Result.endsWith(k)||k===key).reduce((s,[,q])=>s+q,0);
+      const remaining=Math.abs(number(a.Size))-closed;
+      if(remaining < -.000001)fail('spread bet is overclosed');
+      const closedTrade=trades.find(t=>t.openingKey===key||a.DealId.endsWith(t.openingKey));
+      if(remaining<=.000001) {
+        if(!closedTrade)fail('opening activity is absent from closed history');
+        openingSignatures.push({key,signature:{symbol:a.TextEpic,entryTime:closedTrade.entryTime,entryPrice:number(a.Level),
+          side:number(a.Size)>0?'long':'short',originalQuantity:Math.abs(number(a.Size))}});
+        continue;
+      }
+      const matches=openBets.filter(p=>p.betId.endsWith(key));
+      if(matches.length!==1)fail('history has a missing close or open spread bet statement');
+      const p=matches[0];
+      if(usedBets.has(p.betId)||Math.abs(p.quantity-remaining)>.000001||number(a.Level)!==p.entryLevel||
+        (number(a.Size)>0?'long':'short')!==p.side||!['£','GBP'].includes(a.Currency))fail('open spread bet differs from opening activity');
+      const localDate=p.entryTime && new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',day:'2-digit',month:'2-digit',year:'2-digit'}).format(new Date(p.entryTime));
+      if(a.Date!==localDate)fail('open spread-bet date differs from activity');
+      usedBets.add(p.betId);
+      const signature={symbol:a.TextEpic,entryTime:p.entryTime,entryPrice:p.entryLevel,side:p.side,originalQuantity:Math.abs(number(a.Size))};
+      if(closedTrade&&(closedTrade.entryTime!==p.entryTime||closedTrade.entryPrice!==p.entryLevel||closedTrade.side!==p.side))fail('open and closed portions have different acquisition details');
+      openingSignatures.push({key,signature});
+      trades.push({key:`open:${key}`,symbol:a.TextEpic,market:p.market,type:'spread_bet',entryTime:p.entryTime,exitTime:null,
+        entryPrice:p.entryLevel,exitPrice:null,quantity:remaining,side:p.side,pnl:null,fees:0,openingKey:key,
+        openingSignature:signature,openBet:p});
+    }
+    if(usedBets.size!==openBets.length)fail('a statement open bet is absent from activity history');
     for (const category of [['Funding', /Interest for/i], ['Borrowing', /Stock Borrowing/i], ['Dividends', /never/], ['LR Prem.', /CRPREM/i]]) {
       const actual = rows.filter(r => category[0] === 'Dividends' ? r['Transaction type'] === 'DIVIDEND' : category[1].test(r.MarketName)).reduce((sum,r) => sum + cents(r['PL Amount']),0);
-      if (actual !== detail.reduce((sum,r) => sum + cents(r[category[0]]),0)) fail('cash charges or dividends do not match trade breakdown');
+      // The closed P&L report does not yet allocate funding on remaining open
+      // stakes. Those actual cash entries remain in the reconciled cash ledger.
+      if (!openBets.length && actual !== detail.reduce((sum,r) => sum + cents(r[category[0]]),0)) fail('cash charges or dividends do not match trade breakdown');
     }
   } else {
     if (records.some(r => r.type === 'trade')) fail('share trades require a share execution report');
@@ -128,7 +160,7 @@ function prepare(input) {
   const identifier = `IG ${input.kind === 'spread_bet' ? 'SB' : 'SD'} ${input.identity}`;
   const fingerprint = crypto.createHash('sha256').update(JSON.stringify({records,trades})).digest('hex');
   return {name:input.name, identifier, kind:input.kind, records, trades, fingerprint,
-    from:records[0].date, to:records.at(-1).date, endingCash:balance / 100, confirmation};
+    from:records[0].date, to:records.at(-1).date, endingCash:balance / 100, confirmation,openingSignatures};
 }
 
 function pairTransfers(accounts) {

@@ -10,7 +10,7 @@ function input(){return {name:'Synthetic spread account',identity:'SYNTH',kind:'
     cash('WITH','fee','-1','Long Interest for synthetic'),cash('DIVIDEND','dividend','2','Synthetic dividend')]),
   breakdown:encode([['Account : SYNTH'],['Closing Ref','Closed','Opening Ref','Opened','Market','Period','Direction','Size','Opening','Closing','Trade Ccy.','P/L','Funding','Borrowing','Dividends','LR Prem.','Others','Comm.','Total'],
     ['CLOSEKEY','02-06-2026 13:00:00','OPENKEY1','01-06-2026 13:00:00','Synthetic Market','DFB','BUY','.5','200','220','GBP','10','-1','0','2','0','0','0','11']]),
-  activity:encode([['TextEpic','DealId','Result','ActionStatus','Size'],['SYNTH.EPIC','prefixOPENKEY1','Position opened: OPENKEY1 trailing order text','ACCEPT','+0.5']]),
+  activity:encode([['TextEpic','DealId','Result','ActionStatus','Size','Level'],['SYNTH.EPIC','prefixOPENKEY1','Position opened: OPENKEY1 trailing order text','ACCEPT','+0.5','200']]),
   confirmation:{cash:111,cutoff:'2026-06-03T00:00:00.000Z',holdings:[]}};}
 test('reconciles exact cash, UK summer time and original stake; excludes separately reported dividend from journal P&L',()=>{
   const a=prepare(input());expect(a.endingCash).toBe(111);expect(a.trades[0]).toMatchObject({quantity:.5,pnl:9,fees:1,entryTime:'2026-06-01T12:00:00.000Z',symbol:'SYNTH.EPIC'});
@@ -56,4 +56,27 @@ test('monthly holding valuations can change while acquisition cost remains immut
   expect(tradeHash(t)).toBe(tradeHash({...t,holding:{...t.holding,value:8,asOf:'2026-07-01T00:00:00Z'}}));
   expect(tradeHash(t)).not.toBe(tradeHash({...t,holding:{...t.holding,cost:8}}));
   expect(tradeHash(t)).toBe(tradeHash({...t,holding:{asOf:t.holding.asOf,value:7,quantity:2,cost:6}}));
+});
+function partial(){const x=input();x.activity=encode([['TextEpic','DealId','Result','ActionStatus','Size','Level','Currency','Date'],
+  ['SYNTH.EPIC','prefixOPENKEY1','Position opened: OPENKEY1','ACCEPT','+0.75','200','GBP','01/06/26']]);
+  x.confirmation.openBets=[{betId:'DIAASYNTHOPENKEY1',market:'Synthetic Market',quantity:.25,entryLevel:200,currentLevel:210,
+    notional:52.5,margin:5,unrealizedPnL:2.5,side:'long',entryTime:'2026-06-01T12:00:00.000Z',asOf:'2026-06-02T21:00:00.000Z'}];return x;}
+test('partial closes retain only the verified remaining stake without making open profit realised',()=>{
+  const a=prepare(partial());expect(a.trades).toHaveLength(2);
+  expect(a.trades.find(t=>!t.exitTime)).toMatchObject({key:'open:OPENKEY1',quantity:.25,pnl:null,fees:0});
+  expect(a.trades.find(t=>t.exitTime)).toMatchObject({quantity:.5,pnl:9});
+  expect(a.endingCash).toBe(111);
+});
+test.each(['stake','price','date','missing activity','missing statement'])('rejects inconsistent %s on remaining stake',kind=>{
+  const x=partial();if(kind==='stake')x.confirmation.openBets[0].quantity=.5;
+  if(kind==='price')x.confirmation.openBets[0].entryLevel=201;
+  if(kind==='date')x.activity=x.activity.replace('01/06/26','02/06/26');
+  if(kind==='missing activity')x.confirmation.openBets[0].betId='DIAAOTHERID';
+  if(kind==='missing statement')x.confirmation.openBets=[];
+  expect(()=>prepare(x)).toThrow(/No records imported/);
+});
+test('quote updates leave the open fingerprint stable, but stake changes update it',()=>{
+  const t=prepare(partial()).trades.find(t=>t.openBet);
+  expect(tradeHash(t)).toBe(tradeHash({...t,openBet:{...t.openBet,currentLevel:220,unrealizedPnL:5}}));
+  expect(tradeHash(t)).not.toBe(tradeHash({...t,quantity:.1}));
 });

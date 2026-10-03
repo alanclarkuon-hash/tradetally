@@ -3,7 +3,11 @@ const crypto = require('crypto');
 const {prepare,pairTransfers,cents} = require('./igStatement');
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const dateKey = value => value instanceof Date ? value.toISOString().slice(0,10) : String(value).slice(0,10);
+function openingHash(s) {
+  return hash({symbol:s.symbol,entryTime:s.entryTime,entryPrice:s.entryPrice,side:s.side,originalQuantity:s.originalQuantity});
+}
 function tradeHash(t) {
+  if(t.openBet)return hash({key:t.key,quantity:t.quantity,openingHash:openingHash(t.openingSignature)});
   if(!t.holding)return hash(t);
   // Monthly valuations can change without changing the acquired holding.
   const {value,asOf,name,symbol,isin,quantity,cost,...extra}=t.holding;
@@ -22,7 +26,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   if (new Set(accounts.map(a=>a.identifier)).size !== accounts.length) throw Error('Duplicated IG account identity');
   // Persist dated FX through the existing rate store; missing FX stops import.
   const rates = new Map();
-  for (const date of [...new Set(accounts.flatMap(a=>[...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10))]))].sort()) {
+  for (const date of [...new Set(accounts.flatMap(a=>[...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10)),...(a.confirmation.openBets||[]).map(p=>p.asOf.slice(0,10))]))].sort()) {
     const map = await require('../../utils/currencyConverter').getRateMap('USD',date);
     const rate = 1 / Number(map.GBP);
     if (!Number.isFinite(rate) || rate<=0) throw Error('Historical GBP/USD conversion is unavailable');
@@ -32,7 +36,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`ig-file:${userId}`]);
-    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0};
+    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,closedOpenPositions:0};
     for (const a of accounts) {
       let old = (await client.query("SELECT * FROM user_accounts WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       if (old.length>1) throw Error('Ambiguous managed IG account');
@@ -46,13 +50,32 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         const next=current.get(record.reference);
         if(!sameCash(next,record)) throw Error('An existing IG cash record changed or full history is missing');
       }
-      const previous=(await client.query("SELECT id,executions FROM trades WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
+      const previous=(await client.query("SELECT id,executions,exit_time FROM trades WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       const byKey=new Map(previous.map(t=>[t.executions?.[0]?.ig_record_key,t]));
       if(byKey.size!==previous.length || byKey.has(undefined)) throw Error('Unrecognised existing IG journal entry');
-      if(previous.some(t=>!a.trades.some(next=>next.key===t.executions[0].ig_record_key))) throw Error('Full IG trade history is required');
+      for(const oldTrade of previous.filter(t=>!a.trades.some(next=>next.key===t.executions[0].ig_record_key))) {
+        const e=oldTrade.executions[0],opening=a.openingSignatures.find(o=>`open:${o.key}`===e.ig_record_key);
+        if(!e.ig_open_bet||oldTrade.exit_time||!opening||e.ig_opening_hash!==openingHash(opening.signature))throw Error('Full IG trade history is required');
+        // Reuse the existing journal ID for the final newly closed portion.
+        // This preserves notes, tags and attachments on the open journal row.
+        const finalClose=a.trades.filter(t=>t.exitTime&&t.openingKey===opening.key&&!byKey.has(t.key))
+          .sort((x,y)=>y.exitTime.localeCompare(x.exitTime))[0];
+        if(!finalClose)throw Error('An IG full close needs its new closing record');
+        byKey.set(finalClose.key,{...oldTrade,replaceOpen:true});
+        result.closedOpenPositions++;
+      }
       for(const t of a.trades) {
         const oldTrade=byKey.get(t.key), sourceHash=tradeHash(t);
-        if(oldTrade) {
+        if(oldTrade&&!oldTrade.replaceOpen) {
+          if(t.openBet) {
+            if(oldTrade.exit_time||!oldTrade.executions[0].ig_open_bet||oldTrade.executions[0].ig_opening_hash!==openingHash(t.openingSignature))throw Error('An IG open-bet acquisition changed; review required');
+            if(oldTrade.executions[0].ig_source_hash!==sourceHash) {
+              const executions=oldTrade.executions.map(e=>({...e,quantity:t.quantity,ig_source_hash:sourceHash}));
+              await client.query('UPDATE trades SET quantity=$1,executions=$2::jsonb WHERE user_id=$3 AND id=$4 AND exit_time IS NULL',
+            [t.quantity,JSON.stringify(executions),userId,oldTrade.id]);result.updatedOpenPositions++;
+            }
+            result.matchedTrades++;continue;
+          }
           if(oldTrade.executions[0].ig_source_hash!==sourceHash) {
             // Upgrade the original, statement-confirmed stock fingerprint to
             // exclude valuations; only allow the exact original input here.
@@ -64,11 +87,22 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         }
         const rate=rates.get((t.exitTime || t.entryTime).slice(0,10));
         const common={ig_record_key:t.key,ig_source_hash:sourceHash,ig_market:t.market,ig_opening_reference:t.openingKey,
-          ig_reported_total_gbp:t.sourceTotal,ig_original_currency:'GBP',ig_file_source:true};
+          ig_reported_total_gbp:t.sourceTotal,ig_original_currency:'GBP',ig_file_source:true,
+          ...(t.openBet?{ig_open_bet:true,ig_opening_hash:openingHash(t.openingSignature)}:{})};
         const executions=[{...common,type:'entry',action:t.side==='long'?'buy':'sell',quantity:t.quantity,
           price:t.entryPrice*rate,datetime:t.entryTime,ig_native_level:t.entryPrice}];
         if(t.exitTime) executions.push({...common,type:'exit',action:t.side==='long'?'sell':'buy',quantity:t.quantity,
           price:t.exitPrice*rate,datetime:t.exitTime,realized_pnl:t.pnl*rate,ig_native_level:t.exitPrice});
+        if(oldTrade?.replaceOpen) {
+          const updated=await client.query(`UPDATE trades SET trade_date=$1,entry_time=$2,exit_time=$3,entry_price=$4,exit_price=$5,
+            quantity=$6,pnl=$7,fees=$8,exchange_rate=$9,original_entry_price_currency=$10,original_exit_price_currency=$11,
+            original_pnl_currency=$12,original_fees_currency=$13,executions=$14::jsonb
+            WHERE user_id=$15 AND id=$16 AND exit_time IS NULL`,
+            [(t.exitTime||t.entryTime).slice(0,10),t.entryTime,t.exitTime,t.entryPrice*rate,t.exitPrice*rate,
+              t.quantity,t.pnl*rate,t.fees*rate,rate,t.entryPrice,t.exitPrice,t.pnl,t.fees,JSON.stringify(executions),userId,oldTrade.id]);
+          if(updated.rowCount!==1)throw Error('An IG open-bet record changed during import');
+          continue;
+        }
         await client.query(`INSERT INTO trades(user_id,symbol,trade_date,entry_time,exit_time,entry_price,exit_price,quantity,side,pnl,fees,commission,
           broker,account_identifier,instrument_type,original_currency,exchange_rate,original_entry_price_currency,original_exit_price_currency,
           original_pnl_currency,original_fees_currency,executions,notes,enrichment_status)
@@ -76,7 +110,8 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
           [userId,t.symbol,(t.exitTime||t.entryTime).slice(0,10),t.entryTime,t.exitTime,t.entryPrice*rate,
             t.exitPrice==null?null:t.exitPrice*rate,t.quantity,t.side,t.pnl==null?null:t.pnl*rate,t.fees*rate,a.identifier,t.type,rate,
             t.entryPrice,t.exitPrice,t.pnl,t.fees,JSON.stringify(executions),t.type==='spread_bet'
-              ?`IG spread bet: ${t.market}. Quantity is GBP stake per point. Reported settled P&L includes funding/borrowing/stop fees; dividends are separate income.`
+              ?(t.openBet?`IG remaining open stake: ${t.market}. Quantity is GBP per point; funding stays in cashflow until allocated by the closed report.`:
+                `IG spread bet: ${t.market}. Quantity is GBP stake per point. Reported settled P&L includes funding/borrowing/stop fees; dividends are separate income.`)
               :'IG statement-confirmed holding following share consolidation; cost preserved from cash adjustment.']);
         result.importedTrades++;
       }
@@ -98,10 +133,17 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
           currentValue:Number(t.holding.value)*valuationRate,instrumentType:'stock',openedAt:t.entryTime,
           notes:'IG monthly statement valuation; updated by file import',lotCount:1};
       });
+      for(const t of a.trades.filter(t=>t.openBet)) {
+        const p=t.openBet,rate=rates.get(p.asOf.slice(0,10));
+        holdings.push({symbol:t.symbol,quantity:t.quantity,side:t.side,instrumentType:'spread_bet',
+          totalCost:p.entryLevel*t.quantity*rate,currentValue:p.notional*rate,unrealizedPnL:p.unrealizedPnL*rate,
+          openedAt:t.entryTime,lotCount:1,betId:p.betId,asOf:p.asOf,
+          notes:'IG dated spread-bet valuation. Quantity is GBP stake per point; notional value is not invested cash.'});
+      }
       await client.query(`INSERT INTO broker_portfolio_snapshots(user_id,broker_type,account_identifier,positions,synced_at)
         VALUES($1,'ig',$2,$3::jsonb,$4) ON CONFLICT(user_id,broker_type,account_identifier)
         DO UPDATE SET positions=EXCLUDED.positions,synced_at=EXCLUDED.synced_at`,
-        [userId,a.identifier,JSON.stringify(holdings),a.confirmation.holdings?.[0]?.asOf || a.confirmation.cutoff]);
+        [userId,a.identifier,JSON.stringify(holdings),a.confirmation.openBets?.[0]?.asOf || a.confirmation.holdings?.[0]?.asOf || a.confirmation.cutoff]);
       await client.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,payload,captured_at)
         VALUES($1,'ig',$2,$3::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
         DO UPDATE SET payload=EXCLUDED.payload,captured_at=NOW()`,
@@ -127,4 +169,4 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   } catch(error) { await client.query('ROLLBACK');throw error; }
   finally {client.release();}
 }
-module.exports={importAccounts,sameCash,tradeHash};
+module.exports={importAccounts,sameCash,tradeHash,openingHash};

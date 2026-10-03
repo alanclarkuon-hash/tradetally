@@ -27,6 +27,9 @@ async function snapshotPositions(rows, accounts = []) {
   for (const row of rows) {
     if (accounts.length && !accounts.includes(row.account_identifier)) continue;
     for (const p of row.positions) {
+      // Spread bets are derivatives. Their notional exposure is not an owned
+      // stock/coin asset and must not be added to the investments valuation.
+      if(row.broker_type==='ig'&&p.instrumentType==='spread_bet')continue;
       if (['etoro','okx','kraken','ig'].includes(row.broker_type)) {
         positions.push({ symbol: p.symbol, holdingId: null, source: 'trades', positionSource: 'broker',
           notes: p.notes || null, sector: null, targetAllocationPercent: null, totalShares: p.quantity,
@@ -69,11 +72,12 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
     if (['etoro','okx','kraken','ig'].includes(row.broker_type)) {
       const related = openTrades.filter(t => t.broker === row.broker_type &&
         t.account_identifier === row.account_identifier && t.symbol === p.symbol);
-      synthetic.push({ symbol: p.symbol, side: 'long', quantity: p.quantity,
+      synthetic.push({ symbol: p.symbol, side: p.side || 'long', quantity: p.quantity,
         entry_price: p.totalCost / p.quantity, entry_time: p.openedAt, original_currency: 'USD',
         instrument_type: p.instrumentType, broker: row.broker_type, account_identifier: row.account_identifier,
         _brokerRelatedTrades: related, _brokerQuote: { c: p.currentValue / p.quantity,
-          currency: 'USD', asOf: new Date(row.synced_at).toISOString() } });
+          currency: 'USD', asOf: p.asOf || new Date(row.synced_at).toISOString(),
+          ...(p.instrumentType==='spread_bet'?{unrealizedPnL:p.unrealizedPnL,notional:true}:{}) } });
       continue;
     }
     const quantity = Number(p.quantity);
@@ -90,10 +94,16 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
   const grouped = groupTradesIntoPositions([...retained, ...synthetic]);
   for (const t of synthetic) {
     const position = grouped[getPositionKey(t)];
-    if (position) position.brokerQuote = t._brokerQuote;
+    if (position) {
+      const quote=t._brokerQuote;
+      if(t.instrument_type==='spread_bet'&&position.brokerQuote) {
+        if(Math.abs(position.brokerQuote.c-quote.c)>0.000001||position.brokerQuote.asOf!==quote.asOf)throw Error('IG spread-bet quote dates or levels differ');
+        position.brokerQuote={...quote,unrealizedPnL:position.brokerQuote.unrealizedPnL+quote.unrealizedPnL};
+      } else position.brokerQuote=quote;
+    }
   }
   for (const position of Object.values(grouped)) {
-    position.trades = position.trades.flatMap(t => t._brokerRelatedTrades || [t]);
+    position.trades = [...new Set(position.trades.flatMap(t => t._brokerRelatedTrades || [t]))];
   }
   return grouped;
 }

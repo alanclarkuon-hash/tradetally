@@ -23,3 +23,11 @@ test('stock quotes remain independent of same-symbol crypto positions', () => {
   expect(usesEquityQuotes(stock)).toBe(true);
   expect(selectPositionQuote(stock, null, market)).toBe(market);
 });
+test('spread bets use dated IG point levels and never an underlying share quote',()=>{
+  const quote={c:10000,unrealizedPnL:3,asOf:'2026-06-03T21:00:00Z'};
+  const p={symbol:'SYNTH.EPIC',instrumentType:'spread_bet',brokerQuote:quote};
+  expect(usesEquityQuotes(p)).toBe(false);expect(selectPositionQuote(p,null,{c:100})).toBe(quote);
+  const t={symbol:'SYNTH.EPIC',instrument_type:'spread_bet',side:'long',account_identifier:'A',original_currency:'USD'};
+  expect(getPositionKey(t)).not.toBe(getPositionKey({...t,side:'short'}));
+  expect(getPositionKey(t)).not.toBe(getPositionKey({...t,account_identifier:'B'}));
+});

@@ -3074,7 +3074,7 @@ const tradeController = {
           if (position.brokerQuote) {
             const currentPrice = position.brokerQuote.c;
             const currentValue = currentPrice * position.totalQuantity;
-            const unrealizedPnL = position.side === 'short' ? position.totalCost - currentValue : currentValue - position.totalCost;
+            const unrealizedPnL = position.instrumentType==='spread_bet' ? position.brokerQuote.unrealizedPnL : (position.side === 'short' ? position.totalCost - currentValue : currentValue - position.totalCost);
             return { ...position, currentPrice, currentValue, unrealizedPnL,
               unrealizedPnLPercent: position.totalCost > 0 ? unrealizedPnL / position.totalCost * 100 : 0,
               quotePending: false, quoteSource: 'broker', quoteTime: position.brokerQuote.asOf };
@@ -3344,7 +3344,7 @@ const tradeController = {
           }
           const currentValue = currentPrice * position.totalQuantity * valueMultiplier;
           // For short positions, profit is made when price goes down
-          const unrealizedPnL = position.side === 'short'
+          const unrealizedPnL = position.instrumentType==='spread_bet' ? quote.unrealizedPnL : position.side === 'short'
             ? position.totalCost - currentValue
             : currentValue - position.totalCost;
           const unrealizedPnLPercent = (unrealizedPnL / position.totalCost) * 100;
