@@ -1,6 +1,7 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 const {prepare,pairTransfers}=require('../../src/services/brokerSync/igStatement');
 const {calculate}=require('../../src/services/brokerSync/igCashLedger');
+const {sameCash}=require('../../src/services/brokerSync/igImport');
 const encode=rows=>rows.map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(',')).join('\n');
 const header=['TextDate','MarketName','Transaction type','Reference','PL Amount','DateUtc','CurrencyIsoCode'];
 function cash(type,ref,amount,name,time='2026-06-01T12:00:00'){return ['',name,type,ref,amount,time,'GBP'];}
@@ -42,4 +43,11 @@ test('native cashflow uses settled profit, excludes transfers from external fund
   const ledger=calculate(report,'2026-06-02','2026-06-02');
   expect(ledger).toMatchObject({openingBalance:100,balance:111,reconciliation:{matched:true}});
   expect(ledger.rows[0]).toMatchObject({deposits:0,withdrawals:0,trade_inflow:10,income:2,fees:1,net:11});
+});
+test('repeat validation tolerates PostgreSQL JSONB key ordering but refuses changed cash',()=>{
+  const a={reference:'synthetic',time:'2026-06-01T12:00:00.000Z',date:'2026-06-01',amount:7,cash:7,type:'interest',description:'Cash interest'};
+  const b=Object.fromEntries(Object.entries(a).reverse());
+  expect(sameCash(a,b)).toBe(true);
+  expect(sameCash(a,{...b,cash:8})).toBe(false);
+  expect(sameCash(undefined,b)).toBe(false);
 });
