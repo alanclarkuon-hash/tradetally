@@ -20,6 +20,11 @@ test('missing account days and dated FX are gaps rather than zero or invented va
   expect(combineValues(rows,accounts,'USD')[0]).toMatchObject({value:null,missingAccounts:1});
   expect(combineValues([{...rows[0],gbp_per_usd:null}],[accounts[0]],'GBP')[0].value).toBeNull();
 });
+test('derived gaps never become zero values; complete rebuilt days carry provenance',()=>{
+ const gap={...row('one','2026-01-01',100,20),holdings_usd:null,source:'reconstructed'};
+ expect(combineValues([gap],[accounts[0]],'USD')[0].value).toBeNull();
+ expect(combineValues([{...gap,holdings_usd:100}],[accounts[0]],'USD')[0]).toMatchObject({value:120,reconstructedAccounts:1});
+});
 test('captures complete values without counting fiat or stablecoins twice; missing balances are not saved',async()=>{
   db.query.mockResolvedValue({rows:[accounts[0]]});getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
   Portfolio.getPositions.mockResolvedValue([{symbol:'SYNTH',instrumentType:'stock',currentValue:100},

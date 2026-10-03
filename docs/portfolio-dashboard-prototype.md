@@ -67,9 +67,10 @@ Opening or refreshing the portfolio captures today's selected accounts. The
 existing portfolio snapshot scheduler also captures total values daily when
 background jobs are enabled. Test keeps background jobs disabled, so values
 are recorded when the page is used. An offline PC cannot record observations.
-There is no historical valuation series in the current data; the first point
-starts the record and future days build the line. Missing selected-account days
-and missing dated GBP conversion rates produce gaps, not zero balances.
+Historical observations were not recorded before this feature. Saved native
+ledgers, execution histories and public closing prices can now reconstruct
+covered days. Missing selected-account days and missing dated GBP conversion
+rates produce gaps, not zero balances.
 
 Cash deposits, withdrawals and transfers crossing the selected account boundary
 are shown as funding markers using Account & Cashflow history. Matched transfers
@@ -77,3 +78,33 @@ inside the selection are removed even when their two dates differ. Dated FX
 comes from saved FX records; missing rates retain the original-currency amount
 in the tooltip and accessible table. Coin transfers are not cash funding markers.
 Valuation recording dates do not imply every underlying quote is from that day.
+
+## Historical reconstruction (test prototype)
+
+`backend/scripts/reconstruct-portfolio-history.js` is restricted to the test
+environment. It previews by default; `--apply` saves derived history, and
+`--prices` permits public Yahoo, Kraken market-price and Frankfurter FX reads.
+It never calls authenticated broker APIs, starts syncs, changes broker settings,
+or imports financial transactions. Back up the test database before applying.
+
+Derived account days are stored in `portfolio_reconstructed_values`, with
+explicit gaps and reasons. Crypto quantities replay native ledger movements
+and fees; overlapping Earn allocation summaries are not added. Share fills
+replay dated splits, and later split adjustments are reversed in Yahoo closes.
+Prices in minor units are normalized, and historical currency conversion uses
+dated rates. Corporate-action quantity mismatches, missing closes and missing
+derivative valuations invalidate the complete account-day total.
+
+`backend/scripts/capture-etoro-statement-history.js` independently verifies a
+privately supplied statement's identity and cash activity before recording its
+dated USD equity totals in `portfolio_statement_values`. Opening equity belongs
+to the preceding day's end, not the statement's first day. These observations
+take priority over derived values; live recorded snapshots take priority over
+both. Original statements and source financial records are never Git artifacts.
+
+The chart can show individual selected-account histories while the combined
+line has gaps. A combined point requires every active selected account to have
+a complete value on that date. It never labels a changing subset of accounts
+as the total portfolio. Coverage and missing-information reasons are available
+below the chart. Reconstruction is separate from automatic daily recording;
+new statement equity capture currently uses the test-only script.
