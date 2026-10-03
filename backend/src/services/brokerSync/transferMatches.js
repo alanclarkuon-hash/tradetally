@@ -19,7 +19,7 @@ function extract(snapshots) {
         if (fee < 0n || (direction === 'in' ? amount <= fee : amount >= 0n)) continue;
         const quantity = direction === 'in' ? amount - fee : -amount;
         legs.push({broker, account, reference, asset, direction,
-          quantity: format(quantity), fee: format(fee), time: Number(row.time) * 1000});
+          quantity: format(quantity), fee: format(fee), time: new Date(Number(row.time) * 1000).getTime()});
       }
     } else if (broker === 'okx') {
       for (const row of payload.deposits || []) {

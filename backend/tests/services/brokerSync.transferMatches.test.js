@@ -47,7 +47,8 @@ test('repeating matching does not insert duplicates; changed evidence is blocked
       .mockResolvedValueOnce({rows:[stored()]})};
     db.withTransaction.mockImplementation(fn=>fn(client)); return client;
   };
-  const client=run(snapshots());
+  const fractional=snapshots();fractional[0].payload.ledger.sent.time=1000.000557;
+  const client=run(fractional);
   expect(await save('owner')).toEqual({created:0,total:1});
   expect(client.query).toHaveBeenCalledTimes(3);
   const changed=snapshots();changed[0].payload.ledger.sent.fee='0.2';run(changed);
