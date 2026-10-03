@@ -13,6 +13,7 @@ const { convertForDisplay } = require('../utils/displayCurrency');
 const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPositionGrouping');
 const yahooFinance = require('../utils/yahooFinance');
 const { convertQuoteCurrency } = require('../utils/quoteCurrency');
+const { usesEquityQuotes, selectPositionQuote } = require('../utils/positionQuote');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -3094,7 +3095,7 @@ const tradeController = {
       }
 
       // Get unique stock/futures symbols for Finnhub quotes (options use Alpaca instead)
-      const stockPositions = Object.values(positionMap).filter(p => p.instrumentType !== 'option');
+      const stockPositions = Object.values(positionMap).filter(usesEquityQuotes);
       const symbols = [...new Set(stockPositions.map(p => p.symbol))];
       console.log('Symbols to get quotes for:', symbols);
 
@@ -3261,7 +3262,7 @@ const tradeController = {
 
         await Promise.all(
           Object.entries(positionMap).map(async ([posKey, position]) => {
-            if (!unquoted.has(position.symbol)) return;
+            if (!usesEquityQuotes(position) || !unquoted.has(position.symbol)) return;
             const quote = rawQuotes.get(position.symbol);
             if (!quote) return;
 
@@ -3284,7 +3285,7 @@ const tradeController = {
       // Broker snapshot costs use wallet currency. Provider cache quotes are
       // USD-normalised, so restate them before comparing with those costs.
       await Promise.all(Object.entries(positionMap).map(async ([key, position]) => {
-        if (!position.brokerQuote || convertedQuotesByPosition[key] || !quotes[position.symbol]) return;
+        if (!usesEquityQuotes(position) || !position.brokerQuote || convertedQuotesByPosition[key] || !quotes[position.symbol]) return;
         try {
           convertedQuotesByPosition[key] = await convertQuoteCurrency(
             { ...quotes[position.symbol], currency: quotes[position.symbol].currency || 'USD' }, position.currency);
@@ -3330,7 +3331,7 @@ const tradeController = {
           };
         }
 
-        const quote = convertedQuotesByPosition[posKey] || quotes[position.symbol] || position.brokerQuote;
+        const quote = selectPositionQuote(position, convertedQuotesByPosition[posKey], quotes[position.symbol]);
 
         if (quote) {
           const currentPrice = quote.c; // Current price
@@ -3360,7 +3361,8 @@ const tradeController = {
             low: quote.l,
             open: quote.o,
             previousClose: quote.pc,
-            quoteTime: new Date().toISOString()
+            quoteSource: quote === position.brokerQuote ? 'broker' : 'market',
+            quoteTime: quote.asOf || new Date().toISOString()
           };
         } else {
           return {
