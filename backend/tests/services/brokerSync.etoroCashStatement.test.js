@@ -3,6 +3,15 @@ const db=require('../../src/config/database');
 const {prepare,loadLedger}=require('../../src/services/brokerSync/etoroCashStatement');
 const row=(Type,Amount,Balance,id='1')=>({Date:'01/01/2024 12:00:00',Type,Amount,Balance,'Position ID':id,'Realized Equity Change':Amount});
 const detail=value=>({'Date of Payment':'01/01/2024','Position ID':'1','Net Dividend Received (USD)':value});
+
+test('retains split allocation metadata without changing cash or existing record identity',()=>{
+ const activity=[row('Deposit',100,100),{...row('corp action: Split',0,100),Details:'TEST/USD 10:1'}];
+ const saved=prepare({'Account Activity':activity,Dividends:[]});
+ const withoutDetails=prepare({'Account Activity':activity.map(({Details,...r})=>r),Dividends:[]});
+ expect(saved.records[1]).toMatchObject({details:'TEST/USD 10:1',cash:0,type:null});
+ expect(saved.records[1].reference).toBe(withoutDetails.records[1].reference);
+ expect(saved.events).toHaveLength(1);
+});
 test('matches dividend adjustments in overnight rows once, retaining legitimate equal payments',()=>{
   const s={'Account Activity':[row('Deposit',100,100),row('Overnight fee',2,102),row('Overnight fee',2,104),row('Overnight fee',-1,103)],Dividends:[detail(2),detail(2),detail(2)]};
   const p=prepare(s);

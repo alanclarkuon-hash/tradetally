@@ -4,6 +4,7 @@ const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const {assetCode,nativeWalletCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
 const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
+const {statementSplits,historicalLotQuantity}=require('./etoroHistoricalSplits');
 const {STABLE,FIAT}=require('./portfolioDashboardService');
 const date=v=>new Date(v).toISOString().slice(0,10);
 const days=(from,to)=>{const result=[];for(let t=Date.parse(from);t<=Date.parse(to);t+=86400000)result.push(date(t));return result;};
@@ -116,7 +117,15 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
   let native=[],cashRows=[],cashOpening=Number(account.initial_balance||0),cutoff=end,method,blockers=[];
   const market=new Map(),cryptoRates=snapshot?.payload?.valuation?.rates||{},payload=snapshot?.payload;
   const need=new Set();
-  let fills=[],splits=[];
+  let fills=[],splits=[],etoroSplits=[],etoroLotSplits=new Map();
+  if(account.broker==='etoro') {
+   const reports=(await db.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='etoro'",[userId,account.id])).rows;
+   etoroSplits=statementSplits(reports.flatMap(r=>r.records||[]));
+   for(const t of trades) {
+    const ids=new Set((t.executions||[]).flatMap(e=>[e.etoro_position_id,e.etoro_parent_position_id]).filter(v=>v!=null).map(String));
+    etoroLotSplits.set(t,etoroSplits.filter(s=>ids.has(s.positionId)));
+   }
+  }
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');
    native=walletHistory(Object.values(payload?.ledger||{}).map(l=>({wallet:nativeWalletCode(l.asset),time:Number(l.time)*1000,amount:l.amount,fee:l.fee})),start,end);
@@ -207,10 +216,13 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
       const s=historicalMarketSymbol(t.symbol,t.instrument_type,opened),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a
       // dated broker split allocation, avoid claiming a pre-split valuation.
-      if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d))){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
+      let quantity=Number(t.quantity);
+      if(account.broker==='etoro')quantity=historicalLotQuantity(t,d,opened,closed,etoroLotSplits.get(t),series?.splits||[]);
+      else if((series?.splits||[]).some(x=>x.date>opened&&(!closed||x.date<closed)&&(closed||x.date>d)))quantity=null;
+      if(quantity==null){value.issues.push(`Historic split allocation unavailable: ${t.symbol}`);continue;}
       const p=stockPrice(s,d);if(!(p>0))value.issues.push(priceIssue(t.symbol,zeroMissingPrices));
-      else if(t.instrument_type==='crypto'&&STABLE.has(t.symbol))value.stablecoins_usd+=Number(t.quantity)*p;
-      else value.holdings_usd+=Number(t.quantity)*p;
+      else if(t.instrument_type==='crypto'&&STABLE.has(t.symbol))value.stablecoins_usd+=quantity*p;
+      else value.holdings_usd+=quantity*p;
      }
     }
    }
