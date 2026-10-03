@@ -7,6 +7,11 @@ const ORIGIN = 'https://api.kraken.com';
 const PRIVATE_PATHS = new Set(['/0/private/GetApiKeyInfo', '/0/private/BalanceEx',
   '/0/private/TradesHistory', '/0/private/Ledgers', '/0/private/OpenPositions', '/0/private/Earn/Allocations']);
 const READ_PERMISSIONS = ['query-funds', 'query-open-trades', 'query-closed-trades', 'query-ledger'];
+// Kraken charges history calls two counter units; the lowest tier replenishes
+// only 0.33 units/sec. Leave headroom rather than assuming the account's tier.
+function requestInterval(path) {
+  return ['/0/private/TradesHistory', '/0/private/Ledgers'].includes(path) ? 7000 : 3500;
+}
 
 function signature(path, nonce, body, secret) {
   const hash = createHash('sha256').update(String(nonce) + body).digest();
@@ -33,6 +38,7 @@ function safeFailure(error) {
   const failure = new Error(status === 429 ? 'Kraken rate limit reached. Wait before retrying.' :
     `Unable to read Kraken data${status ? ` (HTTP ${status})` : ''}. Check the key, API secret and IP restrictions.`);
   failure.transient = status === 429 || status >= 500 || !error.response;
+  failure.rateLimited = status === 429;
   return failure;
 }
 
@@ -46,6 +52,7 @@ function result(body) {
     else if (codes.includes('EAPI:Rate limit exceeded') || codes.includes('EService:Throttled')) message = 'Kraken rate limit reached. Wait before retrying.';
     const failure = new Error(message);
     failure.transient = codes.includes('EAPI:Rate limit exceeded') || codes.includes('EService:Throttled');
+    failure.rateLimited = failure.transient;
     throw failure;
   }
   if (!body.result || typeof body.result !== 'object') throw new Error('Kraken returned an incomplete read response.');
@@ -56,7 +63,17 @@ class KrakenService {
   constructor() { this.queue = Promise.resolve(); this.lastRequestAt = 0; }
 
   read(connection, path, params = {}) {
-    const request = this.queue.then(() => this.privateRead(connection, path, params));
+    const request = this.queue.then(async () => {
+      for (let attempt = 0; ; attempt++) {
+        try { return await this.privateRead(connection, path, params); }
+        catch (error) {
+          if (!error.rateLimited || attempt >= 2) throw error;
+          // Retry only rate-limited reads after letting the entire call counter
+          // drain. Preserve downloaded pages and sign with a fresh nonce.
+          await new Promise(resolve => setTimeout(resolve, 60000));
+        }
+      }
+    });
     this.queue = request.catch(() => {});
     return request;
   }
@@ -75,7 +92,7 @@ class KrakenService {
     try {
       await client.query('SELECT pg_advisory_lock(hashtextextended($1,0))', [fingerprint]);
       locked = true;
-      const wait = Math.max(0, this.lastRequestAt + 2000 - Date.now());
+      const wait = Math.max(0, this.lastRequestAt + requestInterval(path) - Date.now());
       if (wait) await new Promise(resolve => setTimeout(resolve, wait));
       const reserved = await client.query(`INSERT INTO kraken_api_nonces(key_hash,last_nonce) VALUES($1,$2)
         ON CONFLICT(key_hash) DO UPDATE SET last_nonce=GREATEST(kraken_api_nonces.last_nonce+1,EXCLUDED.last_nonce)
@@ -173,3 +190,4 @@ class KrakenService {
 module.exports = new KrakenService();
 module.exports.signature = signature;
 module.exports.keyInfo = keyInfo;
+module.exports.requestInterval = requestInterval;

@@ -16,8 +16,11 @@ Private requests use Kraken's HMAC-SHA512 signature over the path and the SHA256
 digest of the nonce and exact encoded request body. A per-key PostgreSQL session
 lock serializes nonce reservation and the HTTP request across app workers.
 The nonce is stored by public-key fingerprint and always increases, including
-after app restarts or clock corrections. Requests wait at least two seconds
-between calls in this service. Errors are sanitized and redirects disabled.
+after app restarts or clock corrections. Requests wait at least 3.5 seconds
+for ordinary reads and seven seconds for ledger/trade history in this service,
+matching the lowest-tier counter decay. Rate-limited reads can retry twice,
+each after a 60-second cooldown, preserving already downloaded pages. Other
+errors do not trigger immediate retries. Errors are sanitized and redirects disabled.
 
 The first sync downloads extended balances, staking allocations, open margin
 positions for scope checking, spot trade history and all available ledger rows.
