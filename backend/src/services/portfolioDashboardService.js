@@ -165,4 +165,4 @@ async function getDashboard(userId, query={}) {
       classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||holdings.find(p=>p.categoryWarning)?.categoryWarning||null},
     accountCount:managed.length};
 }
-module.exports={getDashboard,periodResult,STABLE};
+module.exports={getDashboard,periodResult,STABLE,FIAT};

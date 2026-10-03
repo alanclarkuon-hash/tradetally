@@ -184,6 +184,12 @@ router.get('/income', investmentsController.getInvestmentIncome);
  */
 router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
 router.get('/portfolio/dashboard', investmentsController.getPortfolioDashboard);
+router.get('/portfolio/value-history',async(req,res,next)=>{
+  try{res.json(await require('../services/portfolioValueHistoryService').getHistory(req.user.id,req.query));}catch(error){next(error);}
+});
+router.post('/portfolio/value-history/capture',async(req,res,next)=>{
+  try{res.json(await require('../services/portfolioValueHistoryService').captureToday(req.user.id,req.body));}catch(error){next(error);}
+});
 
 /**
  * @route GET /api/investments/portfolio/positions

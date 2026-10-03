@@ -6,7 +6,7 @@ class PortfolioSnapshotScheduler extends CronScheduler {
     super({
       logPrefix: '[PORTFOLIO-SNAPSHOTS]',
       cronEnvVar: 'PORTFOLIO_SNAPSHOT_CRON',
-      defaultCron: '15 20 * * 1-5',
+      defaultCron: '15 20 * * *',
       guardRestart: true,
       getScheduleOptions: () => ({
         timezone: process.env.TZ || 'UTC'
@@ -23,6 +23,7 @@ class PortfolioSnapshotScheduler extends CronScheduler {
     try {
       console.log('[PORTFOLIO-SNAPSHOTS] Creating daily portfolio snapshots...');
       const summary = await PortfolioService.createDailySnapshotsForAllUsers();
+      await require('./portfolioValueHistoryService').captureAllUsers();
       console.log(`[PORTFOLIO-SNAPSHOTS] Snapshot run complete for ${summary.usersProcessed} users`);
     } catch (error) {
       console.error('[PORTFOLIO-SNAPSHOTS] Snapshot run failed:', error);

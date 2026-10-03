@@ -25,7 +25,8 @@
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${money(part.value)}`"></div></div>
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section>
-      <section class="heatmap-section">
+    <PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" />
+    <section class="heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holding P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p class="subtitle">Stock classifications are community reference data from FinanceDatabase and may be outdated or incorrect.</p>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
@@ -54,10 +55,12 @@ import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
+import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const selected=ref(selectedAccount.value?[selectedAccount.value]:[]),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=new Date().toISOString().slice(0,10),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
 let request=0
+const history=ref(null),historyLoading=ref(false),historyError=ref('')
 const money=v=>v==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency.value,maximumFractionDigits:2}).format(v)
 const signedMoney=v=>v==null?'Period change unavailable':`${v>=0?'+':'−'}${money(Math.abs(v))}`
 const percent=v=>v==null?'Unavailable':`${v>=0?'+':''}${Number(v).toFixed(2)}%`
@@ -66,7 +69,7 @@ const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
 const groups=computed(()=>holdingGroups(data.value?.holdings||[]))
 async function load(){
-  const id=++request;loading.value=true;error.value='';focus.value=null
+  const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
   const params={currency:currency.value,accounts:selected.value.join(',')}
   if(period.value!=='all'){
     const d=new Date(today+'T00:00:00Z')
@@ -79,6 +82,14 @@ async function load(){
   try{const response=await api.get('/investments/portfolio/dashboard',{params,timeout:180000});if(id===request)data.value=response.data}
   catch(e){if(id===request){error.value=e.response?.data?.error||'Could not load portfolio';data.value=null}}
   finally{if(id===request)loading.value=false}
+  if(id!==request)return
+  if(!data.value){historyLoading.value=false;return}
+  try{
+    await api.post('/investments/portfolio/value-history/capture',{accounts:params.accounts},{timeout:180000})
+    const response=await api.get('/investments/portfolio/value-history',{params,timeout:180000})
+    if(id===request)history.value=response.data
+  }catch(e){if(id===request)historyError.value=e.response?.data?.error||'Portfolio history is unavailable. Current balances are still shown above.'}
+  finally{if(id===request)historyLoading.value=false}
 }
 watch(selectedAccount,v=>selected.value=v?[v]:[])
 watch([selected,period,currency,start,end],load,{deep:true})
