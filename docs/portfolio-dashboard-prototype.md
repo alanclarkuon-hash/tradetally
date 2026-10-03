@@ -55,3 +55,25 @@ For existing test snapshots, `backend/scripts/refresh-trading212-labels.js`
 refreshes instrument labels only. It defaults to preview; `--apply` writes
 metadata. It refuses any environment other than the isolated test database,
 preserves valuation timestamps and refuses a concurrent snapshot change.
+# Portfolio value chart
+
+The portfolio tab records observed account values in `portfolio_value_history`,
+separately from the older holdings-only `portfolio_snapshots`. Each daily record
+contains investments, fiat cash and stablecoins in USD, plus the GBP conversion
+rate observed when recorded. It never backfills a portfolio total using current
+holdings or adds funding flows to an already complete balance.
+
+Opening or refreshing the portfolio captures today's selected accounts. The
+existing portfolio snapshot scheduler also captures total values daily when
+background jobs are enabled. Test keeps background jobs disabled, so values
+are recorded when the page is used. An offline PC cannot record observations.
+There is no historical valuation series in the current data; the first point
+starts the record and future days build the line. Missing selected-account days
+and missing dated GBP conversion rates produce gaps, not zero balances.
+
+Cash deposits, withdrawals and transfers crossing the selected account boundary
+are shown as funding markers using Account & Cashflow history. Matched transfers
+inside the selection are removed even when their two dates differ. Dated FX
+comes from saved FX records; missing rates retain the original-currency amount
+in the tooltip and accessible table. Coin transfers are not cash funding markers.
+Valuation recording dates do not imply every underlying quote is from that day.
