@@ -116,3 +116,11 @@ preserve original execution records. Delisting alone never sets a holding to
 zero: replayed quantities must reconcile to the broker's current positions.
 The reconstruction script accepts `--broker=trading212` to limit a rebuild to
 that broker. Missing pre-delisting prices remain explicit gaps.
+
+For this prototype the owner has authorized `--zero-missing-prices` for
+Trading 212 reconstruction. Missing security prices then contribute zero,
+with per-day missing symbols retained in `issues`. Such days and chart
+tooltips are explicitly labeled as estimates. Observed and statement totals
+still take priority, and missing cash FX, negative quantities, unsupported
+derivatives and reconciliation failures remain gaps. Confirmed broker keys
+RHMD_EQ, IPOE and UBNT use RHM.DE, SOFI and UI historical series respectively.

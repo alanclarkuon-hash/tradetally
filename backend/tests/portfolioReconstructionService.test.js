@@ -18,6 +18,13 @@ test('stablecoins and fiat cash are separate; missing prices invalidate the whol
  expect(valueQuantities({BTC:1,MISSING:2},'2025-01-01',()=>null,()=>1).holdings_usd).toBeNull();
  expect(valueQuantities({BTC:-1},'2025-01-01',()=>100,()=>1).holdings_usd).toBeNull();
 });
+test('explicit zero-price mode keeps known values and records estimates without zeroing invalid cash or quantities',()=>{
+ const value=valueQuantities({BTC:2,MISSING:3,GBP:20},'2025-01-01',s=>s==='BTC'?100:null,()=>1.25,{zeroMissingPrices:true});
+ expect(value).toMatchObject({holdings_usd:200,cash_usd:25,stablecoins_usd:0,
+ issues:['Estimated at zero: missing historical price for MISSING']});
+ expect(valueQuantities({BTC:-1},'2025-01-01',()=>100,()=>1,{zeroMissingPrices:true}).holdings_usd).toBeNull();
+ expect(valueQuantities({GBP:20},'2025-01-01',()=>100,()=>null,{zeroMissingPrices:true}).cash_usd).toBeNull();
+});
 test('dated exchange closes cover a weekend but never a long price outage or a crypto missing day',()=>{
  const series={prices:[{date:'2025-01-03',close:10}]};
  expect(historicalPrice(series,'2025-01-05')).toBe(10);

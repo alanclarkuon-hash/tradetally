@@ -14,6 +14,11 @@ test('uses continuous Yahoo histories for permanent Facebook and Square broker k
  expect(rows[0].quantities.META).toBe(2);
  expect(rows.at(-1).quantities.META).toBe(0);
 });
+test('maps confirmed Rheinmetall, SoFi and Ubiquiti keys to their Yahoo histories',()=>{
+ expect(historySymbol('RHMD_EQ','2024-05-10')).toBe('RHM.DE');
+ expect(historySymbol('IPOE','2024-05-10')).toBe('SOFI');
+ expect(historySymbol('UBNT','2024-05-10')).toBe('UI');
+});
 test('reverse splits reconcile later sales without zeroing pre-delisting holdings',()=>{
  const fills=[{date:'2024-06-01',symbol:'TWOU',quantity:60},{date:'2024-10-01',symbol:'TWOU',quantity:-2}];
  const rows=replayShares(fills,historySplits('TWOU').map(s=>({...s,symbol:'TWOU'})),'2024-06-01','2024-10-02');
