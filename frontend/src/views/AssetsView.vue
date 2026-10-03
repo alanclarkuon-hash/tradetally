@@ -14,6 +14,14 @@
         <div class="text-right"><strong class="text-2xl tabular-nums">{{ asset.recordCount.toLocaleString() }}</strong><p class="text-sm text-gray-500 dark:text-gray-400">saved records</p></div>
       </section>
       <p v-if="asset.warning" class="asset-notice">{{ asset.warning }}</p>
+      <p v-if="asset.categoryWarning" class="asset-notice" role="alert">{{ asset.categoryWarning }}</p>
+      <section v-if="asset.categoryOverride" class="asset-section mb-5">
+        <h3>Category correction</h3>
+        <p class="mt-2">{{ asset.categoryOverride.primaryCategory }} · Manual override</p>
+        <p class="text-sm text-gray-500 dark:text-gray-400 mt-2">{{ asset.categoryOverride.override_reason }}</p>
+        <a :href="asset.categoryOverride.source_url" target="_blank" rel="noopener noreferrer" class="text-sm underline">Review classification source</a>
+        <details v-if="asset.categoryOverride.provider_classification" class="mt-4"><summary class="text-sm cursor-pointer">Original provider categories</summary><AssetDataValue :value="asset.categoryOverride.provider_classification" /></details>
+      </section>
       <section v-if="asset.referenceClassification" class="asset-section mb-5">
         <h3>Stock classification</h3>
         <p class="text-xs text-gray-500 dark:text-gray-400">{{ asset.referenceClassification.source }} · {{ asset.referenceClassification.status==='manual_override' ? 'file updated' : 'saved' }} {{ date(asset.referenceClassification.override_updated_at||asset.referenceClassification.fetched_at) }} · codes mapped to MSCI GICS</p>

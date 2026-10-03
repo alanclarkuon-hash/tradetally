@@ -1,0 +1,234 @@
+{
+  "version": 1,
+  "overrides": {
+    "crypto": {
+      "CRV": {
+        "category": "Decentralized Finance (DeFi)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/curve-dao-token"
+      },
+      "AERO": {
+        "category": "Decentralized Finance (DeFi)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/aerodrome-finance"
+      },
+      "ONDO": {
+        "category": "Real World Assets (RWA)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/ondo"
+      },
+      "VIRTUAL": {
+        "category": "Artificial Intelligence (AI)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/virtual-protocol"
+      },
+      "FET": {
+        "category": "Artificial Intelligence (AI)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/fetch-ai"
+      },
+      "INJ": {
+        "category": "Real World Assets (RWA)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/injective"
+      },
+      "TIA": {
+        "category": "Data Availability",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/celestia"
+      },
+      "HYPE": {
+        "category": "Decentralized Finance (DeFi)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/hyperliquid"
+      },
+      "ATOM": {
+        "category": "Layer 0 (L0)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/cosmos-hub"
+      },
+      "COTI": {
+        "category": "Layer 2 (L2)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/coti"
+      },
+      "TRX": {
+        "category": "Layer 1 (L1)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/tron"
+      },
+      "BABY": {
+        "category": "Decentralized Finance (DeFi)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/babylon"
+      },
+      "EIGEN": {
+        "category": "Artificial Intelligence (AI)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/eigencloud"
+      },
+      "GRT": {
+        "category": "Artificial Intelligence (AI)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/the-graph"
+      },
+      "TAO": {
+        "category": "Artificial Intelligence (AI)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/bittensor"
+      },
+      "DOT": {
+        "category": "Layer 0 (L0)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/polkadot"
+      },
+      "BNB": {
+        "category": "Layer 1 (L1)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/bnb"
+      },
+      "KSM": {
+        "category": "Smart Contract Platform",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/kusama"
+      },
+      "SEI": {
+        "category": "Decentralized Finance (DeFi)",
+        "reason": "Reviewed 2026-10-03: fills an unavailable saved theme using a category published on the exact CoinGecko coin page. One primary display group; other provider categories are retained.",
+        "source_url": "https://www.coingecko.com/en/coins/sei"
+      },
+      "A": {
+        "category": "Layer 1 (L1)",
+        "reason": "Reviewed 2026-10-03: source theme for a residual crypto holding. Exact crypto identity; never reuse stock classifications for the same ticker.",
+        "source_url": "https://www.coingecko.com/en/coins/vaulta"
+      },
+      "POL": {
+        "category": "Layer 2 (L2)",
+        "reason": "Reviewed 2026-10-03: source theme for a residual crypto holding. Exact crypto identity; never reuse stock classifications for the same ticker.",
+        "source_url": "https://www.coingecko.com/en/coins/polygon-ecosystem-token"
+      },
+      "SHIB": {
+        "category": "Meme",
+        "reason": "Reviewed 2026-10-03: source theme for a residual crypto holding. Exact crypto identity; never reuse stock classifications for the same ticker.",
+        "source_url": "https://www.coingecko.com/en/coins/shiba-inu"
+      }
+    },
+    "fund": {
+      "IB1T.L": {
+        "category": "Bitcoin ETP",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.blackrock.com/ch/individual/en/products/337088/ishares-bitcoin-etp"
+      },
+      "QQQA.L": {
+        "category": "Nasdaq-100 equities",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.swissfunddata.ch/sfdpub/docs/fsm-8522_65_02-20251031-en.pdf"
+      },
+      "SPXL.L": {
+        "category": "US large-cap equities",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ssga.com/library-content/products/factsheets/etfs/emea/factsheet-emea-en_gb-spyl-gy.pdf"
+      },
+      "PAIG.L": {
+        "category": "Artificial Intelligence & Robotics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/gb/products/equities/wpai---wisdomtree-physical-ai-humanoids-and-drones-ucits-etf---usd-acc"
+      },
+      "QWTM.L": {
+        "category": "Quantum Computing",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/se/products/equities/wisdomtree-quantum-computing-ucits-etf---usd-acc"
+      },
+      "WTNR.L": {
+        "category": "Real Estate",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://dataspanapi.wisdomtree.com/pdr/documents/FACTSHEET/UCITS/EU/EN-GB/IE000MO2MB07/"
+      },
+      "SXLF.L": {
+        "category": "Financials",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ssga.com/library-content/products/fund-docs/etfs/emea/product-list-emea-it-en.pdf"
+      },
+      "SXLY.L": {
+        "category": "Consumer Discretionary",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ssga.com/library-content/products/fund-docs/etfs/emea/product-list-emea-it-en.pdf"
+      },
+      "SXLK.L": {
+        "category": "Technology",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ssga.com/library-content/products/fund-docs/etfs/emea/product-list-emea-it-en.pdf"
+      },
+      "BKCN.L": {
+        "category": "Blockchain equities",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/dk/products/equities/wisdomtree-blockchain-ucits-etf---usd-acc"
+      },
+      "SMGB.L": {
+        "category": "Semiconductors",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.vaneck.com/fr/fr/library/fact-sheets/smh-fact-sheet.pdf/"
+      },
+      "JEDG.L": {
+        "category": "Space Economy",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.vaneck.com/ch/en/library/fact-sheets/jedi-fact-sheet.pdf"
+      },
+      "CYSE.L": {
+        "category": "Cybersecurity",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/gb/products/equities/wisdomtree-cybersecurity-ucits-etf---usd-acc"
+      },
+      "INTL.L": {
+        "category": "Artificial Intelligence & Robotics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/gb/products/equities/wisdomtree-artificial-intelligence-ucits-etf---usd-acc"
+      },
+      "CHTE.L": {
+        "category": "China Technology",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://swissfunddata.ch/sfdpub/docs/fsm-2880_100_01-20251231-de.pdf"
+      },
+      "WBIO.L": {
+        "category": "Biotechnology & Genomics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/gb/products/equities/wisdomtree-biorevolution-ucits-etf---usd-acc"
+      },
+      "WAGB.L": {
+        "category": "Artificial Intelligence & Robotics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/no/products/equities/wagi---wisdomtree-ai-infrastructure-ucits-etf---usd-acc"
+      },
+      "WSPG.L": {
+        "category": "Space Economy",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.wisdomtree.com/gb/products/equities/wisdomtree-space-economy-ucits-etf-usd-acc"
+      },
+      "CLOU": {
+        "category": "Cloud Computing",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.globalxetfs.com/funds/clou"
+      },
+      "IGV": {
+        "category": "Software",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ishares.com/us/products/239771/"
+      },
+      "XBI": {
+        "category": "Biotechnology & Genomics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ssga.com/us/en/individual/etfs/state-street-spdr-sp-biotech-etf-xbi"
+      },
+      "ARKG": {
+        "category": "Biotechnology & Genomics",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.ark-funds.com/funds/arkg"
+      },
+      "URA": {
+        "category": "Uranium & Nuclear Energy",
+        "reason": "Reviewed 2026-10-03: manual display theme based on the issuer fund mandate. This supplements unavailable or broad Yahoo categories; it is not a claim about official Morningstar or GICS classification.",
+        "source_url": "https://www.globalxetfs.com/funds/ura"
+      }
+    }
+  }
+}
