@@ -19,7 +19,7 @@ function statementTrades(text) {
     if(!months[m[2]]||quantity<=0||price<=0||fees<0||m[13]!=null||!((m[9]==='Bought'&&cash<0)||(m[9]==='Sold'&&cash>0)))fail('unsupported share execution currency or amount');
     const factors=[1,.01].filter(f=>Math.round(quantity*price*f*100)+(m[9]==='Bought'?cents(fees):-cents(fees))===Math.abs(cents(cash)));
     if(factors.length!==1)fail('share execution price units do not reconcile with its GBP cash');
-    trades.push({dealCode:m[5],name:m[6].replace(/\s+(?:At Quote|Market|Limit).*$/s,'').replace(/\s+/g,' ').trim(),venue:m[7],isin:m[8],
+    trades.push({dealCode:m[5],name:m[6].replace(/\s+/g,' ').trim().replace(/\s+(?:At Quote|At Market|Market|Limit|Stop(?: Limit)?)$/i,''),venue:m[7],isin:m[8],
       side:m[9]==='Bought'?'buy':'sell',quantity,reportedPrice:price,priceCurrency:factors[0]===.01?'GBX':'GBP',priceGBP:price*factors[0],fees,cash,
       time:london(`${m[1]}-${months[m[2]]}-20${m[3]} ${m[4]}`)});
   }
