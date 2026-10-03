@@ -8,7 +8,7 @@ beforeEach(()=>{vi.clearAllMocks();api.get.mockResolvedValue({data:{data:[accoun
   {token:'preview-token',accounts:[{name:account.name,cash:25,closedTrades:0,holdings:0}],importedTrades:0,importedEvents:0,transfers:0,notice:'Balances match'}:
   {importedTrades:0,importedEvents:0}}}))})
 async function ready(){const w=mount(IgFileImport);await flushPromises();await w.get('input[type=checkbox]').setValue(true);
-  for(const input of w.findAll('input[type=file]')){Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['synthetic'],'synthetic.csv')]});await input.trigger('change')}
+  for(const input of w.findAll('input[type=file][required]')){Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['synthetic'],'synthetic.csv')]});await input.trigger('change')}
   return w}
 it('requires a successful preview before apply and sends only its server token',async()=>{
   const w=await ready();expect(w.get('fieldset').element.disabled).toBe(false);expect(w.text()).not.toContain('Import checked reports');await w.get('form').trigger('submit');
@@ -31,3 +31,9 @@ it('shows reconciliation errors without offering an import action',async()=>{
   const w=await ready();api.post.mockRejectedValueOnce({response:{data:{message:'Upload the matching transfer account report.'}}});await w.get('form').trigger('submit');await flushPromises();
   expect(w.get('[role=alert]').text()).toContain('matching transfer');expect(w.text()).not.toContain('Import checked reports');
 })
+it('sends multiple optional trade-day statements for the selected account',async()=>{
+  const w=await ready(),input=w.get('input[type=file][multiple]');
+  Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['first'],'first.pdf'),new File(['second'],'second.pdf')]});
+  await input.trigger('change');await w.get('form').trigger('submit');await flushPromises();
+  const form=api.post.mock.calls[0][1];expect(form.getAll('synthetic:execution')).toHaveLength(2);
+});

@@ -26,6 +26,11 @@
                 <label :for="`${account.id}-${field}`" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ labels[field] }}</label>
                 <input :id="`${account.id}-${field}`" type="file" :accept="pdfFields.includes(field) ? '.pdf' : '.csv'" required class="block w-full rounded-md border border-gray-200 text-sm text-gray-600 file:mr-3 file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium dark:border-gray-700 dark:text-gray-300 dark:file:bg-gray-800 dark:file:text-gray-200" @change="choose(account.id,field,$event)" />
               </div>
+              <div v-if="account.kind === 'share_dealing'" class="sm:col-span-2">
+                <label :for="`${account.id}-execution`" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Earlier trade statements (optional)</label>
+                <input :id="`${account.id}-execution`" type="file" accept=".pdf" multiple class="block w-full text-sm text-gray-600 dark:text-gray-300" @change="chooseEvidence(account.id,$event)" />
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Add the trade-day PDFs if the latest balance statement does not show those purchases or sales. You can select several files.</p>
+              </div>
             </div>
           </div>
         </fieldset>
@@ -58,12 +63,13 @@
 import {ref,onMounted} from 'vue'
 import api from '@/services/api'
 const accounts=ref([]),selected=ref([]),loading=ref(true),busy=ref(''),error=ref(''),success=ref(''),preview=ref(null)
-const files=new Map(),pdfFields=['trading','ledger']
+const files=new Map(),evidenceFiles=new Map(),pdfFields=['trading','ledger']
 const labels={transactions:'Transactions CSV',activity:'Past activity CSV',breakdown:'P&L Breakdown CSV',trading:'Trading / balance statement PDF',ledger:'Monthly ledger statement PDF'}
 const money=value=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(value)
 const message=e=>e.response?.data?.message || 'The upload could not finish. Please try again.'
 function invalidate(){preview.value=null;error.value='';success.value=''}
 function choose(id,field,event){invalidate();const key=`${id}:${field}`,file=event.target.files?.[0];if(file)files.set(key,file);else files.delete(key)}
+function chooseEvidence(id,event){invalidate();evidenceFiles.set(id,Array.from(event.target.files||[]))}
 async function previewFiles(){
   invalidate();const form=new FormData()
   for(const account of accounts.value.filter(a=>selected.value.includes(a.id)))for(const field of account.required){
@@ -71,6 +77,10 @@ async function previewFiles(){
     if(!file){error.value=`Please include ${labels[field]} for ${account.name}.`;return}
     if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
     form.append(`${account.id}:${field}`,file)
+  }
+  for(const id of selected.value)for(const file of evidenceFiles.get(id)||[]) {
+    if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
+    form.append(`${id}:execution`,file)
   }
   busy.value='preview'
   try{preview.value=(await api.post('/broker-sync/ig-files/preview',form,{timeout:180000})).data.data}
