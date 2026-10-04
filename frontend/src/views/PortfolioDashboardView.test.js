@@ -30,6 +30,17 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('uses end-date holdings for the heatmap while keeping summary cards current',async()=>{
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,
+      holdings:[{symbol:'CURRENT',value:50,assetClass:'Stocks',sector:'Technology',industry:'Software'}],
+      heatmapDate:'2024-02-01',heatmapHoldings:[{symbol:'PAST',value:80,pnlPercent:20,assetClass:'Stocks',sector:'Technology',industry:'Software'}],heatmapCoverage:{missingPnl:0,unclassified:0,warnings:[]}}:{change:25}}));
+    const view=create();await flushPromises();
+    expect(view.findAll('.holding-tile').map(tile=>tile.attributes('aria-label')).join()).toContain('PAST');
+    expect(view.findAll('.holding-tile').map(tile=>tile.attributes('aria-label')).join()).not.toContain('CURRENT');
+    expect(view.text()).toContain('Holdings owned on 01/02/2024');
+    expect(view.findAll('article')[0].text()).toContain('£100.00');
+    view.unmount();
+  })
   it('shows balances only and supplies history to the chart card', async () => {
     const view = create()
     await flushPromises()

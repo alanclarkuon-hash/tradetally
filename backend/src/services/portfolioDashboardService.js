@@ -39,12 +39,12 @@ function periodResult(position, range, rates, lots) {
   return basis>0 ? {pnl:value-basis,percent:(value-basis)/basis*100,basis} : {pnl:null,percent:null};
 }
 
-async function getDashboard(userId, query={}) {
+async function getDashboard(userId, query={}, historical=null) {
   const range=parseReportDateRange(query);
   const currency=query.currency || 'GBP';
   if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
   const selected=String(query.accounts || '').split(',').map(x=>x.trim()).filter(Boolean);
-  const positions=await Portfolio.getPositions(userId,{accounts:selected.join(',')});
+  const positions=historical?.positions || await Portfolio.getPositions(userId,{accounts:selected.join(',')});
   const symbols=[...new Set(positions.flatMap(p=>[p.symbol,...(p.sourceSymbols||[])]))];
   const [accounts,industries,snapshots,tradeLots,manualLots]=await Promise.all([
     db.query('SELECT id,account_name,account_identifier,broker,currency FROM user_accounts WHERE user_id=$1 AND is_archived=false',[userId]),
@@ -63,7 +63,7 @@ async function getDashboard(userId, query={}) {
       WHERE l.user_id=$1 AND h.symbol=ANY($2) AND ($3::text[]='{}' OR l.account_identifier=ANY($3))`,[userId,symbols,selected]) : {rows:[]}
   ]);
   const managed=accounts.rows.filter(a=>!selected.length||selected.includes(a.account_identifier));
-  const fx=await getRatesToDisplay(['USD',...managed.map(a=>a.currency)],currency);
+  const fx=historical?.displayRates || await getRatesToDisplay(['USD',...managed.map(a=>a.currency)],currency);
   if(!(fx.USD>0))throw Error('Display currency conversion is unavailable');
   const cashRows=await Promise.all(managed.map(async a=>{
     if(a.broker==='okx')return {name:a.account_name,amount:0,source:'Coins and stablecoins only'};
@@ -101,7 +101,7 @@ async function getDashboard(userId, query={}) {
     const symbol=matching?.symbol||lot.symbol;
     const list=lotMap.get(symbol)||[];list.push(lot);lotMap.set(symbol,list);
   }
-  if(range) {
+  if(range && !historical) {
     // Sync recovery retains dated crypto closes independently of any one
     // broker's valuation payload. Reuse them for range P&L across accounts.
     const cryptoSymbols=positions.filter(p=>p.instrumentType==='crypto').map(p=>p.symbol+'-USD');
@@ -141,7 +141,7 @@ async function getDashboard(userId, query={}) {
   let missingPrices=0;
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
-    const result=periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
+    const result=historical ? p.periodResult : periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
     const categoryKind=p.instrumentType==='crypto'?'crypto':funds.has(p.symbol)?'fund':null;
     const providerMetadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
     const metadata=categoryKind?require('./categoryOverrides').applyCategoryOverride(p.symbol,categoryKind,providerMetadata):providerMetadata;
@@ -151,7 +151,8 @@ async function getDashboard(userId, query={}) {
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
-      quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,accounts:p.accountIdentifiers};
+      quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,accounts:p.accountIdentifiers,
+      historicalWarnings:p.historicalWarnings || []};
     if(p.instrumentType==='stock' && !funds.has(p.symbol)) {
       const reference=stockClassifications.get(p.symbol);
       row.assetClass='Stocks';
@@ -169,7 +170,7 @@ async function getDashboard(userId, query={}) {
   const cashValue=cashRows.reduce((s,a)=>s+(a.amount??0),0);
   const completePnl=holdings.every(p=>p.pnl!=null);
   const basis=holdings.reduce((s,p)=>s+(p.pnlBasis??0),0);
-  return {currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
+  const dashboard={currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
       knownPnl:holdings.some(p=>p.pnl!=null)?holdings.reduce((s,p)=>s+(p.pnl??0),0):null,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
@@ -178,5 +179,13 @@ async function getDashboard(userId, query={}) {
       missingPnl:holdings.filter(p=>p.pnl==null).length,unclassified:holdings.filter(p=>p.industry==='Unclassified').length,
       classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||holdings.find(p=>p.categoryWarning)?.categoryWarning||null},
     accountCount:managed.length};
+  if(range && range.end_date<new Date().toISOString().slice(0,10) && !historical) {
+    const rebuilt=await require('./portfolioHistoricalHoldings').getHistoricalHoldings(userId,managed,range,currency);
+    const dated=await getDashboard(userId,query,rebuilt);
+    dashboard.heatmapHoldings=dated.holdings;
+    dashboard.heatmapDate=range.end_date;
+    dashboard.heatmapCoverage={...dated.coverage,warnings:rebuilt.warnings};
+  }
+  return dashboard;
 }
 module.exports={getDashboard,periodResult,STABLE,FIAT};
