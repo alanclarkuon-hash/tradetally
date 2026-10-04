@@ -516,7 +516,9 @@ const navItems = computed(() => {
       name: 'Analysis',
       icon: BeakerIcon,
       items: [
-        { name: 'Assets', to: '/analysis/assets', route: 'assets', badge: 'pro' },
+        ...(window.__APP_CONFIG__?.APP_ENVIRONMENT === 'test'
+          ? [{ name: 'Assets', to: '/analysis/assets', route: 'assets', badge: 'pro' }]
+          : []),
         { name: 'Investments', to: '/analysis', route: 'analysis', badge: 'pro' },
         { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro' },
         { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },
