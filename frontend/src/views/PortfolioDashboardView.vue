@@ -124,7 +124,8 @@ async function load(){
   finally{if(id===request)historyLoading.value=false}
 }
 watch([selected,period,currency,start,end],load,{deep:true})
-onMounted(async()=>{await fetchAccounts();load()})
+watch(hasAccountSelection,available=>{if(available&&!data.value&&!loading.value)load()})
+onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()})
 </script>
 
 <style scoped>
