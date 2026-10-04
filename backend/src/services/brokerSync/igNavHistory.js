@@ -44,8 +44,9 @@ async function captureSpreadStatement(userId,text) {
   return {date:point.date};
 }
 async function saveConfirmation(client,userId,account,rates) {
-  if(account.kind!=='spread_bet')return;
   const c=account.confirmation,date=day(c.openBets?.[0]?.asOf||c.cutoff);
-  await savePoint(client,userId,account.identifier,{date,cash:c.cash,holdings:(c.openBets||[]).reduce((sum,p)=>sum+p.unrealizedPnL,0)},rates?.get(date)>0?1/rates.get(date):undefined);
+  const holdings=account.kind==='spread_bet'?(c.openBets||[]).reduce((sum,p)=>sum+p.unrealizedPnL,0)
+    :(c.holdings||[]).reduce((sum,h)=>sum+h.value,0);
+  await savePoint(client,userId,account.identifier,{date,cash:c.cash,holdings},rates?.get(date)>0?1/rates.get(date):undefined);
 }
 module.exports={readSpreadStatement,savePoint,captureSpreadStatement,saveConfirmation};

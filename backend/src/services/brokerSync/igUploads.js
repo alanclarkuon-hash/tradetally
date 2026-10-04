@@ -24,13 +24,15 @@ async function preview(userId,files) {
     if(!files.length||files.reduce((sum,f)=>sum+f.size,0)>30*1024*1024)reject('Upload up to 30 MB of reports in total.');
     const base=await saved(userId),uploads=new Map();
     for(const f of files) {
-      const match=f.fieldname.match(/^([0-9a-f-]{36}):(transactions|activity|breakdown|trading|ledger|execution)$/);
+      const match=f.fieldname.match(/^([0-9a-f-]{36}):(transactions|activity|breakdown|trading|ledger|execution|daily)$/);
       if(!match||!base.rows.some(r=>r.id===match[1]))reject('An uploaded file does not belong to a selected account.');
       if(!uploads.has(match[1]))uploads.set(match[1],{});
       const fields=uploads.get(match[1]);
-      if(match[2]==='execution') {
-        if(base.rows.find(r=>r.id===match[1]).payload.igFileInput.kind!=='share_dealing')reject('Earlier trade statements are for share-dealing accounts.');
-        (fields.execution||=[]).push(f);
+      if(['execution','daily'].includes(match[2])) {
+        const kind=base.rows.find(r=>r.id===match[1]).payload.igFileInput.kind;
+        if(match[2]==='execution'&&kind!=='share_dealing')reject('Earlier trade statements are for share-dealing accounts.');
+        if(match[2]==='daily'&&kind!=='spread_bet')reject('Daily equity statements are for spread-betting accounts.');
+        (fields[match[2]]||=[]).push(f);
       } else {
         if(fields[match[2]])reject('Upload one file for each report type.');
         fields[match[2]]=f;
@@ -41,8 +43,10 @@ async function preview(userId,files) {
       const original=row.payload.igFileInput,fields=uploads.get(row.id);
       if(!fields){inputs.push(original);continue;}
       const needed=required(original.kind);
-      if(needed.some(k=>!fields[k])||Object.keys(fields).some(k=>!needed.includes(k)&&k!=='execution'))reject('Please include every requested report for each selected account.');
+      const dailyOnly=Object.keys(fields).every(k=>k==='daily');
+      if(!dailyOnly&&(needed.some(k=>!fields[k])||Object.keys(fields).some(k=>!needed.includes(k)&&!['execution','daily'].includes(k))))reject('Please include every requested report for each selected account.');
       const updated={...original};
+      if(!dailyOnly) {
       for(const k of needed.filter(k=>!['trading','ledger'].includes(k)))updated[k]=fields[k].buffer.toString('utf8');
       const trading=await pdf.text(fields.trading.buffer),ledger=await pdf.text(fields.ledger.buffer);
       if(original.kind==='share_dealing') {
@@ -56,13 +60,25 @@ async function preview(userId,files) {
         ...updated.shareTrades.map(t=>({name:t.name,isin:t.isin,symbol:t.isin})),
         ...(original.shareSecurities||original.confirmation.holdings),...updated.confirmation.holdings
       ].map(h=>[h.isin,{name:h.name,symbol:h.symbol,isin:h.isin}])).values()];
+      }
+      const prepared=prepare(updated),points=new Map();
+      for(const f of fields.daily||[]) {
+        const point=require('./igNavHistory').readSpreadStatement(await pdf.text(f.buffer),updated,
+          {from_date:prepared.from,starting_cash:0,records:prepared.records});
+        const prior=points.get(point.date);
+        if(prior&&(prior.cash!==point.cash||prior.holdings!==point.holdings))reject('Daily statements disagree for the same date.');
+        points.set(point.date,point);
+      }
+      // Only retain numeric valuations, never the uploaded PDF or its text.
+      updated.statementValues=[...points.values()];
       prepare(updated);inputs.push(updated);
     }
     const result=await importAccounts(userId,inputs,{dryRun:true});
     const token=crypto.randomBytes(32).toString('hex');
     for(const [key,value] of previews)if(value.userId===userId||value.expires<Date.now())previews.delete(key);
     if(previews.size>=20)reject('Import previews are busy. Please try again shortly.');
-    previews.set(token,{userId,inputs,revision:base.revision,expires:Date.now()+15*60000});
+    const identifiers=base.rows.filter(r=>uploads.has(r.id)).map(r=>prepare(r.payload.igFileInput).identifier);
+    previews.set(token,{userId,inputs,identifiers,revision:base.revision,expires:Date.now()+15*60000});
     return {token,...result,accounts:result.accounts.filter(a=>base.rows.some(r=>uploads.has(r.id)&&r.account_name===a.name)),
       notice:'Cash balances match the trading statements. Internal transfers are excluded from external funding. The preview expires after 15 minutes.'};
   } finally {active.delete(userId);}
@@ -76,7 +92,9 @@ async function apply(userId,token) {
     if((await saved(userId)).revision!==item.revision)reject('An account was updated after this preview. Please preview again.');
     await require('../backup.service').createFullSiteBackup(userId);
     const result=await importAccounts(userId,item.inputs,{dryRun:false});
-    previews.delete(token);return result;
+    previews.delete(token);
+    const dates=item.inputs.flatMap(i=>(i.statementValues||[]).map(p=>p.date));
+    return {...result,portfolioHistory:await require('../manualPortfolioMaintenance').rebuild(userId,'ig',item.identifiers,dates.sort()[0]||null)};
   } finally {active.delete(userId);}
 }
 module.exports={accounts,preview,apply,required};

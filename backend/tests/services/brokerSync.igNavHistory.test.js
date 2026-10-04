@@ -1,5 +1,5 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn(),withTransaction:jest.fn()}));
-const {readSpreadStatement,savePoint}=require('../../src/services/brokerSync/igNavHistory');
+const {readSpreadStatement,savePoint,saveConfirmation}=require('../../src/services/brokerSync/igNavHistory');
 const base={kind:'spread_bet',statementMask:'S***1',statementLabel:'Synthetic',confirmation:{cutoff:'2026-10-03T10:00:00Z'}};
 const report={from_date:'2026-01-01',starting_cash:0,records:[{time:'2026-08-19T12:00:00Z',cash:100}]};
 const text='20 August 2026\nAccount No. S***1\nAccount Name Synthetic\nFunds 100.00\nRunning Profit Or Loss -2.00\nEquity 98.00\nTotal Long Positions 10000.00';
@@ -15,4 +15,9 @@ test('saves statement priority values with dated GBP conversion and no cash tran
  await savePoint(client,'user','synthetic',{date:'2026-08-20',cash:100,holdings:-2});
  expect(client.query.mock.calls[1][0]).toContain('ON CONFLICT');
  expect(client.query.mock.calls[1][1]).toEqual(['user','synthetic','2026-08-20',-2.5,125,.8]);
+});
+test('share-dealing statements save holdings market values and cash separately',async()=>{
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};
+ await saveConfirmation(client,'owner',{kind:'share_dealing',identifier:'synthetic',confirmation:{cutoff:'2026-08-20T22:00:00Z',cash:100,holdings:[{value:20},{value:30}]}},new Map([['2026-08-20',1.25]]));
+ expect(client.query.mock.calls[0][1]).toEqual(['owner','synthetic','2026-08-20',62.5,125,.8]);
 });
