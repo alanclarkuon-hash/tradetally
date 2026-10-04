@@ -6,7 +6,7 @@ const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), change: 25, fail: 
 vi.mock('@/services/api', () => ({ default: mock }))
 vi.mock('@/composables/useGlobalAccountFilter', async () => {
   const { ref } = await import('vue')
-  return { useGlobalAccountFilter: () => ({ accounts: ref([]), selectedAccount: ref(null), fetchAccounts: vi.fn() }) }
+  return { useGlobalAccountFilter: () => ({ accounts: ref([{value:"one",label:"First account"},{value:"two",label:"Second account"}]), selectedAccount: ref(null), fetchAccounts: vi.fn() }) }
 })
 
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
@@ -65,6 +65,40 @@ describe('Portfolio summary cards', () => {
     await flushPromises()
     expect(view.findComponent({ name: 'PortfolioValueChart' }).props('error')).toContain('unavailable')
     expect(view.find('article').text()).not.toContain('+£25.00')
+    view.unmount()
+  })
+})
+
+describe('Portfolio filter interactions', () => {
+  it('checks all accounts and allows narrowing the selection', async () => {
+    const view=create()
+    await flushPromises()
+    const boxes=view.findAll('.account-menu input')
+    expect(boxes.every(box=>box.element.checked)).toBe(true)
+    await boxes[0].setValue(false)
+    await flushPromises()
+    expect(boxes[0].element.checked).toBe(false)
+    expect(boxes[1].element.checked).toBe(true)
+    expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/dashboard')).at(-1)[1].params.accounts).toBe('two')
+    await view.find('.account-menu button').trigger('click')
+    await flushPromises()
+    expect(boxes.every(box=>box.element.checked)).toBe(true)
+    view.unmount()
+  })
+  it('closes both menus outside and keeps inside clicks open', async () => {
+    const view=create()
+    await flushPromises()
+    const account=view.find('.account-picker').element,date=view.find('.period-picker').element
+    account.open=true
+    date.open=true
+    document.body.dispatchEvent(new Event('pointerdown',{bubbles:true}))
+    expect(account.open).toBe(false)
+    expect(date.open).toBe(false)
+    account.open=true
+    await view.find('.account-menu').trigger('pointerdown')
+    expect(account.open).toBe(true)
+    document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'}))
+    expect(account.open).toBe(false)
     view.unmount()
   })
 })
