@@ -34,7 +34,7 @@
       </section></template>
     <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" /></template>
     <template #heatmap><section class="card-dense heatmap-section">
-        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Asset Class → Sector → Industry</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
+        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Asset Class → Sector → Industry</p><p v-if="data.heatmapDate" class="subtitle">Holdings owned on {{ new Date(data.heatmapDate+'T12:00:00Z').toLocaleDateString('en-GB') }}</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
         <div v-if="groups.length" class="heatmap" aria-label="Holdings heatmap">
           <div v-for="group in groups" :key="group.name" class="industry" :style="rectStyle(group,true)"><div class="industry-label" :title="group.name">{{ group.name }} <span>{{ money(group.value) }}</span></div><div class="industry-tiles">
@@ -51,7 +51,8 @@
         <p class="scope-note">Stocks use FinanceDatabase sector and industry classifications, which are community reference data and may be outdated or incorrect. Funds & ETFs use Yahoo Finance categories; crypto uses CoinGecko themes with AI taking priority. Your correction files take precedence for all three asset classes.</p>
       </section></template>
       </PortfolioCardLayout>
-      <div v-if="incomplete || data.coverage.missingPnl || data.coverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="data.coverage.missingPnl"> {{ data.coverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="data.coverage.unclassified"> {{ data.coverage.unclassified }} holdings have no industry classification.</span></div>
+      <p v-if="data.heatmapDate && historicalWarnings.length" class="coverage">{{ historicalWarnings.join(' · ') }}</p>
+      <div v-if="incomplete || heatmapCoverage.missingPnl || heatmapCoverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="heatmapCoverage.missingPnl"> {{ heatmapCoverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="heatmapCoverage.unclassified"> {{ heatmapCoverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps. Run a broker sync to fetch the latest transactions from your brokers.</p>
     </template>
   </div>
@@ -97,7 +98,9 @@ const percent=v=>v==null?'Unavailable':`${v>=0?'+':''}${Number(v).toFixed(2)}%`
 const pnlClass=v=>v==null?'muted':v>=0?'gain':'loss'
 const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data.value.coverage.missingPrices))
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
-const groups=computed(()=>holdingGroups(data.value?.holdings||[]))
+const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.coverage??{})
+const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
+const groups=computed(()=>holdingGroups(data.value?.heatmapHoldings??data.value?.holdings??[]))
 async function load(){
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
   if(!hasAccountSelection.value){data.value=null;loading.value=false;historyLoading.value=false;return}
