@@ -7,7 +7,7 @@
     <p v-if="loading" class="history-message" role="status">Loading portfolio history…</p>
     <p v-else-if="error" class="history-message" role="status">{{ error }}</p>
     <template v-else-if="history">
-      <div class="history-legend"><span><i class="value-key"></i>Portfolio value</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer across selection</span></div>
+      <div class="history-legend"><span><i class="value-key"></i>Portfolio value</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer</span></div>
       <div class="history-canvas"><canvas ref="canvas" role="img" aria-label="Recorded portfolio values and funding activity over time. Details are available below." /></div>
       <details class="history-details data-notes"><summary>Data notes</summary>
     <p v-if="!includeFunding && missingPnlSymbols.length" class="history-message" role="status">Excludes {{ missingPnlSymbols.join(', ') }}: reliable period prices or matching acquisition lots are unavailable. This is a partial total.</p>
