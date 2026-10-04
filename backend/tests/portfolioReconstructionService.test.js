@@ -2,6 +2,15 @@ jest.mock('../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../src/services/portfolioDashboardService',()=>({FIAT:new Set(['USD','GBP']),STABLE:new Set(['USDT'])}));
 jest.mock('../src/utils/quoteCurrency',()=>({normaliseMinorUnit:c=>c==='GBp'?{code:'GBP',divisor:100}:c?{code:c,divisor:1}:null}));
 const {walletHistory,valueQuantities,parseYahoo,historicalPrice,replayShares}=require('../src/services/portfolioReconstructionService');
+test('migration price aliases require recorded unique 1:1 conversions and apply only on arrival day',()=>{
+ const {migrationPriceAliases}=require('../src/services/portfolioReconstructionService');
+ const time=Date.parse('2025-07-22')/1000;
+ const ledger={old:{asset:'EOS',type:'transfer',amount:'-10',time},next:{asset:'A',type:'transfer',amount:'10',time:time+3600}};
+ expect([...migrationPriceAliases(ledger)]).toEqual([['A:2025-07-22','EOS']]);
+ expect(migrationPriceAliases({...ledger,next:{...ledger.next,amount:'9'}}).size).toBe(0);
+ expect(migrationPriceAliases({...ledger,duplicate:{...ledger.next}}).size).toBe(0);
+ expect(migrationPriceAliases({...ledger,old:{...ledger.old,subtype:'spottostaking'}}).size).toBe(0);
+});
 test('native ledger replay preserves fees, tiny rewards and non-additive Earn transfers',()=>{
  const events=[{wallet:'XXBT',time:Date.parse('2025-01-01'),amount:'1',fee:'0.01'},
   {wallet:'XXBT',time:Date.parse('2025-01-02'),amount:'-0.5',fee:'0'},
