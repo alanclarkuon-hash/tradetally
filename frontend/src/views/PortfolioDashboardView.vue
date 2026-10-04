@@ -13,6 +13,8 @@
           <div class="period-menu" aria-label="Date ranges"><button v-for="option in timeRangeOptions" :key="option.value" type="button" :class="{active:period===option.value}" :aria-pressed="period===option.value" :data-period="option.value" @click="selectPeriod(option.value)">{{ option.label }}</button></div>
         </details>
         <label class="sr-only" for="portfolio-currency">Display currency</label><select id="portfolio-currency" v-model="currency"><option value="GBP">£</option><option value="USD">$</option></select>
+        <button v-if="isCustomizing" class="refresh" @click="cardLayout?.reset()">Reset</button>
+        <button class="customize-button" :class="{'customizing':isCustomizing}" :aria-label="isCustomizing?'Exit customize mode':'Customize portfolio'" :title="isCustomizing?'Exit customize mode':'Customize portfolio'" :aria-pressed="isCustomizing" @click="isCustomizing=!isCustomizing"><component :is="isCustomizing?CheckIcon:Cog6ToothIcon" class="w-4 h-4" aria-hidden="true" /></button>
         <button @click="load" :disabled="loading" class="refresh">{{ loading ? 'Loading…' : 'Refresh' }}</button>
       </div>
     </header>
@@ -20,18 +22,17 @@
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
     <template v-if="data && !loading">
-      <section class="value-row" aria-label="Portfolio totals">
-        <article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</p><div class="money main-money">{{ money(data.totals.portfolioValue) }}</div><p class="card-foot">Latest · {{ data.accountCount }} accounts · {{ currency }}</p></article>
-        <article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Holdings value</p><div class="money">{{ money(data.totals.holdingsValue) }}</div></article>
-        <article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Cash &amp; stablecoins</p><div class="money">{{ money(data.totals.cashValue+data.totals.stablecoinValue) }}</div><p class="card-foot">Cash {{ money(data.totals.cashValue) }} <span class="muted">· Stablecoins {{ money(data.totals.stablecoinValue) }}</span></p></article>
-      </section>
-      <section class="card-dense allocation" aria-label="Invested allocation">
+      <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing">
+        <template #total><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</p><div class="money main-money">{{ money(data.totals.portfolioValue) }}</div><p class="card-foot">Latest · {{ data.accountCount }} accounts · {{ currency }}</p></article></template>
+        <template #holdings><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Holdings value</p><div class="money">{{ money(data.totals.holdingsValue) }}</div></article></template>
+        <template #cash><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Cash &amp; stablecoins</p><div class="money">{{ money(data.totals.cashValue+data.totals.stablecoinValue) }}</div><p class="card-foot">Cash {{ money(data.totals.cashValue) }} <span class="muted">· Stablecoins {{ money(data.totals.stablecoinValue) }}</span></p></article></template>
+      <template #allocation><section class="card-dense allocation" aria-label="Invested allocation">
         <div class="section-line"><h2>Capital at work</h2><p><strong>{{ allocation[0].percent.toFixed(1) }}%</strong> invested</p></div>
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${money(part.value)}`"></div></div>
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
-      </section>
-    <PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl ?? data.totals.knownPnl" :missing-pnl-symbols="data.coverage.missingPnlSymbols || []" />
-    <section class="card-dense heatmap-section">
+      </section></template>
+    <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl ?? data.totals.knownPnl" :missing-pnl-symbols="data.coverage.missingPnlSymbols || []" /></template>
+    <template #heatmap><section class="card-dense heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holdings P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
         <div v-if="groups.length" class="heatmap" aria-label="Holdings heatmap">
@@ -47,7 +48,8 @@
         <details v-if="focus?.categories?.length" class="coverage"><summary>{{ focus.categorySource }} labels for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
         <p v-if="focus?.categoryOverride" class="coverage">Manual grouping correction: {{ focus.categoryOverride.override_reason }} <a :href="focus.categoryOverride.source_url" target="_blank" rel="noopener noreferrer" class="underline">Review source</a></p>
         <p class="scope-note">Stocks use FinanceDatabase sector and industry classifications, which are community reference data and may be outdated or incorrect. Funds & ETFs use Yahoo Finance categories; crypto uses CoinGecko themes with AI taking priority. Your correction files take precedence for all three asset classes.</p>
-      </section>
+      </section></template>
+      </PortfolioCardLayout>
       <div v-if="incomplete || data.coverage.missingPnl || data.coverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="data.coverage.missingPnl"> {{ data.coverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="data.coverage.unclassified"> {{ data.coverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps.</p>
     </template>
@@ -57,12 +59,14 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
-import { BuildingOfficeIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { BuildingOfficeIcon, ChevronDownIcon, Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
+import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
+const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const selected=ref(selectedAccount.value?[selectedAccount.value]:[]),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
@@ -122,6 +126,9 @@ onMounted(async()=>{await fetchAccounts();load()})
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .controls select,.custom-dates input{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm; padding:8px 12px;min-height:40px}
 .refresh,.account-picker summary,.period-picker summary{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700; padding:8px 12px;min-height:40px;cursor:pointer}
+.customize-button{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px}
+.customize-button.customizing{@apply bg-primary-600 text-white border-primary-600 hover:bg-primary-700}
+.customize-button:focus-visible{@apply outline-none ring-2 ring-primary-500}
 .refresh:disabled{opacity:.5;cursor:wait}
 .controls select:focus-visible,.refresh:focus-visible,.account-picker summary:focus-visible,.period-picker summary:focus-visible,.custom-dates input:focus-visible{@apply outline-none ring-2 ring-primary-500}
 .account-picker,.period-picker{position:relative}
@@ -145,7 +152,7 @@ onMounted(async()=>{await fetchAccounts();load()})
 .gain{@apply text-green-600 dark:text-green-400}
 .loss{@apply text-red-600 dark:text-red-400}
 .scope-note{margin:12px 0 24px;line-height:1.6}
-.allocation{padding:20px;margin:24px 0}
+.allocation{padding:20px;margin:0}
 .section-line h2{@apply text-base sm:text-lg font-semibold text-gray-900 dark:text-white}
 .section-line p{@apply text-sm text-gray-600 dark:text-gray-400}
 .allocation-track{height:12px;display:flex;overflow:hidden;border-radius:3px;background:#394451;margin:16px 0}
