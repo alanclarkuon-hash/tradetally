@@ -10,5 +10,11 @@ test('fills only confirmed IG spread gaps, preserving native GBP and actual obse
 });
 test('does not backfill before a known balance or invent exchange rates',()=>{
  const rows=[row('spread','2026-01-01',null),row('spread','2026-01-02',100),row('spread','2026-01-03',null)];
- expect(carryForward(rows,accounts,new Map())).toEqual(rows);
+ const withoutFx=rows.map(r=>({...r,gbp_per_usd:r.cash_usd==null?null:r.gbp_per_usd}));
+ expect(carryForward(withoutFx,accounts,new Map())).toEqual(withoutFx);
+});
+test('uses the most recent dated rate across non-reporting days without future rates',()=>{
+ const rows=[row('spread','2026-01-02',100),{...row('spread','2026-01-03',null),gbp_per_usd:null}];
+ const result=carryForward(rows,accounts,new Map([['2026-01-02',.8],['2026-01-04',.5]]));
+ expect(result[1]).toMatchObject({cash_usd:100,gbp_per_usd:.8});
 });
