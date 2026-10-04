@@ -1,4 +1,5 @@
-jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn(),createSyncLog:jest.fn(),updateSyncLog:jest.fn(),updateAfterFailure:jest.fn(),scheduleTransientRetry:jest.fn()}));
+jest.mock('../../src/services/brokerPortfolioMaintenance',()=>({maintain:jest.fn()}));
+jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn(),createSyncLog:jest.fn(),updateSyncLog:jest.fn(),updateAfterFailure:jest.fn(),scheduleTransientRetry:jest.fn(),updateAfterSync:jest.fn()}));
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/tierService',()=>({canSyncBrokerConnection:jest.fn().mockResolvedValue({allowed:true})}));
 jest.mock('../../src/services/brokerSync/ibkrService',()=>({syncTrades:jest.fn()}));
@@ -37,4 +38,27 @@ test('an unconfigured IBKR date floor uses the owner managed-account opening dat
   await service.syncConnection('connection');
   expect(db.query.mock.calls[0][1]).toEqual(['owner']);
   expect(ibkr.syncTrades).toHaveBeenCalledWith(expect.any(Object),expect.objectContaining({startDate:'2024-02-01'}));
+});
+
+
+test('successful sync runs chart maintenance and records its warnings without another broker call',async()=>{
+ const maintenance=require('../../src/services/brokerPortfolioMaintenance');
+ maintenance.maintain.mockResolvedValue({captured:0,warnings:['Chart coverage warning'],rebuilt:[]});
+ ibkr.syncTrades.mockResolvedValue({imported:0,skipped:0,failed:0,duplicates:0,outcome:'success',warnings:[]});
+ jest.spyOn(service,'closeExpiredOptions').mockResolvedValue(0);
+ const result=await service.syncConnection('connection');
+ expect(result.success).toBe(true);expect(result.outcome).toBe('warning');
+ expect(maintenance.maintain).toHaveBeenCalledWith('owner',{broker:'ibkr'});
+ expect(ibkr.syncTrades).toHaveBeenCalledTimes(1);
+ expect(BC.updateAfterFailure).not.toHaveBeenCalled();
+ expect(BC.updateSyncLog).toHaveBeenCalledWith('log','completed',expect.objectContaining({syncDetails:expect.objectContaining({portfolio_history:expect.objectContaining({captured:0})})}));
+});
+
+test('chart failure does not mark a successfully imported broker sync as failed',async()=>{
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockRejectedValue(Error('private error'));
+ ibkr.syncTrades.mockResolvedValue({imported:1,skipped:0,failed:0,duplicates:0,warnings:[]});
+ jest.spyOn(service,'closeExpiredOptions').mockResolvedValue(0);
+ const result=await service.syncConnection('connection');
+ expect(result.success).toBe(true);expect(result.warnings.join(' ')).not.toContain('private error');
+ expect(BC.updateAfterFailure).not.toHaveBeenCalled();
 });

@@ -29,3 +29,19 @@ test('saves reported NAV separately from weekend estimates and is repeatable by 
  expect(client.query.mock.calls[1][0]).toContain('ON CONFLICT');
  expect(client.query.mock.calls[1][1]).toEqual(['u','****1234','2026-01-16',-10,110,.8]);
 });
+
+
+test('trailing weekends are backfilled without inventing a weekday NAV',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-01-18T12:00:00Z'));
+ try {
+  db.query.mockResolvedValue({rows:[{value_date:'2026-01-16',holdings_usd:-10,cash_usd:110}]});
+  loadLedger.mockResolvedValue({rows:[{date:'2026-01-16',balance:110},{date:'2026-01-17',balance:115}],reconciliation:{matched:true}});
+  const client={query:jest.fn().mockResolvedValue({rows:[{rates:{GBP:.8}}]})};
+  db.withTransaction.mockImplementation(fn=>fn(client));
+  const count=await require('../../src/services/brokerSync/ibkrNavHistory').backfillTrailingWeekends('u',account);
+  expect(count).toBe(2);
+  const writes=client.query.mock.calls.filter(([sql])=>sql.includes('INSERT'));
+  expect(writes.map(([,args])=>args[2])).toEqual(['2026-01-17','2026-01-18']);
+  expect(writes[0][1].slice(3,5)).toEqual([-10,115]);
+ }finally{jest.useRealTimers();}
+});

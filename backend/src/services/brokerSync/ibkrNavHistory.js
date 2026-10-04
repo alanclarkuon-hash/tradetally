@@ -70,4 +70,25 @@ async function saveNavReports(connection,decoded) {
  }
  return {saved,weekends};
 }
-module.exports={prepare,weekendPoints,saveNavReports};
+async function backfillTrailingWeekends(userId,account) {
+ const latest=(await db.query(`SELECT * FROM portfolio_statement_values WHERE user_id=$1 AND account_identifier=$2 ORDER BY value_date DESC LIMIT 1`,[userId,account.account_identifier])).rows[0];
+ if(!latest)return 0;
+ const today=day(new Date()),date=day(latest.value_date);
+ if(date>=today||Date.parse(today)-Date.parse(date)>3*86400000)return 0;
+ const ledger=await loadLedger(userId,account,date,today);
+ if(!ledger||ledger.reconciliation?.matched===false)return 0;
+ const points=weekendPoints([{date,holdings:Number(latest.holdings_usd),cash:Number(latest.cash_usd)},
+  {date:day(new Date(Date.parse(today)+86400000))}],ledger);
+ await db.withTransaction(async client=>{
+  for(const p of points) {
+   const rate=(await client.query("SELECT rates FROM fx_daily_rates WHERE base_code='USD' AND rate_date<=$1 AND rate_date >= $1::date-7 ORDER BY rate_date DESC LIMIT 1",[p.date])).rows[0]?.rates.GBP;
+   await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method)
+    VALUES($1,$2,$3,$4,$5,0,$6,$7::jsonb,$8) ON CONFLICT(user_id,account_identifier,value_date) DO UPDATE SET
+    holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,gbp_per_usd=EXCLUDED.gbp_per_usd,issues=EXCLUDED.issues,method=EXCLUDED.method,reconstructed_at=NOW()`,
+    [userId,account.account_identifier,p.date,p.holdings,p.cash,rate||null,JSON.stringify(['Estimated using previous IBKR statement: weekend holdings at last reported close']),
+     'IBKR last reported NAV holdings; weekend cash adjusted using native cash ledger']);
+  }
+ });
+ return points.length;
+}
+module.exports={prepare,weekendPoints,saveNavReports,backfillTrailingWeekends};

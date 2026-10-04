@@ -5,8 +5,8 @@ jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {combineValues,captureToday,getHistory}=require('../src/services/portfolioValueHistoryService');
-const accounts=[{id:'one',account_identifier:'one',account_name:'First',broker:'trading212',currency:'GBP',initial_balance_date:'2024-01-01'},
-  {id:'two',account_identifier:'two',account_name:'Second',broker:'trading212',currency:'GBP',initial_balance_date:'2024-01-01'}];
+const accounts=[{id:'one',account_identifier:'one',account_name:'First',broker:'alpaca',currency:'GBP',initial_balance_date:'2024-01-01'},
+  {id:'two',account_identifier:'two',account_name:'Second',broker:'alpaca',currency:'GBP',initial_balance_date:'2024-01-01'}];
 const row=(account,date,holdings,cash,stablecoins=0)=>({account_identifier:account,value_date:date,holdings_usd:holdings,cash_usd:cash,stablecoins_usd:stablecoins,gbp_per_usd:.8});
 beforeEach(()=>jest.resetAllMocks());
 test('combines selected account cash, assets and stablecoins once at the recorded FX rate',()=>{
@@ -41,8 +41,8 @@ test('IBKR weekend statement estimates remain distinct from reported observation
 });
 test('captures complete values without counting fiat or stablecoins twice; missing balances are not saved',async()=>{
   db.query.mockResolvedValue({rows:[accounts[0]]});getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
-  Portfolio.getPositions.mockResolvedValue([{symbol:'SYNTH',instrumentType:'stock',currentValue:100},
-    {symbol:'USDT',instrumentType:'crypto',currentValue:10},{symbol:'USD',instrumentType:'crypto',currentValue:20}]);
+  Portfolio.getPositions.mockResolvedValue([{symbol:'SYNTH',instrumentType:'stock',currentValue:100,priceAsOf:new Date().toISOString()},
+    {symbol:'USDT',instrumentType:'crypto',currentValue:10,priceAsOf:new Date().toISOString()},{symbol:'USD',instrumentType:'crypto',currentValue:20,priceAsOf:new Date().toISOString()}]);
   Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'ig_statement',currentBalance:40}});
   expect((await captureToday('owner')).captured).toBe(1);
   expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO portfolio_value_history'),
@@ -58,7 +58,7 @@ test('owned account validation prevents snapshots of another user account',async
 });
 test('cashflow markers do not increase recorded values and internal matched transfers cancel across dates',async()=>{
   const pairs=[{source_account:'one',destination_account:'two',asset:'GBP',quantity:50,sent_at:'2026-01-01',received_at:'2026-01-02'}];
-  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM user_accounts')?accounts:sql.includes('FROM portfolio_value_history')?[row('one','2026-01-01',100,20),row('two','2026-01-01',30,40)]:sql.includes('broker_transfer_matches')?pairs:[]}));
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM portfolio_value_history')?[row('one','2026-01-01',100,20),row('two','2026-01-01',30,40)]:sql.includes('FROM user_accounts')?accounts:sql.includes('broker_transfer_matches')?pairs:[]}));
   Account.getCashflow.mockImplementation((_,id)=>Promise.resolve({cashflow:id==='one'?[{date:'2026-01-01',deposits:100,transferOut:50}]:[{date:'2026-01-02',withdrawals:20,transferIn:50}]}));
   const combined=await getHistory('owner',{currency:'GBP'});
   expect(combined.series[0].value).toBe(152);
@@ -77,5 +77,43 @@ test('IG imported balances are not saved as fresh daily observations',async()=>{
  getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
  expect((await captureToday('owner')).captured).toBe(0);
  expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
+});
+
+
+test('old broker balances are not recorded as fresh chart snapshots',async()=>{
+ const api={...accounts[0],broker:'trading212'};
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:sql.includes('broker_portfolio_snapshots')?[{synced_at:'2020-01-01',positions:[]}]:[]}));
+ getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
+ const result=await captureToday('owner');
+ expect(result.captured).toBe(0);expect(result.warnings[0]).toContain('older than 36 hours');
+ expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
+});
+
+test('Trading 212 captures broker wallet values without needing provider prices',async()=>{
+ const api={...accounts[0],broker:'trading212'},now=new Date().toISOString();
+ const snapshot={broker_type:'trading212',account_identifier:'one',synced_at:now,positions:[{instrument:{ticker:'TEST_US_EQ'},quantity:2,walletImpact:{currency:'USD',totalCost:40,currentValue:60}}]};
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:sql.includes('broker_portfolio_snapshots')?[snapshot]:sql.includes('broker_cash_reports')?[{to_date:now}]:[]}));
+ getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
+ Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'trading212_wallet',currentBalance:40,reconciliation:{matched:true}}});
+ expect((await captureToday('owner')).captured).toBe(1);
+ expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO portfolio_value_history'),['owner','one',now.slice(0,10),60,50,0,1,0]);
+});
+
+test('cash mismatch blocks portfolio capture even when holdings are fresh',async()=>{
+ const api={...accounts[0],broker:'trading212'},now=new Date().toISOString();
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:sql.includes('broker_portfolio_snapshots')?[{broker_type:'trading212',account_identifier:'one',synced_at:now,positions:[]}]:sql.includes('broker_cash_reports')?[{to_date:now}]:[]}));
+ getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
+ Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'trading212_wallet',currentBalance:40,reconciliation:{matched:false}}});
+ expect((await captureToday('owner')).captured).toBe(0);
+ expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
+});
+
+test('missing IBKR NAV warns instead of overwriting it with live option quotes',async()=>{
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[{...accounts[0],broker:'ibkr'}]:[]}));
+ getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
+ const result=await captureToday('owner');
+ expect(result.warnings[0]).toContain('NAV');expect(Portfolio.getPositions).not.toHaveBeenCalled();
  expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
 });

@@ -31,23 +31,69 @@ async function captureToday(userId,query={}) {
     const fx=await getRatesToDisplay(['USD',...accounts.map(a=>a.currency)],'USD');
     const gbp=await getRatesToDisplay(['USD'],'GBP');
     let captured=0,unavailable=0;
+    const warnings=[];
     for(const account of accounts) {
       // IG has no live API valuation. An old imported balance is not a new
       // observation today; history instead displays a labelled carry-forward.
       if(account.broker==='ig'){unavailable++;continue;}
-      const positions=(await Portfolio.getPositions(userId,{accounts:account.account_identifier}))
+      if(account.broker==='ibkr') {
+        const nav=(await db.query(`SELECT MAX(value_date) AS latest FROM portfolio_statement_values
+          WHERE user_id=$1 AND account_identifier=$2`,[userId,account.account_identifier])).rows[0]?.latest;
+        if(!nav||Date.now()-Date.parse(day(nav))>4*86400000){unavailable++;warnings.push('ibkr: a recent dated NAV statement is unavailable; the chart retains previous values.');}
+        continue;
+      }
+      let brokerSnapshot=null;
+      if(['trading212','kraken'].includes(account.broker)) {
+        brokerSnapshot=(await db.query(`SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3`,[userId,account.broker,account.account_identifier])).rows[0];
+        const age=brokerSnapshot?Date.now()-new Date(brokerSnapshot.synced_at).getTime():Infinity;
+        if(!Number.isFinite(age)||age< -300000||age>36*3600000) {
+          unavailable++;warnings.push(`${account.broker}: current portfolio snapshot is missing or older than 36 hours; no fresh chart value was recorded.`);continue;
+        }
+        if(day(brokerSnapshot.synced_at)!==today) {
+          unavailable++;warnings.push(`${account.broker}: the latest broker snapshot is not from today; previous dated chart values were retained.`);continue;
+        }
+        if(account.broker==='kraken') {
+          const imported=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' AND account_identifier=$2",[userId,account.account_identifier])).rows[0]?.payload;
+          if(!imported?.reconciled||!imported.nativeReconciliation?.nativeBalancesMatched){unavailable++;warnings.push('kraken: portfolio capture awaits native balance reconciliation.');continue;}
+        } else {
+          const report=(await db.query("SELECT to_date FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='trading212' ORDER BY updated_at DESC LIMIT 1",[userId,account.id])).rows[0];
+          if(!report||day(report.to_date)!==day(brokerSnapshot.synced_at)){unavailable++;warnings.push('trading212: cash and holdings dates do not match; no fresh chart value was recorded.');continue;}
+        }
+      }
+      const rawPositions=brokerSnapshot?
+        (await require('./brokerSync/portfolioSnapshot').snapshotPositions([brokerSnapshot])).map(p=>({...p,currentValue:p.totalShares*p.brokerCurrentPrice,priceStale:false})):
+        await Portfolio.getPositions(userId,{accounts:account.account_identifier});
+      const positions=rawPositions
         .filter(p=>!(p.instrumentType==='crypto'&&FIAT.has(p.symbol)));
       const flow=account.broker==='okx'?null:await Account.getCashflow(userId,account.id);
       const live=flow?.summary?.liveCashBalance;
       const cash=account.broker==='okx'?0:live?.amount??flow?.summary?.currentBalance;
       const currency=live?.currency||account.currency;
-      if(positions.some(p=>!Number.isFinite(p.currentValue)) || !Number.isFinite(cash) ||
+      const cashAge=Date.now()-Date.parse(live?.asOf);
+      if(flow?.summary?.reconciliation?.matched===false ||
+        (account.broker==='kraken'&&(!Number.isFinite(cashAge)||cashAge< -300000||cashAge>36*3600000))) {
+        unavailable++;warnings.push(`${account.broker}: cash valuation is stale or has not reconciled; no fresh chart value was recorded.`);continue;
+      }
+      if((!brokerSnapshot&&positions.some(p=>!Number.isFinite(p.currentValue))) || !Number.isFinite(cash) ||
         !(fx[currency]>0) || (account.broker!=='okx' && (!flow || flow.summary.cashflowSource==='trade_history'))) {
-        unavailable++;continue;
+        unavailable++;warnings.push(`${account.broker}: portfolio prices, cash history or currency conversion are incomplete; no fresh chart value was recorded.`);continue;
       }
       const stable=positions.filter(p=>p.instrumentType==='crypto'&&STABLE.has(p.symbol));
       const stableValue=stable.reduce((sum,p)=>sum+p.currentValue,0);
       const holdings=positions.reduce((sum,p)=>sum+p.currentValue,0)-stableValue;
+      let capturedHoldings=holdings,capturedStable=stableValue;
+      // Use the reconciled broker wallet valuation, rather than asynchronously
+      // refreshed provider quotes whose timestamps can differ from the cash.
+      if(brokerSnapshot) {
+        const brokerPositions=rawPositions;
+        if(brokerPositions.some(p=>!Number.isFinite(p.brokerCurrentPrice)||!Number.isFinite(p.totalShares))) {
+          unavailable++;warnings.push(`${account.broker}: broker portfolio valuation is incomplete.`);continue;
+        }
+        capturedStable=brokerPositions.filter(p=>p.instrumentType==='crypto'&&STABLE.has(p.symbol)).reduce((s,p)=>s+p.totalShares*p.brokerCurrentPrice,0);
+        capturedHoldings=brokerPositions.filter(p=>!(p.instrumentType==='crypto'&&(STABLE.has(p.symbol)||FIAT.has(p.symbol)))).reduce((s,p)=>s+p.totalShares*p.brokerCurrentPrice,0);
+      } else if(positions.some(p=>!Number.isFinite(Date.parse(p.priceAsOf))||Date.now()-Date.parse(p.priceAsOf)>36*3600000)) {
+        unavailable++;warnings.push(`${account.broker}: market prices are missing or older than 36 hours.`);continue;
+      }
       await db.query(`INSERT INTO portfolio_value_history(user_id,account_identifier,value_date,
         holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,stale_prices)
         VALUES($1,$2,$3,$4,$5,$6,$7,$8)
@@ -55,10 +101,10 @@ async function captureToday(userId,query={}) {
           holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,
           stablecoins_usd=EXCLUDED.stablecoins_usd,gbp_per_usd=EXCLUDED.gbp_per_usd,
           stale_prices=EXCLUDED.stale_prices,recorded_at=NOW()`,
-      [userId,account.account_identifier,today,holdings,cash*fx[currency],stableValue,gbp.USD||null,positions.filter(p=>p.priceStale).length]);
+      [userId,account.account_identifier,today,capturedHoldings,cash*fx[currency],capturedStable,gbp.USD||null,brokerSnapshot?0:positions.filter(p=>p.priceStale).length]);
       captured++;
     }
-    return {captured,unavailable,date:today};
+    return {captured,unavailable,date:today,warnings};
   })();
   pending.set(key,job);
   try{return await job;}finally{pending.delete(key);}
@@ -100,14 +146,16 @@ async function getHistory(userId,query={}) {
   let rows=(await db.query(`SELECT * FROM (
     SELECT user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,stale_prices,
       'recorded' AS source,'[]'::jsonb AS issues FROM portfolio_value_history o
-    WHERE NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=o.user_id AND s.account_identifier=o.account_identifier AND s.value_date=o.value_date)
+    WHERE NOT EXISTS(SELECT 1 FROM user_accounts a WHERE a.user_id=o.user_id AND a.account_identifier=o.account_identifier AND a.broker IN ('ig','ibkr'))
+      AND NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=o.user_id AND s.account_identifier=o.account_identifier AND s.value_date=o.value_date)
     UNION ALL
     SELECT s.user_id,s.account_identifier,s.value_date,s.holdings_usd,s.cash_usd,s.stablecoins_usd,s.gbp_per_usd,0,
       'statement' AS source,'[]'::jsonb AS issues FROM portfolio_statement_values s
     UNION ALL
     SELECT r.user_id,r.account_identifier,r.value_date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,0,
       'reconstructed' AS source,r.issues FROM portfolio_reconstructed_values r
-    WHERE NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=r.user_id AND o.account_identifier=r.account_identifier AND o.value_date=r.value_date)
+    WHERE (NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=r.user_id AND o.account_identifier=r.account_identifier AND o.value_date=r.value_date)
+      OR EXISTS(SELECT 1 FROM user_accounts a WHERE a.user_id=r.user_id AND a.account_identifier=r.account_identifier AND a.broker IN ('ig','ibkr')))
       AND NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=r.user_id AND s.account_identifier=r.account_identifier AND s.value_date=r.value_date)
     ) history WHERE user_id=$1 AND account_identifier=ANY($2) ORDER BY value_date`,
   [userId,identifiers])).rows;
@@ -117,7 +165,7 @@ async function getHistory(userId,query={}) {
   for(const r of fxRows.filter(r=>r.base_code==='GBP'&&Number(r.rates.USD)>0))if(!igRates.has(day(r.rate_date)))igRates.set(day(r.rate_date),1/Number(r.rates.USD));
   // Ignore legacy IG page captures: these reused imported cash with no live
   // equity valuation. Actual statements and reconstructed daily values win.
-  rows=rows.filter(r=>!(r.source==='recorded'&&accounts.some(a=>a.broker==='ig'&&a.account_identifier===r.account_identifier)));
+  rows=rows.filter(r=>!(r.source==='recorded'&&accounts.some(a=>['ig','ibkr'].includes(a.broker)&&a.account_identifier===r.account_identifier)));
   const today=new Date().toISOString().slice(0,10);
   rows=carryForward(rows,accounts,igRates,today).filter(r=>(!range||day(r.value_date)>=range.start_date&&day(r.value_date)<=range.end_date));
   const fx=new Map(fxRows.flatMap(r=>Object.entries(r.rates).map(([quote,rate])=>[`${day(r.rate_date)}:${r.base_code}:${quote}`,Number(rate)])));

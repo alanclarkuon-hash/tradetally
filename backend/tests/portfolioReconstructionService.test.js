@@ -51,3 +51,21 @@ test('replays quantities on split dates and keeps a buy/sell pair from becoming 
   [{date:'2025-01-02',symbol:'TEST',ratio:2}],'2025-01-01','2025-01-03');
  expect(rows.map(r=>r.quantities.TEST)).toEqual([3,4,4]);
 });
+
+
+test('bounded recovery keeps older history and does not rebuild another account',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-01-06T12:00:00Z'));
+ const db=require('../src/config/database');
+ const accounts=[{id:'a',broker:'ibkr',account_identifier:'owned',initial_balance_date:'2026-01-01'},
+  {id:'b',broker:'ibkr',account_identifier:'other',initial_balance_date:'2026-01-01'}];
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?accounts:sql.includes('fx_daily_rates')?[{rate_date:'2026-01-04',rates:{GBP:.8}}]:[]}));
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};
+ db.withTransaction=jest.fn(fn=>fn(client));
+ try{
+  const result=await require('../src/services/portfolioReconstructionService').reconstruct('owner',{broker:'ibkr',accountIdentifiers:['owned'],fromDate:'2026-01-04',apply:true});
+  expect(result).toHaveLength(1);
+  expect(client.query.mock.calls[0]).toEqual([expect.stringContaining('value_date >= $3'),['owner','owned','2026-01-04']]);
+  expect(client.query.mock.calls.slice(1).map(([,args])=>args[2])).toEqual(['2026-01-04','2026-01-05']);
+  expect(client.query.mock.calls.every(([,args])=>args[1]==='owned')).toBe(true);
+ }finally{jest.useRealTimers();}
+});
