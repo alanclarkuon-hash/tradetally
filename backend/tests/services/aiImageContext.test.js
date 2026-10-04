@@ -79,12 +79,16 @@ test.each(['../../etc/passwd', '/uploads/../chart.png', 'https://example.com/cha
 });
 
 test('rejects symlinks outside the storage root', async () => {
-  const external = path.join(os.tmpdir(), `tradetally-outside-${Date.now()}.png`);
+  const externalDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'tradetally-outside-'));
+  const external = path.join(externalDirectory, 'chart.png');
   await fs.copyFile(path.join(directory, 'chart.png'), external);
   try {
-    await fs.symlink(external, path.join(directory, 'link.png'));
+    // Directory junctions exercise the same realpath escape on Windows,
+    // without requiring administrator privileges or Developer Mode.
+    await fs.symlink(process.platform === 'win32' ? externalDirectory : external,
+      path.join(directory, 'link.png'), process.platform === 'win32' ? 'junction' : 'file');
     await expect(prepareImage({ ...attachment, file_url: '/uploads/link.png' }, directory)).rejects.toThrow('Invalid attachment storage path');
-  } finally { await fs.rm(external, { force: true }); }
+  } finally { await fs.rm(external, { force: true }); await fs.rmdir(externalDirectory); }
 });
 
 test('rejects oversized source images before reading them', async () => {
