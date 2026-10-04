@@ -5,8 +5,8 @@ jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {combineValues,captureToday,getHistory}=require('../src/services/portfolioValueHistoryService');
-const accounts=[{id:'one',account_identifier:'one',account_name:'First',broker:'ig',currency:'GBP',initial_balance_date:'2024-01-01'},
-  {id:'two',account_identifier:'two',account_name:'Second',broker:'ig',currency:'GBP',initial_balance_date:'2024-01-01'}];
+const accounts=[{id:'one',account_identifier:'one',account_name:'First',broker:'trading212',currency:'GBP',initial_balance_date:'2024-01-01'},
+  {id:'two',account_identifier:'two',account_name:'Second',broker:'trading212',currency:'GBP',initial_balance_date:'2024-01-01'}];
 const row=(account,date,holdings,cash,stablecoins=0)=>({account_identifier:account,value_date:date,holdings_usd:holdings,cash_usd:cash,stablecoins_usd:stablecoins,gbp_per_usd:.8});
 beforeEach(()=>jest.resetAllMocks());
 test('combines selected account cash, assets and stablecoins once at the recorded FX rate',()=>{
@@ -70,4 +70,12 @@ test('date and currency validation apply before history reads',async()=>{
   await expect(getHistory('owner',{currency:'EUR'})).rejects.toThrow('GBP or USD');
   await expect(getHistory('owner',{start_date:'invalid',end_date:'2026-01-01'})).rejects.toThrow('valid');
   expect(db.query).not.toHaveBeenCalled();
+});
+
+test('IG imported balances are not saved as fresh daily observations',async()=>{
+ db.query.mockResolvedValue({rows:[{...accounts[0],broker:'ig'}]});
+ getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
+ expect((await captureToday('owner')).captured).toBe(0);
+ expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
 });
