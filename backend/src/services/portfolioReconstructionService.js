@@ -1,7 +1,7 @@
 const db=require('../config/database');
 const axios=require('axios');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
-const {assetCode,nativeWalletCode,decimal,format}=require('./brokerSync/krakenReconcile');
+const {assetCode,nativeWalletCode,decimal,format,category}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
 const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
 const {statementSplits,historicalLotQuantity,statementLotMetadata}=require('./etoroHistoricalSplits');
@@ -10,6 +10,21 @@ const {STABLE,FIAT}=require('./portfolioDashboardService');
 const date=v=>new Date(v).toISOString().slice(0,10);
 const days=(from,to)=>{const result=[];for(let t=Date.parse(from);t<=Date.parse(to);t+=86400000)result.push(date(t));return result;};
 const latest=(rows,d)=>rows.filter(r=>r.date<=d).at(-1);
+
+// A conversion-day predecessor close is valid only for a uniquely paired,
+// recorded 1:1 migration. Never rename balances before the native conversion.
+function migrationPriceAliases(ledger) {
+ const rows=Object.values(ledger||{}).filter(l=>category(l)==='asset_conversion');
+ const aliases=new Map(),migrations={FTM:'S',EOS:'A'};
+ for(const out of rows) {
+  const symbol=assetCode(out.asset),target=migrations[symbol],amount=decimal(out.amount)-decimal(out.fee||'0');
+  if(!target||amount>=0n)continue;
+  const matches=rows.filter(l=>assetCode(l.asset)===target&&decimal(l.amount)-decimal(l.fee||'0')===-amount&&Math.abs(Number(l.time)-Number(out.time))<172800);
+  if(matches.length===1&&rows.filter(l=>assetCode(l.asset)===symbol&&decimal(l.amount)-decimal(l.fee||'0')===amount&&Math.abs(Number(l.time)-Number(matches[0].time))<172800).length===1)
+   aliases.set(`${target}:${date(Number(matches[0].time)*1000)}`,symbol);
+ }
+ return aliases;
+}
 
 // Native ledger movements, including Earn wallet transfers and fees. Earn
 // allocation summaries overlap these wallets and must never be added again.
@@ -34,7 +49,8 @@ function historicalPrice(series,d,continuous=false) {
 
 const estimatePrefix='Estimated at zero: missing historical price for ';
 const priceIssue=(symbol,zeroMissingPrices)=>zeroMissingPrices?estimatePrefix+symbol:`Missing dated price: ${symbol}`;
-const blocksValue=issues=>issues.some(issue=>!issue.startsWith(estimatePrefix));
+const migrationEstimatePrefix='Estimated using 1:1 token migration: ';
+const blocksValue=issues=>issues.some(issue=>!issue.startsWith(estimatePrefix)&&!issue.startsWith(migrationEstimatePrefix));
 function valueQuantities(quantities,d,price,fx,{zeroMissingPrices=false}={}) {
  let holdings=0,cash=0,stablecoins=0;const issues=[];
  for(const [symbol,q] of Object.entries(quantities)) {
@@ -182,6 +198,40 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
    await new Promise(resolve=>setTimeout(resolve,1100));
   }
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
+  // Retired markets may have disappeared from live pair metadata. Their
+  // official daily archive retains actual historical closes.
+  if(account.broker==='kraken'&&fetchPrices)for(const s of symbols) {
+   const coin=s.slice(0,-4);
+   const missing=native.some(r=>r.date<=cutoff&&r.quantities[coin]>1e-9&&
+    !(Number(cryptoRates[coin]?.[r.date])||Number(publicCryptoRates[coin]?.[r.date])||stockPrice(s,r.date)));
+   if(!missing)continue;
+   try {
+    const archive=await require('./brokerSync/krakenArchivePrices').dailyPrices(coin+'USD');
+    const merged=new Map((market.get(s)?.prices||[]).map(p=>[p.date,p.close]));
+    for(const [d,p] of Object.entries(archive.prices))if(!merged.has(d))merged.set(d,p);
+    const series={currency:'USD',prices:[...merged].sort(([a],[b])=>a.localeCompare(b)).map(([date,close])=>({date,close})),splits:[],from:start,to:end,proxyDates:market.get(s)?.proxyDates||[],source:'Kraken daily closes supplemented by official OHLCVT archive'};
+    market.set(s,series);
+    await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[s,series]);
+   }catch{/* A missing archive remains an explicit gap. */}
+  }
+  const migrationAliases=account.broker==='kraken'?migrationPriceAliases(payload?.ledger):new Map();
+  // Sonic launched before Kraken retired FTM. Use its dated market price only
+  // where the original FTM close is absent and this import proves a 1:1 swap.
+  if(account.broker==='kraken'&&fetchPrices&&[...migrationAliases].some(([key,old])=>key.startsWith('S:')&&old==='FTM')) {
+   const missing=native.filter(r=>r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
+   if(missing.length)try {
+    const candles=(await axios.get('https://data-api.binance.vision/api/v3/klines',{params:{symbol:'SUSDT',interval:'1d',startTime:Date.parse(missing[0].date),endTime:Date.parse(missing.at(-1).date)+86400000-1,limit:1000},timeout:15000,maxRedirects:0,maxContentLength:1024*1024})).data;
+    const existing=market.get('FTM-USD'),prices=new Map((existing?.prices||[]).map(p=>[p.date,p.close])),proxyDates=new Set(existing?.proxyDates||[]);
+    const dates=new Set(missing.map(r=>r.date));
+    for(const candle of candles) {
+     const d=date(Number(candle[0])),p=Number(candle[4]),usdt=Number(cryptoRates.USDT?.[d])||Number(publicCryptoRates.USDT?.[d])||stockPrice('USDT-USD',d);
+     if(dates.has(d)&&p>0&&usdt>0&&!prices.has(d)){prices.set(d,p*usdt);proxyDates.add(d);}
+    }
+    const series={currency:'USD',prices:[...prices].sort(([a],[b])=>a.localeCompare(b)).map(([date,close])=>({date,close})),splits:[],from:start,to:end,proxyDates:[...proxyDates],source:'Kraken FTM archive; missing closes estimated from Binance Sonic/USDT and dated USDT/USD; recorded 1:1 migration'};
+    market.set('FTM-USD',series);
+    await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,['FTM-USD',series]);
+   }catch{/* No fabricated prices when the replacement market is unavailable. */}
+  }
   let shareIssues=new Map();
   if(account.broker==='trading212') {
    for(const s of need)for(const split of historySplits(s,market.get(s)?.splits||[]))splits.push({...split,symbol:s});
@@ -196,7 +246,12 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
    if(d>cutoff)value.issues.push('Beyond saved statement or sync coverage');
    if(['kraken','okx'].includes(account.broker)) {
     const quantities=native.find(r=>r.date===d)?.quantities||{};
-    const price=(s,day)=>Number(cryptoRates[s]?.[day])||Number(publicCryptoRates[s]?.[day])||(s==='USDT'?Number(payload.rates?.[day])||null:stockPrice(s+'-USD',day));
+    const price=(s,day)=>Number(cryptoRates[s]?.[day])||Number(publicCryptoRates[s]?.[day])||(s==='USDT'?Number(payload.rates?.[day])||null:stockPrice(s+'-USD',day))||
+     (migrationAliases.has(`${s}:${day}`)?stockPrice(migrationAliases.get(`${s}:${day}`)+'-USD',day):null);
+    if(account.broker==='kraken')for(const [s,q] of Object.entries(quantities))if(q>1e-9&&
+     (!Number(cryptoRates[s]?.[d])&&!Number(publicCryptoRates[s]?.[d]))&&
+     (market.get(s+'-USD')?.proxyDates?.includes(d)||(!stockPrice(s+'-USD',d)&&migrationAliases.has(`${s}:${d}`)&&price(s,d)>0)))
+      value.issues.push(migrationEstimatePrefix+s);
     const crypto=valueQuantities(quantities,d,price,fx,{zeroMissingPrices});value={...crypto,issues:[...value.issues,...crypto.issues]};
    }else {
     const balance=latest(cashRows,d)?.balance??cashOpening,rate=fx(account.currency,d);
@@ -257,4 +312,4 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
  }
  return summaries;
 }
-module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares};
+module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares,migrationPriceAliases};

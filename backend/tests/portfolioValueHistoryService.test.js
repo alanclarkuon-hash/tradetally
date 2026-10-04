@@ -30,6 +30,10 @@ test('zero-price estimates are distinguishable from complete observed values',()
  expect(combineValues([estimated,row('two','2026-01-01',30,40)],accounts,'USD')[0]).toMatchObject({value:190,estimatedAccounts:1});
  expect(combineValues([{...estimated,source:'recorded'}],[accounts[0]],'USD')[0].estimatedAccounts).toBe(0);
 });
+test('migration price estimates carry separate provenance from zero-price estimates',()=>{
+ const estimated={...row('one','2025-05-08',100,20),source:'reconstructed',issues:['Estimated using 1:1 token migration: FTM']};
+ expect(combineValues([estimated],[accounts[0]],'USD')[0]).toMatchObject({value:120,estimatedAccounts:0,migrationEstimatedAccounts:1});
+});
 test('captures complete values without counting fiat or stablecoins twice; missing balances are not saved',async()=>{
   db.query.mockResolvedValue({rows:[accounts[0]]});getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
   Portfolio.getPositions.mockResolvedValue([{symbol:'SYNTH',instrumentType:'stock',currentValue:100},
