@@ -72,6 +72,17 @@ test('date and currency validation apply before history reads',async()=>{
   expect(db.query).not.toHaveBeenCalled();
 });
 
+test('history exposes dated crypto funding without changing portfolio balances',async()=>{
+ const cryptoAccount={...accounts[0],broker:'okx'};
+ const snapshot={broker_type:'okx',account_identifier:'one',payload:{deposits:[{state:'2',depId:'deposit',ccy:'USDT',amt:'100',ts:String(Date.parse('2026-01-02'))}],rates:{'2026-01-02':.99}}};
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM portfolio_value_history')?[row('one','2026-01-01',100,0),row('one','2026-01-02',200,0)]:sql.includes('FROM user_accounts')?[cryptoAccount]:sql.includes('FROM broker_import_snapshots')?[snapshot]:[]}));
+ Account.getCashflow.mockResolvedValue({cashflow:[]});
+ const result=await getHistory('owner',{currency:'USD'});
+ expect(result.series.map(p=>p.value)).toEqual([100,200]);
+ expect(result.events).toEqual([expect.objectContaining({amount:99,quantity:100,asset:'USDT',crypto:true,type:'transfer'})]);
+ expect(result.coverage).toMatchObject({cryptoTransfersIncluded:true,cryptoTransferCount:1,missingCryptoTransferPrices:0});
+});
+
 test('IG imported balances are not saved as fresh daily observations',async()=>{
  db.query.mockResolvedValue({rows:[{...accounts[0],broker:'ig'}]});
  getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});

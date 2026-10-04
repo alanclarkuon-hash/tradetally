@@ -202,6 +202,11 @@ async function getHistory(userId,query={}) {
       }
     }
   }
+  const snapshots=(await db.query("SELECT broker_type,account_identifier,payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type IN ('kraken','okx')",[userId])).rows;
+  const marketRows=(await db.query("SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol LIKE '%-USD'")).rows;
+  const cryptoEvents=require('./portfolioCryptoFunding').cryptoFundingEvents(snapshots,accounts,pairs,
+    new Map(marketRows.map(r=>[r.symbol,r.payload])),(date,base,quote)=>fundingFx(fx,date,base,quote),currency,range);
+  events.push(...cryptoEvents);
   const series=combineValues(rows,accounts,currency);
   const valid=series.filter(p=>p.value!=null);
   return {currency,range,series,events:events.sort((a,b)=>a.date.localeCompare(b.date)),accountCount:accounts.length,
@@ -214,7 +219,7 @@ async function getHistory(userId,query={}) {
       manualCarryForwardDays:valid.filter(p=>p.manualCarryForwardAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
-      unavailableAccounts,cryptoTransfersIncluded:false},
+      unavailableAccounts,cryptoTransfersIncluded:true,cryptoTransferCount:cryptoEvents.length,missingCryptoTransferPrices:cryptoEvents.filter(e=>e.amount==null).length},
     change:valid.length>=2?money(valid.at(-1).value-valid[0].value):null};
 }
 
