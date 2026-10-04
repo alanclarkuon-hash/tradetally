@@ -47,6 +47,14 @@ describe('portfolio value chart',()=>{
 const history = { change: 200, series: [], events: [], coverage: { recordedDays: 0 } }
 
 describe('Portfolio change selector', () => {
+  it('labels partial P&L and identifies excluded holdings',async()=>{
+    const view=mount(PortfolioValueChart,{props:{history,unrealizedChange:50,missingPnlSymbols:['EXAMPLE']}});
+    await view.find('input[type=checkbox]').setValue(false);
+    expect(view.text()).toContain('Known unrealised P&L');
+    expect(view.text()).toContain('Excludes EXAMPLE');
+    expect(view.text()).toContain('partial total');
+    view.unmount();
+  });
   it('defaults to total change and toggles to actual unrealised P&L, not change minus deposits', async () => {
     const view = mount(PortfolioValueChart, { props: { history, unrealizedChange: -30 } })
     await flushPromises()

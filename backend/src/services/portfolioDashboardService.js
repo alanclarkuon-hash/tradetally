@@ -24,7 +24,8 @@ function periodResult(position, range, rates, lots) {
     }
     return null;
   };
-  const endPrice = range.end_date===date ? position.currentPrice : quote(range.end_date);
+  // Preserve sub-cent coin prices rounded away by the display quote.
+  const endPrice = range.end_date===date ? (position.currentValue>0 && position.totalShares>0 ? position.currentValue/position.totalShares : position.currentPrice) : quote(range.end_date);
   if (!(endPrice>0)) return {pnl:null,percent:null};
   let basis=0,value=0;
   for (const lot of lots) {
@@ -170,8 +171,10 @@ async function getDashboard(userId, query={}) {
   const basis=holdings.reduce((s,p)=>s+(p.pnlBasis??0),0);
   return {currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
+      knownPnl:holdings.some(p=>p.pnl!=null)?holdings.reduce((s,p)=>s+(p.pnl??0),0):null,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
     coverage:{missingCash:cashRows.filter(a=>a.amount==null).length,missingPrices,
+      missingPnlSymbols:holdings.filter(p=>p.pnl==null).map(p=>p.symbol),
       missingPnl:holdings.filter(p=>p.pnl==null).length,unclassified:holdings.filter(p=>p.industry==='Unclassified').length,
       classificationOverrideWarning:holdings.find(p=>p.referenceClassification?.override_warning)?.referenceClassification.override_warning||holdings.find(p=>p.categoryWarning)?.categoryWarning||null},
     accountCount:managed.length};

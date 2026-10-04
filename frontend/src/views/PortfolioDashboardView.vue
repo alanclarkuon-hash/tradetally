@@ -25,7 +25,7 @@
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${money(part.value)}`"></div></div>
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section>
-    <PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl" />
+    <PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl ?? data.totals.knownPnl" :missing-pnl-symbols="data.coverage.missingPnlSymbols || []" />
     <section class="card-dense heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holding P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p class="subtitle">Stock classifications are community reference data from FinanceDatabase and may be outdated or incorrect.</p>

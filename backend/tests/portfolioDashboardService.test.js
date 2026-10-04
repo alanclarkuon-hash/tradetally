@@ -53,6 +53,23 @@ test('period P&L requires matching lots and explicit historical USD prices',()=>
   expect(periodResult(p,range,{'2026-01-01':10,'2026-02-01':12},lots)).toEqual({pnl:200,percent:20,basis:1000});
   expect(periodResult({...p,totalShares:50},range,{'2026-01-01':10,'2026-02-01':12},lots).pnl).toBeNull();
 });
+
+test('sub-cent coins use precise portfolio value rather than a rounded zero quote',()=>{
+ const today=new Date().toISOString().slice(0,10);
+ const result=periodResult({...position,symbol:'SHIB',totalShares:1000000,currentPrice:0,currentValue:12},
+   {start_date:'2026-01-01',end_date:today},{'2026-01-01':0.00001},
+   [{quantity:1000000,price:0.000008,acquired:'2025-01-01'}]);
+ expect(result.pnl).toBeCloseTo(2);
+});
+
+test('retains known P&L and names excluded holdings without claiming a complete total',async()=>{
+ Portfolio.getPositions.mockResolvedValue([{...position,symbol:'BTC',unrealizedPnL:20},{...position,symbol:'UNKNOWN',unrealizedPnL:null}]);
+ getRatesToDisplay.mockResolvedValue({USD:1});db.query.mockResolvedValue({rows:[]});
+ require('../src/services/cryptoCategoriesService').getCategories.mockResolvedValue({categories:[],primaryCategory:null});
+ const result=await getDashboard('test-user',{currency:'USD'});
+ expect(result.totals).toMatchObject({pnl:null,knownPnl:20});
+ expect(result.coverage.missingPnlSymbols).toEqual(['UNKNOWN']);
+});
 test('dated stock candles are converted to USD before comparing portfolio prices',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'SYNTH.L',instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
