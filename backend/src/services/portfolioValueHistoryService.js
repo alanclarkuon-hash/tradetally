@@ -6,6 +6,17 @@ const {parseReportDateRange}=require('../utils/reportDateRange');
 const {STABLE,FIAT}=require('./portfolioDashboardService');
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const money=v=>Math.round(v*100)/100;
+function fundingFx(fx,date,base,quote){
+  if(base===quote)return {rate:1,sourceDate:date}
+  for(let offset=0;offset<=7;offset++){
+    const d=new Date(date+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-offset)
+    const sourceDate=d.toISOString().slice(0,10)
+    const direct=fx.get(`${sourceDate}:${base}:${quote}`),inverse=fx.get(`${sourceDate}:${quote}:${base}`)
+    if(direct>0)return {rate:direct,sourceDate}
+    if(inverse>0)return {rate:1/inverse,sourceDate}
+  }
+  return {rate:null,sourceDate:null}
+}
 const pending=new Map();
 const {carryForward}=require('./statementPortfolioCarryForward');
 
@@ -186,9 +197,8 @@ async function getHistory(userId,query={}) {
         ['transfer',Math.max(0,Number(row.transferIn||0)-incoming)-Math.max(0,Number(row.transferOut||0)-outgoing)]];
       for(const [type,amount] of movements) {
         if(Math.abs(amount)<.005)continue;
-        const rate=account.currency===currency?1:fx.get(`${date}:${account.currency}:${currency}`)||
-          (fx.get(`${date}:${currency}:${account.currency}`)>0?1/fx.get(`${date}:${currency}:${account.currency}`):null);
-        events.push({date,type,amount:rate>0?money(amount*rate):null,nativeAmount:money(amount),nativeCurrency:account.currency,account:account.account_name});
+        const {rate,sourceDate}=fundingFx(fx,date,account.currency,currency);
+        events.push({date,type,amount:rate>0?money(amount*rate):null,nativeAmount:money(amount),nativeCurrency:account.currency,account:account.account_name,fxSourceDate:sourceDate});
       }
     }
   }
@@ -212,4 +222,4 @@ async function captureAllUsers() {
   const users=(await db.query('SELECT id FROM users')).rows;
   for(const user of users)await captureToday(user.id);
 }
-module.exports={captureToday,getHistory,combineValues,captureAllUsers};
+module.exports={captureToday,getHistory,combineValues,captureAllUsers,fundingFx};
