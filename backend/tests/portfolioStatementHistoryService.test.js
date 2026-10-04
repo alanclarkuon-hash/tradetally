@@ -1,6 +1,7 @@
 jest.mock('../src/config/database',()=>({query:jest.fn(),withTransaction:jest.fn()}));
 jest.mock('../src/services/brokerSync/etoroWorkbook',()=>({read:jest.fn()}));
 jest.mock('../src/services/brokerSync/etoroCashStatement',()=>({prepare:jest.fn()}));
+jest.mock('../src/utils/currencyConverter',()=>({getRateMap:jest.fn()}));
 const db=require('../src/config/database'),{read}=require('../src/services/brokerSync/etoroWorkbook'),{prepare}=require('../src/services/brokerSync/etoroCashStatement');
 const {captureEtoroStatement}=require('../src/services/portfolioStatementHistoryService');
 const hash=require('crypto').createHash('sha256').update(JSON.stringify('synthetic')).digest('hex');
@@ -34,4 +35,19 @@ test('rejects changed cash history instead of inventing a statement valuation',a
  prepare.mockReturnValue({records:[{reference:'different',cash:20}]});
  await expect(captureEtoroStatement('owner','account',Buffer.alloc(0))).rejects.toThrow('differs');
  expect(db.withTransaction).not.toHaveBeenCalled();
+});
+test('new statement dates obtain GBP conversion through the existing dated FX provider',async()=>{
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};
+ db.withTransaction.mockImplementation(fn=>fn(client));
+ const fx=require('../src/utils/currencyConverter').getRateMap;fx.mockResolvedValue({GBP:.75});
+ expect(await captureEtoroStatement('owner','account',Buffer.alloc(0))).toEqual({captured:2});
+ expect(fx).toHaveBeenCalledWith('USD','2025-01-03');
+ expect(client.query.mock.calls.filter(([sql])=>sql.includes('INSERT')).every(([,args])=>args[5]===.75)).toBe(true);
+});
+test('unavailable FX prevents an incomplete confirmed GBP value from being written',async()=>{
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};
+ db.withTransaction.mockImplementation(fn=>fn(client));
+ require('../src/utils/currencyConverter').getRateMap.mockResolvedValue({GBP:null});
+ await expect(captureEtoroStatement('owner','account',Buffer.alloc(0))).rejects.toThrow('Dated GBP conversion');
+ expect(client.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
 });
