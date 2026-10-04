@@ -41,7 +41,7 @@ describe('Portfolio summary cards', () => {
   it('uses the selected currency and date range for the same change shown by the chart', async () => {
     const view = create()
     await flushPromises()
-    await view.find('#portfolio-period').setValue('month')
+    await view.find('[data-period="30d"]').trigger('click')
     await flushPromises()
     await view.find('#portfolio-currency').setValue('USD')
     await flushPromises()
@@ -49,6 +49,10 @@ describe('Portfolio summary cards', () => {
     const params = mock.get.mock.calls.filter(([url]) => url.endsWith('/value-history')).at(-1)[1].params
     expect(params.currency).toBe('USD')
     expect(params.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    const elapsed = (new Date(params.end_date)-new Date(params.start_date))/86400000
+    expect(elapsed).toBe(30)
+    expect(view.find('.period-picker summary').attributes('title')).toBe('Last 30 Days')
+    expect(view.find('.date-filter-dot').exists()).toBe(true)
     expect(params.end_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     view.unmount()
   })

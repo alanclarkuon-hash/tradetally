@@ -4,8 +4,14 @@
     <header class="portfolio-header">
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
-        <details class="account-picker"><summary>{{ selected.length ? `${selected.length} accounts selected` : 'All accounts' }}</summary><div class="account-menu"><button @click="selected=[]">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :value="account.value" v-model="selected">{{ account.label }}</label></div></details>
-        <label class="sr-only" for="portfolio-period">Date range</label><select id="portfolio-period" v-model="period"><option value="all">All time</option><option value="week">Past week</option><option value="month">Past month</option><option value="quarter">Past 3 months</option><option value="year">Year to date</option><option value="custom">Custom range</option></select>
+        <details class="account-picker"><summary aria-label="Accounts filter" :title="selected.length ? `${selected.length} accounts selected` : 'All accounts'"><BuildingOfficeIcon class="h-5 w-5" aria-hidden="true" /><span v-if="selected.length" class="filter-dot" aria-hidden="true"></span><ChevronDownIcon class="h-4 w-4" aria-hidden="true" /></summary><div class="account-menu"><button @click="selected=[]">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :value="account.value" v-model="selected">{{ account.label }}</label></div></details>
+        <details ref="periodPicker" class="period-picker">
+          <summary aria-label="Date range filter" :title="periodLabel">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18M6 8h12M10 12h4M11 16h2" /></svg>
+            <span v-if="period!=='all'" class="date-filter-dot" aria-hidden="true"></span>
+          </summary>
+          <div class="period-menu" aria-label="Date ranges"><button v-for="option in timeRangeOptions" :key="option.value" type="button" :class="{active:period===option.value}" :aria-pressed="period===option.value" :data-period="option.value" @click="selectPeriod(option.value)">{{ option.label }}</button></div>
+        </details>
         <label class="sr-only" for="portfolio-currency">Display currency</label><select id="portfolio-currency" v-model="currency"><option>GBP</option><option>USD</option></select>
         <button @click="load" :disabled="loading" class="refresh">{{ loading ? 'Loading…' : 'Refresh' }}</button>
       </div>
@@ -51,12 +57,19 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import api from '@/services/api'
+import { BuildingOfficeIcon, ChevronDownIcon } from '@heroicons/vue/24/outline'
+import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { formatLocalDate } from '@/utils/date'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const selected=ref(selectedAccount.value?[selectedAccount.value]:[]),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
-const today=new Date().toISOString().slice(0,10),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
+const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
+const periodPicker=ref(null)
+const timeRangeOptions=[...monthPresetOptions,{value:'all',label:'All Time'},{value:'7d',label:'Last 7 Days'},{value:'30d',label:'Last 30 Days'},{value:'ytd',label:'Year to Date'},{value:'custom',label:'Custom Range'}]
+const periodLabel=computed(()=>timeRangeOptions.find(option=>option.value===period.value)?.label || 'All Time')
+function selectPeriod(value){period.value=value;if(periodPicker.value)periodPicker.value.open=false}
 let request=0
 const history=ref(null),historyLoading=ref(false),historyError=ref('')
 const money=v=>v==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency.value,maximumFractionDigits:2}).format(v)
@@ -70,12 +83,7 @@ async function load(){
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
   const params={currency:currency.value,accounts:selected.value.join(',')}
   if(period.value!=='all'){
-    const d=new Date(today+'T00:00:00Z')
-    if(period.value==='week')d.setUTCDate(d.getUTCDate()-7)
-    if(period.value==='month')d.setUTCMonth(d.getUTCMonth()-1)
-    if(period.value==='quarter')d.setUTCMonth(d.getUTCMonth()-3)
-    if(period.value==='year')d.setUTCMonth(0,1)
-    params.start_date=period.value==='custom'?start.value:d.toISOString().slice(0,10);params.end_date=period.value==='custom'?end.value:today
+    Object.assign(params,period.value==='custom'?{start_date:start.value,end_date:end.value}:resolveDatePreset(period.value))
   }
   try{const response=await api.get('/investments/portfolio/dashboard',{params,timeout:180000});if(id===request)data.value=response.data}
   catch(e){if(id===request){error.value=e.response?.data?.error||'Could not load portfolio';data.value=null}}
@@ -100,10 +108,19 @@ onMounted(async()=>{await fetchAccounts();load()})
 .subtitle,.scope-note,.updated{@apply text-sm text-gray-600 dark:text-gray-400; margin-top:4px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .controls select,.custom-dates input{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm; padding:8px 12px;min-height:40px}
-.refresh,.account-picker summary{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700; padding:8px 12px;min-height:40px;cursor:pointer}
+.refresh,.account-picker summary,.period-picker summary{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700; padding:8px 12px;min-height:40px;cursor:pointer}
 .refresh:disabled{opacity:.5;cursor:wait}
-.controls select:focus-visible,.refresh:focus-visible,.account-picker summary:focus-visible,.custom-dates input:focus-visible{@apply outline-none ring-2 ring-primary-500}
-.account-picker{position:relative}
+.controls select:focus-visible,.refresh:focus-visible,.account-picker summary:focus-visible,.period-picker summary:focus-visible,.custom-dates input:focus-visible{@apply outline-none ring-2 ring-primary-500}
+.account-picker,.period-picker{position:relative}
+.account-picker summary,.period-picker summary{display:flex;align-items:center;justify-content:center;gap:8px;list-style:none}
+.account-picker summary::-webkit-details-marker,.period-picker summary::-webkit-details-marker{display:none}
+.period-picker summary{width:40px;height:40px;padding:0;position:relative}
+.filter-dot,.date-filter-dot{@apply bg-primary-500; width:8px;height:8px;border-radius:50%}
+.date-filter-dot{@apply ring-2 ring-white dark:ring-gray-900;position:absolute;top:-2px;right:-2px}
+.period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
+.period-menu button{@apply text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 16px;font-size:14px}
+.period-menu button.active{@apply bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300}
+.period-menu button:focus-visible{@apply outline-none ring-2 ring-inset ring-primary-500}
 .account-menu{@apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg;position:absolute;right:0;top:44px;z-index:30;padding:12px;min-width:260px;max-height:360px;overflow:auto}
 .account-menu label{display:flex;gap:10px;padding:8px;font-size:14px}
 .account-menu button{@apply text-primary-600 dark:text-primary-400; padding:8px;font-size:14px}
