@@ -115,7 +115,7 @@ onMounted(async()=>{await fetchAccounts();load()})
 .gain{@apply text-green-600 dark:text-green-400}
 .loss{@apply text-red-600 dark:text-red-400}
 .scope-note{margin:12px 0 24px;line-height:1.6}
-.allocation{padding:20px;margin-bottom:24px}
+.allocation{padding:20px;margin:24px 0}
 .section-line h2{@apply text-base sm:text-lg font-semibold text-gray-900 dark:text-white}
 .section-line p{@apply text-sm text-gray-600 dark:text-gray-400}
 .allocation-track{height:12px;display:flex;overflow:hidden;border-radius:3px;background:#394451;margin:16px 0}
