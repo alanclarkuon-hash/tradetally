@@ -15,6 +15,7 @@ export const SYNCED_KEYS = Object.freeze([
   'tradeFiltersPeriod',
   'tradetally_global_account',
   'dashboardTimeRange',
+  'portfolioDashboardLayout',
   'dashboardCustomStartDate',
   'dashboardCustomEndDate',
   'dashboardRMode',
