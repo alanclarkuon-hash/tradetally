@@ -28,7 +28,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   if (new Set(accounts.map(a=>a.identifier)).size !== accounts.length) throw Error('Duplicated IG account identity');
   // Persist dated FX through the existing rate store; missing FX stops import.
   const rates = new Map();
-  for (const date of [...new Set(accounts.flatMap(a=>[...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10)),...(a.confirmation.openBets||[]).map(p=>p.asOf.slice(0,10))]))].sort()) {
+  for (const date of [...new Set(accounts.flatMap(a=>[a.confirmation.cutoff.slice(0,10),...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10)),...(a.confirmation.openBets||[]).map(p=>p.asOf.slice(0,10))]))].sort()) {
     const map = await require('../../utils/currencyConverter').getRateMap('USD',date);
     const rate = 1 / Number(map.GBP);
     if (!Number.isFinite(rate) || rate<=0) throw Error('Historical GBP/USD conversion is unavailable');
@@ -189,6 +189,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         VALUES($1,'ig',$2,$3::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
         DO UPDATE SET payload=EXCLUDED.payload,captured_at=NOW()`,
         [userId,a.identifier,JSON.stringify({igFileInput:inputs.find(input=>prepare(input).identifier===a.identifier)})]);
+      await require('./igNavHistory').saveConfirmation(client,userId,a,rates);
       result.accounts.push({name:a.name,cash:a.endingCash,closedTrades:a.trades.filter(t=>t.exitTime).length,holdings:a.trades.filter(t=>!t.exitTime).length});
     }
     for(const {out,incoming} of pairs) {
