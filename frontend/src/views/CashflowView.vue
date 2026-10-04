@@ -542,7 +542,7 @@ const store = useAccountsStore()
 const tradesStore = useTradesStore()
 const plaidStore = usePlaidFundingStore()
 const { showSuccess, showError, showWarning, showDangerConfirmation } = useNotification()
-const { selectedAccount, clearAccount, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
+const { selectedAccount, clearAccount, setAccounts, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
 
 // State
 const selectedAccountId = ref('')
@@ -827,8 +827,8 @@ function confirmDeleteAccount(account) {
         selectedAccountId.value = ''
         store.clearCashflow()
       }
-      if (selectedAccount.value === account.accountIdentifier) {
-        clearAccount()
+      if (selectedAccount.value?.split(',').includes(account.accountIdentifier)) {
+        setAccounts(selectedAccount.value.split(',').filter(value=>value!==account.accountIdentifier))
       }
 
       try {

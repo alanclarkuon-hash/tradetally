@@ -1674,6 +1674,7 @@ const TradeFilters = defineAsyncComponent(() => import('@/components/trades/Trad
 import { useYearWrappedStore } from '@/stores/yearWrapped'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useTradesStore } from '@/stores/trades'
+import {matchesAccount} from '@/utils/accountSelection'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import { useUserTimezone } from '@/composables/useUserTimezone'
@@ -1988,7 +1989,9 @@ const aiInsights = ref([])
 const aiInsightLoading = ref(false)
 const aiInsightError = ref(null)
 
+let fetchAiInsightRequestId=0
 async function fetchAiInsight() {
+  const requestId=++fetchAiInsightRequestId
   aiInsightLoading.value = true
   aiInsightError.value = null
   try {
@@ -1999,6 +2002,7 @@ async function fetchAiInsight() {
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
     appendAdvancedFilterParams(params)
     const response = await api.get(`/analytics/recommendations?${params}`)
+    if(requestId!==fetchAiInsightRequestId)return
     const payload = response.data || {}
     if (Array.isArray(payload.summaries) && payload.summaries.length > 0) {
       aiInsights.value = payload.summaries
@@ -2008,10 +2012,11 @@ async function fetchAiInsight() {
       aiInsights.value = []
     }
   } catch (err) {
+    if(requestId!==fetchAiInsightRequestId)return
     console.warn('[DASHBOARD] AI insight summary failed:', err?.message)
     aiInsightError.value = err?.response?.data?.error || err?.message || 'unavailable'
   } finally {
-    aiInsightLoading.value = false
+    if(requestId===fetchAiInsightRequestId)aiInsightLoading.value = false
   }
 }
 
@@ -2024,7 +2029,9 @@ const behavioralUpgradeRequired = ref(false)
 const behavioralFetchStatus = ref('idle') // 'idle' | 'ok' | 'error' | 'forbidden'
 const behavioralError = ref(null)
 
+let fetchBehavioralSummaryRequestId=0
 async function fetchBehavioralSummary() {
+  const requestId=++fetchBehavioralSummaryRequestId
   behavioralLoading.value = true
   behavioralUpgradeRequired.value = false
   behavioralError.value = null
@@ -2037,9 +2044,11 @@ async function fetchBehavioralSummary() {
     appendAdvancedFilterParams(params)
     const qs = params.toString()
     const response = await api.get(`/behavioral-analytics/dashboard-summary${qs ? `?${qs}` : ''}`)
+    if(requestId!==fetchBehavioralSummaryRequestId)return
     behavioralSummary.value = response.data?.data || null
     behavioralFetchStatus.value = 'ok'
   } catch (err) {
+    if(requestId!==fetchBehavioralSummaryRequestId)return
     behavioralSummary.value = null
     if (err?.response?.status === 403) {
       behavioralUpgradeRequired.value = true
@@ -2052,7 +2061,7 @@ async function fetchBehavioralSummary() {
         : (err?.response?.data?.error || err?.message || 'Request failed')
     }
   } finally {
-    behavioralLoading.value = false
+    if(requestId===fetchBehavioralSummaryRequestId)behavioralLoading.value = false
   }
 }
 
@@ -2060,18 +2069,22 @@ async function fetchBehavioralSummary() {
 const recentTrades = ref([])
 const recentTradesLoading = ref(false)
 
+let fetchRecentTradesRequestId=0
 async function fetchRecentTrades() {
+  const requestId=++fetchRecentTradesRequestId
   recentTradesLoading.value = true
   try {
     const params = new URLSearchParams({ limit: '10', status: 'closed', skipCount: 'true' })
     if (selectedAccount.value) params.append('accounts', selectedAccount.value)
     appendAdvancedFilterParams(params)
     const response = await api.get(`/trades?${params}`)
+    if(requestId!==fetchRecentTradesRequestId)return
     recentTrades.value = response.data?.trades || []
   } catch (err) {
+    if(requestId!==fetchRecentTradesRequestId)return
     console.warn('[DASHBOARD] Recent trades fetch failed:', err?.message)
   } finally {
-    recentTradesLoading.value = false
+    if(requestId===fetchRecentTradesRequestId)recentTradesLoading.value = false
   }
 }
 
@@ -2342,7 +2355,7 @@ watch(
     const filteredPositions = selectedAccount.value
       ? openTrades.value.filter(position => {
           return position.trades && position.trades.some(trade =>
-            trade.account_identifier === selectedAccount.value
+            matchesAccount(selectedAccount.value,trade.account_identifier)
           )
         })
       : openTrades.value
@@ -2574,7 +2587,9 @@ function loadCachedAnalytics() {
   return false
 }
 
+let fetchAnalyticsRequestId=0
 async function fetchAnalytics() {
+  const requestId=++fetchAnalyticsRequestId
   try {
     // Only show skeleton if we have no cached data to display
     if (!analytics.value?.summary?.totalTrades && analytics.value?.summary?.totalTrades !== 0) {
@@ -2593,6 +2608,7 @@ async function fetchAnalytics() {
     appendAdvancedFilterParams(params)
 
     const response = await api.get(`/trades/analytics?${params}`)
+    if(requestId!==fetchAnalyticsRequestId)return
     if (!is_dashboard_analytics(response.data)) {
       throw new Error('Invalid dashboard analytics response')
     }
@@ -2603,12 +2619,13 @@ async function fetchAnalytics() {
       const key = getAnalyticsCacheKey()
       sessionStorage.setItem(key, JSON.stringify(response.data))
     } catch (e) {
+    if(requestId!==fetchAnalyticsRequestId)return
       // sessionStorage write failed (quota, private mode, etc.)
     }
   } catch (error) {
     console.error('Failed to fetch analytics:', error)
   } finally {
-    analyticsLoading.value = false
+    if(requestId===fetchAnalyticsRequestId)analyticsLoading.value = false
   }
 }
 
@@ -3053,6 +3070,7 @@ watch(() => filters.value.endDate, (newDate) => {
 
 // Watch for global account filter changes
 watch(selectedAccount, () => {
+  analytics.value=null;recentTrades.value=[];aiInsights.value=[];behavioralSummary.value=null;openTrades.value=[]
   console.log('Dashboard: Global account filter changed to:', selectedAccount.value || 'All Accounts')
   fetchAnalytics()
   fetchOpenTrades()

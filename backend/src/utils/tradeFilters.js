@@ -140,7 +140,7 @@ const tradeFilterProfiles = {
       'strategies', 'setups', 'sectors', 'hasNews', 'daysOfWeek', 'market_sessions',
       'instrumentTypes', 'optionTypes', 'qualityGrades', 'side',
       'minPrice', 'maxPrice', 'minQuantity', 'maxQuantity', 'status',
-      'minPnl', 'maxPnl', 'pnlType', 'broker', 'brokers', 'importId'
+      'minPnl', 'maxPnl', 'pnlType', 'broker', 'brokers', 'importId', 'accounts'
     ],
     coerceNumbers: true,
     splitBrokers: true
@@ -152,7 +152,7 @@ const tradeFilterProfiles = {
       'strategies', 'setups', 'sectors', 'hasNews', 'daysOfWeek', 'market_sessions',
       'instrumentTypes', 'optionTypes', 'qualityGrades', 'side',
       'minPrice', 'maxPrice', 'minQuantity', 'maxQuantity', 'status',
-      'minPnl', 'maxPnl', 'pnlType', 'broker', 'brokers'
+      'minPnl', 'maxPnl', 'pnlType', 'broker', 'brokers', 'accounts'
     ],
     coerceNumbers: true,
     splitBrokers: true

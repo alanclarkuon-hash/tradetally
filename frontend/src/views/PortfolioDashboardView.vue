@@ -64,13 +64,15 @@ import api from '@/services/api'
 import { BuildingOfficeIcon, ChevronDownIcon, Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { formatLocalDate } from '@/utils/date'
+import {accountSelection} from '@/utils/accountSelection'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
-const selected=ref(selectedAccount.value?[selectedAccount.value]:null),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
+const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
+const selected=ref(portfolioSelection(selectedAccount.value)),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
 const periodPicker=ref(null),accountPicker=ref(null)
 const hasAccountSelection=computed(()=>selected.value===null ? accounts.value.length>0 : selected.value.length>0)
@@ -121,7 +123,7 @@ async function load(){
   }catch(e){if(id===request)historyError.value=e.response?.data?.error||'Portfolio history is unavailable. Current balances are still shown above.'}
   finally{if(id===request)historyLoading.value=false}
 }
-watch(selectedAccount,v=>selected.value=v?[v]:null)
+watch(selectedAccount,v=>selected.value=portfolioSelection(v))
 watch([selected,period,currency,start,end],load,{deep:true})
 onMounted(async()=>{await fetchAccounts();load()})
 </script>

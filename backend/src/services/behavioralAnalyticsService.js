@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const TierService = require('./tierService');
 
@@ -19,38 +20,15 @@ class BehavioralAnalyticsService {
 
   static addTradeAccountCondition(params, accounts, tradeAlias = 't') {
     if (!accounts || accounts.length === 0) return '';
-    if (accounts.includes('__unsorted__')) {
-      return `AND (${tradeAlias}.account_identifier IS NULL OR ${tradeAlias}.account_identifier = '')`;
-    }
-
-    params.push(accounts);
-    return `AND ${tradeAlias}.account_identifier = ANY($${params.length}::text[])`;
+    return 'AND '+accountPredicate(accounts,params,`${tradeAlias}.account_identifier`);
   }
 
   static addRevengeEventAccountCondition(params, accounts, eventAlias = 'rte') {
     if (!accounts || accounts.length === 0) return '';
-    if (accounts.includes('__unsorted__')) {
-      return `
-        AND EXISTS (
-          SELECT 1
-          FROM trades account_trade
-          WHERE (account_trade.id = ${eventAlias}.trigger_trade_id
-             OR account_trade.id = ANY(${eventAlias}.revenge_trades))
-            AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
-        )
-      `;
-    }
-
-    params.push(accounts);
-    return `
-      AND EXISTS (
-        SELECT 1
-        FROM trades account_trade
-        WHERE (account_trade.id = ${eventAlias}.trigger_trade_id
-           OR account_trade.id = ANY(${eventAlias}.revenge_trades))
-          AND account_trade.account_identifier = ANY($${params.length}::text[])
-      )
-    `;
+    const condition=accountPredicate(accounts,params,'account_trade.account_identifier');
+    return `AND EXISTS (SELECT 1 FROM trades account_trade
+      WHERE (account_trade.id = ${eventAlias}.trigger_trade_id OR account_trade.id = ANY(${eventAlias}.revenge_trades))
+      AND ${condition})`;
   }
   
   // Get behavioral analytics overview for a user
