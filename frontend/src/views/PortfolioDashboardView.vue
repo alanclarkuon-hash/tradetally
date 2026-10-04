@@ -4,7 +4,7 @@
     <header class="portfolio-header">
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
-        <details ref="accountPicker" class="account-picker"><summary aria-label="Accounts filter" :title="selected.length ? `${selected.length} accounts selected` : 'All accounts'"><BuildingOfficeIcon class="h-5 w-5" aria-hidden="true" /><span v-if="selected.length" class="filter-dot" aria-hidden="true"></span><ChevronDownIcon class="h-4 w-4" aria-hidden="true" /></summary><div class="account-menu"><button @click="selectAllAccounts">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :checked="!selected.length || selected.includes(account.value)" @change="toggleAccount(account.value,$event.target.checked)">{{ account.label }}</label></div></details>
+        <details ref="accountPicker" class="account-picker"><summary aria-label="Accounts filter" :title="selected===null ? 'All accounts' : selected.length ? `${selected.length} accounts selected` : 'No accounts selected'"><BuildingOfficeIcon class="h-5 w-5" aria-hidden="true" /><span v-if="selected!==null" class="filter-dot" aria-hidden="true"></span><ChevronDownIcon class="h-4 w-4" aria-hidden="true" /></summary><div class="account-menu"><button @click="selectAllAccounts">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :checked="selected===null || selected.includes(account.value)" @change="toggleAccount(account.value,$event.target.checked)">{{ account.label }}</label></div></details>
         <details ref="periodPicker" class="period-picker">
           <summary aria-label="Date range filter" :title="periodLabel">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18M6 8h12M10 12h4M11 16h2" /></svg>
@@ -21,7 +21,8 @@
     <div v-if="period==='custom'" class="custom-dates"><label>From <input type="date" v-model="start" :max="end"></label><label>To <input type="date" v-model="end" :min="start" :max="today"></label></div>
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
-    <template v-if="data && !loading">
+    <section v-if="!hasAccountSelection && !loading" class="card-dense p-6" role="status"><h2 class="heading-card">No accounts selected</h2><p class="subtitle">Select an account using the accounts filter to view your portfolio.</p></section>
+    <template v-if="hasAccountSelection && data && !loading">
       <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing">
         <template #total><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</p><div class="money main-money">{{ money(data.totals.portfolioValue) }}</div><p class="card-foot">Latest · {{ data.accountCount }} accounts · {{ currency }}</p></article></template>
         <template #holdings><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Holdings value</p><div class="money">{{ money(data.totals.holdingsValue) }}</div></article></template>
@@ -68,12 +69,13 @@ import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
-const selected=ref(selectedAccount.value?[selectedAccount.value]:[]),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
+const selected=ref(selectedAccount.value?[selectedAccount.value]:null),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
 const periodPicker=ref(null),accountPicker=ref(null)
+const hasAccountSelection=computed(()=>selected.value===null ? accounts.value.length>0 : selected.value.length>0)
 function selectAllAccounts(){selected.value=accounts.value.map(account=>account.value)}
 function toggleAccount(value,checked){
-  const current=selected.value.length?selected.value:accounts.value.map(account=>account.value)
+  const current=selected.value??accounts.value.map(account=>account.value)
   selected.value=checked?[...new Set([...current,value])]:current.filter(account=>account!==value)
 }
 function dismissFilters(event){
@@ -98,7 +100,8 @@ const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested
 const groups=computed(()=>holdingGroups(data.value?.holdings||[]))
 async function load(){
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
-  const params={currency:currency.value,accounts:selected.value.join(',')}
+  if(!hasAccountSelection.value){data.value=null;loading.value=false;historyLoading.value=false;return}
+  const params={currency:currency.value,accounts:selected.value?.join(',')||''}
   if(period.value!=='all'){
     Object.assign(params,period.value==='custom'?{start_date:start.value,end_date:end.value}:resolveDatePreset(period.value))
   }
@@ -109,12 +112,13 @@ async function load(){
   if(!data.value){historyLoading.value=false;return}
   try{
     await api.post('/investments/portfolio/value-history/capture',{accounts:params.accounts},{timeout:180000})
+    if(id!==request)return
     const response=await api.get('/investments/portfolio/value-history',{params,timeout:180000})
     if(id===request)history.value=response.data
   }catch(e){if(id===request)historyError.value=e.response?.data?.error||'Portfolio history is unavailable. Current balances are still shown above.'}
   finally{if(id===request)historyLoading.value=false}
 }
-watch(selectedAccount,v=>selected.value=v?[v]:[])
+watch(selectedAccount,v=>selected.value=v?[v]:null)
 watch([selected,period,currency,start,end],load,{deep:true})
 onMounted(async()=>{await fetchAccounts();load()})
 </script>
