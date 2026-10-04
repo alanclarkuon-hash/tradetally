@@ -67,7 +67,7 @@ describe('manual trade account assignment', () => {
     expect(accountSelect().props('modelValue')).toBe('****1611')
   })
 
-  it.each([null, UNSORTED_ACCOUNT])('leaves %s unassigned and explains its visibility', async selected => {
+  it.each([null, UNSORTED_ACCOUNT,'__none__','****1611,****6987','****1611,__unsorted__'])('leaves %s unassigned and explains its visibility', async selected => {
     filter.setAccount(selected)
     localStorage.setItem('tradeFormSections', JSON.stringify({ additionalFields: false }))
     await mountForm()

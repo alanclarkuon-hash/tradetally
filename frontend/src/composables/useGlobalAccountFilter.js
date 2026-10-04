@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue'
 import api from '@/services/api'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
 import { useAccountsStore } from '@/stores/accounts'
+import {accountSelection,EMPTY_ACCOUNTS} from '@/utils/accountSelection'
 
 export const STORAGE_KEY = 'tradetally_global_account'
 
@@ -65,6 +66,9 @@ export function useGlobalAccountFilter() {
   }
 
   const selectedAccountLabel = computed(() => {
+    const selection=accountSelection(selectedAccount.value)
+    if(selection?.length===0)return 'No accounts selected'
+    if(selection?.length>1)return `${selection.length} accounts selected`
     if (selectedAccount.value === UNSORTED_ACCOUNT) {
       return 'Unsorted'
     }
@@ -146,7 +150,9 @@ export function useGlobalAccountFilter() {
       const hasAccountData = tradeAccountsResult.status === 'fulfilled' || managedAccountsResult.status === 'fulfilled'
 
       // Validate stored selection still exists (allow special UNSORTED_ACCOUNT value)
-      if (hasAccountData && selectedAccount.value && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.some(account => account.value === selectedAccount.value)) {
+      if (hasAccountData && selectedAccount.value && selectedAccount.value !== EMPTY_ACCOUNTS && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.some(account => account.value === selectedAccount.value)) {
+        const selection=accountSelection(selectedAccount.value)
+        if(selection?.length>1){setAccounts(selection.filter(value=>value===UNSORTED_ACCOUNT||accounts.value.some(a=>a.value===value)));return}
         console.log('[GLOBAL ACCOUNT] Stored account no longer exists, clearing filter')
         clearAccount()
       }
@@ -169,6 +175,7 @@ export function useGlobalAccountFilter() {
   }
 
   function setAccount(accountId) {
+    if(Array.isArray(accountId)){setAccounts(accountId);return}
     const normalized = normalizeStoredAccount(accountId)
     selectedAccount.value = normalized
     if (normalized) {
@@ -180,6 +187,14 @@ export function useGlobalAccountFilter() {
     console.log('[GLOBAL ACCOUNT] Set to:', normalized || 'All Accounts')
   }
 
+  const selectedAccounts=computed(()=>accountSelection(selectedAccount.value))
+  function setAccounts(values){setAccount(values===null?null:[...new Set(values)].sort().join(',')||EMPTY_ACCOUNTS)}
+  function isAccountSelected(value){return selectedAccounts.value===null||selectedAccounts.value.includes(value)}
+  function toggleAccount(value){
+    const current=selectedAccounts.value??[...accounts.value.map(a=>a.value),UNSORTED_ACCOUNT]
+    setAccounts(current.includes(value)?current.filter(v=>v!==value):[...current,value])
+  }
+
   function clearAccount() {
     selectedAccount.value = null
     localStorage.removeItem(STORAGE_KEY)
@@ -189,12 +204,16 @@ export function useGlobalAccountFilter() {
 
   return {
     selectedAccount,
+    selectedAccounts,
     selectedAccountLabel,
     accounts,
     loading,
     isFiltered,
     fetchAccounts,
     setAccount,
+    setAccounts,
+    isAccountSelected,
+    toggleAccount,
     clearAccount,
     UNSORTED_ACCOUNT
   }

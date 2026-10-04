@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const { fxUsd } = require('../utils/tradeFx');
 const TierService = require('./tierService');
@@ -12,15 +13,8 @@ const OVERCONFIDENCE_CALCULATION_VERSION = '2026-07-risk-v3';
 class OverconfidenceAnalyticsService {
   static addTradeAccountFilter(sqlParts, params, accounts, tableAlias = '') {
     if (!accounts || accounts.length === 0) return;
-
-    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
-    if (accounts.includes('__unsorted__')) {
-      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
-      return;
-    }
-
-    params.push(accounts);
-    sqlParts.push(`AND ${column} = ANY($${params.length}::text[])`);
+    const column=tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    sqlParts.push('AND '+accountPredicate(accounts,params,column));
   }
 
   static addEventDateFilter(sqlParts, params, dateFilter = {}) {
@@ -36,28 +30,8 @@ class OverconfidenceAnalyticsService {
 
   static addEventAccountFilter(sqlParts, params, accounts) {
     if (!accounts || accounts.length === 0) return;
-
-    if (accounts.includes('__unsorted__')) {
-      sqlParts.push(`
-        AND EXISTS (
-          SELECT 1
-          FROM trades account_trade
-          WHERE account_trade.id = ANY(streak_trades)
-            AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
-        )
-      `);
-      return;
-    }
-
-    params.push(accounts);
-    sqlParts.push(`
-      AND EXISTS (
-        SELECT 1
-        FROM trades account_trade
-        WHERE account_trade.id = ANY(streak_trades)
-          AND account_trade.account_identifier = ANY($${params.length}::text[])
-      )
-    `);
+    const condition=accountPredicate(accounts,params,'account_trade.account_identifier');
+    sqlParts.push(`AND EXISTS (SELECT 1 FROM trades account_trade WHERE account_trade.id = ANY(streak_trades) AND ${condition})`);
   }
   
   // Calculate monetary position size for any trade

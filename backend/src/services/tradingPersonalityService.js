@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
@@ -18,17 +19,10 @@ class TradingPersonalityService {
   };
 
   static addAccountFilter(sqlParts, params, tableAlias = '') {
-    const accounts = params.accountsFilter;
+    const accounts=params.accountsFilter;
     if (!accounts || accounts.length === 0) return;
-
-    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
-    if (accounts.includes('__unsorted__')) {
-      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
-      return;
-    }
-
-    params.values.push(accounts);
-    sqlParts.push(`AND ${column} = ANY($${params.values.length}::text[])`);
+    const column=tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    sqlParts.push('AND '+accountPredicate(accounts,params.values,column));
   }
   
   // Analyze and classify a user's trading personality

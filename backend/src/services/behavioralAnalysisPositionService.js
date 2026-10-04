@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const { isPositionGroupingEnabled } = require('../utils/positionGrouping');
 
@@ -52,12 +53,7 @@ class BehavioralAnalysisPositionService {
     }
 
     if (filter.accounts && filter.accounts.length > 0) {
-      if (filter.accounts.includes('__unsorted__')) {
-        sqlParts.push(`AND (t.account_identifier IS NULL OR t.account_identifier = '')`);
-      } else {
-        params.push(filter.accounts);
-        sqlParts.push(`AND t.account_identifier = ANY($${params.length}::text[])`);
-      }
+      sqlParts.push('AND '+accountPredicate(filter.accounts,params,'t.account_identifier'));
     }
   }
 

@@ -452,7 +452,7 @@ const accountsStore = useAccountsStore()
 const tradesStore = useTradesStore()
 const router = useRouter()
 const { showSuccess, showWarning } = useNotification()
-const { selectedAccount, clearAccount, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
+const { selectedAccount, clearAccount, setAccounts, fetchAccounts: refreshGlobalAccounts } = useGlobalAccountFilter()
 
 const loading = ref(true)
 // Full-page spinner only on first load (CLAUDE.md pattern)
@@ -708,8 +708,8 @@ async function updateArchiveState() {
       ? { isArchived: false }
       : { isArchived: true, includeInReports: false })
 
-    if (!isRestoring && selectedAccount.value === account.accountIdentifier) {
-      clearAccount()
+    if (!isRestoring && selectedAccount.value?.split(',').includes(account.accountIdentifier)) {
+      setAccounts(selectedAccount.value.split(',').filter(value=>value!==account.accountIdentifier))
     }
 
     showArchiveModal.value = false
@@ -745,8 +745,8 @@ async function deleteAccount() {
   if (editingAccount.value?.id === account.id) {
     resetForm()
   }
-  if (selectedAccount.value === account.accountIdentifier) {
-    clearAccount()
+  if (selectedAccount.value?.split(',').includes(account.accountIdentifier)) {
+    setAccounts(selectedAccount.value.split(',').filter(value=>value!==account.accountIdentifier))
   }
 
   closeDeleteModal(true)
