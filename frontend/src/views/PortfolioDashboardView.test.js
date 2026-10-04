@@ -4,13 +4,14 @@ import PortfolioDashboardView from './PortfolioDashboardView.vue'
 
 vi.mock('@/stores/uiPreferences',()=>({useUiPreferencesStore:()=>({init:async()=>{},notifyChanged:vi.fn()})}))
 
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), setAccounts: vi.fn(), selection: null, change: 25, fail: false }))
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), setAccounts: vi.fn(), selection: null, accounts: null, change: 25, fail: false }))
 vi.mock('@/services/api', () => ({ default: mock }))
 vi.mock('@/composables/useGlobalAccountFilter', async () => {
   const { ref } = await import('vue')
   mock.selection=ref(null)
+  mock.accounts=ref([])
   mock.setAccounts.mockImplementation(values=>mock.selection.value=values===null?null:values.slice().sort().join(',')||'__none__')
-  return { useGlobalAccountFilter: () => ({ accounts: ref([{value:"one",label:"First account"},{value:"two",label:"Second account"}]), selectedAccount: mock.selection, setAccounts: mock.setAccounts, fetchAccounts: vi.fn() }) }
+  return { useGlobalAccountFilter: () => ({ accounts: mock.accounts, selectedAccount: mock.selection, setAccounts: mock.setAccounts, fetchAccounts: vi.fn() }) }
 })
 
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
@@ -22,6 +23,7 @@ beforeEach(() => {
   localStorage.removeItem('portfolioDashboardLayout')
   vi.clearAllMocks()
   mock.selection.value=null
+  mock.accounts.value=[{value:'one',label:'First account'},{value:'two',label:'Second account'}]
   mock.change = 25
   mock.fail = false
   mock.post.mockResolvedValue({ data: {} })
@@ -33,6 +35,16 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('loads automatically when a shared account fetch finishes after mounting',async()=>{
+    mock.accounts.value=[]
+    const view=create();await flushPromises()
+    expect(mock.get).not.toHaveBeenCalled()
+    mock.accounts.value=[{value:'one',label:'First account'}]
+    await flushPromises()
+    expect(view.find('article').text()).toContain('£100.00')
+    expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/dashboard'))).toHaveLength(1)
+    view.unmount()
+  })
   it('uses end-date holdings for the heatmap while keeping summary cards current',async()=>{
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,
       holdings:[{symbol:'CURRENT',value:50,assetClass:'Stocks',sector:'Technology',industry:'Software'}],
