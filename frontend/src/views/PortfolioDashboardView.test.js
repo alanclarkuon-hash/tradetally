@@ -4,11 +4,13 @@ import PortfolioDashboardView from './PortfolioDashboardView.vue'
 
 vi.mock('@/stores/uiPreferences',()=>({useUiPreferencesStore:()=>({init:async()=>{},notifyChanged:vi.fn()})}))
 
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), change: 25, fail: false }))
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), setAccounts: vi.fn(), selection: null, change: 25, fail: false }))
 vi.mock('@/services/api', () => ({ default: mock }))
 vi.mock('@/composables/useGlobalAccountFilter', async () => {
   const { ref } = await import('vue')
-  return { useGlobalAccountFilter: () => ({ accounts: ref([{value:"one",label:"First account"},{value:"two",label:"Second account"}]), selectedAccount: ref(null), fetchAccounts: vi.fn() }) }
+  mock.selection=ref(null)
+  mock.setAccounts.mockImplementation(values=>mock.selection.value=values===null?null:values.slice().sort().join(',')||'__none__')
+  return { useGlobalAccountFilter: () => ({ accounts: ref([{value:"one",label:"First account"},{value:"two",label:"Second account"}]), selectedAccount: mock.selection, setAccounts: mock.setAccounts, fetchAccounts: vi.fn() }) }
 })
 
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
@@ -19,6 +21,7 @@ const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLi
 beforeEach(() => {
   localStorage.removeItem('portfolioDashboardLayout')
   vi.clearAllMocks()
+  mock.selection.value=null
   mock.change = 25
   mock.fail = false
   mock.post.mockResolvedValue({ data: {} })
@@ -84,6 +87,22 @@ describe('Portfolio summary cards', () => {
 })
 
 describe('Portfolio filter interactions', () => {
+  it('shares changes in both directions, including empty and All Accounts',async()=>{
+    const view=create();await flushPromises()
+    const boxes=view.findAll('.account-menu input')
+    await boxes[0].setValue(false);await flushPromises()
+    expect(mock.setAccounts).toHaveBeenLastCalledWith(['two'])
+    expect(mock.selection.value).toBe('two')
+    mock.selection.value='one,__unsorted__';await flushPromises()
+    expect(boxes[0].element.checked).toBe(true)
+    expect(boxes[1].element.checked).toBe(false)
+    await boxes[0].setValue(false);await flushPromises()
+    expect(mock.selection.value).toBe('__none__')
+    await view.find('.account-menu button').trigger('click');await flushPromises()
+    expect(mock.selection.value).toBe(null)
+    expect(boxes.every(box=>box.element.checked)).toBe(true)
+    view.unmount()
+  })
   it('ignores a previous pending response after the last account is deselected',async()=>{
     const view=create();await flushPromises()
     const boxes=view.findAll('.account-menu input')
