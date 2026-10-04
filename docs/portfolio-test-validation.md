@@ -43,11 +43,13 @@ values were checked; no fresh IG statement was supplied in this validation.
 - Browser checks covered all accounts, Kraken-only selection, all-time and
   monthly ranges, and GBP/USD display. The test banner remained visible.
 
-## Remaining finding
+## Presentation follow-up (resolved)
 
-The combined-value card still hard-codes “Portfolio period change: unavailable”.
-The chart supplies a change value, but the card does not display it yet. This is
-a presentation follow-up, not a failure of the broker history capture.
+The combined-value card now displays the chart’s period change, including a
+loading state and an unavailable state when history fails. Zero and negative
+changes, currency/range selection and stale-value removal are covered by five
+view tests. Portfolio chrome now uses the shared Trading Dashboard styles.
+The focused frontend checks pass all 12 tests; the frontend build also passes.
 
 Some holdings' period P&L remains unavailable when reliable price or lot coverage
 is missing. Existing historical-price, migration and manual-statement estimates
