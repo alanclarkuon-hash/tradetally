@@ -51,7 +51,7 @@ the chart's total portfolio change; unchecked displays current holdings'
 unrealised P&L for the selected range. This is not total change minus funding,
 which would also include realised gains and income. Missing reliable P&L is
 shown as unavailable. The chart line continues to show portfolio value.
-The focused frontend checks pass all 15 tests. Portfolio chrome uses the shared
+The focused frontend checks pass all 16 tests. Portfolio chrome uses the shared
 Trading Dashboard styles.
 
 Some holdings' period P&L remains unavailable when reliable price or lot coverage
@@ -60,3 +60,15 @@ remain labelled. IG email ingestion is tracked separately.
 
 Private backups, screenshots, broker payloads and financial records are excluded
 from this report and remain outside Git.
+
+
+## Past-week unrealised coverage correction
+
+A missing period result for any holding previously blanked the aggregate.
+The response now preserves a separate known P&L subtotal and names excluded
+symbols, while keeping the complete total null until all holdings are covered.
+The chart card labels this subtotal as incomplete and lists exclusions. A
+sub-cent price can use precise portfolio value divided by quantity rather than
+a rounded display quote. Ten backend checks and sixteen frontend checks pass.
+Native quantities are not rescaled to force journal lots to match, and halted
+securities are not assigned guessed gains.
