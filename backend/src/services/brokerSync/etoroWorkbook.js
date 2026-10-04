@@ -62,7 +62,7 @@ async function read(buffer) {
   xml(files.get('xl/_rels/workbook.xml.rels'),n=>{if(n.local==='Relationship'&&attr(n,'TargetMode')!=='External')rels.set(attr(n,'Id'),attr(n,'Target'));});
   if(files.has('xl/sharedStrings.xml')){let s=null,collect=false;xml(files.get('xl/sharedStrings.xml'),n=>{if(n.local==='si')s='';if(n.local==='t')collect=true;},t=>{if(collect&&s!==null)s+=t;},n=>{if(n.local==='t')collect=false;if(n.local==='si'){strings.push(s);s=null;}});}
   const sheet=name=>{const target=rels.get(sheets.get(name));if(!target)fail(`Missing ${name} sheet.`);const location=target.startsWith('/')?target.slice(1):path.normalize(path.join('xl',target));if(!/^xl\/worksheets\/[^/]+\.xml$/.test(location))fail('Invalid workbook sheet reference.');return rows(files.get(location),strings);};
-  const controls={};for(const row of sheet('Account Summary')){const label=row[0];if(['Username','Currency','Start Date','End Date'].includes(label)){if(label in controls)fail('Duplicate account summary field.');controls[label]=row[1];}}
+  const controls={};for(const row of sheet('Account Summary')){const label=row[0];if(['Username','Currency','Start Date','End Date','Beginning Unrealized Equity','Ending Unrealized Equity'].includes(label)){if(label in controls)fail('Duplicate account summary field.');controls[label]=row[1];}}
   // eToro labels USD reports with GBP display columns as USD/GBP. The
   // saved USD ledger and exact overlapping cash deltas establish the unit.
   if(typeof controls.Username!=='string'||!controls.Username.trim()||!['USD','USD/GBP'].includes(controls.Currency))fail('This workflow requires an eToro USD investment-account statement.');
@@ -79,6 +79,25 @@ async function read(buffer) {
   const required=['Date','Type','Amount','Balance','Position ID','Realized Equity Change'];
   if(!statement['Account Activity'].length||required.some(k=>!(k in statement['Account Activity'][0])))fail('Missing account-activity fields.');
   for(const row of statement['Account Activity']){const time=statementDate(row.Date);if(time<start||time>end)fail('Activity lies outside the statement period.');}
-  return {statement,username:controls.Username.trim().toLowerCase(),start:start.slice(0,10),end:end.slice(0,10)};
+  const equity={openingTotalUSD:Number(controls['Beginning Unrealized Equity']),closingTotalUSD:Number(controls['Ending Unrealized Equity'])};
+  const holdingsTotals=[];
+  if(sheets.has('Holdings')) {
+    const data=sheet('Holdings'),headers=data[0]||[];
+    const column=name=>headers.indexOf(name);
+    const dateColumn=column('Snapshot Date'),valueColumn=column('Value in USD'),idColumn=column('Position ID');
+    if([dateColumn,valueColumn,idColumn].some(c=>c<0))fail('Missing holdings snapshot fields.');
+    const totals=new Map(),seen=new Set();
+    for(const row of data.slice(1).filter(r=>r.some(v=>v!=null&&v!==''))) {
+      const serial=row[dateColumn],value=row[valueColumn],id=row[idColumn];
+      if(typeof serial!=='number'||!Number.isFinite(serial)||serial<1||serial>100000||typeof value!=='number'||!Number.isFinite(value)||id==null)fail('Invalid holdings snapshot.');
+      const day=new Date(Date.UTC(1899,11,30)+Math.floor(serial)*86400000).toISOString().slice(0,10);
+      const key=[day,id].join('|');if(seen.has(key))fail('Duplicate holdings snapshot position.');seen.add(key);
+      if(day<start.slice(0,10)||day>end.slice(0,10))fail('Holdings snapshot lies outside the statement period.');
+      totals.set(day,(totals.get(day)||0)+value);
+    }
+    for(const [date,holdingsUSD] of totals)holdingsTotals.push({date,holdingsUSD});
+  }
+  return {statement,username:controls.Username.trim().toLowerCase(),start:start.slice(0,10),end:end.slice(0,10),
+    holdingsTotals,equity:Number.isFinite(equity.openingTotalUSD)&&Number.isFinite(equity.closingTotalUSD)?equity:null};
 }
 module.exports={read,validateZip};

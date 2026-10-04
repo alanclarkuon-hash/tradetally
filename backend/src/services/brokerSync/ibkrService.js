@@ -598,6 +598,7 @@ class IBKRService {
     });
     console.log(`[IBKR] Resolved date range: ${windows[0]?.start_date || 'none'} to ${windows[windows.length - 1]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'})`);
     const cashReports = [];
+    const navReports = [];
     const cashSections = {statement_of_funds:[],cash_transactions:[],cash_report:[]};
     const tradeRecords = [];
     let openPositionRecords = [];
@@ -686,6 +687,11 @@ class IBKRService {
         latestRetrievedEndDate = window.end_date;
       }
       if (decoded.cash_sections?.statement_of_funds?.length && decoded.cash_sections?.cash_report?.length) cashReports.push(decoded);
+      if (decoded.nav_records?.length) navReports.push(decoded);
+      else {
+        warnings.push('IBKR Flex report is missing Net Asset Value: add daily NAV to maintain portfolio history.');
+        warningDetails.push({code:'MISSING_PORTFOLIO_NAV',message:'Daily Net Asset Value is missing from a retrieved Flex report.'});
+      }
       for (const key of Object.keys(cashSections)) cashSections[key].push(...(decoded.cash_sections?.[key] || []));
       tradeRecords.push(...decoded.trade_records);
       openPositionRecords = decoded.open_position_records;
@@ -802,6 +808,7 @@ class IBKRService {
     result.cashEventsMatched = result.cashEvents.matched || 0;
     warnings.push(...result.cashEvents.warnings);
     for (const report of cashReports) await require('./ibkrCashLedger').saveCashReports(connection,report);
+    for (const report of navReports) await require('./ibkrNavHistory').saveNavReports(connection,report);
     result.warnings = [...warnings, ...parseWarnings, ...openPositionResult.warnings];
     result.warningDetails = [
       ...warningDetails,

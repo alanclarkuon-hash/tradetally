@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const TierService = require('./tierService');
 const finnhub = require('../utils/finnhub');
@@ -12,17 +13,10 @@ const AnalyticsCache = require('./analyticsCache');
  */
 class LossAversionAnalyticsService {
   static addAccountFilter(sqlParts, params, tableAlias = '') {
-    const accounts = params.accountsFilter;
+    const accounts=params.accountsFilter;
     if (!accounts || accounts.length === 0) return;
-
-    const column = tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
-    if (accounts.includes('__unsorted__')) {
-      sqlParts.push(`AND (${column} IS NULL OR ${column} = '')`);
-      return;
-    }
-
-    params.values.push(accounts);
-    sqlParts.push(`AND ${column} = ANY($${params.values.length}::text[])`);
+    const column=tableAlias ? `${tableAlias}.account_identifier` : 'account_identifier';
+    sqlParts.push('AND '+accountPredicate(accounts,params.values,column));
   }
   
   // Analyze loss aversion patterns for a user
@@ -1624,13 +1618,8 @@ class LossAversionAnalyticsService {
       }
 
       if (accounts && accounts.length > 0) {
-        if (accounts.includes('__unsorted__')) {
-          dateFilter += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
-        } else {
-          dateFilter += ` AND t.account_identifier = ANY($${paramCount}::text[])`;
-          queryParams.push(accounts);
-          paramCount++;
-        }
+        dateFilter += ' AND '+accountPredicate(accounts,queryParams,'t.account_identifier',paramCount);
+        paramCount=queryParams.length+1;
       }
 
       // Get all completed winning trades that could have been held longer

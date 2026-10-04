@@ -48,7 +48,9 @@ function prepare(statement, {startingCash=0}={}) {
     const occurrence=(counts.get(hash)||0)+1;counts.set(hash,occurrence);
     return {reference:`statement:${hash}:${occurrence}`,date,time,sourceType:r.Type,type,amount,cash,
       description: r.Type==='Staking'?'Staking reward':r.Type==='Transfer: USD > GBP'?'Transfer out: USD > GBP':r.Type,
-      positionId:r['Position ID'] == null ? null : String(r['Position ID'])};
+      positionId:r['Position ID'] == null ? null : String(r['Position ID']),
+      ...(['corp action: Split','Open Position'].includes(r.Type)?{details:String(r.Details||'')}: {}),
+      ...(r.Type==='Open Position'&&Number(r['Units / Contracts'])>0?{units:Number(r['Units / Contracts'])}: {})};
   });
   return {records,events:records.filter(r=>r.type),from:records[0].date,to:records.at(-1).date,
     endingCash:previousBalance,unmatchedDividendDetails,unmatchedDividendDates};

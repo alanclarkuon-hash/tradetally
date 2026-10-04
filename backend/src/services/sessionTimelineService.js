@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const TierService = require('./tierService');
 const { getUserTimezone } = require('../utils/timezone');
@@ -21,11 +22,7 @@ function assertDate(value, name) {
 
 function accountCondition(params, accounts, alias = 't') {
   if (!Array.isArray(accounts) || accounts.length === 0) return '';
-  if (accounts.includes('__unsorted__')) {
-    return `AND (${alias}.account_identifier IS NULL OR ${alias}.account_identifier = '')`;
-  }
-  params.push(accounts);
-  return `AND ${alias}.account_identifier = ANY($${params.length}::text[])`;
+  return 'AND '+accountPredicate(accounts,params,`${alias}.account_identifier`);
 }
 
 function localParts(value, timezone) {

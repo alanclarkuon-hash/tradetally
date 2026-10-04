@@ -118,6 +118,10 @@
 
             <!-- Current Analysis -->
             <div v-if="investmentsStore.currentAnalysis" class="mb-6 space-y-6">
+                <section v-if="investmentsStore.currentAnalysis.type === 'crypto' && investmentsStore.currentAnalysis.categories?.length" class="bg-white dark:bg-gray-800 rounded-lg p-5">
+                    <h2 class="font-medium mb-3">CoinGecko categories</h2>
+                    <div class="flex flex-wrap gap-2"><span v-for="category in investmentsStore.currentAnalysis.categories" :key="category" class="text-xs px-3 py-1 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">{{ category }}</span></div>
+                </section>
                 <!-- DCF Valuation Calculator (above 8 Pillars) -->
                 <StockAnalyzerSection
                     v-if="investmentsStore.currentAnalysis.type !== 'crypto'"

@@ -63,3 +63,23 @@ test('stages one complete owner-scoped snapshot only after all reads succeed',as
   expect(db.query).not.toHaveBeenCalled();
   spy.mockRestore();
 });
+
+
+test('transfer pagination uses timestamp overlap and retains more than 100 records',async()=>{
+ const page=Array.from({length:100},(_,i)=>({depId:String(i),ts:String(2000-i)}));
+ const spy=jest.spyOn(service,'get').mockResolvedValueOnce(page).mockResolvedValueOnce([page.at(-1),{depId:'older',ts:'1800'}]);
+ try {
+  expect(await service.transferPages(connection,'/api/v5/asset/deposit-history','depId')).toHaveLength(101);
+  expect(spy.mock.calls[1][2]).toEqual({limit:'100',after:'1902'});
+ }finally{spy.mockRestore();}
+});
+
+test('transfer pagination fails closed on a repeating boundary or conflicting identity',async()=>{
+ const page=Array.from({length:100},(_,i)=>({wdId:String(i),ts:'2000'}));
+ const spy=jest.spyOn(service,'get').mockResolvedValue(page);
+ try {
+  await expect(service.transferPages(connection,'/api/v5/asset/withdrawal-history','wdId')).rejects.toThrow('did not advance');
+  spy.mockReset().mockResolvedValueOnce(page).mockResolvedValueOnce([{...page[0],amt:'changed'}]);
+  await expect(service.transferPages(connection,'/api/v5/asset/withdrawal-history','wdId')).rejects.toThrow('conflicting');
+ }finally{spy.mockRestore();}
+});

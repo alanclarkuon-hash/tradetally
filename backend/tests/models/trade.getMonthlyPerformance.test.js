@@ -77,7 +77,7 @@ describe('Trade.getMonthlyPerformance position grouping', () => {
     await Trade.getMonthlyPerformance('user-1', 2026, ['ACC1'], { tags: ['spread'] });
 
     const [sql, params] = db.query.mock.calls[0];
-    expect(params).toEqual(['user-1', 2026, 'ACC1', ['spread']]);
+    expect(params).toEqual(['user-1', 2026, ['ACC1'], ['spread']]);
     expect(sql).toContain('position_trades AS (');
     expect(sql).toContain('GROUP BY COALESCE(position_group_id::text');
     expect(sql).toContain('FROM position_trades');
@@ -85,7 +85,7 @@ describe('Trade.getMonthlyPerformance position grouping', () => {
     expect(sql).toContain('ROUND(pnl::numeric, 2)');
     expect(sql).toContain('r_value IS NOT NULL AND has_stop');
     // Filters still apply per leg inside the positions CTE.
-    expect(sql).toContain('account_identifier IN ($3)');
+    expect(sql).toContain('account_identifier = ANY($3::text[])');
     expect(sql).toContain('tags && $4');
   });
 
