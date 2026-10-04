@@ -32,7 +32,7 @@
       </section>
     <PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl ?? data.totals.knownPnl" :missing-pnl-symbols="data.coverage.missingPnlSymbols || []" />
     <section class="card-dense heatmap-section">
-        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holding P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
+        <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holdings P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
         <div v-if="groups.length" class="heatmap" aria-label="Holdings heatmap">
           <div v-for="group in groups" :key="group.name" class="industry" :style="rectStyle(group,true)"><div class="industry-label" :title="group.name">{{ group.name }} <span>{{ money(group.value) }}</span></div><div class="industry-tiles">
