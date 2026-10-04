@@ -44,45 +44,36 @@ describe('portfolio value chart',()=>{
   })
 })
 
-const history = { change: 200, series: [], events: [], coverage: { recordedDays: 0 } }
+const history = { change: 200, series: [{date:'2026-01-01',value:100},{date:'2026-01-02',value:300}], events: [{date:'2026-01-02',type:'deposit',amount:150}], coverage: { recordedDays: 2, cryptoTransfersIncluded:false } }
 
 describe('Portfolio change selector', () => {
-  it('labels partial P&L and identifies excluded holdings',async()=>{
-    const view=mount(PortfolioValueChart,{props:{history,unrealizedChange:50,missingPnlSymbols:['EXAMPLE']}});
-    await view.find('input[type=checkbox]').setValue(false);
-    expect(view.text()).toContain('Known unrealised P&L');
-    expect(view.text()).toContain('Excludes EXAMPLE');
-    expect(view.text()).toContain('partial total');
-    view.unmount();
-  });
-  it('defaults to total change and toggles to actual unrealised P&L, not change minus deposits', async () => {
-    const view = mount(PortfolioValueChart, { props: { history, unrealizedChange: -30 } })
-    await flushPromises()
+  it('switches both the line and large amount to overall gains and back',async()=>{
+    const view=mount(PortfolioValueChart,{props:{history}});await flushPromises()
     expect(view.find('.history-change').text()).toContain('+£200.00')
-    await view.find('input[type=checkbox]').setValue(false)
-    expect(view.find('.history-change').text()).toContain('−£30.00')
-    expect(view.text()).toContain('Unrealised P&L on current holdings')
-    await view.setProps({ unrealizedChange: 0, currency: 'USD' })
-    expect(view.find('.history-change').text()).toContain('+US$0.00')
-    await view.find('input[type=checkbox]').setValue(true)
-    expect(view.find('.history-change').text()).toContain('+US$200.00')
-    view.unmount()
+    await view.find('input[type=checkbox]').setValue(false);await flushPromises()
+    expect(view.find('.history-change').text()).toContain('+£50.00')
+    expect(view.text()).toContain('Includes realised gains, income and fees')
+    expect(view.text()).toContain('Crypto transfers are not removed')
+    expect(captured.at(-1).data.datasets[0].label).toBe('Overall gains')
+    expect(captured.at(-1).data.datasets[0].data.map(point=>point.y)).toEqual([0,50])
+    expect(view.find('canvas').attributes('aria-label')).toContain('Overall portfolio gains')
+    await view.setProps({currency:'USD'});await flushPromises()
+    expect(view.find('.history-change').text()).toContain('+US$50.00')
+    await view.find('input[type=checkbox]').setValue(true);await flushPromises()
+    expect(captured.at(-1).data.datasets[0].data.map(point=>point.y)).toEqual([100,300])
+    expect(view.find('.history-change').text()).toContain('+US$200.00');view.unmount()
   })
-
-  it('shows unavailable when reliable unrealised P&L is missing', async () => {
-    const view = mount(PortfolioValueChart, { props: { history, unrealizedChange: null } })
-    await view.find('input[type=checkbox]').setValue(false)
+  it('shows unavailable when funding FX is missing rather than overstating gains',async()=>{
+    const view=mount(PortfolioValueChart,{props:{history:{...history,events:[{date:'2026-01-02',type:'deposit',amount:null,nativeAmount:100,nativeCurrency:'USD'}]}}})
+    await view.find('input[type=checkbox]').setValue(false);await flushPromises()
     expect(view.find('.history-change').text()).toContain('Change unavailable')
-    expect(view.find('.history-change').text()).not.toContain('£200')
-    view.unmount()
+    expect(captured.at(-1).data.datasets[0].data.at(-1).y).toBeNull();view.unmount()
   })
-
   it('hides stale amounts while refreshing or when history fails', async () => {
     const view = mount(PortfolioValueChart, { props: { history, loading: true } })
     expect(view.find('.history-change').text()).toContain('Loading change…')
     await view.setProps({ loading: false, error: 'History failed' })
     expect(view.find('.history-change').text()).toContain('Change unavailable')
-    expect(view.find('.history-change').text()).not.toContain('£200')
-    view.unmount()
+    expect(view.find('.history-change').text()).not.toContain('£200');view.unmount()
   })
 })

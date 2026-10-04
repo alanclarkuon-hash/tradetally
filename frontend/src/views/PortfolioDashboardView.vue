@@ -31,7 +31,7 @@
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${money(part.value)}`"></div></div>
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section></template>
-    <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" :unrealized-change="data.totals.pnl ?? data.totals.knownPnl" :missing-pnl-symbols="data.coverage.missingPnlSymbols || []" /></template>
+    <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" /></template>
     <template #heatmap><section class="card-dense heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Stocks → Sector → Industry · area shows value · colour shows holdings P&amp;L</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
