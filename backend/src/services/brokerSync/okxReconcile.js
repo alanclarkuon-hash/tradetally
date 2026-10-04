@@ -18,7 +18,8 @@ function prepare(payload,rates) {
   const rate=ts=>{const value=rates[date(ts)];if(!(value>0))throw new Error('Missing historical USDT/USD index rate');return value;};
   const byAsset=new Map();
   for(const bill of payload.bills) {
-    if(!['1','2'].includes(bill.type) || (bill.type==='1' && bill.subType!=='11'))throw new Error('Unsupported OKX bill type; review required.');
+    if(!['1','2'].includes(bill.type) || (bill.type==='1' && !['11','12'].includes(bill.subType)))throw new Error('Unsupported OKX bill type; review required.');
+    if(bill.type==='1'&&bill.subType==='12'&&!(number(bill.balChg,'outgoing transfer')<0))throw Error('Invalid OKX outgoing transfer movement');
     const amount=number(bill.balChg,'asset movement');byAsset.set(bill.ccy,(byAsset.get(bill.ccy)||0)+amount);
   }
   const details=payload.trading[0].details;
@@ -32,7 +33,14 @@ function prepare(payload,rates) {
   const fillTrades=new Set(payload.fills.map(f=>`${f.instId}:${f.tradeId}`));
   if([...billTrades].some(([key,count])=>count!==2||!fillTrades.has(key)) ||
     payload.fills.some(f=>billTrades.get(`${f.instId}:${f.tradeId}`)!==2))throw new Error('OKX fills do not match their settlement bills');
-  for(const f of [...payload.fills].sort((a,b)=>Number(a.fillTime)-Number(b.fillTime)||String(a.billId).localeCompare(String(b.billId)))) {
+  const events=[...payload.fills,...payload.bills.filter(b=>b.type==='1'&&b.subType==='12'&&b.ccy!=='USDT').map(b=>({...b,transferOut:true,fillTime:b.ts}))];
+  for(const f of events.sort((a,b)=>Number(a.fillTime)-Number(b.fillTime)||String(a.billId).localeCompare(String(b.billId)))) {
+    if(f.transferOut) {
+      const assetLots=lots.get(f.ccy)||[];let remaining=-Number(f.balChg);
+      while(remaining>1e-12&&assetLots.length){const lot=assetLots[0],used=Math.min(remaining,lot.quantity);lot.quantity-=used;remaining-=used;if(lot.quantity<1e-12)assetLots.shift();}
+      if(remaining>1e-10)throw Error('OKX outgoing transfer is missing its acquisition history');
+      continue; // Moving owned coins is not a sale or realised profit.
+    }
     const [base,quote]=f.instId.split('-');
     if(f.instType!=='SPOT' || quote!=='USDT' || !['buy','sell'].includes(f.side) || ![base,quote].includes(f.feeCcy))throw new Error('Unsupported OKX spot instrument or fee asset');
     const size=number(f.fillSz,'fill size'),price=number(f.fillPx,'fill price'),fee=number(f.fee,'fee');
@@ -74,6 +82,20 @@ function prepare(payload,rates) {
   });
   return {trades,positions};
 }
+function mergeTransfers(previous,current,key) {
+  const rows=new Map(previous.map(r=>[String(r[key]),r]));
+  for(const row of current) {
+    if(!row[key])throw Error('Missing OKX transfer identity');
+    const old=rows.get(String(row[key]));
+    if(old) {
+      const fields=['ccy','amt','ts'];
+      if(String(old.state)==='2')fields.push('state','fee','feeCcy','txId');
+      if(fields.some(k=>old[k]!=null&&old[k]!==''&&String(old[k])!==String(row[k])))throw Error('Conflicting OKX transfer history identity');
+    }
+    rows.set(String(row[key]),row);
+  }
+  return [...rows.values()];
+}
 async function reconcile(connection,payload,rates,{dryRun=false}={}) {
   const identifier=`OKX ****${String(connection.externalAccountId).slice(-4)}`;
   const result={imported:0,updated:0,duplicates:0,skipped:0,failed:0};
@@ -81,6 +103,8 @@ async function reconcile(connection,payload,rates,{dryRun=false}={}) {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`okx:${connection.userId}:${connection.externalAccountId}`]);
     const previous=(await client.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='okx' AND account_identifier=$2 FOR UPDATE",[connection.userId,identifier])).rows[0]?.payload;
     payload={...payload,fills:mergeRows(previous?.fills||[],payload.fills),bills:mergeRows(previous?.bills||[],payload.bills),
+      deposits:mergeTransfers(previous?.deposits||[],payload.deposits||[],'depId'),
+      withdrawals:mergeTransfers(previous?.withdrawals||[],payload.withdrawals||[],'wdId'),
       rates:{...(previous?.rates||{}),...rates}};
     const mapped=prepare(payload,payload.rates);
     const existing=(await client.query("SELECT id,executions FROM trades WHERE user_id=$1 AND broker='okx' AND broker_connection_id=$2 FOR UPDATE",[connection.userId,connection.id])).rows;
@@ -123,4 +147,4 @@ async function reconcile(connection,payload,rates,{dryRun=false}={}) {
   if(!dryRun)await AnalyticsCache.invalidate(connection.userId);
   return result;
 }
-module.exports={prepare,mergeRows,reconcile};
+module.exports={prepare,mergeRows,mergeTransfers,reconcile};

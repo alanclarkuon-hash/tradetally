@@ -39,3 +39,16 @@ test('IBKR retains reported NAV instead of trying to price derivative history',a
  expect(reconstruction.reconstruct).not.toHaveBeenCalled();
  expect(require('../src/services/brokerSync/ibkrNavHistory').backfillTrailingWeekends).toHaveBeenCalled();
 });
+
+
+test('OKX spot history gets the same bounded recovery, while unreconciled wallets are blocked',async()=>{
+ const api={...account,broker:'okx'};
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:sql.includes('broker_import_snapshots')?[{payload:{historyComplete:true,funding:[],positions:[]}}]:[{latest:'2026-10-01'}]}));
+ reconstruction.reconstruct.mockResolvedValue([{broker:'okx',days:3,gaps:0}]);
+ await maintain('owner',{broker:'okx',fetchPrices:false});
+ expect(reconstruction.reconstruct).toHaveBeenCalledWith('owner',expect.objectContaining({broker:'okx',accountIdentifiers:['owned'],fetchPrices:false}));
+ reconstruction.reconstruct.mockClear();
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:[{payload:{historyComplete:false}}]}));
+ expect((await maintain('owner',{broker:'okx'})).warnings[0]).toContain('reconciliation');
+ expect(reconstruction.reconstruct).not.toHaveBeenCalled();
+});

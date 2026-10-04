@@ -29,6 +29,17 @@ function extract(snapshots) {
         legs.push({broker, account, reference: String(row.depId), asset: row.ccy,
           direction: 'in', quantity: format(quantity), fee: '0', time: Number(row.ts)});
       }
+      for(const row of payload.withdrawals||[]) {
+        if(String(row.state)!=='2'||!row.wdId||FIAT.has(row.ccy))continue;
+        const amount=decimal(row.amt),fee=decimal(row.fee||'0');
+        if(amount<=0n||fee<0n)continue;
+        const matchable=fee===0n||row.feeCcy===row.ccy;
+        // Fee deduction can differ by withdrawal flow. Match only a unique
+        // observed receipt among the two supported same-coin net amounts.
+        const quantities=matchable?[format(amount),...(fee>0n&&amount>fee?[format(amount-fee)]:[])]:[];
+        legs.push({broker,account,reference:String(row.wdId),asset:row.ccy,direction:'out',
+          quantity:format(amount),netQuantityOptions:quantities,matchable,fee:format(fee),time:Number(row.ts)});
+      }
     }
   }
   const keys = new Set();
@@ -44,15 +55,15 @@ function extract(snapshots) {
 
 function pair(legs) {
   const outs = legs.filter(l => l.direction === 'out'), ins = legs.filter(l => l.direction === 'in');
-  const compatible = (out, incoming) => out.broker !== incoming.broker &&
-    out.asset === incoming.asset && out.quantity === incoming.quantity &&
+  const compatible = (out, incoming) => out.matchable!==false && out.broker !== incoming.broker &&
+    out.asset === incoming.asset && (out.netQuantityOptions||[out.quantity]).includes(incoming.quantity) &&
     incoming.time - out.time >= -60000 && incoming.time - out.time <= 15 * 60000;
   const candidates = outs.map(out => ({out, incoming: ins.filter(l => compatible(out, l))}));
   // Require uniqueness on BOTH legs, including candidates competing with an
   // ambiguous withdrawal. Never greedily choose the nearest amount/time.
   return candidates.filter(c => c.incoming.length === 1 &&
     candidates.filter(other => other.incoming.some(l => identity(l) === identity(c.incoming[0]))).length === 1)
-    .map(c => ({out: c.out, incoming: c.incoming[0]}));
+    .map(c => ({out: {...c.out,quantity:c.incoming[0].quantity}, incoming: c.incoming[0]}));
 }
 
 async function save(userId) {
@@ -69,7 +80,7 @@ async function save(userId) {
         occupied.add(key);
         const current = legs.find(l => identity(l) === key);
         if (current && (current.direction !== direction || current.asset !== row.asset ||
-          decimal(current.quantity) !== decimal(row.quantity) ||
+          !(current.netQuantityOptions||[current.quantity]).some(q=>decimal(q)===decimal(row.quantity)) ||
           current.time !== new Date(row[side === 'source' ? 'sent_at' : 'received_at']).getTime() ||
           (side === 'source' && decimal(current.fee) !== decimal(row.source_fee)))) {
           throw Error('A previously linked transfer changed; review required');

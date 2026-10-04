@@ -43,7 +43,7 @@ async function captureToday(userId,query={}) {
         continue;
       }
       let brokerSnapshot=null;
-      if(['trading212','kraken'].includes(account.broker)) {
+      if(['trading212','kraken','okx'].includes(account.broker)) {
         brokerSnapshot=(await db.query(`SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3`,[userId,account.broker,account.account_identifier])).rows[0];
         const age=brokerSnapshot?Date.now()-new Date(brokerSnapshot.synced_at).getTime():Infinity;
         if(!Number.isFinite(age)||age< -300000||age>36*3600000) {
@@ -55,10 +55,14 @@ async function captureToday(userId,query={}) {
         if(account.broker==='kraken') {
           const imported=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' AND account_identifier=$2",[userId,account.account_identifier])).rows[0]?.payload;
           if(!imported?.reconciled||!imported.nativeReconciliation?.nativeBalancesMatched){unavailable++;warnings.push('kraken: portfolio capture awaits native balance reconciliation.');continue;}
-        } else {
+        } else if(account.broker==='trading212') {
           const report=(await db.query("SELECT to_date FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='trading212' ORDER BY updated_at DESC LIMIT 1",[userId,account.id])).rows[0];
           if(!report||day(report.to_date)!==day(brokerSnapshot.synced_at)){unavailable++;warnings.push('trading212: cash and holdings dates do not match; no fresh chart value was recorded.');continue;}
         }
+      }
+      if(account.broker==='okx') {
+        const imported=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='okx' AND account_identifier=$2",[userId,account.account_identifier])).rows[0]?.payload;
+        if(!imported?.historyComplete||imported.funding?.length||imported.positions?.length){unavailable++;warnings.push('okx: spot history has not reconciled; no fresh chart value was recorded.');continue;}
       }
       const rawPositions=brokerSnapshot?
         (await require('./brokerSync/portfolioSnapshot').snapshotPositions([brokerSnapshot])).map(p=>({...p,currentValue:p.totalShares*p.brokerCurrentPrice,priceStale:false})):

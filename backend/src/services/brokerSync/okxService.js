@@ -83,21 +83,39 @@ class OkxService {
     const positions=await this.get(connection,'/api/v5/account/positions');
     const fills=await this.pages(connection,'/api/v5/trade/fills-history',{instType:'SPOT'});
     const bills=await this.pages(connection,'/api/v5/account/bills-archive');
-    const deposits=await this.get(connection,'/api/v5/asset/deposit-history',{limit:'100'});
-    const withdrawals=await this.get(connection,'/api/v5/asset/withdrawal-history',{limit:'100'});
+    const deposits=await this.transferPages(connection,'/api/v5/asset/deposit-history','depId');
+    const withdrawals=await this.transferPages(connection,'/api/v5/asset/withdrawal-history','wdId');
     if(!connection.brokerMetadata?.import_pending_review) {
       const rates=await this.indexRates(connection,trading);
-      return require('./okxReconcile').reconcile(connection,{trading,funding,positions,fills,bills,deposits,withdrawals,asOf:new Date().toISOString()},rates);
+      return require('./okxReconcile').reconcile(connection,{trading,funding,positions,fills,bills,deposits,withdrawals,transferHistoryMayBeTruncated:false,asOf:new Date().toISOString()},rates);
     }
     await db.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload,captured_at)
       VALUES($1,'okx',$2,$3,$4::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,payload=EXCLUDED.payload,captured_at=NOW()`,
     [connection.userId,`OKX ****${String(connection.externalAccountId).slice(-4)}`,connection.id,
       JSON.stringify({trading,funding,positions,fills,bills,deposits,withdrawals,historyComplete:false,
-        transferHistoryMayBeTruncated:deposits.length===100 || withdrawals.length===100})]);
+        transferHistoryMayBeTruncated:false})]);
     return {imported:0,skipped:0,failed:0,duplicates:0,warnings:[HISTORY_WARNING,
       'OKX balances and recent history downloaded privately for reconciliation. Reports are unchanged until this account’s history is checked.'],
       outcome:'warning',tradeRows:fills.length,openPositionRows:trading[0].details.length};
+  }
+  async transferPages(connection,path,identity) {
+    const rows=new Map();let after=null;
+    for(let page=0;page<1000;page++) {
+      const data=await this.get(connection,path,{limit:'100',...(after?{after}:{})});
+      for(const row of data) {
+        if(!row[identity]||!/^\d+$/.test(String(row.ts))||!Number.isSafeInteger(Number(row.ts)))throw Error('OKX returned invalid transfer history identity or time.');
+        const id=String(row[identity]),old=rows.get(id);
+        if(old&&!isDeepStrictEqual(old,row))throw Error('OKX returned conflicting transfer history identities.');
+        rows.set(id,row);
+      }
+      if(data.length<100)return [...rows.values()];
+      // Overlap the last millisecond so equal-time records are not skipped.
+      const next=String(Math.min(...data.map(r=>Number(r.ts)))+1);
+      if(after&&Number(next)>=Number(after))throw Error('OKX transfer pagination did not advance; timestamp boundary requires review.');
+      after=next;
+    }
+    throw Error('OKX transfer history exceeded the maximum supported pages.');
   }
   async indexRates(connection,trading) {
     const origin=ORIGINS[connection.brokerEnvironment||'global'];
