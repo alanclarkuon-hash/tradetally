@@ -31,13 +31,15 @@ in Git, CI artifacts or Docker build context.
 `backend/scripts/rehearsePortfolioPromotion.js` is deliberately rehearsal-only:
 it checks the actual database name and test environment, validates exact account
 mapping, and applies the transfer in one transaction. It cannot write production.
-The final cutover needs a separately reviewed production entry point; do not
-remove these guards to deploy.
+`backend/scripts/promotePortfolioRelease.js` is a separate operator-only cutover
+entry point. It requires the reviewed bundle's SHA-256, an explicit cutover flag,
+the expected production database, disabled background jobs and paused broker
+schedules. Creating this script does not authorize running it against production.
 
 ## Remaining release gates
 
 1. Green GitHub checks on the exact release commit and review of the draft PR.
-2. Review a production-only promotion entry point and its private bundle checksum.
+2. Review the production-only promotion entry point and its private bundle checksum.
    Re-export immediately before cutover and repeat the account/financial conflict
    checks. Keep production credentials, signing/encryption keys and preferences.
 3. Verify a fresh encrypted off-PC backup is fully uploaded and restorable.
