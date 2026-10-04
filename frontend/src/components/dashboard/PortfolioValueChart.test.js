@@ -47,6 +47,18 @@ describe('portfolio value chart',()=>{
 const history = { change: 200, series: [{date:'2026-01-01',value:100},{date:'2026-01-02',value:300}], events: [{date:'2026-01-02',type:'deposit',amount:150}], coverage: { recordedDays: 2, cryptoTransfersIncluded:false } }
 
 describe('Portfolio change selector', () => {
+  it('removes crypto principal from gains and formats missing coin valuations without treating tickers as fiat',async()=>{
+    const crypto={date:'2026-01-02',type:'transfer',crypto:true,quantity:10,asset:'SUI',amount:150,account:'Example'}
+    const view=mount(PortfolioValueChart,{props:{history:{...history,events:[crypto],coverage:{recordedDays:2,cryptoTransfersIncluded:true}}}})
+    await view.find('input[type=checkbox]').setValue(false);await flushPromises()
+    expect(captured.at(-1).data.datasets[0].data.map(p=>p.y)).toEqual([0,50])
+    expect(view.text()).not.toContain('Crypto transfers are not removed')
+    await view.setProps({history:{...history,events:[{...crypto,amount:null}],coverage:{recordedDays:2,cryptoTransfersIncluded:true,missingCryptoTransferPrices:1}}});await flushPromises()
+    expect(view.text()).toContain('10 SUI')
+    expect(view.text()).toContain('lack a dated price')
+    expect(captured.at(-1).data.datasets[0].data.at(-1).y).toBeNull()
+    view.unmount()
+  })
   it('switches both the line and large amount to overall gains and back',async()=>{
     const view=mount(PortfolioValueChart,{props:{history}});await flushPromises()
     expect(view.find('.history-change').text()).toContain('+£200.00')
