@@ -129,6 +129,7 @@ jobs:
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Login to Docker Hub
+        if: github.repository == 'GeneBO98/tradetally'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -190,7 +191,8 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          # Forks validate images without publishing to the upstream registry.
+          push: ${{ github.repository == 'GeneBO98/tradetally' }}
           tags: ${{ steps.tags.outputs.tags }}
 
   android-apk:
