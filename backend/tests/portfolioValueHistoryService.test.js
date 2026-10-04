@@ -129,3 +129,12 @@ test('fresh reconciled OKX spot capture separates stablecoins from investments a
  expect(Account.getCashflow).not.toHaveBeenCalled();expect(Portfolio.getPositions).not.toHaveBeenCalled();
  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO portfolio_value_history'),['owner','one',now.slice(0,10),50,0,99,1,0]);
 });
+
+test('funding uses same-day or prior rates within seven days, never future rates',()=>{
+ const {fundingFx}=require('../src/services/portfolioValueHistoryService');
+ const fx=new Map([['2026-10-02:USD:GBP',.8],['2026-10-05:USD:GBP',.9]]);
+ expect(fundingFx(fx,'2026-10-02','USD','GBP')).toEqual({rate:.8,sourceDate:'2026-10-02'});
+ expect(fundingFx(fx,'2026-10-04','GBP','USD')).toEqual({rate:1.25,sourceDate:'2026-10-02'});
+ expect(fundingFx(fx,'2026-10-01','USD','GBP').rate).toBeNull();
+ expect(fundingFx(new Map([['2026-10-02:USD:GBP',.8]]),'2026-10-10','USD','GBP').rate).toBeNull();
+});
