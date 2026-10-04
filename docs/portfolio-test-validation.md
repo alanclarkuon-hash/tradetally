@@ -45,11 +45,14 @@ values were checked; no fresh IG statement was supplied in this validation.
 
 ## Presentation follow-up (resolved)
 
-The combined-value card now displays the chart’s period change, including a
-loading state and an unavailable state when history fails. Zero and negative
-changes, currency/range selection and stale-value removal are covered by five
-view tests. Portfolio chrome now uses the shared Trading Dashboard styles.
-The focused frontend checks pass all 12 tests; the frontend build also passes.
+The summary cards now show balances only. The portfolio-over-time card has an
+“Include deposits & withdrawals” checkbox, checked by default. Checked displays
+the chart's total portfolio change; unchecked displays current holdings'
+unrealised P&L for the selected range. This is not total change minus funding,
+which would also include realised gains and income. Missing reliable P&L is
+shown as unavailable. The chart line continues to show portfolio value.
+The focused frontend checks pass all 15 tests. Portfolio chrome uses the shared
+Trading Dashboard styles.
 
 Some holdings' period P&L remains unavailable when reliable price or lot coverage
 is missing. Existing historical-price, migration and manual-statement estimates

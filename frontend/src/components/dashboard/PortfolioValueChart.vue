@@ -2,7 +2,7 @@
   <section class="card-dense portfolio-history" aria-labelledby="portfolio-history-title">
     <div class="history-heading">
       <div><h2 id="portfolio-history-title" class="heading-card">Portfolio value over time</h2><p>Investments, cash and stablecoins · selected accounts</p></div>
-      <div class="history-change"><strong v-if="history?.change!=null">{{ signedMoney(history.change) }}</strong><span v-else>Recording portfolio values</span><small>Change includes money added and removed</small></div>
+      <div class="history-change"><strong v-if="!loading && !error && displayedChange!=null" :class="displayedChange>=0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ signedMoney(displayedChange) }}</strong><span v-else>{{ loading ? 'Loading change…' : 'Change unavailable' }}</span><small>{{ includeFunding ? 'Portfolio change including money added and removed' : 'Unrealised P&L on current holdings · selected range' }}</small><label class="funding-toggle"><input type="checkbox" v-model="includeFunding" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Include deposits &amp; withdrawals</label></div>
     </div>
     <p v-if="loading" class="history-message" role="status">Loading portfolio history…</p>
     <p v-else-if="error" class="history-message" role="status">{{ error }}</p>
@@ -28,10 +28,12 @@
 </template>
 
 <script setup>
-import {ref,watch,onBeforeUnmount,nextTick} from 'vue'
+import {ref,computed,watch,onBeforeUnmount,nextTick} from 'vue'
 import {Chart} from '@/lib/chartSetup'
 import {dateNumber,valueChartPoints} from '@/utils/portfolioValueChart'
-const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'}})
+const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'},unrealizedChange:{type:Number,default:null}})
+const includeFunding=ref(true)
+const displayedChange=computed(()=>includeFunding.value ? props.history?.change : props.unrealizedChange)
 const canvas=ref(null)
 let chart=null
 const money=value=>value==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:props.currency,maximumFractionDigits:2}).format(value)
@@ -60,5 +62,5 @@ onBeforeUnmount(()=>chart?.destroy())
 </script>
 
 <style scoped>
-.portfolio-history{padding:20px;margin:24px 0}.history-heading{display:flex;justify-content:space-between;gap:24px;align-items:center}.history-eyebrow{font-size:10px;letter-spacing:.14em;color:#8290a1;font-weight:700}.history-heading h2{margin:0 0 4px}.history-heading p:not(.history-eyebrow),.history-change small{font-size:12px;@apply text-gray-600 dark:text-gray-400}.history-change{@apply text-gray-900 dark:text-white; text-align:right;font-size:13px}.history-change strong{font-size:24px;font-weight:600;display:block}.history-change small{display:block;margin-top:5px}.history-legend{display:flex;flex-wrap:wrap;gap:20px;font-size:12px;@apply text-gray-500 dark:text-gray-400;margin:24px 0 16px;align-items:center}.value-key{display:inline-block;width:20px;height:2px;background:#73c6a1;vertical-align:middle;margin-right:5px}.deposit-key{color:#73c6a1}.withdrawal-key{color:#e97482}.history-canvas{height:280px;position:relative}.history-message{@apply text-gray-600 dark:text-gray-400; font-size:13px;margin:16px 0;line-height:1.6}.history-footnote{font-size:12px;@apply text-gray-500 dark:text-gray-400;line-height:1.6;margin-top:12px}.history-details{@apply text-gray-600 dark:text-gray-400; font-size:12px;margin-top:14px}.history-details summary{cursor:pointer;padding:8px 0}.history-table{overflow-x:auto;margin-top:14px;max-height:280px}table{width:100%;text-align:left;border-collapse:collapse;font-size:11px}caption{text-align:left;font-weight:600;margin-bottom:10px}td,th{padding:8px;border-bottom:1px solid #71809622;white-space:nowrap}@media(max-width:700px){.portfolio-history{padding:16px}.history-heading{align-items:flex-start;flex-direction:column}.history-change{text-align:left}.history-canvas{height:240px}}
+.portfolio-history{padding:20px;margin:24px 0}.history-heading{display:flex;justify-content:space-between;gap:24px;align-items:center}.history-eyebrow{font-size:10px;letter-spacing:.14em;color:#8290a1;font-weight:700}.history-heading h2{margin:0 0 4px}.history-heading p:not(.history-eyebrow),.history-change small{font-size:12px;@apply text-gray-600 dark:text-gray-400}.history-change{@apply text-gray-900 dark:text-white; text-align:right;font-size:13px}.history-change strong{font-size:24px;font-weight:600;display:block}.history-change small{display:block;margin-top:5px}.funding-toggle{@apply text-sm text-gray-700 dark:text-gray-300;display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px;cursor:pointer}.history-legend{display:flex;flex-wrap:wrap;gap:20px;font-size:12px;@apply text-gray-500 dark:text-gray-400;margin:24px 0 16px;align-items:center}.value-key{display:inline-block;width:20px;height:2px;background:#73c6a1;vertical-align:middle;margin-right:5px}.deposit-key{color:#73c6a1}.withdrawal-key{color:#e97482}.history-canvas{height:280px;position:relative}.history-message{@apply text-gray-600 dark:text-gray-400; font-size:13px;margin:16px 0;line-height:1.6}.history-footnote{font-size:12px;@apply text-gray-500 dark:text-gray-400;line-height:1.6;margin-top:12px}.history-details{@apply text-gray-600 dark:text-gray-400; font-size:12px;margin-top:14px}.history-details summary{cursor:pointer;padding:8px 0}.history-table{overflow-x:auto;margin-top:14px;max-height:280px}table{width:100%;text-align:left;border-collapse:collapse;font-size:11px}caption{text-align:left;font-weight:600;margin-bottom:10px}td,th{padding:8px;border-bottom:1px solid #71809622;white-space:nowrap}@media(max-width:700px){.portfolio-history{padding:16px}.history-heading{align-items:flex-start;flex-direction:column}.history-change{text-align:left}.funding-toggle{justify-content:flex-start}.history-canvas{height:240px}}
 </style>

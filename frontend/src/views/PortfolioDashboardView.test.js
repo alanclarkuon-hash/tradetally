@@ -26,15 +26,15 @@ beforeEach(() => {
   })
 })
 
-describe('Portfolio value card', () => {
-  it.each([25, -25, 0])('shows the chart change %s including zero and losses', async change => {
-    mock.change = change
+describe('Portfolio summary cards', () => {
+  it('shows balances only and supplies unrealised change to the chart card', async () => {
     const view = create()
     await flushPromises()
-    const card = view.find('article')
-    expect(card.text()).toContain(`${change >= 0 ? '+' : '−'}£${Math.abs(change).toFixed(2)}`)
-    expect(card.text()).toContain('Includes deposits and withdrawals')
-    expect(card.text()).not.toContain('change unavailable')
+    expect(view.findAll('article')[0].text()).toContain('£100.00')
+    expect(view.findAll('article')[1].text()).toContain('£60.00')
+    expect(view.findAll('article')[0].text()).not.toContain('change')
+    expect(view.findAll('article')[1].text()).not.toContain('since acquisition')
+    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('unrealizedChange')).toBe(0)
     view.unmount()
   })
 
@@ -45,8 +45,7 @@ describe('Portfolio value card', () => {
     await flushPromises()
     await view.find('#portfolio-currency').setValue('USD')
     await flushPromises()
-    expect(view.find('article').text()).toContain('+US$25.00')
-    expect(view.find('article').text()).toContain('selected period')
+    expect(view.find('article').text()).toContain('US$100.00')
     const params = mock.get.mock.calls.filter(([url]) => url.endsWith('/value-history')).at(-1)[1].params
     expect(params.currency).toBe('USD')
     expect(params.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -60,7 +59,7 @@ describe('Portfolio value card', () => {
     mock.fail = true
     await view.find('.refresh').trigger('click')
     await flushPromises()
-    expect(view.find('article').text()).toContain('Portfolio period change unavailable')
+    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('error')).toContain('unavailable')
     expect(view.find('article').text()).not.toContain('+£25.00')
     view.unmount()
   })
