@@ -1,7 +1,7 @@
 <template>
   <section class="card-dense portfolio-history" aria-labelledby="portfolio-history-title">
     <div class="history-heading">
-      <div><h2 id="portfolio-history-title" class="heading-card">Portfolio value over time</h2><p>Investments, cash and stablecoins · selected accounts</p></div>
+      <div><h2 id="portfolio-history-title" class="heading-card">Portfolio Value</h2><p>Investments, cash and stablecoins · selected accounts</p></div>
       <div class="history-change"><strong v-if="!loading && !error && displayedChange!=null" :class="displayedChange>=0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ signedMoney(displayedChange) }}</strong><span v-else>{{ loading ? 'Loading change…' : 'Change unavailable' }}</span><small>{{ includeFunding ? 'Portfolio change including money added and removed' : (missingPnlSymbols.length ? 'Known unrealised P&L · incomplete coverage' : 'Unrealised P&L on current holdings · selected range') }}</small><label class="funding-toggle"><input type="checkbox" v-model="includeFunding" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Include deposits &amp; withdrawals</label></div>
     </div>
     <p v-if="!includeFunding && missingPnlSymbols.length" class="history-message" role="status">Excludes {{ missingPnlSymbols.join(', ') }}: reliable period prices or matching acquisition lots are unavailable. This is a partial total.</p>
