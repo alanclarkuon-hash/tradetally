@@ -23,6 +23,11 @@ jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));
 jest.mock('../../src/services/manualFxService', () => ({ getRateMap: jest.fn().mockResolvedValue({}) }));
+// These tests characterize SQL and bound filters, not live FX providers.
+// Keep them deterministic when CI has no stored rate snapshot or network.
+jest.mock('../../src/utils/currencyConverter', () => ({
+  getRateMap: jest.fn().mockResolvedValue({ USD: 1, GBP: 0.8 })
+}));
 
 jest.mock('../../src/utils/timezone', () => ({
   getUserTimezone: jest.fn().mockResolvedValue('America/New_York'),

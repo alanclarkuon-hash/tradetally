@@ -6,6 +6,11 @@ jest.mock('../../src/models/Trade', () => ({
   calculateRiskAmount: jest.fn(() => 123.45)
 }));
 
+// Calendar P&L assertions use USD fixtures, independent of live FX services.
+jest.mock('../../src/utils/currencyConverter', () => ({
+  getRateMap: jest.fn().mockResolvedValue({ USD: 1, GBP: 0.8 })
+}));
+
 const db = require('../../src/config/database');
 const Trade = require('../../src/models/Trade');
 const analyticsController = require('../../src/controllers/analytics.controller');
