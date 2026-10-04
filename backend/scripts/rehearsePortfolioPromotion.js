@@ -9,6 +9,11 @@ async function promote(bundle) {
   const database = (await db.query('SELECT current_database() AS name')).rows[0].name;
   assert.equal(database, 'tradetally_rehearsal', 'Only the isolated rehearsal database is permitted');
   assert.equal(process.env.APP_ENVIRONMENT, 'test');
+  return applyValidatedBundle(bundle);
+}
+
+// Shared transaction, called only after the entry point verifies its target.
+async function applyValidatedBundle(bundle) {
   return db.withTransaction(async client => {
     const accounts = (await client.query('SELECT id,user_id,account_identifier,broker FROM user_accounts WHERE NOT is_archived')).rows;
     assert.equal(accounts.length, bundle.accounts.length, 'Account coverage differs');
@@ -65,4 +70,4 @@ if (require.main === module) {
     .catch(() => { console.error('Promotion refused or failed; private data omitted. Transaction rolled back.'); process.exitCode=1; })
     .finally(() => db.pool.end());
 }
-module.exports = { promote };
+module.exports = { promote, applyValidatedBundle };
