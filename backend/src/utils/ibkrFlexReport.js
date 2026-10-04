@@ -205,6 +205,9 @@ function decodeXmlReport(content) {
     $(selector).each((_, element) => cashSections[key].push({ ...($(element).closest('FlexStatement').attr() || {}), ...($(element).attr() || {}) }));
   }
   const statements = [];
+  const nav_records = [], nav_changes = [];
+  $('EquitySummaryInBase > EquitySummaryByReportDateInBase').each((_, element) => nav_records.push({ ...($(element).closest('FlexStatement').attr() || {}), ...($(element).attr() || {}) }));
+  $('FlexStatement > ChangeInNAV').each((_, element) => nav_changes.push({ ...($(element).attr() || {}) }));
   $('FlexStatement').each((_, element) => {
     const attrs = $(element).attr() || {};
     statements.push({
@@ -230,6 +233,8 @@ function decodeXmlReport(content) {
     recognized: true,
     format: 'xml',
     cash_sections: cashSections,
+    nav_records,
+    nav_changes,
     statements,
     trade_records,
     open_position_records,
