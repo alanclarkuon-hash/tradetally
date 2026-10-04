@@ -77,7 +77,8 @@ function combineValues(rows,accounts,currency) {
     return {date,value:money(total),holdings:money(holdings),cash:money(cash),stablecoins:money(stablecoins),missingAccounts:0,stalePrices,
       reconstructedAccounts:values.filter(r=>r.source==='reconstructed').length,
       estimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated at zero:'))).length,
-      migrationEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using 1:1 token migration:'))).length};
+      migrationEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using 1:1 token migration:'))).length,
+      statementEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using previous IBKR statement:'))).length};
   });
 }
 
@@ -130,6 +131,7 @@ async function getHistory(userId,query={}) {
       reconstructedDays:valid.filter(p=>p.reconstructedAccounts>0).length,
       estimatedDays:valid.filter(p=>p.estimatedAccounts>0).length,
       migrationEstimatedDays:valid.filter(p=>p.migrationEstimatedAccounts>0).length,
+      statementEstimatedDays:valid.filter(p=>p.statementEstimatedAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:false},

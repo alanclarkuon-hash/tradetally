@@ -34,6 +34,11 @@ test('migration price estimates carry separate provenance from zero-price estima
  const estimated={...row('one','2025-05-08',100,20),source:'reconstructed',issues:['Estimated using 1:1 token migration: FTM']};
  expect(combineValues([estimated],[accounts[0]],'USD')[0]).toMatchObject({value:120,estimatedAccounts:0,migrationEstimatedAccounts:1});
 });
+test('IBKR weekend statement estimates remain distinct from reported observations',()=>{
+ const point={...row('one','2026-01-17',-10,110),source:'reconstructed',issues:['Estimated using previous IBKR statement: weekend holdings at last reported close']};
+ expect(combineValues([point],[accounts[0]],'USD')[0]).toMatchObject({value:100,statementEstimatedAccounts:1,estimatedAccounts:0});
+ expect(combineValues([{...point,source:'statement'}],[accounts[0]],'USD')[0].statementEstimatedAccounts).toBe(0);
+});
 test('captures complete values without counting fiat or stablecoins twice; missing balances are not saved',async()=>{
   db.query.mockResolvedValue({rows:[accounts[0]]});getRatesToDisplay.mockResolvedValue({GBP:1.25,USD:1});
   Portfolio.getPositions.mockResolvedValue([{symbol:'SYNTH',instrumentType:'stock',currentValue:100},
