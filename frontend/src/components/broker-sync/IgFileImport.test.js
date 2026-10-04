@@ -37,3 +37,13 @@ it('sends multiple optional trade-day statements for the selected account',async
   await input.trigger('change');await w.get('form').trigger('submit');await flushPromises();
   const form=api.post.mock.calls[0][1];expect(form.getAll('synthetic:execution')).toHaveLength(2);
 });
+it('allows daily spread-bet PDFs alone and sends them as history evidence',async()=>{
+  api.get.mockResolvedValue({data:{data:[{...account,kind:'spread_bet',required:['transactions','activity','breakdown','trading','ledger']}]}});
+  const w=mount(IgFileImport);await flushPromises();await w.get('input[type=checkbox]').setValue(true);
+  const input=w.get('input[multiple]');
+  Object.defineProperty(input.element,'files',{configurable:true,value:[new File(['day1'],'day1.pdf'),new File(['day2'],'day2.pdf')]});
+  await input.trigger('change');expect(w.findAll('input[required]')).toHaveLength(0);
+  await w.get('form').trigger('submit');await flushPromises();
+  const form=api.post.mock.calls[0][1];expect(form.getAll('synthetic:daily')).toHaveLength(2);
+  expect(form.has('synthetic:transactions')).toBe(false);
+});

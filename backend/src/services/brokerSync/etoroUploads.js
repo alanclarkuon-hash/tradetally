@@ -51,14 +51,17 @@ async function preview(userId,accountId,file) {
   try {
     if(!file?.buffer||!file.originalname?.toLowerCase().endsWith('.xlsx'))fail('Upload the XLSX account statement downloaded from eToro.');
     const base=await saved(userId,accountId),upload=await workbook.read(file.buffer),data=combine(base,upload);
+    const {etoroPoints}=require('../portfolioStatementHistoryService');
+    const points=etoroPoints({...base.account,broker_metadata:{statement_identity_hash:data.identity}},
+      {...base.report,to_date:data.end,records:data.records},upload);
     for(const [key,p] of previews)if(p.userId===userId||p.expires<Date.now())previews.delete(key);
     if(previews.size>=10)fail('Statement previews are busy. Please try again shortly.');
-    const token=crypto.randomBytes(32).toString('hex');previews.set(token,{userId,accountId,revision:base.revision,data,expires:Date.now()+15*60000});
+    const token=crypto.randomBytes(32).toString('hex');previews.set(token,{userId,accountId,revision:base.revision,data,points,expires:Date.now()+15*60000});
     const sum=types=>data.added.filter(r=>types.includes(r.type)).reduce((s,r)=>s+r.amount,0);
     return {token,account:base.account.account_name,from:upload.start,through:data.end,newRecords:data.added.length,
       matchedRecords:upload.statement['Account Activity'].length-data.added.length,newIncome:sum(['interest','dividend']),
       newDeposits:sum(['deposit']),newWithdrawals:-sum(['withdrawal']),newFees:-sum(['account_fee','tax']),
-      previousCash:Number(base.report.ending_cash),closingCash:data.endingCash,cashChange:data.endingCash-Number(base.report.ending_cash)};
+      portfolioDates:points.length,previousCash:Number(base.report.ending_cash),closingCash:data.endingCash,cashChange:data.endingCash-Number(base.report.ending_cash)};
   } finally {active.delete(userId);}
 }
 async function apply(userId,token) {
@@ -82,8 +85,11 @@ async function apply(userId,token) {
       [userId,p.accountId,day(base.report.from_date),p.data.end,base.report.starting_cash,p.data.endingCash,JSON.stringify(p.data.records)]);
       await client.query(`UPDATE broker_connections SET broker_metadata=COALESCE(broker_metadata,'{}'::jsonb)||jsonb_build_object('statement_identity_hash',$1::text)
         WHERE id=$2 AND user_id=$3`,[p.data.identity,base.account.connection_id,userId]);
-      return {newRecords:p.data.added.length,newEvents:events,closingCash:p.data.endingCash,through:p.data.end};
-    });previews.delete(token);return result;
+      const history=await require('../portfolioStatementHistoryService').saveEtoroPoints(client,userId,base.account.account_identifier,p.points);
+      return {newRecords:p.data.added.length,newEvents:events,closingCash:p.data.endingCash,through:p.data.end,portfolioDates:history.captured,identifier:base.account.account_identifier};
+    });previews.delete(token);
+    const {identifier,...publicResult}=result;
+    return {...publicResult,portfolioHistory:await require('../manualPortfolioMaintenance').rebuild(userId,'etoro',[identifier],p.points.map(r=>r.date).sort()[0])};
   } finally {active.delete(userId);}
 }
 module.exports={accounts,combine,preview,apply};
