@@ -1,16 +1,17 @@
 <template>
   <section class="card-dense portfolio-history" aria-labelledby="portfolio-history-title">
     <div class="history-heading">
-      <div><h2 id="portfolio-history-title" class="heading-card">Portfolio Value</h2><p>Investments, cash and stablecoins</p></div>
-      <div class="history-change"><strong v-if="!loading && !error && displayedChange!=null" :class="displayedChange>=0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ signedMoney(displayedChange) }}</strong><span v-else>{{ loading ? 'Loading change…' : 'Change unavailable' }}</span><small v-if="!includeFunding">{{ missingPnlSymbols.length ? 'Known unrealised P&L · incomplete coverage' : 'Unrealised P&L on current holdings' }}</small><label class="funding-toggle"><input type="checkbox" v-model="includeFunding" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Include deposits &amp; withdrawals</label></div>
+      <div><h2 id="portfolio-history-title" class="heading-card">{{ includeFunding ? "Portfolio Value" : "Portfolio gains" }}</h2><p>{{ includeFunding ? "Investments, cash and stablecoins" : "Overall gains excluding deposits & withdrawals" }}</p></div>
+      <div class="history-change"><strong v-if="!loading && !error && displayedChange!=null" :class="displayedChange>=0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'">{{ signedMoney(displayedChange) }}</strong><span v-else>{{ loading ? 'Loading change…' : 'Change unavailable' }}</span><small v-if="!includeFunding">Includes realised gains, income and fees</small><label class="funding-toggle"><input type="checkbox" v-model="includeFunding" class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"> Include deposits &amp; withdrawals</label></div>
     </div>
     <p v-if="loading" class="history-message" role="status">Loading portfolio history…</p>
     <p v-else-if="error" class="history-message" role="status">{{ error }}</p>
     <template v-else-if="history">
-      <div class="history-legend"><span><i class="value-key"></i>Portfolio value</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer</span></div>
-      <div class="history-canvas"><canvas ref="canvas" role="img" aria-label="Recorded portfolio values and funding activity over time. Details are available below." /></div>
+      <div class="history-legend"><span><i class="value-key"></i>{{ includeFunding ? "Portfolio value" : "Overall gains" }}</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer</span></div>
+      <div class="history-canvas"><canvas ref="canvas" role="img" :aria-label="includeFunding ? 'Recorded portfolio values and funding activity over time. Details are available below.' : 'Overall portfolio gains excluding cash funding over time. Details are available below.'" /></div>
       <details class="history-details data-notes"><summary>Data notes</summary>
-    <p v-if="!includeFunding && missingPnlSymbols.length" class="history-message" role="status">Excludes {{ missingPnlSymbols.join(', ') }}: reliable period prices or matching acquisition lots are unavailable. This is a partial total.</p>
+    <p v-if="!includeFunding" class="history-message">Gains start at zero on {{ dateLabel(adjusted.baselineDate) }}. Cash deposits, withdrawals and transfers crossing the selected accounts are removed after that date. Gains include realised and unrealised returns, income, fees and currency changes. Missing funding exchange rates leave gaps.</p>
+    <p v-if="!includeFunding && history.coverage.cryptoTransfersIncluded===false" class="history-message">Crypto transfers are not removed from this estimate. Moving coins into or out of the selected accounts may therefore appear as gains or losses.</p>
       <p v-if="history.coverage.manualCarryForwardDays" class="history-message" role="status">{{ history.coverage.manualCarryForwardDays }} days use estimated eToro or IG balances carried forward from the last known value. New statements replace these estimates where dated values can be established. Open-position gains and losses may have changed; hover over a point to see its last known date.</p>
       <p v-if="history.coverage.igCarryForwardDays" class="history-message" role="status">{{ history.coverage.igCarryForwardDays }} days carry forward the last available IG balance. You confirmed there were no open positions on dates without statements. These values are marked as estimates.</p>
       <p v-if="history.coverage.estimatedDays" class="history-message" role="status">Includes estimates on {{ history.coverage.estimatedDays }} days: holdings without a historical price are valued at zero. Totals may therefore be understated. Missing symbols are listed under “Recorded values and funding activity”.</p>
@@ -33,10 +34,11 @@
 <script setup>
 import {ref,computed,watch,onBeforeUnmount,nextTick} from 'vue'
 import {Chart} from '@/lib/chartSetup'
-import {dateNumber,valueChartPoints} from '@/utils/portfolioValueChart'
-const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'},unrealizedChange:{type:Number,default:null},missingPnlSymbols:{type:Array,default:()=>[]}})
+import {dateNumber,valueChartPoints,fundingAdjustedHistory} from '@/utils/portfolioValueChart'
+const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'}})
 const includeFunding=ref(true)
-const displayedChange=computed(()=>includeFunding.value ? props.history?.change : props.unrealizedChange)
+const adjusted=computed(()=>fundingAdjustedHistory(props.history))
+const displayedChange=computed(()=>includeFunding.value ? props.history?.change : adjusted.value.change)
 const canvas=ref(null)
 let chart=null
 const money=value=>value==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:props.currency,maximumFractionDigits:2}).format(value)
@@ -48,19 +50,19 @@ async function render() {
   chart?.destroy();chart=null
   if(!canvas.value||!props.history||props.loading||props.error)return
   const history=props.history
-  const values=valueChartPoints(history.series)
+  const values=valueChartPoints(includeFunding.value?history.series:adjusted.value.series)
   const events=history.events.map(e=>({...e,x:dateNumber(e.date),y:0.035}))
   const dates=[...values,...events].map(p=>p.x)
   const bounds=history.range ? {min:Date.parse(history.range.start_date+'T00:00:00Z'),max:Date.parse(history.range.end_date+'T23:59:59.999Z')} : dates.length ? {min:Math.min(...dates)-86400000,max:Math.max(...dates)+86400000} : {}
-  const datasets=[{label:'Portfolio value',data:values,yAxisID:'value',borderColor:'#73c6a1',backgroundColor:'#73c6a118',borderWidth:2,fill:true,tension:0.1,spanGaps:false,pointRadius:values.filter(p=>p.y!=null).length===1?5:2,pointHoverRadius:6}]
+  const datasets=[{label:includeFunding.value?'Portfolio value':'Overall gains',data:values,yAxisID:'value',borderColor:'#73c6a1',backgroundColor:'#73c6a118',borderWidth:2,fill:true,tension:0.1,spanGaps:false,pointRadius:values.filter(p=>p.y!=null).length===1?5:2,pointHoverRadius:6}]
   for(const type of ['deposit','withdrawal','transfer'])datasets.push({type:'scatter',label:type,data:events.filter(e=>e.type===type),yAxisID:'funding',pointStyle:type==='transfer'?'rectRot':'triangle',pointRotation:type==='withdrawal'?180:0,pointRadius:5,pointHoverRadius:7,backgroundColor:type==='deposit'?'#73c6a1':type==='withdrawal'?'#e97482':'#96acc4'})
   chart=new Chart(canvas.value,{type:'line',data:{datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:false},tooltip:{displayColors:false,backgroundColor:'#111827',titleColor:'#fff',bodyColor:'#e5e7eb',callbacks:{title:items=>dateLabel(new Date(items[0].raw.x).toISOString().slice(0,10)),label:context=>{
     const point=context.raw
     if(point.type)return `${point.account}: ${point.type} ${point.amount==null?nativeMoney(point):signedMoney(point.amount)}`
-    return [`${context.dataset.accountName || 'Combined portfolio'}: ${money(point.y)}`,`Holdings: ${money(point.holdings)}`,`Cash: ${money(point.cash)}`,`Stablecoins: ${money(point.stablecoins)}`,...(point.estimatedAccounts?['Estimate: missing historical prices valued at zero']:[]),...(point.migrationEstimatedAccounts?['Estimate: documented 1:1 token migration price']:[]),...(point.statementEstimatedAccounts?['Estimate: IBKR weekend holdings at last reported close']:[]),...(point.carryForwardBalances||[]).map(balance=>`Estimate: ${balance.account}; last known value ${dateLabel(balance.from)}`),...(point.igCarryForwardAccounts?['Estimate: last available IG balance; no open positions confirmed']:[]),...(point.reconstructedAccounts?['Rebuilt from historical records and closing prices']:['Recorded snapshot or statement']),...(point.stalePrices?['Includes older market quotes']:[])]
+    return [...(includeFunding.value?[`Combined portfolio: ${money(point.y)}`]:[`Overall gains: ${money(point.y)}`,`Portfolio value: ${money(point.portfolioValue)}`,`Net cash funding since baseline: ${signedMoney(point.netFunding)}`,...(point.missingFunding?['Funding amounts unavailable']:[])]),`Holdings: ${money(point.holdings)}`,`Cash: ${money(point.cash)}`,`Stablecoins: ${money(point.stablecoins)}`,...(point.estimatedAccounts?['Estimate: missing historical prices valued at zero']:[]),...(point.migrationEstimatedAccounts?['Estimate: documented 1:1 token migration price']:[]),...(point.statementEstimatedAccounts?['Estimate: IBKR weekend holdings at last reported close']:[]),...(point.carryForwardBalances||[]).map(balance=>`Estimate: ${balance.account}; last known value ${dateLabel(balance.from)}`),...(point.igCarryForwardAccounts?['Estimate: last available IG balance; no open positions confirmed']:[]),...(point.reconstructedAccounts?['Rebuilt from historical records and closing prices']:['Recorded snapshot or statement']),...(point.stalePrices?['Includes older market quotes']:[])]
   }}}},scales:{x:{type:'linear',...bounds,grid:{display:false},ticks:{color:'#8290a1',maxTicksLimit:7,callback:value=>new Date(value).toLocaleDateString('en-GB',{...(dates.length&&Math.max(...dates)-Math.min(...dates)<=90*86400000?{day:'numeric',month:'short'}:{month:'short',year:'2-digit'}),timeZone:'UTC'})}},value:{axis:'y',type:'linear',display:history.coverage.recordedDays>0,grid:{color:'#71809618'},ticks:{color:'#8290a1',callback:value=>money(value)}},funding:{axis:'y',type:'linear',display:false,min:0,max:1}}}})
 }
-watch(()=>[props.history,props.loading,props.error,props.currency],render,{immediate:true})
+watch(()=>[props.history,props.loading,props.error,props.currency,includeFunding.value],render,{immediate:true})
 onBeforeUnmount(()=>chart?.destroy())
 </script>
 

@@ -30,14 +30,14 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
-  it('shows balances only and supplies unrealised change to the chart card', async () => {
+  it('shows balances only and supplies history to the chart card', async () => {
     const view = create()
     await flushPromises()
     expect(view.findAll('article')[0].text()).toContain('£100.00')
     expect(view.findAll('article')[1].text()).toContain('£60.00')
     expect(view.findAll('article')[0].text()).not.toContain('change')
     expect(view.findAll('article')[1].text()).not.toContain('since acquisition')
-    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('unrealizedChange')).toBe(0)
+    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25})
     view.unmount()
   })
 
