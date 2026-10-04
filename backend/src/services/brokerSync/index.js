@@ -173,7 +173,7 @@ class BrokerSyncService {
 
       // Broker imports remain successful if chart maintenance needs attention.
       // Do not retry private broker requests for a public-price/history problem.
-      if (['ibkr','trading212','kraken'].includes(connection.brokerType) && !result.failed &&
+      if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
           result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
         try {
           result.portfolioHistory = await require('../brokerPortfolioMaintenance').maintain(connection.userId,{broker:connection.brokerType});

@@ -117,3 +117,15 @@ test('missing IBKR NAV warns instead of overwriting it with live option quotes',
  expect(result.warnings[0]).toContain('NAV');expect(Portfolio.getPositions).not.toHaveBeenCalled();
  expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
 });
+
+
+test('fresh reconciled OKX spot capture separates stablecoins from investments and uses no fiat cash',async()=>{
+ const api={...accounts[0],broker:'okx',currency:'USD'},now=new Date().toISOString();
+ const snapshot={broker_type:'okx',account_identifier:'one',synced_at:now,positions:[{symbol:'USDT',quantity:100,totalCost:100,currentValue:99,instrumentType:'crypto'},
+ {symbol:'SUI',quantity:10,totalCost:40,currentValue:50,instrumentType:'crypto'}]};
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:sql.includes('broker_portfolio_snapshots')?[snapshot]:sql.includes('broker_import_snapshots')?[{payload:{historyComplete:true,funding:[],positions:[]}}]:[]}));
+ getRatesToDisplay.mockResolvedValue({USD:1});
+ expect((await captureToday('owner')).captured).toBe(1);
+ expect(Account.getCashflow).not.toHaveBeenCalled();expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO portfolio_value_history'),['owner','one',now.slice(0,10),50,0,99,1,0]);
+});

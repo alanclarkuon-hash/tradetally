@@ -1,6 +1,6 @@
 const db=require('../config/database');
 const pending=new Map();
-const supported=new Set(['ibkr','trading212','kraken']);
+const supported=new Set(['ibkr','trading212','kraken','okx']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
 async function maintain(userId,{broker=null,fetchPrices=true}={}) {
@@ -26,6 +26,10 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
       if(!snapshot?.payload?.reconciled||!snapshot.payload.nativeReconciliation?.nativeBalancesMatched) {
         warnings.push('kraken: portfolio history awaits native balance reconciliation.');continue;
       }
+    }
+    if(account.broker==='okx') {
+      const snapshot=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='okx' AND account_identifier=$2",[userId,account.account_identifier])).rows[0];
+      if(!snapshot?.payload?.historyComplete||snapshot.payload.funding?.length||snapshot.payload.positions?.length){warnings.push('okx: portfolio history awaits spot balance reconciliation.');continue;}
     }
     const last=(await db.query(`SELECT MAX(value_date) AS latest FROM portfolio_reconstructed_values
       WHERE user_id=$1 AND account_identifier=$2 AND holdings_usd IS NOT NULL AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0]?.latest;
