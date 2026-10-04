@@ -12,7 +12,7 @@
           </summary>
           <div class="period-menu" aria-label="Date ranges"><button v-for="option in timeRangeOptions" :key="option.value" type="button" :class="{active:period===option.value}" :aria-pressed="period===option.value" :data-period="option.value" @click="selectPeriod(option.value)">{{ option.label }}</button></div>
         </details>
-        <label class="sr-only" for="portfolio-currency">Display currency</label><select id="portfolio-currency" v-model="currency"><option>GBP</option><option>USD</option></select>
+        <label class="sr-only" for="portfolio-currency">Display currency</label><select id="portfolio-currency" v-model="currency"><option value="GBP">£</option><option value="USD">$</option></select>
         <button @click="load" :disabled="loading" class="refresh">{{ loading ? 'Loading…' : 'Refresh' }}</button>
       </div>
     </header>
