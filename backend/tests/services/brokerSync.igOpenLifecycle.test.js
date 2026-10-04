@@ -8,7 +8,7 @@ const open=()=>({key:'open:SYNTHOPEN',symbol:'SYNTH.EPIC',market:'Synthetic',typ
   entryTime:signature.entryTime,exitTime:null,entryPrice:100,exitPrice:null,pnl:null,fees:0,openingKey:'SYNTHOPEN',openingSignature:signature,
   openBet:{betId:'DIAASYNTHOPEN',entryLevel:100,currentLevel:110,notional:110,unrealizedPnL:10,asOf:'2026-06-03T21:00:00.000Z'}});
 const account=trades=>({name:'Synthetic',identifier:'IG SB SYNTH',kind:'spread_bet',from:'2026-06-01',to:'2026-06-03',records:[],endingCash:25,
-  confirmation:{cutoff:'2026-06-03T22:59:59.999Z',holdings:[],openBets:trades.filter(t=>t.openBet).map(t=>t.openBet)},trades,
+  confirmation:{cash:25,cutoff:'2026-06-03T22:59:59.999Z',holdings:[],openBets:trades.filter(t=>t.openBet).map(t=>t.openBet)},trades,
   openingSignatures:[{key:'SYNTHOPEN',signature}]});
 function previous(t){return {id:'existing-open',exit_time:null,executions:[{ig_record_key:t.key,ig_source_hash:tradeHash(t),ig_open_bet:true,
   ig_opening_hash:openingHash(signature),type:'entry',quantity:t.quantity}]};}
