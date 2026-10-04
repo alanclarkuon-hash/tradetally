@@ -688,6 +688,10 @@ class IBKRService {
       }
       if (decoded.cash_sections?.statement_of_funds?.length && decoded.cash_sections?.cash_report?.length) cashReports.push(decoded);
       if (decoded.nav_records?.length) navReports.push(decoded);
+      else {
+        warnings.push('IBKR Flex report is missing Net Asset Value: add daily NAV to maintain portfolio history.');
+        warningDetails.push({code:'MISSING_PORTFOLIO_NAV',message:'Daily Net Asset Value is missing from a retrieved Flex report.'});
+      }
       for (const key of Object.keys(cashSections)) cashSections[key].push(...(decoded.cash_sections?.[key] || []));
       tradeRecords.push(...decoded.trade_records);
       openPositionRecords = decoded.open_position_records;

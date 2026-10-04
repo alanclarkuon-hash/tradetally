@@ -74,3 +74,13 @@ test('stock reference grouping does not change valuation or reuse provider indus
   expect(result.totals.holdingsValue).toBe(100);
 });
 
+
+
+test('crypto range P&L can reuse stored USD closes without a Kraken holding',async()=>{
+ Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEAR',currentPrice:12}]);
+ getRatesToDisplay.mockResolvedValue({USD:1});
+ require('../src/services/cryptoCategoriesService').getCategories.mockResolvedValue({categories:[],primaryCategory:null});
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'NEAR',quantity:100,price:8,acquired:'2025-12-01'}]:sql.includes('portfolio_reconstruction_prices')?[{symbol:'NEAR-USD',payload:{currency:'USD',prices:[{date:'2026-01-01',close:10},{date:'2026-02-01',close:12}]}}]:[]}));
+ const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
+ expect(result.holdings[0]).toMatchObject({pnl:200,pnlPercent:20});
+});

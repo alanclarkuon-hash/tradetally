@@ -1054,7 +1054,7 @@ describe('broker sync duplicate protection', () => {
         end_date: '2026-07-31'
       });
       expect(result).toMatchObject({
-        outcome: 'success',
+        outcome: 'warning',
         latestWindowRetrieved: true,
         latestRetrievedEndDate: '2026-07-31',
         reportsRetrieved: 1,
@@ -1083,7 +1083,8 @@ describe('broker sync duplicate protection', () => {
         id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query'
       }, { startDate: '2026-07-15', endDate: '2026-07-15' });
 
-      expect(result).toMatchObject({ outcome: 'success', warnings: [], tradeRows: 0, openPositionRows: 0 });
+      expect(result).toMatchObject({ outcome: 'warning', tradeRows: 0, openPositionRows: 0 });
+      expect(result.warningDetails).toEqual(expect.arrayContaining([expect.objectContaining({code:'MISSING_PORTFOLIO_NAV'})]));
     } finally {
       requestSpy.mockRestore();
       fetchSpy.mockRestore();
@@ -1106,7 +1107,7 @@ describe('broker sync duplicate protection', () => {
     parseIBKRRecords.mockResolvedValueOnce({ trades: [], diagnostics: { warnings: [], skippedReasons: [], matchedExecutionRows, currencyConversionRows } });
     try {
       const result = await ibkrService.syncTrades({ id: 'conn-1', userId: 'user-1', brokerType: 'ibkr', ibkrFlexToken: 'token', ibkrFlexQueryId: 'query' }, { startDate: '2026-07-15', endDate: '2026-07-15' });
-      expect(result).toMatchObject({ outcome, matchedExecutionRows, currencyConversionRows, cashEventsImported: 0, cashEventsMatched: 0 });
+      expect(result).toMatchObject({ outcome:'warning', matchedExecutionRows, currencyConversionRows, cashEventsImported: 0, cashEventsMatched: 0 });
       expect(result.warningDetails.some(w => w.code === 'NONEMPTY_REPORT_NOT_IMPORTED')).toBe(outcome === 'warning');
     } finally {
       requestSpy.mockRestore(); fetchSpy.mockRestore(); contextSpy.mockRestore(); importSpy.mockRestore();

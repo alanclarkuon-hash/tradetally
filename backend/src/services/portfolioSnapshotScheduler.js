@@ -24,6 +24,7 @@ class PortfolioSnapshotScheduler extends CronScheduler {
       console.log('[PORTFOLIO-SNAPSHOTS] Creating daily portfolio snapshots...');
       const summary = await PortfolioService.createDailySnapshotsForAllUsers();
       await require('./portfolioValueHistoryService').captureAllUsers();
+      await require('./brokerPortfolioMaintenance').maintainAllUsers();
       console.log(`[PORTFOLIO-SNAPSHOTS] Snapshot run complete for ${summary.usersProcessed} users`);
     } catch (error) {
       console.error('[PORTFOLIO-SNAPSHOTS] Snapshot run failed:', error);
@@ -31,7 +32,13 @@ class PortfolioSnapshotScheduler extends CronScheduler {
   }
 
   async runNow(snapshotDate = null) {
-    return PortfolioService.createDailySnapshotsForAllUsers(snapshotDate);
+    const result=await PortfolioService.createDailySnapshotsForAllUsers(snapshotDate);
+    // Never stamp today's live value onto a caller's historical date.
+    if(!snapshotDate || String(snapshotDate).slice(0,10)===new Date().toISOString().slice(0,10)) {
+      await require('./portfolioValueHistoryService').captureAllUsers();
+      await require('./brokerPortfolioMaintenance').maintainAllUsers();
+    }
+    return result;
   }
 }
 

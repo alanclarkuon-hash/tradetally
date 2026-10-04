@@ -101,6 +101,17 @@ async function getDashboard(userId, query={}) {
     const list=lotMap.get(symbol)||[];list.push(lot);lotMap.set(symbol,list);
   }
   if(range) {
+    // Sync recovery retains dated crypto closes independently of any one
+    // broker's valuation payload. Reuse them for range P&L across accounts.
+    const cryptoSymbols=positions.filter(p=>p.instrumentType==='crypto').map(p=>p.symbol+'-USD');
+    if(cryptoSymbols.length) {
+      const cached=(await db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1)',[cryptoSymbols])).rows;
+      for(const {symbol,payload} of cached)if(payload?.currency==='USD') {
+        const coin=symbol.slice(0,-4),prices=cryptoRates[coin]||{};
+        for(const p of payload.prices||[])if(Number(p.close)>0&&!prices[p.date])prices[p.date]=Number(p.close);
+        cryptoRates[coin]=prices;
+      }
+    }
     const equities=positions.filter(p=>p.instrumentType==='stock' && lotMap.has(p.symbol));
     const converter=require('../utils/currencyConverter');
     const from=new Date(range.start_date+'T00:00:00Z');from.setUTCDate(from.getUTCDate()-5);

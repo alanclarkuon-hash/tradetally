@@ -115,8 +115,8 @@ function replayShares(fills,splits,from,to) {
  return result;
 }
 
-async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zeroMissingPrices=false,onProgress=()=>{}}={}) {
- const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>!broker||a.broker===broker);
+async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,accountIdentifiers=null,fromDate=null,zeroMissingPrices=false,onProgress=()=>{}}={}) {
+ const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>(!broker||a.broker===broker)&&(!accountIdentifiers||accountIdentifiers.includes(a.account_identifier)));
  if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
  const fx=await loadFx(from,end,{fetchPrices});
@@ -241,7 +241,8 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
    for(const s of new Set([...Object.keys(totals),...Object.keys(current)]))if(Math.abs((totals[s]||0)-(current[s]||0))>0.0001)shareIssues.set(s,'Corporate-action quantity coverage requires reconciliation');
   }
   const rows=[];
-  for(const d of days(start,end)) {
+  const writeFrom=fromDate&&fromDate>start?fromDate:start;
+  for(const d of days(writeFrom,end)) {
    let value={holdings_usd:0,cash_usd:0,stablecoins_usd:0,issues:[...blockers]};
    if(d>cutoff)value.issues.push('Beyond saved statement or sync coverage');
    if(['kraken','okx'].includes(account.broker)) {
@@ -303,7 +304,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,zer
    rows.push({...value,date:d,gbp_per_usd:fx('GBP',d)>0?1/fx('GBP',d):null});
   }
   if(apply)await db.withTransaction(async client=>{
-   await client.query('DELETE FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2',[userId,identifier]);
+   await client.query('DELETE FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3',[userId,identifier,writeFrom]);
    for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
   });
   const valid=rows.filter(r=>r.holdings_usd!=null);
