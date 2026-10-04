@@ -7,7 +7,7 @@ const {STABLE,FIAT}=require('./portfolioDashboardService');
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const money=v=>Math.round(v*100)/100;
 const pending=new Map();
-const {carryForward:carryForwardIg}=require('./igPortfolioCarryForward');
+const {carryForward}=require('./statementPortfolioCarryForward');
 
 async function accountsFor(userId,query={}) {
   const requested=String(query.accounts||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -32,6 +32,9 @@ async function captureToday(userId,query={}) {
     const gbp=await getRatesToDisplay(['USD'],'GBP');
     let captured=0,unavailable=0;
     for(const account of accounts) {
+      // IG has no live API valuation. An old imported balance is not a new
+      // observation today; history instead displays a labelled carry-forward.
+      if(account.broker==='ig'){unavailable++;continue;}
       const positions=(await Portfolio.getPositions(userId,{accounts:account.account_identifier}))
         .filter(p=>!(p.instrumentType==='crypto'&&FIAT.has(p.symbol)));
       const flow=account.broker==='okx'?null:await Account.getCashflow(userId,account.id);
@@ -62,7 +65,7 @@ async function captureToday(userId,query={}) {
 }
 
 // All selected accounts must be present on a day. Missing observations are
-// explicit gaps, never zero balances or a carry-forward estimate.
+// explicit gaps unless the manual-import overlay supplies labelled estimates.
 function combineValues(rows,accounts,currency) {
   const dates=[...new Set(rows.map(r=>day(r.value_date)))].sort();
   const index=new Map(rows.map(r=>[`${day(r.value_date)}:${r.account_identifier}`,r]));
@@ -83,6 +86,8 @@ function combineValues(rows,accounts,currency) {
       estimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated at zero:'))).length,
       migrationEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using 1:1 token migration:'))).length,
       statementEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using previous IBKR statement:'))).length,
+      manualCarryForwardAccounts:values.filter(r=>r.carryForwardFrom).length,
+      carryForwardBalances:values.filter(r=>r.carryForwardFrom).map(r=>({account:accounts.find(a=>a.account_identifier===r.account_identifier)?.account_name,from:r.carryForwardFrom})),
       igCarryForwardAccounts:values.filter(r=>(r.issues||[]).some(i=>i.startsWith('Estimated using previous IG balance:'))).length};
   });
 }
@@ -110,7 +115,11 @@ async function getHistory(userId,query={}) {
   const fxRows=(await db.query("SELECT rate_date,base_code,rates FROM fx_daily_rates WHERE base_code IN ('USD','GBP')")).rows;
   const igRates=new Map(fxRows.filter(r=>r.base_code==='USD'&&Number(r.rates.GBP)>0).map(r=>[day(r.rate_date),Number(r.rates.GBP)]));
   for(const r of fxRows.filter(r=>r.base_code==='GBP'&&Number(r.rates.USD)>0))if(!igRates.has(day(r.rate_date)))igRates.set(day(r.rate_date),1/Number(r.rates.USD));
-  rows=carryForwardIg(rows,accounts,igRates).filter(r=>(!range||day(r.value_date)>=range.start_date&&day(r.value_date)<=range.end_date));
+  // Ignore legacy IG page captures: these reused imported cash with no live
+  // equity valuation. Actual statements and reconstructed daily values win.
+  rows=rows.filter(r=>!(r.source==='recorded'&&accounts.some(a=>a.broker==='ig'&&a.account_identifier===r.account_identifier)));
+  const today=new Date().toISOString().slice(0,10);
+  rows=carryForward(rows,accounts,igRates,today).filter(r=>(!range||day(r.value_date)>=range.start_date&&day(r.value_date)<=range.end_date));
   const fx=new Map(fxRows.flatMap(r=>Object.entries(r.rates).map(([quote,rate])=>[`${day(r.rate_date)}:${r.base_code}:${quote}`,Number(rate)])));
   const events=[],unavailableAccounts=[];
   for(const account of accounts) {
@@ -140,6 +149,7 @@ async function getHistory(userId,query={}) {
       migrationEstimatedDays:valid.filter(p=>p.migrationEstimatedAccounts>0).length,
       statementEstimatedDays:valid.filter(p=>p.statementEstimatedAccounts>0).length,
       igCarryForwardDays:valid.filter(p=>p.igCarryForwardAccounts>0).length,
+      manualCarryForwardDays:valid.filter(p=>p.manualCarryForwardAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:false},
