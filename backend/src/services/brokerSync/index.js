@@ -171,7 +171,20 @@ class BrokerSyncService {
       const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
+      // Broker imports remain successful if chart maintenance needs attention.
+      // Do not retry private broker requests for a public-price/history problem.
+      if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
+          result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
+        try {
+          result.portfolioHistory = await require('../brokerPortfolioMaintenance').maintain(connection.userId,{broker:connection.brokerType});
+          result.warnings = [...(result.warnings||[]),...result.portfolioHistory.warnings];
+        } catch {
+          result.warnings = [...(result.warnings||[]),'Portfolio chart maintenance needs attention; broker records were imported successfully.'];
+        }
+      }
+
       // Update sync log with results
+      if(result.warnings?.length)result.outcome='warning';
       await BrokerConnection.updateSyncLog(syncLog.id, 'completed', {
         tradesImported: result.imported + expiredClosed,
         tradesSkipped: result.skipped,
@@ -179,6 +192,7 @@ class BrokerSyncService {
         duplicatesDetected: result.duplicates,
         syncDetails: {
           warnings: result.warnings || [],
+          portfolio_history: result.portfolioHistory || null,
           warning_details: result.warningDetails || [],
           outcome: result.outcome || ((result.warnings || []).length > 0 ? 'warning' : 'success'),
           report_formats: result.reportFormats || [],

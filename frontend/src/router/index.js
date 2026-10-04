@@ -74,6 +74,12 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/dashboard/portfolio',
+      name: 'portfolio-dashboard',
+      component: () => import('@/views/PortfolioDashboardView.vue'),
+      meta: { requiresAuth: true }
+    },
+    {
       path: '/trades',
       name: 'trades',
       component: () => import('@/views/trades/TradeListView.vue'),
@@ -337,6 +343,12 @@ const router = createRouter({
       path: '/analysis/compare',
       name: 'analysis-compare',
       component: () => import('@/views/InvestmentsCompareView.vue'),
+      meta: { requiresAuth: true, requiresTier: 'pro' }
+    },
+    {
+      path: '/analysis/assets',
+      name: 'assets',
+      component: () => import('@/views/AssetsView.vue'),
       meta: { requiresAuth: true, requiresTier: 'pro' }
     },
     {

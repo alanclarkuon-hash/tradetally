@@ -11,6 +11,10 @@ const { parseReportDateRange } = require('../utils/reportDateRange');
 const DCFValuationService = require('../services/dcfValuationService');
 const investmentIncomeService = require('../services/investmentIncomeService');
 const db = require('../config/database');
+const getPortfolioDashboard = async (req,res) => {
+  try {res.json(await require('../services/portfolioDashboardService').getDashboard(req.user.id,req.query));}
+  catch(error){res.status(error.status||500).json({error:error.message||'Portfolio unavailable'});}
+};
 const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay, scaleMoneyFields, FINANCIAL_MONEY_KEYS } = require('../utils/displayCurrency');
 
 // Monetary fields (in a company's REPORTING currency) per statement shape.
@@ -242,6 +246,7 @@ const analyzeStock = async (req, res) => {
           totalSupply: coin.market_data?.total_supply,
           maxSupply: coin.market_data?.max_supply,
           circulatingSupply: coin.market_data?.circulating_supply,
+          categories: require('../services/cryptoCategoriesService').cleanCategories(coin.categories),
           priceChange24h: coin.market_data?.price_change_24h,
           priceChangePercent24h: coin.market_data?.price_change_percentage_24h,
           ath: coin.market_data?.ath?.usd,
@@ -1658,6 +1663,7 @@ module.exports = {
 
   // Portfolio
   getPortfolioOverview,
+  getPortfolioDashboard,
   getPortfolioPositions,
   getPortfolioPerformance,
   getPortfolioRebalance,

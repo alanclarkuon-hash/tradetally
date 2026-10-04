@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 // TradeQueries — single seam for filtering trade data.
 //
 // Owns the WHERE-clause + parameter construction for trade list and analytics
@@ -435,8 +436,9 @@ class TradeQueries {
     }
 
     if (filters.accounts && filters.accounts.length > 0) {
-      if (filters.accounts.includes('__unsorted__')) {
-        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
+        whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
+        paramCount=values.length+1;
       } else {
         const placeholders = filters.accounts.map((_, i) => `$${paramCount + i}`).join(',');
         whereClause += ` AND t.account_identifier IN (${placeholders})`;

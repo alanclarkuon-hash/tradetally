@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const { insertRestTrade } = require('../services/restTradeCreation');
 const AchievementService = require('../services/achievementService');
@@ -1186,8 +1187,9 @@ class Trade {
 
     if (filters.accounts && filters.accounts.length > 0) {
       console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
-      if (filters.accounts.includes('__unsorted__')) {
-        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
+        whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
+        paramCount=values.length+1;
       } else {
         whereClause += ` AND t.account_identifier = ANY($${paramCount}::text[])`;
         values.push(filters.accounts);
@@ -2869,8 +2871,9 @@ class Trade {
     }
 
     if (filters.accounts && filters.accounts.length > 0) {
-      if (filters.accounts.includes('__unsorted__')) {
-        whereClause += ` AND (t.account_identifier IS NULL OR t.account_identifier = '')`;
+      if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
+        whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
+        paramCount=values.length+1;
       } else {
         const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
         whereClause += ` AND t.account_identifier IN (${placeholders})`;
@@ -3109,9 +3112,8 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
     let paramIndex = 3;
 
     if (accounts && accounts.length > 0) {
-      const placeholders = accounts.map(() => `$${paramIndex++}`).join(',');
-      extraFilter += ` AND account_identifier IN (${placeholders})`;
-      params.push(...accounts);
+      extraFilter += ' AND '+accountPredicate(accounts,params,'account_identifier',paramIndex);
+      paramIndex=params.length+1;
     }
 
     if (filters.tags && filters.tags.length > 0) {

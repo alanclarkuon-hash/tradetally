@@ -1260,6 +1260,8 @@ class PortfolioService {
         ? (existing.totalDividendsReceived / existing.totalCostBasis) * 100
         : null;
       existing.accountIdentifiers = [...new Set([...(existing.accountIdentifiers || []), ...(position.accountIdentifiers || [])])];
+      existing.sourceSymbols = [...new Set([...(existing.sourceSymbols || [existing.symbol]), ...(position.sourceSymbols || [position.symbol])])];
+      if (position.name) existing.name = position.name;
       existing.lotCount += position.lotCount || 0;
       existing.openedAt = [existing.openedAt, position.openedAt].filter(Boolean).sort()[0] || existing.openedAt;
       existing.source = existing.source === position.source ? existing.source : 'mixed';
@@ -1286,7 +1288,12 @@ class PortfolioService {
     }
 
     for (const tradePosition of tradePositions) {
-      const dividendData = tradeDividendsBySymbol[tradePosition.symbol];
+      const dividendRows = [...new Set([tradePosition.symbol, ...(tradePosition.sourceSymbols || [])])]
+        .map(symbol => tradeDividendsBySymbol[symbol]).filter(Boolean);
+      const dividendData = dividendRows.length ? {
+        totalAmount: dividendRows.reduce((sum, row) => sum + row.totalAmount, 0),
+        lastDividendDate: dividendRows.map(row => row.lastDividendDate).filter(Boolean).sort().at(-1)
+      } : null;
       upsert({
         ...tradePosition,
         totalDividendsReceived: (tradePosition.totalDividendsReceived || 0) + (dividendData?.totalAmount || 0),

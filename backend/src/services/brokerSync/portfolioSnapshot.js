@@ -1,5 +1,6 @@
 const db = require('../../config/database');
 const converter = require('../../utils/currencyConverter');
+const {normalizeTicker, currentSymbol} = require('./trading212Instruments');
 
 async function saveTrading212Snapshot(connection, positions) {
   if (!Array.isArray(positions)) throw new Error('Invalid Trading 212 positions response');
@@ -21,7 +22,6 @@ async function saveTrading212Snapshot(connection, positions) {
 // PortfolioService aggregates money in USD before response display conversion.
 // Broker wallet values already include splits and the account's actual FX cost.
 async function snapshotPositions(rows, accounts = []) {
-  const normalizeTicker = require('./trading212Service').normalizeTicker;
   const positions = [];
   const rates = new Map([['USD', 1]]);
   for (const row of rows) {
@@ -48,7 +48,8 @@ async function snapshotPositions(rows, accounts = []) {
       if (!(rate > 0)) throw new Error('Unable to convert broker portfolio currency');
       const totalCost = Number(p.walletImpact.totalCost) * rate;
       const value = Number(p.walletImpact.currentValue) * rate;
-      positions.push({ symbol: normalizeTicker(p.instrument.ticker), holdingId: null,
+      positions.push({ symbol: currentSymbol(p.instrument), name: p.instrument.name || null,
+        sourceSymbols: [normalizeTicker(p.instrument.ticker)], brokerInstrumentTicker: p.instrument.ticker, holdingId: null,
         source: 'trades', positionSource: 'broker', notes: null, sector: null,
         targetAllocationPercent: null, totalShares: quantity, totalCostBasis: totalCost,
         averageCostBasis: totalCost / quantity, totalDividendsReceived: 0,
@@ -63,7 +64,6 @@ async function snapshotPositions(rows, accounts = []) {
 
 function dashboardPositions(openTrades, snapshots, accounts = []) {
   const { groupTradesIntoPositions, getPositionKey } = require('../../utils/openPositionGrouping');
-  const normalizeTicker = require('./trading212Service').normalizeTicker;
   const covered = snapshots.filter(row => !accounts.length || accounts.includes(row.account_identifier));
   const retained = openTrades.filter(t => !covered.some(row =>
     t.broker === row.broker_type && t.account_identifier === row.account_identifier));
@@ -82,19 +82,21 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
     }
     const quantity = Number(p.quantity);
     if (quantity <= 0) continue;
-    const symbol = normalizeTicker(p.instrument.ticker);
+    const symbol = currentSymbol(p.instrument);
+    const originalSymbol = normalizeTicker(p.instrument.ticker);
     const related = openTrades.filter(t => t.broker === row.broker_type &&
-      t.account_identifier === row.account_identifier && t.symbol === symbol);
+      t.account_identifier === row.account_identifier && [symbol, originalSymbol].includes(t.symbol));
     synthetic.push({ symbol, side: 'long', quantity, entry_price: Number(p.walletImpact.totalCost) / quantity,
       entry_time: p.createdAt, original_currency: p.walletImpact.currency, instrument_type: 'stock',
       broker: row.broker_type, account_identifier: row.account_identifier,
-      _brokerRelatedTrades: related, _brokerQuote: { c: Number(p.walletImpact.currentValue) / quantity,
+      _brokerName: p.instrument.name || null, _brokerRelatedTrades: related, _brokerQuote: { c: Number(p.walletImpact.currentValue) / quantity,
         currency: p.walletImpact.currency, asOf: new Date(row.synced_at).toISOString() } });
   }
   const grouped = groupTradesIntoPositions([...retained, ...synthetic]);
   for (const t of synthetic) {
     const position = grouped[getPositionKey(t)];
     if (position) {
+      if (t._brokerName) position.name = t._brokerName;
       const quote=t._brokerQuote;
       if(t.instrument_type==='spread_bet'&&position.brokerQuote) {
         if(Math.abs(position.brokerQuote.c-quote.c)>0.000001||position.brokerQuote.asOf!==quote.asOf)throw Error('IG spread-bet quote dates or levels differ');

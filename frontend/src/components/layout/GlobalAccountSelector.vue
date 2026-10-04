@@ -5,6 +5,8 @@
       @click="toggleDropdown"
       class="flex items-center space-x-2 px-3 py-2 text-sm rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       :title="selectedAccountLabel"
+      :aria-expanded="isOpen"
+      aria-haspopup="menu"
     >
       <!-- Account Icon -->
       <BuildingOfficeIcon class="h-5 w-5" />
@@ -41,7 +43,7 @@
         <div class="py-1" role="menu">
           <!-- Header -->
           <div class="px-4 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-100 dark:border-gray-700">
-            Filter by Account
+            Filter by Accounts
           </div>
 
           <!-- All Accounts Option -->
@@ -49,7 +51,7 @@
             @click="handleClearAccount"
             class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
             :class="!isFiltered ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
-            role="menuitem"
+            role="menuitemcheckbox" :aria-checked="!isFiltered"
           >
             <span>All Accounts</span>
             <CheckIcon v-if="!isFiltered" class="h-4 w-4" />
@@ -59,11 +61,11 @@
           <button
             @click="handleSelectUnsorted"
             class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            :class="selectedAccount === UNSORTED_ACCOUNT ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
-            role="menuitem"
+            :class="isAccountSelected(UNSORTED_ACCOUNT) ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
+            role="menuitemcheckbox" :aria-checked="isAccountSelected(UNSORTED_ACCOUNT)"
           >
             <span>Unsorted</span>
-            <CheckIcon v-if="selectedAccount === UNSORTED_ACCOUNT" class="h-4 w-4" />
+            <CheckIcon v-if="isAccountSelected(UNSORTED_ACCOUNT)" class="h-4 w-4" />
           </button>
 
           <!-- Divider -->
@@ -86,8 +88,8 @@
               :key="account.value"
               @click="handleSelectAccount(account.value)"
               class="w-full text-left px-4 py-2 text-sm flex items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-              :class="selectedAccount === account.value ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
-              role="menuitem"
+              :class="isAccountSelected(account.value) ? 'text-primary-600 dark:text-primary-400 font-medium' : 'text-gray-700 dark:text-gray-300'"
+              role="menuitemcheckbox" :aria-checked="isAccountSelected(account.value)"
             >
               <div class="min-w-0 pr-3">
                 <div class="truncate">{{ account.label }}</div>
@@ -95,7 +97,7 @@
                   {{ account.secondaryLabel }}
                 </div>
               </div>
-              <CheckIcon v-if="selectedAccount === account.value" class="h-4 w-4 flex-shrink-0" />
+              <CheckIcon v-if="isAccountSelected(account.value)" class="h-4 w-4 flex-shrink-0" />
             </button>
           </template>
 
@@ -132,7 +134,9 @@ const {
   loading,
   isFiltered,
   fetchAccounts,
-  setAccount,
+  setAccounts,
+  toggleAccount,
+  isAccountSelected,
   clearAccount,
   UNSORTED_ACCOUNT
 } = useGlobalAccountFilter()
@@ -148,18 +152,15 @@ function toggleDropdown() {
 }
 
 function handleSelectAccount(account) {
-  setAccount(account)
-  isOpen.value = false
+  toggleAccount(account)
 }
 
 function handleClearAccount() {
-  clearAccount()
-  isOpen.value = false
+  isFiltered.value ? clearAccount() : setAccounts([])
 }
 
 function handleSelectUnsorted() {
-  setAccount(UNSORTED_ACCOUNT)
-  isOpen.value = false
+  toggleAccount(UNSORTED_ACCOUNT)
 }
 
 function handleManageAccounts() {
@@ -172,9 +173,11 @@ function handleClickOutside(event) {
     isOpen.value = false
   }
 }
+function handleEscape(event){if(event.key==='Escape'&&isOpen.value){isOpen.value=false;dropdownRef.value?.querySelector('button')?.focus()}}
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown',handleEscape)
   // Fetch accounts on mount if not already loaded
   if (accounts.value.length === 0) {
     fetchAccounts()
@@ -183,5 +186,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown',handleEscape)
 })
 </script>

@@ -39,3 +39,23 @@ test('USDT wallet remains an asset valuation and excludes transfers from deposit
   expect(rows[1].fx_adjustments).toBeCloseTo(-1.6,10);
   expect(rows.reduce((s,r)=>s+r.fees,0)).toBeCloseTo(2*1.01+.5*.99,10);
 });
+
+
+test('transfer retention preserves older records and accepts pending-to-completed updates',()=>{
+ const {mergeTransfers}=require('../../src/services/brokerSync/okxReconcile');
+ const pending={wdId:'one',ccy:'USDT',amt:'10',ts:'1',state:'0'};
+ const complete={...pending,state:'2',fee:'1',feeCcy:'USDT',txId:'test-hash'};
+ expect(mergeTransfers([pending],[complete],'wdId')).toEqual([complete]);
+ expect(mergeTransfers([complete],[],'wdId')).toEqual([complete]);
+ expect(()=>mergeTransfers([complete],[{...complete,amt:'11'}],'wdId')).toThrow('Conflicting');
+ expect(()=>mergeTransfers([complete],[pending],'wdId')).toThrow('Conflicting');
+});
+
+test('outgoing spot coins reduce FIFO holdings without creating a sale or profit',()=>{
+ const p=fixture();p.bills.push({billId:'out',type:'1',subType:'12',ccy:'TEST',balChg:'-2',ts:String(ts+2*86400000)});
+ p.trading[0].details[1]={ccy:'TEST',cashBal:'3',eqUsd:'9'};
+ const result=prepare(p,rates);
+ expect(result.trades.filter(t=>t.exitTime)).toHaveLength(1);
+ expect(result.trades.find(t=>!t.exitTime).quantity).toBe(3);
+ expect(result.positions.find(p=>p.symbol==='TEST').quantity).toBe(3);
+});

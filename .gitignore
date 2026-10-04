@@ -145,3 +145,6 @@ CLAUDE.md
 AGENTS.md
 backend/.envy
 zap.yaml
+
+# Public provider cache generated at runtime
+backend/src/data/coingecko-categories.json*

@@ -7,6 +7,18 @@ const { saveTrading212Snapshot, snapshotPositions, dashboardPositions } = requir
 
 describe('broker-reported holdings', () => {
   beforeEach(() => jest.clearAllMocks());
+  test('current symbols retain historical related trades and the exact broker valuation', async () => {
+    const trade={id:'historic',broker:'trading212',account_identifier:'demo',symbol:'OLD',side:'long',quantity:2,entry_price:10,original_currency:'USD'};
+    const rows=[{broker_type:'trading212',account_identifier:'demo',synced_at:'2026-10-03T12:00:00Z',positions:[{
+      instrument:{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'},quantity:2,walletImpact:{currency:'USD',totalCost:20,currentValue:24}
+    }]}];
+    const p=(await snapshotPositions(rows))[0];
+    expect(p).toMatchObject({symbol:'NEW',name:'Current company',sourceSymbols:['OLD'],brokerInstrumentTicker:'OLD_US_EQ',totalShares:2,totalCostBasis:20,brokerCurrentPrice:12});
+    const dashboard=Object.values(dashboardPositions([trade],rows));
+    expect(dashboard).toHaveLength(1);
+    expect(dashboard[0]).toMatchObject({symbol:'NEW',name:'Current company',totalQuantity:2,totalCost:20,trades:[trade],brokerQuote:{c:12}});
+    expect(trade.symbol).toBe('OLD');
+  });
   test('dashboard replaces stale broker lots, including false shorts, and keeps other brokers', () => {
     const trades = [
       { id: 'old', broker: 'trading212', account_identifier: '****1234', symbol: 'APH', side: 'long', quantity: 2, entry_price: 80, original_currency: 'USD' },

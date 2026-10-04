@@ -28,7 +28,8 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   if (new Set(accounts.map(a=>a.identifier)).size !== accounts.length) throw Error('Duplicated IG account identity');
   // Persist dated FX through the existing rate store; missing FX stops import.
   const rates = new Map();
-  for (const date of [...new Set(accounts.flatMap(a=>[...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10)),...(a.confirmation.openBets||[]).map(p=>p.asOf.slice(0,10))]))].sort()) {
+  const statementDates=inputs.flatMap(i=>(i.statementValues||[]).map(p=>p.date));
+  for (const date of [...new Set([...statementDates,...accounts.flatMap(a=>[a.confirmation.cutoff.slice(0,10),...a.records.map(r=>r.date),...a.trades.map(t=>(t.exitTime || t.entryTime).slice(0,10)),...(a.confirmation.holdings||[]).map(h=>h.asOf.slice(0,10)),...(a.confirmation.openBets||[]).map(p=>p.asOf.slice(0,10))])])].sort()) {
     const map = await require('../../utils/currencyConverter').getRateMap('USD',date);
     const rate = 1 / Number(map.GBP);
     if (!Number.isFinite(rate) || rate<=0) throw Error('Historical GBP/USD conversion is unavailable');
@@ -38,7 +39,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`ig-file:${userId}`]);
-    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,updatedSharePositions:0,closedOpenPositions:0};
+    const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,updatedSharePositions:0,closedOpenPositions:0,portfolioDates:0};
     for (const a of accounts) {
       let old = (await client.query("SELECT * FROM user_accounts WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       if (old.length>1) throw Error('Ambiguous managed IG account');
@@ -189,6 +190,12 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         VALUES($1,'ig',$2,$3::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
         DO UPDATE SET payload=EXCLUDED.payload,captured_at=NOW()`,
         [userId,a.identifier,JSON.stringify({igFileInput:inputs.find(input=>prepare(input).identifier===a.identifier)})]);
+      await require('./igNavHistory').saveConfirmation(client,userId,a,rates);
+      result.portfolioDates++;
+      for(const point of inputs.find(i=>prepare(i).identifier===a.identifier).statementValues||[]) {
+        await require('./igNavHistory').savePoint(client,userId,a.identifier,point,1/rates.get(point.date));
+        result.portfolioDates++;
+      }
       result.accounts.push({name:a.name,cash:a.endingCash,closedTrades:a.trades.filter(t=>t.exitTime).length,holdings:a.trades.filter(t=>!t.exitTime).length});
     }
     for(const {out,incoming} of pairs) {

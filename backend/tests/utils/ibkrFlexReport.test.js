@@ -4,6 +4,11 @@ const { decodeIBKRFlexReport } = require('../../src/utils/ibkrFlexReport');
 const { parseIBKRRecords } = require('../../src/utils/csvParser');
 
 describe('IBKR Flex report decoding', () => {
+  test('retains dated NAV rows with statement identity and NAV changes',()=>{
+    const decoded=decodeIBKRFlexReport('<FlexQueryResponse><FlexStatements><FlexStatement accountId="U1234" fromDate="20260112" toDate="20260116"><EquitySummaryInBase><EquitySummaryByReportDateInBase reportDate="20260116" currency="USD" total="100" cash="110" options="-10"/></EquitySummaryInBase><ChangeInNAV accountId="U1234" toDate="20260116" endingValue="100"/></FlexStatement></FlexStatements></FlexQueryResponse>');
+    expect(decoded.nav_records).toEqual([expect.objectContaining({accountId:'U1234',fromDate:'20260112',reportDate:'20260116',options:'-10'})]);
+    expect(decoded.nav_changes).toEqual([expect.objectContaining({endingValue:'100'})]);
+  });
   const fixture = fs.readFileSync(path.join(__dirname, '../fixtures/ibkr-flex-report.xml'), 'utf8');
 
   test('decodes real XML trade and open-position sections', () => {

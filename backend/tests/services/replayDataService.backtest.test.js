@@ -13,6 +13,12 @@ jest.mock('../../src/utils/alphaVantage', () => ({
   getTradeChartData: jest.fn()
 }));
 
+// Missing-data validation must exercise every provider without live requests.
+jest.mock('../../src/utils/yahooFinance', () => ({
+  isEnabled: () => true,
+  getCandlesInWindow: jest.fn().mockRejectedValue(new Error('no data'))
+}));
+
 jest.mock('../../src/utils/databento', () => ({
   isConfigured: jest.fn(() => false),
   getContinuousSymbol: (root) => `${root.toUpperCase()}.c.0`,

@@ -14,6 +14,10 @@ const { validate, schemas } = require('../middleware/validation');
 // All investment routes require authentication and Pro tier
 router.use(authenticate);
 router.use(requiresTier('pro'));
+router.get('/assets/:symbol',async(req,res,next)=>{
+  try {res.json(await require('../services/assetDetailsService').getDetails(req.user.id,req.params.symbol,req.query));}
+  catch(error){next(error);}
+});
 
 // ========================================
 // 8 PILLARS ANALYSIS
@@ -179,6 +183,13 @@ router.get('/income', investmentsController.getInvestmentIncome);
  * @access Pro
  */
 router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
+router.get('/portfolio/dashboard', investmentsController.getPortfolioDashboard);
+router.get('/portfolio/value-history',async(req,res,next)=>{
+  try{res.json(await require('../services/portfolioValueHistoryService').getHistory(req.user.id,req.query));}catch(error){next(error);}
+});
+router.post('/portfolio/value-history/capture',async(req,res,next)=>{
+  try{res.json(await require('../services/portfolioValueHistoryService').captureToday(req.user.id,req.body));}catch(error){next(error);}
+});
 
 /**
  * @route GET /api/investments/portfolio/positions

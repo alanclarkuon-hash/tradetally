@@ -491,6 +491,7 @@ const navItems = computed(() => {
       icon: HomeIcon,
       items: [
         { name: 'Trading Dashboard', to: '/dashboard', route: 'dashboard' },
+        { name: 'Portfolio', to: '/dashboard/portfolio', route: 'portfolio-dashboard' },
         { name: 'Trading Journal', to: '/diary', route: 'diary' },
         { name: 'Account & Cashflow', to: '/cashflow', route: 'cashflow' },
         { name: 'Leaderboard', to: '/leaderboard', route: 'leaderboard' },
@@ -515,6 +516,9 @@ const navItems = computed(() => {
       name: 'Analysis',
       icon: BeakerIcon,
       items: [
+        ...(window.__APP_CONFIG__?.APP_ENVIRONMENT === 'test'
+          ? [{ name: 'Assets', to: '/analysis/assets', route: 'assets', badge: 'pro' }]
+          : []),
         { name: 'Investments', to: '/analysis', route: 'analysis', badge: 'pro' },
         { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro' },
         { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },

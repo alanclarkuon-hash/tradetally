@@ -1520,6 +1520,7 @@ import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useAccountsStore } from '@/stores/accounts'
+import {singleAccount} from '@/utils/accountSelection'
 import { useGlobalAccountFilter, UNSORTED_ACCOUNT } from '@/composables/useGlobalAccountFilter'
 import { useAuthStore } from '@/stores/auth'
 import { useNotification } from '@/composables/useNotification'
@@ -1854,9 +1855,7 @@ const form = ref({
   postExitWindowOverrideMinutes: null,
   broker: '',
   // Snapshot the filter on creation; later filter changes must not reassign a draft.
-  account_identifier: !isEdit.value && selectedAccount.value !== UNSORTED_ACCOUNT
-    ? selectedAccount.value || ''
-    : '',
+  account_identifier: !isEdit.value ? singleAccount(selectedAccount.value) : '',
   strategy: '',
   setup: '',
   notes: '',

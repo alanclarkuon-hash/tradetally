@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const TierService = require('./tierService');
 const TickDataService = require('./tickDataService');
@@ -20,12 +21,7 @@ class BehavioralAnalyticsServiceV2 {
       sqlParts.push(`AND exit_time <= $${params.length}`);
     }
     if (dateFilter.accounts && dateFilter.accounts.length > 0) {
-      if (dateFilter.accounts.includes('__unsorted__')) {
-        sqlParts.push(`AND (account_identifier IS NULL OR account_identifier = '')`);
-      } else {
-        params.push(dateFilter.accounts);
-        sqlParts.push(`AND account_identifier = ANY($${params.length}::text[])`);
-      }
+      sqlParts.push('AND '+accountPredicate(dateFilter.accounts,params,'account_identifier'));
     }
   }
 
@@ -895,45 +891,13 @@ class BehavioralAnalyticsServiceV2 {
     }
 
     if (dateFilter.accounts && dateFilter.accounts.length > 0) {
-      if (dateFilter.accounts.includes('__unsorted__')) {
-        eventConditions.push(`
-          AND EXISTS (
-            SELECT 1
-            FROM trades account_trade
-            WHERE (account_trade.id = revenge_trading_events.trigger_trade_id
-               OR account_trade.id = ANY(revenge_trading_events.revenge_trades))
-              AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
-          )
-        `);
-        patternConditions.push(`
-          AND EXISTS (
-            SELECT 1
-            FROM trades account_trade
-            WHERE account_trade.id = behavioral_patterns.trigger_trade_id
-              AND (account_trade.account_identifier IS NULL OR account_trade.account_identifier = '')
-          )
-        `);
-      } else {
-        eventParams.push(dateFilter.accounts);
-        patternParams.push(dateFilter.accounts);
-        eventConditions.push(`
-          AND EXISTS (
-            SELECT 1
-            FROM trades account_trade
-            WHERE (account_trade.id = revenge_trading_events.trigger_trade_id
-               OR account_trade.id = ANY(revenge_trading_events.revenge_trades))
-              AND account_trade.account_identifier = ANY($${eventParams.length}::text[])
-          )
-        `);
-        patternConditions.push(`
-          AND EXISTS (
-            SELECT 1
-            FROM trades account_trade
-            WHERE account_trade.id = behavioral_patterns.trigger_trade_id
-              AND account_trade.account_identifier = ANY($${patternParams.length}::text[])
-          )
-        `);
-      }
+      const eventAccount=accountPredicate(dateFilter.accounts,eventParams,'account_trade.account_identifier');
+      const patternAccount=accountPredicate(dateFilter.accounts,patternParams,'account_trade.account_identifier');
+      eventConditions.push(`AND EXISTS (SELECT 1 FROM trades account_trade
+        WHERE (account_trade.id = revenge_trading_events.trigger_trade_id
+          OR account_trade.id = ANY(revenge_trading_events.revenge_trades)) AND ${eventAccount})`);
+      patternConditions.push(`AND EXISTS (SELECT 1 FROM trades account_trade
+        WHERE account_trade.id = behavioral_patterns.trigger_trade_id AND ${patternAccount})`);
     }
 
     await db.query(`DELETE FROM revenge_trading_events WHERE user_id = $1 ${eventConditions.join(' ')}`, eventParams);

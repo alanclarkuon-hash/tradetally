@@ -16,6 +16,27 @@ async function loadComposable() {
 }
 
 describe('useGlobalAccountFilter', () => {
+  it('persists multiple accounts, includes Unsorted, and keeps empty distinct from All Accounts',async()=>{
+    localStorage.removeItem('tradetally_global_account')
+    const {useGlobalAccountFilter}=await loadComposable()
+    const filter=useGlobalAccountFilter()
+    filter.setAccounts(['one','two','__unsorted__'])
+    expect(filter.selectedAccounts.value).toEqual(['__unsorted__','one','two'])
+    expect(filter.selectedAccountLabel.value).toBe('3 accounts selected')
+    filter.toggleAccount('two')
+    expect(filter.isAccountSelected('one')).toBe(true)
+    expect(filter.isAccountSelected('two')).toBe(false)
+    filter.toggleAccount('one');filter.toggleAccount('__unsorted__')
+    expect(filter.selectedAccounts.value).toEqual([])
+    expect(filter.selectedAccount.value).toBe('__none__')
+    expect(filter.selectedAccountLabel.value).toBe('No accounts selected')
+    const reloaded=(await loadComposable()).useGlobalAccountFilter()
+    expect(reloaded.selectedAccounts.value).toEqual([])
+    reloaded.clearAccount()
+    expect(reloaded.selectedAccounts.value).toBeNull()
+    expect(reloaded.isAccountSelected('__unsorted__')).toBe(true)
+    expect(reloaded.selectedAccountLabel.value).toBe('All Accounts')
+  })
   it('initializes from localStorage and persists account changes', async () => {
     localStorage.setItem('tradetally_global_account', ' 12345678 ')
     const { useGlobalAccountFilter } = await loadComposable()

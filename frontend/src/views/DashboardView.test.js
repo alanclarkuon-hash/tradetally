@@ -135,6 +135,17 @@ import { useTradesStore } from '@/stores/trades'
 const FILTER_BUTTON_SELECTOR = 'button[aria-label="More filters"]'
 
 describe('DashboardView loading and advanced filter wiring', () => {
+  it('sends a mixed account selection and preserves the explicit empty filter',async()=>{
+    const {useGlobalAccountFilter}=await import('@/composables/useGlobalAccountFilter')
+    const filter=useGlobalAccountFilter()
+    filter.selectedAccount.value='one,__unsorted__'
+    wrapper=await mountDashboard()
+    expect(apiMock.get.mock.calls.some(([url])=>typeof url==='string'&&url.includes('accounts=one%2C__unsorted__'))).toBe(true)
+    apiMock.get.mockClear()
+    filter.selectedAccount.value='__none__';await flushPromises()
+    expect(apiMock.get.mock.calls.some(([url])=>typeof url==='string'&&url.includes('accounts=__none__'))).toBe(true)
+    filter.selectedAccount.value=null;await flushPromises()
+  })
   let wrapper
   let pinia
 

@@ -62,3 +62,14 @@ test('read endpoint exposes only owner matches and unlinked movement summaries',
   expect(result.matches[0].source_account).toBeUndefined();
   expect(db.query.mock.calls.slice(-2).every(([,args])=>args[0]==='owner')).toBe(true);
 });
+
+
+test('OKX outgoing withdrawals match a unique Kraken receipt with fee conventions kept separate',()=>{
+ const raw=[{broker_type:'okx',account_identifier:'source',payload:{withdrawals:[{wdId:'out',state:'2',ccy:'USDT',amt:'10',fee:'1',feeCcy:'USDT',ts:'1000000'}]}},
+ {broker_type:'kraken',account_identifier:'destination',payload:{ledger:{received:{type:'deposit',asset:'USDT',amount:'9',fee:'0',time:1010}}}}];
+ const legs=extract(raw),matched=pair(legs);
+ expect(matched).toHaveLength(1);expect(matched[0].out).toMatchObject({quantity:'9',fee:'1'});
+ expect(pair([...legs,{...legs[1],reference:'other',quantity:'10'}])).toEqual([]);
+ raw[0].payload.withdrawals[0].state='1';expect(extract(raw)).toHaveLength(1);
+ raw[0].payload.withdrawals[0].state='2';raw[0].payload.withdrawals[0].feeCcy='BTC';expect(extract(raw)).toHaveLength(2);expect(pair(extract(raw))).toEqual([]);
+});
