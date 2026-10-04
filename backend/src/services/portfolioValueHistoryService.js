@@ -7,10 +7,14 @@ const {STABLE,FIAT}=require('./portfolioDashboardService');
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 const money=v=>Math.round(v*100)/100;
 const pending=new Map();
+const {carryForward:carryForwardIg}=require('./igPortfolioCarryForward');
 
 async function accountsFor(userId,query={}) {
   const requested=String(query.accounts||'').split(',').map(x=>x.trim()).filter(Boolean);
-  const rows=(await db.query(`SELECT id,account_identifier,account_name,broker,currency,initial_balance_date
+  const rows=(await db.query(`SELECT id,account_identifier,account_name,broker,currency,initial_balance_date,
+    EXISTS(SELECT 1 FROM broker_import_snapshots s WHERE s.user_id=user_accounts.user_id
+      AND s.account_identifier=user_accounts.account_identifier AND s.broker_type='ig'
+      AND s.payload->'igFileInput'->>'kind'='spread_bet') AS is_ig_spread
     FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL`,[userId])).rows;
   if(requested.some(identifier=>!rows.some(a=>a.account_identifier===identifier))) {
     const error=Error('One or more selected accounts are unavailable');error.status=400;throw error;
@@ -78,7 +82,8 @@ function combineValues(rows,accounts,currency) {
       reconstructedAccounts:values.filter(r=>r.source==='reconstructed').length,
       estimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated at zero:'))).length,
       migrationEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using 1:1 token migration:'))).length,
-      statementEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using previous IBKR statement:'))).length};
+      statementEstimatedAccounts:values.filter(r=>r.source==='reconstructed'&&(r.issues||[]).some(i=>i.startsWith('Estimated using previous IBKR statement:'))).length,
+      igCarryForwardAccounts:values.filter(r=>(r.issues||[]).some(i=>i.startsWith('Estimated using previous IG balance:'))).length};
   });
 }
 
@@ -87,7 +92,7 @@ async function getHistory(userId,query={}) {
   if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
   const accounts=await accountsFor(userId,query);
   const identifiers=accounts.map(a=>a.account_identifier);
-  const rows=(await db.query(`SELECT * FROM (
+  let rows=(await db.query(`SELECT * FROM (
     SELECT user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,stale_prices,
       'recorded' AS source,'[]'::jsonb AS issues FROM portfolio_value_history o
     WHERE NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=o.user_id AND s.account_identifier=o.account_identifier AND s.value_date=o.value_date)
@@ -99,11 +104,12 @@ async function getHistory(userId,query={}) {
       'reconstructed' AS source,r.issues FROM portfolio_reconstructed_values r
     WHERE NOT EXISTS(SELECT 1 FROM portfolio_value_history o WHERE o.user_id=r.user_id AND o.account_identifier=r.account_identifier AND o.value_date=r.value_date)
       AND NOT EXISTS(SELECT 1 FROM portfolio_statement_values s WHERE s.user_id=r.user_id AND s.account_identifier=r.account_identifier AND s.value_date=r.value_date)
-    ) history WHERE user_id=$1 AND account_identifier=ANY($2)
-    AND ($3::date IS NULL OR value_date>=$3) AND ($4::date IS NULL OR value_date<=$4) ORDER BY value_date`,
-  [userId,identifiers,range?.start_date||null,range?.end_date||null])).rows;
+    ) history WHERE user_id=$1 AND account_identifier=ANY($2) ORDER BY value_date`,
+  [userId,identifiers])).rows;
   const pairs=(await db.query('SELECT * FROM broker_transfer_matches WHERE user_id=$1',[userId])).rows;
   const fxRows=(await db.query("SELECT rate_date,base_code,rates FROM fx_daily_rates WHERE base_code IN ('USD','GBP')")).rows;
+  const igRates=new Map(fxRows.filter(r=>r.base_code==='USD'&&Number(r.rates.GBP)>0).map(r=>[day(r.rate_date),Number(r.rates.GBP)]));
+  rows=carryForwardIg(rows,accounts,igRates).filter(r=>(!range||day(r.value_date)>=range.start_date&&day(r.value_date)<=range.end_date));
   const fx=new Map(fxRows.flatMap(r=>Object.entries(r.rates).map(([quote,rate])=>[`${day(r.rate_date)}:${r.base_code}:${quote}`,Number(rate)])));
   const events=[],unavailableAccounts=[];
   for(const account of accounts) {
@@ -132,6 +138,7 @@ async function getHistory(userId,query={}) {
       estimatedDays:valid.filter(p=>p.estimatedAccounts>0).length,
       migrationEstimatedDays:valid.filter(p=>p.migrationEstimatedAccounts>0).length,
       statementEstimatedDays:valid.filter(p=>p.statementEstimatedAccounts>0).length,
+      igCarryForwardDays:valid.filter(p=>p.igCarryForwardAccounts>0).length,
       accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:false},
