@@ -109,6 +109,7 @@ async function getHistory(userId,query={}) {
   const pairs=(await db.query('SELECT * FROM broker_transfer_matches WHERE user_id=$1',[userId])).rows;
   const fxRows=(await db.query("SELECT rate_date,base_code,rates FROM fx_daily_rates WHERE base_code IN ('USD','GBP')")).rows;
   const igRates=new Map(fxRows.filter(r=>r.base_code==='USD'&&Number(r.rates.GBP)>0).map(r=>[day(r.rate_date),Number(r.rates.GBP)]));
+  for(const r of fxRows.filter(r=>r.base_code==='GBP'&&Number(r.rates.USD)>0))if(!igRates.has(day(r.rate_date)))igRates.set(day(r.rate_date),1/Number(r.rates.USD));
   rows=carryForwardIg(rows,accounts,igRates).filter(r=>(!range||day(r.value_date)>=range.start_date&&day(r.value_date)<=range.end_date));
   const fx=new Map(fxRows.flatMap(r=>Object.entries(r.rates).map(([quote,rate])=>[`${day(r.rate_date)}:${r.base_code}:${quote}`,Number(rate)])));
   const events=[],unavailableAccounts=[];
