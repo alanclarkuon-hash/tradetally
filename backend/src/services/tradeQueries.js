@@ -1,4 +1,5 @@
 const {accountPredicate}=require('../utils/accountFilter');
+const {applyTradeSectorCategories,buildSectorPredicate}=require('../utils/sectorCategory');
 // TradeQueries — single seam for filtering trade data.
 //
 // Owns the WHERE-clause + parameter construction for trade list and analytics
@@ -282,19 +283,11 @@ class TradeQueries {
       paramCount += filters.setups.length;
     }
 
-    if (filters.sectors && filters.sectors.length > 0) {
+    for (const sectors of [filters.sectors, filters.sector ? [filters.sector] : null]) {
+      if (!sectors?.length) continue;
       needsSectorOuterJoin = true;
-      const placeholders = filters.sectors.map((_, i) => `$${paramCount + i}`).join(',');
-      whereClause += ` AND EXISTS (SELECT 1 FROM symbol_categories sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry IN (${placeholders}))`;
-      filters.sectors.forEach(s => values.push(s));
-      paramCount += filters.sectors.length;
-    }
-
-    if (filters.sector) {
-      needsSectorOuterJoin = true;
-      whereClause += ` AND EXISTS (SELECT 1 FROM symbol_categories sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry = $${paramCount})`;
-      values.push(filters.sector);
-      paramCount++;
+      whereClause += ' AND ' + await buildSectorPredicate(userId, sectors, values);
+      paramCount = values.length + 1;
     }
 
     if (filters.hasNews !== undefined && filters.hasNews !== '' && filters.hasNews !== null) {
@@ -532,7 +525,7 @@ class TradeQueries {
     const queryEndTime = Date.now();
     console.log('[PERF] findByUser query took:', queryEndTime - queryStartTime, 'ms, returned', result.rows.length, 'rows');
     console.log('[PERF] findByUser total time:', queryEndTime - startTime, 'ms');
-    return result.rows;
+    return applyTradeSectorCategories(result.rows);
   }
 
   // Aggregate analytics for a user matching the given filters.
