@@ -49,9 +49,23 @@ test('unknown listing metadata is fetched only when background lookup is allowed
 });
 test('verified unsupported exchanges do not repeatedly request listing metadata',async()=>{
  const db=require('../../src/config/database'),axios=require('axios');
- db.query.mockResolvedValue({rows:[{exchange:'HKG',source:'yahoo'},{exchange:'NYSE',source:'classification'}]});
+ db.query.mockResolvedValue({rows:[{exchange:'JPX',source:'yahoo'},{exchange:'NYSE',source:'classification'}]});
  const before=axios.get.mock.calls.length;
  expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
  expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
  expect(axios.get).toHaveBeenCalledTimes(before);
+});
+
+test.each(['2021-10-13','2021-10-14','2021-04-06','2023-07-17','2023-09-01','2023-09-08','2024-09-06','2026-04-07'])('HKEX full closure %s is not missing data',day=>{
+ expect(missingRanges([],day,day,false,'HKEX')).toEqual([]);
+});
+test.each(['2021-02-11','2021-12-24','2021-12-31','2022-08-25','2022-11-02','2022-11-03','2024-10-01'])('HKEX partial sessions and another year holiday %s stay required',day=>{
+ if(day==='2024-10-01')expect(calendar.isTradingDay(day,'US')).toBe(true);
+ else expect(calendar.isTradingDay(day,'HKEX')).toBe(true);
+});
+test('Hong Kong identity works for suffix and verified exchange',async()=>{
+ expect(await calendar.resolve('0700.HK')).toBe('HKEX');
+ expect(calendar.identify('TENCENT','HKG')).toBe('HKEX');
+ expect(missingRanges([],'2021-10-12','2021-10-15',false,'HKEX')).toEqual([{from:'2021-10-12',to:'2021-10-15'}]);
+ expect(missingRanges([],'2021-10-13','2021-10-14',true,'HKEX')).toHaveLength(1);
 });
