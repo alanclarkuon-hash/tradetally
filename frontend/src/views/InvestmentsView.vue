@@ -416,6 +416,12 @@
                             </div>
                         </div>
                         <div class="p-6">
+                            <p v-if="investmentsStore.portfolioPerformance?.historyUpdating" class="mb-4 text-sm text-gray-500 dark:text-gray-400" role="status">
+                                Downloading missing historical prices in the background. This comparison is incomplete and will update automatically.
+                            </p>
+                            <p v-else-if="investmentsStore.portfolioPerformance?.historyIncomplete" class="mb-4 text-sm text-gray-500 dark:text-gray-400">
+                                Historical price coverage is incomplete. This comparison uses available prices; drawdown alerts are paused until coverage is complete.
+                            </p>
                             <div
                                 v-if="
                                     investmentsStore.portfolioPerformance &&
@@ -473,7 +479,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <div v-else-if="performanceLoading" class="text-center py-16 text-gray-500 dark:text-gray-400" role="status">
+                            <div v-else-if="performanceLoading || investmentsStore.portfolioPerformance?.historyUpdating" class="text-center py-16 text-gray-500 dark:text-gray-400" role="status">
                                 Loading historical benchmark data…
                             </div>
                             <div v-else class="text-center py-16 text-gray-500 dark:text-gray-400">
@@ -1939,6 +1945,7 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
             }
             portfolioLoadedAt.value = new Date(cached.fetchedAt);
             initialLoading.value = false;
+            if (activeTab.value === "holdings" && cached.performance?.historyUpdating) historyPoller.start();
             return;
         }
     }
@@ -1946,7 +1953,11 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
     const params = buildPortfolioParams();
     performanceLoading.value = true;
     const performanceRequest = investmentsStore.fetchPortfolioPerformance(params)
-        .finally(() => { performanceLoading.value = false; });
+        .then(result => {
+            if (activeTab.value === "holdings" && result?.historyUpdating) historyPoller.start();
+            else historyPoller.stop();
+            return result;
+        }).finally(() => { performanceLoading.value = false; });
 
     if (periodOnly) {
         // Only update the chart and metrics. Positions and the allocation
@@ -1995,6 +2006,18 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
 // immediately runs a poll if an interval elapsed while hidden. Async-safe:
 // a tick is skipped if the previous poll is still in flight.
 const pricePoller = useVisibilityPolling(() => runPricePoll(), PRICE_POLL_INTERVAL_MS);
+const historyPoller = useVisibilityPolling(async () => {
+    if (activeTab.value !== "holdings") { historyPoller.stop(); return; }
+    const key = buildCacheKey();
+    const performance = await investmentsStore.fetchPortfolioPerformance(buildPortfolioParams(), { silent: true });
+    if (key !== buildCacheKey()) return;
+    const cached = periodDataCache.get(key);
+    if (cached) cached.performance = performance;
+    if (!performance?.historyUpdating) {
+        historyPoller.stop();
+        await investmentsStore.fetchPortfolioAlerts(buildPortfolioParams());
+    }
+}, 5000);
 
 function stopPricePolling() {
     pricePoller.stop();
@@ -2179,6 +2202,7 @@ watch(activeTab, async (newTab) => {
 
     if (newTab !== "holdings") {
         stopPricePolling();
+        historyPoller.stop();
     }
 
     if (newTab === "scanner") {
