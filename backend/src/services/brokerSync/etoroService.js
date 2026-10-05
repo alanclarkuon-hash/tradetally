@@ -66,7 +66,7 @@ class EtoroService {
     if (Date.now() < this.cooldownUntil) throw new Error('eToro rate limit cooling down. Please wait before trying again.');
     if (!connection.etoroApiKey || !connection.etoroUserKey) throw new Error('Both eToro keys are required.');
     // Only fixed GET paths are exposed. Never follow a redirect with secret headers.
-    if (!/^\/(me|trading\/info\/real\/pnl|trading\/info\/trade\/history|market-data\/(instruments|instrument-types)|data\/instruments\/[1-9]\d*\/candles(?:\/coverage)?)$/.test(path)) {
+    if (!/^\/(me|trading\/info\/real\/pnl|trading\/info\/trade\/history|market-data\/(instruments|instrument-types|search)|data\/instruments\/[1-9]\d*\/candles(?:\/coverage)?)$/.test(path)) {
       throw new Error('Unsupported eToro read endpoint.');
     }
     const wait = Math.max(0, this.lastRequestAt + 1100 - Date.now());
@@ -76,7 +76,7 @@ class EtoroService {
       const response = await axios.get(`${ORIGIN}${path}`, {
         headers: { 'x-api-key': connection.etoroApiKey, 'x-user-key': connection.etoroUserKey,
           'x-request-id': randomUUID() },
-        params, timeout: 30000, maxRedirects: 0
+        params, timeout: 30000, maxRedirects: 0, maxContentLength: 8 * 1024 * 1024
       });
       return response.data;
     } catch (error) {

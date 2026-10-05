@@ -46,6 +46,16 @@ calendars.set('LSE', year => {
 calendars.set('XETRA', year => [date(year,1,1),easter(year)-2*DAY,easter(year)+DAY,
   date(year,5,1),date(year,12,24),date(year,12,25),date(year,12,26),date(year,12,31),
   ...(year<=2021 ? [easter(year)+50*DAY,date(year,10,3)] : [])]);
+const hkex=require('./calendars/hkex-holidays.json');
+// Full closures only. Half-day typhoon sessions and Christmas/LNY eves trade.
+const hkexClosures={
+ '2021-10-13':'https://www.hkex.com.hk/News/Market-Communications/2021/2110132news?sc_lang=en',
+ '2023-07-17':'https://www.hkex.com.hk/News/Market-Communications/2023/2307172news?sc_lang=en',
+ '2023-09-01':'https://www.hkex.com.hk/News/Market-Communications/2023/2309012news?sc_lang=en',
+ '2023-09-08':'https://www.hkex.com.hk/news/market-communications/2023/2309083news?sc_lang=en',
+ '2024-09-06':'https://www.hkex.com.hk/News/Market-Communications/2024/2409062news?sc_lang=en'
+};
+calendars.set('HKEX',year=>[...(hkex.years[year]||[]),...Object.keys(hkexClosures).filter(d=>d.startsWith(year+'-'))].map(Date.parse));
 const holidays=new Map(), identities=new Map(), lookupLanes=new Map(), retryAfter=new Map(), verifiedListings=new Set();
 let yahooLane=Promise.resolve(), yahooCooldown=0;
 function isTradingDay(day, calendar) {
@@ -60,9 +70,11 @@ function identify(symbol, exchange='') {
   symbol=String(symbol).toUpperCase(); exchange=String(exchange).toUpperCase();
   if(symbol.endsWith('.L')) return 'LSE';
   if(symbol.endsWith('.DE')) return 'XETRA';
+  if(symbol.endsWith('.HK')) return 'HKEX';
   // Never apply US holidays just because a ticker has no suffix.
   if(/LONDON|^LSE$|^XLON$|^LSEETF$/.test(exchange)) return 'LSE';
   if(/XETRA|^XET$|^GER$|^XETR$/.test(exchange)) return 'XETRA';
+  if(/HONG KONG|^HKG$|^HKEX$|^XHKG$/.test(exchange)) return 'HKEX';
   if(/NASDAQ|NYSE|NEW YORK STOCK|BATS|^XNYS$|^XNAS$|^ARCX$|^NMS$|^NGM$|^NCM$|^NYQ$|^PCX$|^ASE$|^BTS$|^SNP$|^DJI$/.test(exchange)) return 'US';
   return null;
 }
