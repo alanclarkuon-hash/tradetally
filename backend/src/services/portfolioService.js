@@ -505,16 +505,25 @@ class PortfolioService {
     const { period, startDate, endDate } = explicit_range
       ? { period: options.period || 'custom', startDate: explicit_range.start_date, endDate: explicit_range.end_date }
       : getPeriodRange(options.period);
-    const components = await this._getPositionComponents(userId, accounts);
+    const components = (await this._getPositionComponents(userId, accounts))
+      .filter(c => !c.effectiveDate || c.effectiveDate <= endDate);
     const symbols = [...new Set(components.map(component => component.symbol))];
     const cryptoSymbols = new Set(components.filter(c => c.instrumentType === 'crypto').map(c => c.symbol));
+    const historyStarts = new Map(symbols.map(symbol => {
+      const first = components.filter(c => c.symbol === symbol).map(c => c.effectiveDate || startDate).sort()[0];
+      return [symbol, first > startDate ? first : startDate];
+    }));
+    const trackedHistoryKey = symbol => {
+      const ticker = symbol.startsWith('crypto:') ? symbol.slice(7) : symbol;
+      return historyKey(symbol, symbol === benchmark ? startDate : (historyStarts.get(ticker) || startDate), endDate, userId);
+    };
     const trackedHistorySymbols = [benchmark, ...symbols.map(s => priceCacheKey(s, cryptoSymbols.has(s) ? 'crypto' : 'stock'))];
     const historyRequestedAt = Date.now();
 
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
       this._getDailySeries(benchmark, startDate, endDate, userId, { background: options.waitForHistory !== true }),
       this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: options.waitForHistory !== true,
-        cryptoSymbols })
+        cryptoSymbols, historyStarts })
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -626,10 +635,10 @@ class PortfolioService {
       endDate,
       benchmark,
       historyUpdating: trackedHistorySymbols.some(symbol =>
-        inFlightPortfolioComputations.has(historyKey(symbol, startDate, endDate, userId)) ||
-        (historyRefreshAfter.get(historyKey(symbol, startDate, endDate, userId)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
+        inFlightPortfolioComputations.has(trackedHistoryKey(symbol)) ||
+        (historyRefreshAfter.get(trackedHistoryKey(symbol)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
       historyMissingSymbols: symbols.filter(symbol => !(priceSeriesMap.get(symbol)?.length)),
-      historyIncomplete: trackedHistorySymbols.some(symbol => incompleteHistory.has(historyKey(symbol, startDate, endDate, userId))),
+      historyIncomplete: trackedHistorySymbols.some(symbol => incompleteHistory.has(trackedHistoryKey(symbol))),
       metrics: {
         totalReturnPercent: round(totalReturnDecimal * 100),
         benchmarkReturnPercent: round(benchmarkReturnDecimal * 100),
@@ -1517,65 +1526,23 @@ class PortfolioService {
   }
 
   static async _getOpenTradeComponents(userId, accounts) {
-    const params = [userId];
-    const { clause } = buildAccountFilter('t.account_identifier', accounts, params, 2);
-    const result = await db.query(
-      `WITH trade_executions AS (
-         SELECT
-           t.symbol,
-           t.entry_time,
-           t.instrument_type,
-           t.contract_size,
-           t.point_value,
-           COALESCE(
-             (
-               SELECT SUM(
-                 CASE
-                   WHEN exec->>'entryPrice' IS NOT NULL OR exec->>'exitPrice' IS NOT NULL OR exec->>'entryTime' IS NOT NULL THEN
-                     CASE
-                       WHEN exec->>'exitPrice' IS NULL THEN
-                         CASE WHEN t.side = 'long' THEN (exec->>'quantity')::numeric ELSE -(exec->>'quantity')::numeric END
-                       ELSE 0
-                     END
-                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long') THEN (exec->>'quantity')::numeric
-                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short') THEN -(exec->>'quantity')::numeric
-                   ELSE 0
-                 END
-               )
-               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
-               WHERE exec->>'quantity' IS NOT NULL
-             ),
-             t.quantity
-           ) AS net_position
-         FROM trades t
-         WHERE t.user_id = $1
-           AND t.exit_price IS NULL
-           AND t.side = 'long'
-           ${clause}
-       )
-       SELECT *
-       FROM trade_executions
-       WHERE net_position > 0`,
-      params
-    );
-
-    return result.rows.map(row => ({
-      symbol: row.symbol,
-      shares: parseFloat(row.net_position) || 0,
-      instrumentType: row.instrument_type || 'stock',
-      effectiveDate: this._normalizeDateValue(row.entry_time),
-      valueMultiplier: row.instrument_type === 'future'
-        ? (parseFloat(row.point_value) || 1)
-        : row.instrument_type === 'option'
-          ? (parseFloat(row.contract_size) || 100)
-          : 1
+    // Use the same authoritative broker snapshots as the displayed holdings.
+    // Superseded trade rows must not resurrect renamed or delisted positions.
+    const positions = await this._getTradePositions(userId, accounts);
+    return positions.filter(p => p.totalShares > 0).map(p => ({
+      symbol: p.symbol,
+      instrumentType: p.instrumentType || 'stock',
+      shares: p.totalShares,
+      effectiveDate: this._normalizeDateValue(p.openedAt),
+      valueMultiplier: p.instrumentType === 'future' ? (p.pointValue || 1)
+        : p.instrumentType === 'option' ? (p.contractSize || 100) : 1
     }));
   }
 
   static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, { ...options,
+        const candles = await this._getDailySeries(symbol, options?.historyStarts?.get(symbol) || startDate, endDate, userId, { ...options,
           instrumentType: options?.cryptoSymbols?.has(symbol) ? 'crypto' : 'stock' });
         return [symbol, candles];
       })
