@@ -21,17 +21,22 @@ services:
       context: .
       args:
         VITE_API_URL: /api
+        CODEX_CLI_VERSION: "0.160.0"
     image: tradetally-local:latest
     depends_on:
       postgres:
         condition: service_healthy
     env_file: .env
+    environment:
+      CODEX_HOME: /home/appuser/.codex
+      CODEX_CLI_AUTH_MODE: chatgpt
     ports:
       - "127.0.0.1:8088:80"
     volumes:
       - uploads:/app/backend/uploads
       - app_data:/app/backend/src/data
       - app_logs:/app/backend/src/logs
+      - codex_auth:/home/appuser/.codex
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 30s
@@ -45,3 +50,4 @@ volumes:
   uploads:
   app_data:
   app_logs:
+  codex_auth:
