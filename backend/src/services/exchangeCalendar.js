@@ -46,7 +46,8 @@ calendars.set('LSE', year => {
 calendars.set('XETRA', year => [date(year,1,1),easter(year)-2*DAY,easter(year)+DAY,
   date(year,5,1),date(year,12,24),date(year,12,25),date(year,12,26),date(year,12,31),
   ...(year<=2021 ? [easter(year)+50*DAY,date(year,10,3)] : [])]);
-const holidays=new Map(), identities=new Map();
+const holidays=new Map(), identities=new Map(), lookupLanes=new Map(), retryAfter=new Map(), verifiedListings=new Set();
+let yahooLane=Promise.resolve(), yahooCooldown=0;
 function isTradingDay(day, calendar) {
   const t=Date.parse(day),year=new Date(t).getUTCFullYear();
   if(!Number.isFinite(t) || [0,6].includes(new Date(t).getUTCDay())) return false;
@@ -62,16 +63,56 @@ function identify(symbol, exchange='') {
   // Never apply US holidays just because a ticker has no suffix.
   if(/LONDON|^LSE$|^XLON$|^LSEETF$/.test(exchange)) return 'LSE';
   if(/XETRA|^XET$|^GER$|^XETR$/.test(exchange)) return 'XETRA';
-  if(/NASDAQ|NYSE|NEW YORK STOCK|BATS|^XNYS$|^XNAS$|^ARCX$|^NMS$|^NGM$|^NCM$|^NYQ$|^PCX$|^ASE$|^BTS$/.test(exchange)) return 'US';
+  if(/NASDAQ|NYSE|NEW YORK STOCK|BATS|^XNYS$|^XNAS$|^ARCX$|^NMS$|^NGM$|^NCM$|^NYQ$|^PCX$|^ASE$|^BTS$|^SNP$|^DJI$/.test(exchange)) return 'US';
   return null;
 }
-async function resolve(symbol) {
+async function lookup(symbol) {
+  if(Date.now()<yahooCooldown || Date.now()<(retryAfter.get(symbol)||0)) return null;
+  if(lookupLanes.has(symbol)) return lookupLanes.get(symbol);
+  const request=yahooLane.catch(()=>{}).then(async()=>{
+    if(Date.now()<yahooCooldown) return null;
+    await new Promise(resolve=>setTimeout(resolve,500));
+    const ticker=symbol==='BRK.B'?'BRK-B':symbol;
+    try {
+      const response=await require('axios').get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`,{
+        params:{range:'5d',interval:'1d'},timeout:12000,maxRedirects:0,maxContentLength:1024*1024,
+        headers:{'User-Agent':'TradeTally exchange calendar metadata'}
+      });
+      const meta=response.data?.chart?.result?.[0]?.meta;
+      if(String(meta?.symbol).toUpperCase()!==ticker.toUpperCase() || !meta.exchangeName) throw Error('Listing metadata unavailable');
+      await db.query(`INSERT INTO exchange_calendar_listings(symbol,exchange,source) VALUES($1,$2,'yahoo')
+        ON CONFLICT(symbol) DO UPDATE SET exchange=EXCLUDED.exchange,source=EXCLUDED.source,checked_at=NOW()`,[symbol,meta.exchangeName]);
+      const value=identify(symbol,meta.exchangeName);
+      verifiedListings.add(symbol);
+      identities.set(symbol,{value:Promise.resolve(value),expires:Date.now()+3600000});
+      retryAfter.set(symbol,Date.now()+86400000);
+      return value;
+    } catch(error) {
+      if([429,999].includes(error.response?.status)) yahooCooldown=Date.now()+Math.max(60,Number(error.response.headers?.['retry-after'])||60)*1000;
+      retryAfter.set(symbol,Date.now()+3600000); return null;
+    }
+  });
+  yahooLane=request; lookupLanes.set(symbol,request);
+  try{return await request;}finally{lookupLanes.delete(symbol);}
+}
+async function resolve(symbol,{allowLookup=false}={}) {
+  symbol=String(symbol).toUpperCase();
   const suffix=identify(symbol); if(suffix) return suffix;
   const old=identities.get(symbol);
-  if(old && Date.now()<old.expires) return old.value;
-  const value=(async()=>identify(symbol,(await db.query('SELECT exchange FROM symbol_categories WHERE symbol=$1',[symbol])).rows[0]?.exchange))();
+  if(old && Date.now()<old.expires) {
+    const known=await old.value;
+    return known || (allowLookup && !verifiedListings.has(symbol) ? lookup(symbol) : null);
+  }
+  const value=(async()=>{
+    const saved=(await db.query(`SELECT exchange,source FROM exchange_calendar_listings WHERE symbol=$1
+      UNION ALL SELECT exchange,'classification' AS source FROM symbol_categories WHERE symbol=$1`,[symbol])).rows;
+    const listing=saved.find(row=>row.source==='yahoo');
+    if(listing) { verifiedListings.add(symbol); return identify(symbol,listing.exchange); }
+    return saved.map(row=>identify(symbol,row.exchange)).find(Boolean)||null;
+  })();
   identities.set(symbol,{value,expires:Date.now()+3600000});
   if(identities.size>4096) identities.delete(identities.keys().next().value);
-  try{return await value;}catch{identities.delete(symbol);return null;}
+  try { const known=await value; return known || (allowLookup && !verifiedListings.has(symbol) ? lookup(symbol) : null); }
+  catch {identities.delete(symbol);return null;}
 }
 module.exports={resolve,identify,isTradingDay,calendars};

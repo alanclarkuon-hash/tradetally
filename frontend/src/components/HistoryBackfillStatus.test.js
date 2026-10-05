@@ -21,3 +21,9 @@ it('queues history independently of broker sync', async () => {
   expect(api.post).toHaveBeenCalledWith('/broker-sync/history/update')
   view.unmount()
 })
+it('shows listing-calendar lookup progress separately from price downloads',async()=>{
+ api.get.mockResolvedValue({data:{data:[{status:'processing',stage:'calendars',currentSymbol:'ETF',processed:20,total:50,calendarProcessed:3,calendarTotal:8,gaps:[],portfolioWarnings:[]}]}})
+ const view=mount(HistoryBackfillStatus); await flushPromises()
+ expect(view.text()).toContain('Checking exchange calendar for ETF · 3/8 listings checked')
+ view.unmount()
+})
