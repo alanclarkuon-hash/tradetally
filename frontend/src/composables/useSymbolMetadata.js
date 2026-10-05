@@ -10,7 +10,7 @@ let flushTimer = null
 // company names). Survives page reloads so logos render instantly on the
 // next visit instead of waiting for /symbols/metadata to return. Entries
 // without a logo are not cached so we keep retrying them next session.
-const STORAGE_KEY = 'tt_symbol_metadata_v1'
+const STORAGE_KEY = 'tt_symbol_metadata_v2'
 const STORAGE_TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7 days
 let persistTimer = null
 
@@ -52,7 +52,7 @@ function persistToStorage() {
     for (const [symbol, data] of Object.entries(metadataBySymbol)) {
       // Skip empty/null-only entries so we keep retrying them next session.
       if (!data) continue
-      if (!data.logo && !data.companyName) continue
+      if (!data.logo && (!data.companyName || data.asset_type==='crypto')) continue
       payload[symbol] = { ...data, cachedAt: now }
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
@@ -105,20 +105,22 @@ async function flushPendingSymbols() {
   symbols.forEach(symbol => inFlightSymbols.add(symbol))
 
   try {
-    const { data } = await api.get('/symbols/metadata', {
-      params: { symbols: symbols.join(',') }
-    })
-
-    const metadata = data?.metadata || {}
-
-    symbols.forEach(symbol => {
-      metadataBySymbol[symbol] = metadata[symbol] || {
+    await Promise.all(['', 'crypto', 'stock'].map(async assetType => {
+      const keys=symbols.filter(key => assetType ? key.startsWith(`${assetType}:`) : !key.includes(':'))
+      if(!keys.length)return
+      const names=keys.map(key=>assetType?key.slice(assetType.length+1):key)
+      const {data}=await api.get('/symbols/metadata',{params:{symbols:names.join(','),...(assetType?{asset_type:assetType}:{})}})
+      const metadata=data?.metadata||{}
+      keys.forEach((key,index)=>{
+      const symbol=names[index]
+      metadataBySymbol[key] = metadata[symbol] || {
         symbol,
         companyName: null,
         exchange: null,
         logo: null
       }
-    })
+      })
+    }))
     // Persist the freshly-fetched entries (only those with real data are
     // actually written; null entries are skipped inside persistToStorage).
     schedulePersist()
@@ -142,8 +144,8 @@ function scheduleFlush() {
   flushTimer = window.setTimeout(flushPendingSymbols, 10)
 }
 
-function ensureSymbolMetadata(source) {
-  toSymbolList(source).forEach(symbol => {
+function ensureSymbolMetadata(source, assetType = '') {
+  toSymbolList(source).map(symbol=>assetType?`${assetType}:${symbol}`:symbol).forEach(symbol => {
     // Already in memory (from a previous fetch or the localStorage hydrate)
     // or currently being fetched — nothing to do.
     if (metadataBySymbol[symbol] || inFlightSymbols.has(symbol)) {
@@ -158,10 +160,10 @@ function ensureSymbolMetadata(source) {
   }
 }
 
-export function useSymbolMetadata(source = null) {
+export function useSymbolMetadata(source = null, assetType = '') {
   if (source !== null) {
     watchEffect(() => {
-      ensureSymbolMetadata(unref(source))
+      ensureSymbolMetadata(unref(source), unref(assetType))
     })
   }
 

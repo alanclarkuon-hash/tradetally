@@ -24,3 +24,15 @@ test('retains saved categories when an expired provider lookup returns empty lab
  expect(result.asOf).toBe('2020-01-01T00:00:00Z');
  expect(result.stale).toBe(true);
 });
+
+test('fetches and persists a CoinGecko logo without erasing saved categories',async()=>{
+ jest.resetModules();
+ require('fs/promises').readFile.mockResolvedValue(JSON.stringify({sui:{categories:['Layer 1 (L1)'],asOf:'2020-01-01T00:00:00Z'}}));
+ require('axios').get.mockResolvedValue({data:{id:'sui',categories:[],image:{small:'https://coin-images.coingecko.com/coins/images/26375/small/sui.png'}}});
+ const service=require('../src/services/cryptoCategoriesService');
+ const result=await service.getCategories('SUI',{requireLogo:true});
+ expect(result.logo).toContain('coin-images.coingecko.com');
+ expect(result.categories).toEqual(['Layer 1 (L1)']);
+ expect(await service.getLogo('SUI')).toBe(result.logo);
+ expect(service.cleanLogo('https://stock.example/sui.png')).toBeNull();
+});

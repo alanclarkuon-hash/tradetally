@@ -255,15 +255,17 @@ async function getSymbolMetadata(req, res) {
       return res.json({ metadata: {} });
     }
 
-    const cacheKey = `symbol_metadata:${symbols.join(',')}`;
+    const assetType = ['crypto','stock'].includes(req.query.asset_type) ? req.query.asset_type : null;
+    const cryptoAssetFor = symbol => assetType==='stock' ? null : getCryptoAsset(symbol) || (assetType==='crypto' ? {name:symbol} : null);
+    const cacheKey = `symbol_metadata:${assetType||'auto'}:${symbols.join(',')}`;
     const cached = cache.get(cacheKey);
-    if (cached) {
+    if (cached && !Object.values(cached).some(row=>row.asset_type==='crypto' && !row.logo)) {
       return res.json({ metadata: cached });
     }
 
     const metadata = Object.fromEntries(
       symbols.map(symbol => {
-        const crypto_asset = getCryptoAsset(symbol);
+        const crypto_asset = cryptoAssetFor(symbol);
         return [symbol, {
           symbol,
           companyName: crypto_asset?.name || null,
@@ -299,15 +301,19 @@ async function getSymbolMetadata(req, res) {
     const result = await db.query(query, [symbols]);
 
     for (const row of result.rows) {
-      const crypto_asset = getCryptoAsset(row.symbol);
+      const crypto_asset = cryptoAssetFor(row.symbol);
       metadata[row.symbol] = {
         symbol: row.symbol,
         companyName: crypto_asset?.name || row.company_name || null,
         exchange: crypto_asset ? 'Crypto' : row.exchange || null,
-        logo: row.logo || null,
+        logo: crypto_asset ? null : row.logo || null,
         ...(crypto_asset ? { asset_type: 'crypto' } : {})
       };
     }
+
+    await Promise.all(symbols.filter(symbol=>metadata[symbol]?.asset_type==='crypto').map(async symbol=>{
+      metadata[symbol].logo=await require('../services/cryptoCategoriesService').getLogo(symbol);
+    }));
 
     const symbolsMissingMetadata = symbols.filter(symbol => {
       const entry = metadata[symbol];

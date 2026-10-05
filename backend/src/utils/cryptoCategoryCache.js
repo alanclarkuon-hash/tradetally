@@ -9,7 +9,8 @@ function mergeCategoryCache(existing,incoming){
   const categories=[...new Set(record.categories.map(c=>c.trim()))];
   if(!categories.length)continue;
   if(result[id]?.categories?.length&&Date.parse(result[id].asOf)>=Date.parse(record.asOf))continue;
-  result[id]={categories,asOf:record.asOf};
+  const logo=require('../services/cryptoCategoriesService').cleanLogo(record.logo || result[id]?.logo);
+  result[id]={categories,asOf:record.asOf,...(logo?{logo}:{})};
  }
  return result;
 }
