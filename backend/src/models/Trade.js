@@ -1071,6 +1071,8 @@ class Trade {
     const result = await db.query(query, values);
     const trade = result.rows[0];
 
+    if (trade) await require('../utils/sectorCategory').applyTradeSectorCategories([trade]);
+
     // Parse executions from JSONB column if they exist
     if (trade && trade.executions) {
       try {
