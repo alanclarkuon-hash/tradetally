@@ -342,7 +342,9 @@ describe('TradeQueries.findByUser characterization', () => {
     test('orders by the displayed entry timestamp with a stable id tie-breaker', async () => {
       await TradeQueries.findByUser('user-1', {});
       const { sql } = captureQuery();
-      expect(sql).toContain('ORDER BY t.entry_time DESC NULLS LAST, t.id DESC');
+      expect(sql).toContain('t.entry_time AS sort_value');
+      expect(sql).toContain('ORDER BY sort_value DESC NULLS LAST, t.id DESC');
+      expect(sql).toContain('ORDER BY trade_ids.sort_value DESC NULLS LAST, t.id DESC');
       expect(sql).not.toContain('ORDER BY t.trade_date DESC, t.entry_time DESC');
     });
 
