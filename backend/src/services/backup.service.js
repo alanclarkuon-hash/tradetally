@@ -327,6 +327,18 @@ class BackupService {
     return result.rows[0];
   }
 
+  async getFailureStatus() {
+    // Admin-only status: no paths, filenames or raw error messages leave here.
+    // A later successful backup clears a previously failed attempt.
+    const result = await db.query(`
+      SELECT status, created_at FROM backups
+      WHERE status IN ('failed', 'completed')
+      ORDER BY created_at DESC, id DESC LIMIT 1
+    `);
+    const latest = result.rows[0];
+    return { failed: latest?.status === 'failed',
+      failedAt: latest?.status === 'failed' ? latest.created_at : null };
+  }
   async getBackupHealth() {
     const settings = await this.getBackupSettings();
     const warnings = [];
