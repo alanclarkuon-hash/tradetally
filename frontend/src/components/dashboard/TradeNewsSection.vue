@@ -73,11 +73,11 @@
                       rel="noopener noreferrer"
                       class="hover:text-primary-600 dark:hover:text-primary-400"
                     >
-                      {{ item.headline }}
+                      {{ maskMoneyText(item.headline) }}
                     </a>
                   </h5>
                   <p class="text-xs text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">
-                    {{ item.summary }}
+                    {{ maskMoneyText(item.summary) }}
                   </p>
                   <div class="flex items-center text-xs text-gray-500 dark:text-gray-400">
                     <span>{{ item.source }}</span>
@@ -104,6 +104,9 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import api from '@/services/api'
+import { useMonetaryPrivacy } from '@/composables/useDashboardPrivacy'
+
+const { maskMoneyText } = useMonetaryPrivacy()
 
 const props = defineProps({
   symbols: {

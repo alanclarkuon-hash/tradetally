@@ -173,7 +173,7 @@ const recentDaysSliced = computed(() => {
         : isLoss
           ? 'bg-red-500/80 dark:bg-red-500'
           : 'bg-gray-300 dark:bg-gray-600',
-      title: `${d.date}: ${d.pnl > 0 ? '+' : ''}${d.pnl.toFixed(2)} (${d.count})`
+      title: `${d.date}: ${formatSignedCurrency(d.pnl)} (${d.count})`
     }
   })
 })
@@ -190,7 +190,7 @@ const recentTradesSliced = computed(() => {
         : isLoss
           ? 'bg-red-500/80 dark:bg-red-500'
           : 'bg-gray-300 dark:bg-gray-600',
-      title: `${t.date}: ${t.pnl > 0 ? '+' : ''}${t.pnl.toFixed(2)}`
+      title: `${t.date}: ${formatSignedCurrency(t.pnl)}`
     }
   })
 })

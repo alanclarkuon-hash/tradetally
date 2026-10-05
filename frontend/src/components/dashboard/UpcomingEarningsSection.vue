@@ -129,6 +129,8 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
+import { useMonetaryPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
+const { hideAmounts } = useMonetaryPrivacy()
 import api from '@/services/api'
 
 const props = defineProps({
@@ -152,6 +154,7 @@ const formatEarningsDate = (dateStr) => {
 }
 
 const formatNumber = (num) => {
+  if (hideAmounts.value) return MONEY_MASK
   if (num === null || num === undefined) return '0.00'
   return parseFloat(num).toFixed(2)
 }
