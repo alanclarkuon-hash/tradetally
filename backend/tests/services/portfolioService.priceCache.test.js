@@ -66,3 +66,13 @@ test('incomplete history cannot create or display a drawdown alert', async () =>
   expect(notify).not.toHaveBeenCalled();
   jest.restoreAllMocks();
 });
+test('snapshot backfills wait for history and never persist an incomplete comparison', async () => {
+  const db = require('../../src/config/database');
+  db.query.mockResolvedValue({ rows: [] });
+  const performance = jest.spyOn(PortfolioService, 'getPerformance').mockResolvedValue({ historyIncomplete: true, series: [] });
+  const write = jest.spyOn(PortfolioService, '_upsertSnapshotRow').mockResolvedValue({});
+  expect((await PortfolioService.backfillSnapshotsForUser('owner', { days: 30 })).snapshotsCreated).toBe(0);
+  expect(performance).toHaveBeenCalledWith('owner', expect.objectContaining({ waitForHistory: true }));
+  expect(write).not.toHaveBeenCalled();
+  jest.restoreAllMocks();
+});
