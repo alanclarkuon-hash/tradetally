@@ -1,3 +1,4 @@
+const { calendarDateFormatter } = require('../utils/calendarDateFormatter');
 /**
  * Canonical P&L Engine
  *
@@ -85,12 +86,7 @@ function dateInTimezone(value, timezone) {
     // Intl's year:'numeric' does NOT zero-pad, so a low year (e.g. a corrupt
     // year-24 timestamp) would format as "24-03-12" — an out-of-range date when
     // cast to a DB date column. Build the parts and pad the year to 4 digits.
-    const parts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone || 'UTC',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    }).formatToParts(parsed);
+    const parts = calendarDateFormatter(timezone).formatToParts(parsed);
     const part = (type) => parts.find((p) => p.type === type)?.value || '';
     const year = part('year').padStart(4, '0');
     return `${year}-${part('month')}-${part('day')}`;
