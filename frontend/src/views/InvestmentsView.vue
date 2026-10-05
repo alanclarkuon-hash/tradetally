@@ -1,5 +1,6 @@
 <template>
     <div class="content-wrapper py-8">
+        <HistoryBackfillStatus v-if="activeTab === 'holdings'" />
         <!-- Header -->
         <div class="flex items-center justify-between mb-8">
             <div>
@@ -1560,6 +1561,7 @@
 </template>
 
 <script setup>
+import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { useRouter, useRoute } from "vue-router";

@@ -82,6 +82,14 @@ router.get('/excluded-trades', brokerSyncController.listExcludedTrades);
 router.delete('/excluded-trades/:id', brokerSyncController.restoreExcludedTrade);
 
 // Get sync status
+router.get('/history/status', async (req, res, next) => {
+  try { res.json({ data: await require('../services/historyBackfillService').status(req.user.id) }); }
+  catch (error) { next(error); }
+});
+router.post('/history/update', brokerSyncLimiter, async (req, res, next) => {
+  try { res.status(202).json({ jobId: await require('../services/historyBackfillService').enqueue(req.user.id) }); }
+  catch (error) { next(error); }
+});
 router.get('/sync/:syncId/status', brokerSyncController.getSyncStatus);
 
 module.exports = router;

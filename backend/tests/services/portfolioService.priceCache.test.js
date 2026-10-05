@@ -51,6 +51,7 @@ test('background history returns cached prices immediately, coalesces downloads 
   const options = { background: true };
   expect(await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options)).toEqual([candle]);
   await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options);
+  await new Promise(resolve => setImmediate(resolve));
   expect(finnhub.getStockCandles).toHaveBeenCalledTimes(1);
   rejectDownload(new Error('unavailable'));
   finnhub.getStockCandles.mockRejectedValue(new Error('unavailable'));
