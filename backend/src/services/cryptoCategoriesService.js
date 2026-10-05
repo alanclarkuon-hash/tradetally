@@ -6,6 +6,7 @@ const path = require('path');
 const file = path.join(__dirname, '../data/coingecko-categories.json');
 const DAY = 7 * 86400000;
 let records, loading, queue = Promise.resolve();
+const displayRefreshes = new Map();
 
 function cleanCategories(categories) {
   return Array.isArray(categories) ? [...new Set(categories.filter(c => typeof c==='string' && c.trim()).map(c=>c.trim()))] : [];
@@ -68,6 +69,17 @@ async function getCachedCategories(symbol) {
   const record=records[(await identity.cached(symbol))?.id];
   return record ? result(record) : null;
 }
+async function getDisplayCategories(symbol) {
+  const cached = await getCachedCategories(symbol);
+  const key = String(symbol).trim().toUpperCase();
+  if ((!cached || cached.stale) && !displayRefreshes.has(key)) {
+    // Metadata refreshes share the provider budget but must not hold up balances.
+    const refresh = getCategories(key).catch(() => null)
+      .finally(() => displayRefreshes.delete(key));
+    displayRefreshes.set(key, refresh);
+  }
+  return cached || result(null);
+}
 async function getLogo(symbol) {
   const cached=await getCachedCategories(symbol);
   if(cached?.logo)return cached.logo;
@@ -77,4 +89,4 @@ async function getLogo(symbol) {
   try {return await Promise.race([lookup,new Promise(resolve=>{timer=setTimeout(()=>resolve(null),1200);})]);}
   finally {clearTimeout(timer);}
 }
-module.exports={getCategories,getCachedCategories,getLogo,cleanLogo,cleanCategories,primaryCategory};
+module.exports={getCategories,getCachedCategories,getDisplayCategories,getLogo,cleanLogo,cleanCategories,primaryCategory};

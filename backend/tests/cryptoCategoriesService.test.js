@@ -36,3 +36,20 @@ test('fetches and persists a CoinGecko logo without erasing saved categories',as
  expect(await service.getLogo('SUI')).toBe(result.logo);
  expect(service.cleanLogo('https://stock.example/sui.png')).toBeNull();
 });
+
+test('display reads return stale labels without waiting for provider and deduplicate warming',async()=>{
+ jest.resetModules();
+ require('fs/promises').readFile.mockResolvedValue(JSON.stringify({sui:{categories:['Layer 1 (L1)'],asOf:'2020-01-01T00:00:00Z'}}));
+ const client=require('../src/services/coinGeckoClient');
+ client.get.mockClear();
+ let finish;
+ client.get.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+ const service=require('../src/services/cryptoCategoriesService');
+ expect((await service.getDisplayCategories('SUI')).primaryCategory).toBe('Layer 1 (L1)');
+ expect((await service.getDisplayCategories('sui')).stale).toBe(true);
+ await new Promise(resolve=>setImmediate(resolve));
+ expect(client.get).toHaveBeenCalledTimes(1);
+ finish({data:{id:'sui',categories:['Artificial Intelligence (AI)']}});
+ await new Promise(resolve=>setImmediate(resolve));
+ expect((await service.getDisplayCategories('SUI')).primaryCategory).toBe('Artificial Intelligence (AI)');
+});
