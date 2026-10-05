@@ -49,6 +49,7 @@
           </router-link>
           <NotificationBell />
         </div>
+        <BackupFailureBanner />
         <BrokerReconnectBanner />
         <main class="flex-1">
           <router-view />
@@ -186,6 +187,7 @@ import UpdateBanner from '@/components/common/UpdateBanner.vue'
 import EmailVerificationBanner from '@/components/common/EmailVerificationBanner.vue'
 import IOSAppBanner from '@/components/common/IOSAppBanner.vue'
 import BrokerReconnectBanner from '@/components/broker-sync/BrokerReconnectBanner.vue'
+import BackupFailureBanner from '@/components/BackupFailureBanner.vue'
 import VersionDisplay from '@/components/common/VersionDisplay.vue'
 import CookieConsentBanner from '@/components/common/CookieConsentBanner.vue'
 import { useRegistrationMode } from '@/composables/useRegistrationMode'

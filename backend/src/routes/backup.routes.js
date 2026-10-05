@@ -25,6 +25,9 @@ const upload = multer({
  * to avoid route conflicts
  */
 
+// Lightweight failure banner status (admin only).
+router.get('/failure-status', authenticate, requireAdmin, backupController.getFailureStatus);
+
 // Get backup settings (must come before /:id routes)
 router.get('/settings', authenticate, requireAdmin, backupController.getSettings);
 

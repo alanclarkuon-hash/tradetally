@@ -114,4 +114,17 @@ describe('backup restore with real PostgreSQL', () => {
       spy.mockRestore();
       await db.query('DROP TABLE backup_export_probe_b, backup_export_probe_a');
     }
+  });  test('a newer successful backup clears the failed-attempt banner (#44)', async () => {
+    const user = (await db.query('SELECT id FROM users LIMIT 1')).rows[0];
+    const ids = [];
+    try {
+      ids.push((await db.query(`INSERT INTO backups(user_id,filename,file_path,backup_type,status,created_at)
+        VALUES($1,'synthetic-banner-failure','/tmp/synthetic','manual','failed','2099-01-01') RETURNING id`, [user.id])).rows[0].id);
+      expect((await backup_service.getFailureStatus()).failed).toBe(true);
+      ids.push((await db.query(`INSERT INTO backups(user_id,filename,file_path,backup_type,status,created_at)
+        VALUES($1,'synthetic-banner-success','/tmp/synthetic','manual','completed','2099-01-02') RETURNING id`, [user.id])).rows[0].id);
+      expect(await backup_service.getFailureStatus()).toEqual({ failed: false, failedAt: null });
+    } finally {
+      if (ids.length) await db.query('DELETE FROM backups WHERE id=ANY($1::uuid[])', [ids]);
+    }
   });});
