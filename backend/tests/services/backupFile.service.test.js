@@ -40,4 +40,10 @@ describe('disk staged full-site JSON restore', () => {
     process.env.BACKUP_MAX_FILE_SIZE = '999999999999';
     expect(uploadLimit()).toBe(1024 ** 3);
   });
+  test('accepts legacy pretty printing whose whitespace exceeds the compact row cap', async () => {
+    const input = JSON.stringify({ version: '1', tables: { probe: [{ values: Array(500000).fill('a') }] } }, null, 10);
+    expect(Buffer.byteLength(input)).toBeGreaterThan(16 * 1024 * 1024);
+    const backup = await stage(input);
+    for await (const row of backup.tables.probe) expect(row.values).toHaveLength(500000);
+  });
 });
