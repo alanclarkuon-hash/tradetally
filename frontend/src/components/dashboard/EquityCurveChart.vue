@@ -10,6 +10,8 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { formatTradeDate } from '@/utils/date'
+import { useMonetaryPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
+const { hideAmounts } = useMonetaryPrivacy()
 
 const props = defineProps({
   dailyPnL: {
@@ -86,7 +88,7 @@ function renderChart() {
             padding: 8,
             displayColors: false,
             callbacks: {
-              label: ctx => `${props.currencySymbol}${Number(ctx.parsed.y).toLocaleString()}`
+              label: ctx => hideAmounts.value ? MONEY_MASK : `${props.currencySymbol}${Number(ctx.parsed.y).toLocaleString()}`
             }
           }
         },
@@ -96,7 +98,7 @@ function renderChart() {
             grid: { color: 'rgba(156, 163, 175, 0.08)' },
             ticks: {
               font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
-              callback: v => props.currencySymbol + Number(v).toLocaleString()
+              callback: v => hideAmounts.value ? MONEY_MASK : props.currencySymbol + Number(v).toLocaleString()
             }
           },
           x: {
@@ -116,7 +118,7 @@ function renderChart() {
 }
 
 onMounted(renderChart)
-watch(() => [props.dailyPnL, props.currencySymbol], renderChart)
+watch(() => [props.dailyPnL, props.currencySymbol, hideAmounts.value], renderChart)
 onBeforeUnmount(() => {
   if (chartInstance) {
     chartInstance.destroy()

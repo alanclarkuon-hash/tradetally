@@ -4,6 +4,7 @@
     <header class="portfolio-header">
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
+        <MoneyPrivacyToggle />
         <details ref="accountPicker" class="account-picker"><summary aria-label="Accounts filter" :title="selected===null ? 'All accounts' : selected.length ? `${selected.length} accounts selected` : 'No accounts selected'"><BuildingOfficeIcon class="h-5 w-5" aria-hidden="true" /><span v-if="selected!==null" class="filter-dot" aria-hidden="true"></span><ChevronDownIcon class="h-4 w-4" aria-hidden="true" /></summary><div class="account-menu"><button @click="selectAllAccounts">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :checked="selected===null || selected.includes(account.value)" @change="toggleAccount(account.value,$event.target.checked)">{{ account.label }}</label></div></details>
         <details ref="periodPicker" class="period-picker">
           <summary aria-label="Date range filter" :title="periodLabel">
@@ -71,6 +72,9 @@ import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
+import { useDashboardPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
+const { hideAmounts } = useDashboardPrivacy()
 const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,setAccounts,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
@@ -96,8 +100,8 @@ const periodLabel=computed(()=>timeRangeOptions.find(option=>option.value===peri
 function selectPeriod(value){period.value=value;if(periodPicker.value)periodPicker.value.open=false}
 let request=0
 const history=ref(null),historyLoading=ref(false),historyError=ref('')
-const money=v=>v==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency.value,maximumFractionDigits:2}).format(v)
-const signedMoney=v=>v==null?'Period change unavailable':`${v>=0?'+':'−'}${money(Math.abs(v))}`
+const money=v=>hideAmounts.value?MONEY_MASK:v==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency.value,maximumFractionDigits:2}).format(v)
+const signedMoney=v=>hideAmounts.value?MONEY_MASK:v==null?'Period change unavailable':`${v>=0?'+':'−'}${money(Math.abs(v))}`
 const percent=v=>v==null?'Unavailable':`${v>=0?'+':''}${Number(v).toFixed(2)}%`
 const pnlClass=v=>v==null?'muted':v>=0?'gain':'loss'
 const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data.value.coverage.missingPrices))

@@ -81,10 +81,10 @@
       <!-- Loaded state — current insight -->
       <div v-else-if="current" class="mt-3">
         <h4 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white leading-snug">
-          {{ current.headline }}
+          {{ maskMoneyText(current.headline) }}
         </h4>
         <p class="mt-1.5 text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-          {{ current.body }}
+          {{ maskMoneyText(current.body) }}
         </p>
         <div class="mt-3 flex flex-wrap items-center gap-3">
           <a
@@ -136,6 +136,8 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useMonetaryPrivacy } from '@/composables/useDashboardPrivacy'
+const { maskMoneyText } = useMonetaryPrivacy()
 import MdiIcon from '@/components/MdiIcon.vue'
 import {
   mdiLightbulbOnOutline,
