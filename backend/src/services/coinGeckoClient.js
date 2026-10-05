@@ -31,7 +31,7 @@ function createClient({ transport = axios, storage = fs, now = Date.now,
   }
   function paused(message) { const error = new Error(message); error.code = 'COINGECKO_PAUSED'; return error; }
   function get(endpoint, { params = {}, ttl = 0 } = {}) {
-    if (!/^\/(coins(?:\/[a-z0-9-]+)*(?:\/market_chart)?|simple\/price)$/.test(endpoint)) return Promise.reject(new Error('Invalid CoinGecko endpoint'));
+    if (!/^\/(coins(?:\/[a-zA-Z0-9_-]+)*|simple\/price)$/.test(endpoint)) return Promise.reject(new Error('Invalid CoinGecko endpoint'));
     const key = endpoint + JSON.stringify(Object.entries(params).sort(([a], [b]) => a.localeCompare(b)));
     const cached = responses.get(key);
     if (cached && now() - cached.at < ttl) return Promise.resolve(cached.response);
