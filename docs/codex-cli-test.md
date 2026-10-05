@@ -66,6 +66,8 @@ This command clears local credentials; it is not an account-wide session revocat
 
 In test, go to **Settings → AI & Integrations → AI Provider**, select another
 provider or **No provider**, and save to avoid authentication errors.
+**No provider** clears your personal override; configured admin defaults can still
+be used. It does not disable AI across the server.
 Broker automatic syncs remain disabled.
 
 To verify the saved ChatGPT login was removed without using any API key from
@@ -104,3 +106,4 @@ docker exec --user appuser tradetally-local-app-1 codex logout
 ```
 
 Then choose another provider or **No provider** in production settings and save.
+Clearing the personal provider restores any configured admin defaults.
