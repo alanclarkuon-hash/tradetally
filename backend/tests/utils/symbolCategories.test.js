@@ -24,6 +24,13 @@ describe('symbolCategories', () => {
     symbolCategories.inFlightLookups.clear();
   });
 
+  test('background company enrichment excludes crypto trades', async () => {
+    mockDb.query.mockResolvedValueOnce({rows: []});
+    await symbolCategories.categorizeNewSymbols('test-user');
+    expect(mockDb.query.mock.calls[0][0]).toContain("t.instrument_type IS DISTINCT FROM 'crypto'");
+    expect(mockFinnhub.getCompanyProfile).not.toHaveBeenCalled();
+  });
+
   test('refetches fresh but empty symbol rows and returns normalized metadata', async () => {
     mockDb.query
       .mockResolvedValueOnce({

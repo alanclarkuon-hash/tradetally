@@ -148,7 +148,8 @@ describe('TradeQueries.findByUser characterization', () => {
       await TradeQueries.findByUser('user-1', { sector: 'Technology' });
       const { sql, values } = captureQuery();
       expect(values).toEqual(['user-1', 'Technology']);
-      expect(sql).toContain('sc.finnhub_industry = $2');
+      expect(sql).toContain('sc.finnhub_industry IN ($2)');
+      expect(sql).toContain("t.instrument_type IS DISTINCT FROM 'crypto'");
     });
 
     test('instrumentTypes: IN with placeholders', async () => {

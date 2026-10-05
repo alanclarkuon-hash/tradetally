@@ -389,7 +389,8 @@ describe('TradeQueries.getAnalytics characterization', () => {
       const values = captureValues();
       const sql = captureSql();
       expect(values).toEqual(['user-1', 'Technology']);
-      expect(sql).toContain('EXISTS (SELECT 1 FROM symbol_categories sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry = $2)');
+      expect(sql).toContain('EXISTS (SELECT 1 FROM symbol_categories sc WHERE sc.symbol = t.symbol AND sc.finnhub_industry IN ($2))');
+      expect(sql).toContain("t.instrument_type IS DISTINCT FROM 'crypto'");
     });
 
     test('instrumentTypes: IN with placeholders', async () => {

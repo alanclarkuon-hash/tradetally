@@ -11,6 +11,7 @@ const EmailService = require('./emailService');
 const { publish } = require('../events/domainEvents');
 const escapeHtml = require('../utils/escapeHtml');
 const maskEmail = require('../utils/maskEmail');
+const { priceCacheKey, autoPriceKeySql } = require('../utils/priceCacheIdentity');
 
 class PriceMonitoringService {
   constructor() {
@@ -87,21 +88,25 @@ class PriceMonitoringService {
     try {
       // Get all unique symbols from active alerts, watchlists, open positions, and holdings
       const symbolsQuery = `
-        SELECT DISTINCT symbol
+        SELECT DISTINCT symbol, instrument_type
         FROM (
-          SELECT symbol FROM price_alerts WHERE is_active = TRUE
+          SELECT symbol, NULL::text AS instrument_type FROM price_alerts WHERE is_active = TRUE
           UNION
-          SELECT symbol FROM watchlist_items
+          SELECT symbol, NULL::text AS instrument_type FROM watchlist_items
           UNION
-          SELECT DISTINCT symbol FROM trades
+          SELECT DISTINCT symbol, COALESCE(instrument_type, 'stock') AS instrument_type FROM trades
             WHERE exit_price IS NULL AND exit_time IS NULL
           UNION
-          SELECT DISTINCT symbol FROM investment_holdings
+          SELECT DISTINCT symbol, 'stock'::text AS instrument_type FROM investment_holdings
         ) AS symbols
       `;
 
       const symbolsResult = await db.query(symbolsQuery);
-      const allSymbols = symbolsResult.rows.map(row => row.symbol);
+      const identities = new Map(symbolsResult.rows.map(row => {
+        const type = row.instrument_type || (finnhub.isCryptoSymbol(row.symbol) ? 'crypto' : 'stock');
+        return [priceCacheKey(row.symbol, type), {symbol:row.symbol, type}];
+      }));
+      const allSymbols = [...identities.keys()];
 
       if (allSymbols.length === 0) {
         logger.debug('No symbols to monitor');
@@ -135,7 +140,8 @@ class PriceMonitoringService {
 
       // Update prices for all symbols
       for (const symbol of symbols) {
-        const skipReason = this.getUnsupportedQuoteReason(symbol);
+        const identity = identities.get(symbol);
+        const skipReason = this.getUnsupportedQuoteReason(identity.symbol);
         if (skipReason) {
           if (!this.skippedSymbols.has(symbol)) {
             logger.warn(`Skipping price monitoring for ${symbol}: ${skipReason}.`);
@@ -144,7 +150,7 @@ class PriceMonitoringService {
           continue;
         }
 
-        const updateResult = await this.updateSymbolPrice(symbol);
+        const updateResult = await this.updateSymbolPrice(identity.symbol, identity.type);
         
         if (updateResult === true) {
           successCount++;
@@ -179,22 +185,24 @@ class PriceMonitoringService {
     }
   }
 
-  async updateSymbolPrice(symbol) {
+  async updateSymbolPrice(symbol, instrumentType = null) {
+    const crypto = instrumentType === 'crypto' || (!instrumentType && finnhub.isCryptoSymbol(symbol));
+    const key = priceCacheKey(symbol, crypto ? 'crypto' : 'stock');
     try {
       // Check if symbol has exceeded failure limit
       const MAX_FAILURES = 15; // Stop attempting after 15 failures
-      const existingFailure = this.failedSymbols.get(symbol);
+      const existingFailure = this.failedSymbols.get(key);
       if (existingFailure && existingFailure.count >= MAX_FAILURES) {
         // Silently skip - we've already warned them
         return false;
       }
 
-      // Crypto symbols are served by CoinGecko (no rate limit), not Finnhub.
+      // Explicit crypto identity uses CoinGecko's shared request budget.
       // Equities go through the fallback manager (Finnhub 403 -> Schwab, etc.).
       let priceData;
       let dataSource;
       let error;
-      if (finnhub.isCryptoSymbol(symbol)) {
+      if (crypto) {
         try {
           priceData = await finnhub.getCryptoQuote(symbol);
           dataSource = 'coingecko';
@@ -221,10 +229,10 @@ class PriceMonitoringService {
         }
 
         // Both sources failed - track failure
-        const failureData = this.failedSymbols.get(symbol) || { count: 0, firstSeen: Date.now() };
+        const failureData = this.failedSymbols.get(key) || { count: 0, firstSeen: Date.now() };
         failureData.count++;
         failureData.lastSeen = Date.now();
-        this.failedSymbols.set(symbol, failureData);
+        this.failedSymbols.set(key, failureData);
 
         const errorMsg = error?.message || 'Unknown error';
 
@@ -248,9 +256,9 @@ class PriceMonitoringService {
       }
 
       // Success - clear any previous failures
-      if (this.failedSymbols.has(symbol)) {
+      if (this.failedSymbols.has(key)) {
         logger.info(`${symbol} is now working again via ${dataSource}`);
-        this.failedSymbols.delete(symbol);
+        this.failedSymbols.delete(key);
       }
 
       const currentPrice = priceData.c;
@@ -277,7 +285,7 @@ class PriceMonitoringService {
           open_price = COALESCE($8, price_monitoring.open_price),
           last_updated = CURRENT_TIMESTAMP,
           data_source = $9
-      `, [symbol, currentPrice, previousClose, priceChange, percentChange, highOfDay, lowOfDay, openPrice, dataSource]);
+      `, [key, currentPrice, previousClose, priceChange, percentChange, highOfDay, lowOfDay, openPrice, dataSource]);
 
       // Persist today's price to historical_prices DB table
       try {
@@ -331,7 +339,7 @@ class PriceMonitoringService {
         FROM price_alerts pa
         JOIN users u ON pa.user_id = u.id
         LEFT JOIN user_settings us ON u.id = us.user_id
-        LEFT JOIN price_monitoring pm ON pa.symbol = pm.symbol
+        LEFT JOIN price_monitoring pm ON pm.symbol = ${autoPriceKeySql('pa')}
         WHERE pa.is_active = TRUE
         AND pm.current_price IS NOT NULL
       `;

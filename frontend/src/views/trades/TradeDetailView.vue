@@ -23,6 +23,7 @@
         <div class="flex items-center gap-3">
           <StockLogo
             :symbol="trade.symbol"
+            :instrument-type="trade.instrument_type || trade.instrumentType"
             size-class="w-11 h-11"
             fallback-text-class="text-sm font-semibold"
           />

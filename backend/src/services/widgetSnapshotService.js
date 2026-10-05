@@ -7,6 +7,7 @@ const NewsService = require('./newsService');
 const finnhub = require('../utils/finnhub');
 const { groupTradesIntoPositions } = require('../utils/openPositionGrouping');
 const { getDateInTimezone, getDayOfWeekInTimezone } = require('../utils/timezone');
+const { priceCacheKey, usablePriceRow } = require('../utils/priceCacheIdentity');
 
 const DASHBOARD_TTL_MS = 24 * 60 * 60 * 1000;
 const NEWS_STALE_AFTER_MS = 75 * 60 * 1000;
@@ -151,20 +152,21 @@ async function loadOpenPositionMetrics(userId, now = new Date()) {
   // quote is skipped below rather than guessed.
   const quoteSymbols = [...new Set(positions
     .filter(position => position.instrumentType !== 'option')
-    .map(position => String(position.symbol || '').trim().toUpperCase())
+    .map(position => priceCacheKey(position.symbol || '', position.instrumentType))
     .filter(Boolean))];
   // Read all rows once. During the session only two-minute rows are live; after
   // the close the latest persisted row is the stable official-session fallback.
   const quoteResult = quoteSymbols.length > 0 && finnhub.isConfigured()
     ? await db.query(
-        `SELECT UPPER(symbol) AS symbol, current_price, price_change, last_updated
+        `SELECT symbol, current_price, price_change, last_updated, data_source
          FROM price_monitoring
-         WHERE UPPER(symbol) = ANY($1::text[])`,
+         WHERE symbol = ANY($1::text[])`,
         [quoteSymbols]
       )
     : { rows: [] };
   const quotes = new Map(quoteResult.rows
     .filter(row => {
+      if (!usablePriceRow(row,row.symbol.startsWith('crypto:')?'crypto':'stock')) return false;
       if (!market.isOpen || !row.last_updated) return true;
       const updatedAt = new Date(row.last_updated).getTime();
       return Number.isFinite(updatedAt) && now.getTime() - updatedAt <= QUOTE_FRESHNESS_MS;
@@ -181,12 +183,16 @@ async function loadOpenPositionMetrics(userId, now = new Date()) {
     let timeoutId;
     try {
       const freshQuotes = await Promise.race([
-        finnhub.getBatchQuotes(uncachedSymbols, {
+        Promise.all([
+          finnhub.getBatchQuotes(uncachedSymbols.filter(key=>!key.startsWith('crypto:')), {
           source: 'open_positions',
+          assetType: 'stock',
           priority: 0,
           userId,
           maxQueueWaitMs: QUOTE_TIMEOUT_MS
-        }),
+          }),
+          ...uncachedSymbols.filter(key=>key.startsWith('crypto:')).map(async key=>({[key]:await finnhub.getCryptoQuote(key.slice(7))}))
+        ]).then(results=>Object.assign({},...results)),
         new Promise((_, reject) => {
           timeoutId = setTimeout(() => reject(new Error('Widget quote fetch timed out')), QUOTE_TIMEOUT_MS);
         })
@@ -210,7 +216,7 @@ async function loadOpenPositionMetrics(userId, now = new Date()) {
 
   for (const position of positions) {
     if (position.instrumentType === 'option') continue;
-    const quote = quotes.get(String(position.symbol || '').trim().toUpperCase());
+    const quote = quotes.get(priceCacheKey(position.symbol || '',position.instrumentType));
     const currentPrice = finiteNumber(quote?.current_price, NaN);
     if (!Number.isFinite(currentPrice) || currentPrice <= 0) continue;
 

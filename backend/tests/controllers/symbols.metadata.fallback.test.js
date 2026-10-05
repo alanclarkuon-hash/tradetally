@@ -13,6 +13,8 @@ const symbolCategories = require('../../src/utils/symbolCategories');
 const yahooFinance = require('../../src/utils/yahooFinance');
 const TierService = require('../../src/services/tierService');
 const symbolsController = require('../../src/controllers/symbols.controller');
+const cache=require('../../src/utils/cache');
+const entries=new Map();
 
 function createRequest(symbols, host = 'journal.example.internal') {
   return { query: { symbols }, headers: { host } };
@@ -30,12 +32,18 @@ function createResponse() {
 async function getMetadata(req) {
   const res = createResponse();
   await symbolsController.getSymbolMetadata(req, res, (error) => { if (error) throw error; });
+  // Optional names are filled off the initial response path.
+  for(let i=0;i<20;i++) await new Promise(resolve=>setImmediate(resolve));
+  await symbolsController.getSymbolMetadata(req,res);
   return res;
 }
 
 describe('symbol metadata name fallback', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    entries.clear();
+    cache.get.mockImplementation(key=>entries.get(key));
+    cache.set.mockImplementation((key,value)=>entries.set(key,value));
     db.query.mockResolvedValue({ rows: [] });
     symbolCategories.getSymbolCategories.mockResolvedValue(new Map());
     yahooFinance.isEnabled.mockReturnValue(true);

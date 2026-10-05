@@ -65,8 +65,8 @@ holdings or adds funding flows to an already complete balance.
 
 Opening or refreshing the portfolio captures today's selected accounts. The
 existing portfolio snapshot scheduler also captures total values daily when
-background jobs are enabled. Test keeps background jobs disabled, so values
-are recorded when the page is used. An offline PC cannot record observations.
+background jobs are enabled. Test now enables non-broker data jobs, including
+daily snapshots, while broker syncs stay disabled. An offline PC cannot record observations.
 Historical observations were not recorded before this feature. Saved native
 ledgers, execution histories and public closing prices can now reconstruct
 covered days. Missing selected-account days and missing dated GBP conversion

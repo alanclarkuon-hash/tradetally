@@ -1,3 +1,4 @@
+const { getSectorCategory } = require('../utils/sectorCategory');
 const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
 const db = require('../config/database');
 const crypto = require('crypto');
@@ -2743,19 +2744,21 @@ const analyticsController = {
           WITH positions AS (
             SELECT
               COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
               SUM(${fxUsd('pnl', 't')}) as pnl,
               SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
             FROM trades t
             WHERE t.user_id = $1 ${filterConditions}
-            GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+            GROUP BY CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END, COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
           )
           SELECT
             symbol,
+          instrument_type,
             COUNT(*) as total_trades,
             COALESCE(SUM(pnl), 0) as total_pnl,
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
           FROM positions
-          GROUP BY symbol
+          GROUP BY symbol, instrument_type
           HAVING COUNT(*) > 0
           ORDER BY total_pnl DESC
           LIMIT 15
@@ -2763,12 +2766,13 @@ const analyticsController = {
           : `
           SELECT
             symbol,
+          CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
             COUNT(*) as total_trades,
             COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
             COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
-          GROUP BY symbol
+          GROUP BY symbol, CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END
           HAVING COUNT(*) > 0
           ORDER BY total_pnl DESC
           LIMIT 15
@@ -2790,7 +2794,7 @@ const analyticsController = {
 
           const sectorMap = new Map();
           for (const symbolInfo of symbolData) {
-            const industry = industryMap.get(symbolInfo.symbol);
+            const industry = (await getSectorCategory(symbolInfo, {finnhub_industry: industryMap.get(symbolInfo.symbol)}))?.finnhub_industry;
             if (!industry) continue;
 
             if (!sectorMap.has(industry)) {
@@ -2885,33 +2889,36 @@ const analyticsController = {
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
             SUM(${fxUsd('pnl', 't')}) as pnl,
             SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
-          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+          GROUP BY CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END, COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
         )
         SELECT
           symbol,
+          instrument_type,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM positions
-        GROUP BY symbol
+        GROUP BY symbol, instrument_type
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
       `
         : `
         SELECT
           symbol,
+          CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
           COUNT(*) as total_trades,
           COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
           COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
-        GROUP BY symbol
+        GROUP BY symbol, CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
       `;
@@ -2954,7 +2961,7 @@ const analyticsController = {
 
       // Process symbols with stored categories first
       for (const symbolInfo of symbolData) {
-        const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
+        const category = await getSectorCategory(symbolInfo, storedCategories.get(symbolInfo.symbol.toUpperCase()));
 
         if (category) {
           // Symbol has been processed
@@ -3084,9 +3091,11 @@ const analyticsController = {
       `;
 
       const result = await db.query(query);
-      const sectors = result.rows.map(row => row.finnhub_industry);
+      const sectors = new Set(result.rows.map(row => row.finnhub_industry));
+      const cryptoTrades = await db.query("SELECT DISTINCT symbol, instrument_type FROM trades WHERE user_id=$1 AND instrument_type='crypto'", [req.user.id]);
+      for (const trade of cryptoTrades.rows) sectors.add((await getSectorCategory(trade, null)).finnhub_industry);
 
-      res.json({ sectors });
+      res.json({ sectors: [...sectors].sort() });
     } catch (error) {
       console.error('Error getting available sectors:', error);
       next(error);
@@ -3132,33 +3141,36 @@ const analyticsController = {
         WITH positions AS (
             SELECT
             COALESCE(NULLIF(underlying_symbol, ''), symbol) as symbol,
+            CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
             SUM(${fxUsd('pnl', 't')}) as pnl,
             SUM(${fxUsd('pnl', 't')} + COALESCE(${fxUsd('commission', 't')}, 0) + COALESCE(${fxUsd('fees', 't')}, 0)) as gross_pnl
           FROM trades t
           WHERE t.user_id = $1 ${filterConditions}
-          GROUP BY COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
+          GROUP BY CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END, COALESCE(NULLIF(underlying_symbol, ''), symbol), ${POSITION_GROUP_KEY}
         )
         SELECT
           symbol,
+          instrument_type,
           COUNT(*) as total_trades,
           COALESCE(SUM(pnl), 0) as total_pnl,
           COALESCE(AVG(pnl), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM positions
-        GROUP BY symbol
+        GROUP BY symbol, instrument_type
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
       `
         : `
         SELECT
           symbol,
+          CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END as instrument_type,
           COUNT(*) as total_trades,
           COALESCE(SUM(${fxUsd('pnl', 't')}), 0) as total_pnl,
           COALESCE(AVG(${fxUsd('pnl', 't')}), 0) as avg_pnl,
           COUNT(CASE WHEN ${be.isNot} AND pnl > 0 THEN 1 END) as winning_trades
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
-        GROUP BY symbol
+        GROUP BY symbol, CASE WHEN t.instrument_type = 'crypto' THEN 'crypto' ELSE 'company' END
         HAVING COUNT(*) > 0
         ORDER BY total_pnl DESC
       `;
@@ -3195,7 +3207,7 @@ const analyticsController = {
 
       // Process all symbols with their categories
       for (const symbolInfo of symbolData) {
-        const category = storedCategories.get(symbolInfo.symbol.toUpperCase());
+        const category = await getSectorCategory(symbolInfo, storedCategories.get(symbolInfo.symbol.toUpperCase()));
 
         if (category) {
           // Symbol has been processed

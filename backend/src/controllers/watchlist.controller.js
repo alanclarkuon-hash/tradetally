@@ -1,3 +1,4 @@
+const { priceCacheKey, autoPriceKeySql } = require('../utils/priceCacheIdentity');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
@@ -81,7 +82,7 @@ const watchlistController = {
           pm.volume,
           pm.last_updated as price_last_updated
         FROM watchlist_items wi
-        LEFT JOIN price_monitoring pm ON wi.symbol = pm.symbol
+        LEFT JOIN price_monitoring pm ON pm.symbol = ${autoPriceKeySql('wi')}
         WHERE wi.watchlist_id = $1
         ORDER BY wi.added_at DESC
       `;
@@ -306,7 +307,7 @@ const watchlistController = {
               volume = $6,
               last_updated = CURRENT_TIMESTAMP,
               data_source = $7
-          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0, dataSource]);
+          `, [priceCacheKey(symbolUpper,isCrypto ? 'crypto' : 'stock'), currentPrice, null, 0, 0, priceData.pc || 0, dataSource]);
         }
       } catch (priceError) {
         logger.logWarn(`Could not fetch price for symbol ${symbolUpper}:`, priceError.message);

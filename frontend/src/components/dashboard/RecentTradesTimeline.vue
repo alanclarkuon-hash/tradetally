@@ -45,7 +45,7 @@
             :to="`/trades/${trade.id}`"
             class="flex items-center gap-3 -mx-2 px-2 py-1 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors"
           >
-            <StockLogo :symbol="trade.symbol" :size="32" class="flex-shrink-0" />
+            <StockLogo :symbol="trade.symbol" :instrument-type="trade.instrument_type || trade.instrumentType" :size="32" class="flex-shrink-0" />
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-1.5">
                 <span class="font-medium text-sm text-gray-900 dark:text-white truncate">{{ trade.symbol }}</span>

@@ -46,6 +46,7 @@
                     <div class="flex items-center">
                         <StockLogo
                             :symbol="holding.symbol"
+                            :instrument-type="holding.instrument_type || holding.instrumentType"
                             :logo-url="profile?.logo"
                             size-class="w-16 h-16"
                             fallback-text-class="text-xl font-bold"

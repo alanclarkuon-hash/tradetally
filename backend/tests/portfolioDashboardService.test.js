@@ -4,7 +4,7 @@ jest.mock('../src/models/Account',()=>({getCashflow:jest.fn()}));
 jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockTradeChartData:jest.fn()}));
 jest.mock('../src/utils/currencyConverter',()=>({getForexRate:jest.fn()}));
-jest.mock('../src/services/cryptoCategoriesService',()=>({getCategories:jest.fn().mockResolvedValue({categories:[],primaryCategory:null})}));
+jest.mock('../src/services/cryptoCategoriesService',()=>({getDisplayCategories:jest.fn().mockResolvedValue({categories:[],primaryCategory:null})}));
 jest.mock('../src/services/fundCategoriesService',()=>({getCategories:jest.fn()}));
 jest.mock('../src/services/assetClassificationService',()=>({getClassifications:jest.fn()}));
 const db=require('../src/config/database'),Portfolio=require('../src/services/portfolioService'),Account=require('../src/models/Account');
@@ -65,7 +65,7 @@ test('sub-cent coins use precise portfolio value rather than a rounded zero quot
 test('retains known P&L and names excluded holdings without claiming a complete total',async()=>{
  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'BTC',unrealizedPnL:20},{...position,symbol:'UNKNOWN',unrealizedPnL:null}]);
  getRatesToDisplay.mockResolvedValue({USD:1});db.query.mockResolvedValue({rows:[]});
- require('../src/services/cryptoCategoriesService').getCategories.mockResolvedValue({categories:[],primaryCategory:null});
+ require('../src/services/cryptoCategoriesService').getDisplayCategories.mockResolvedValue({categories:[],primaryCategory:null});
  const result=await getDashboard('test-user',{currency:'USD'});
  expect(result.totals).toMatchObject({pnl:null,knownPnl:20});
  expect(result.coverage.missingPnlSymbols).toEqual(['UNKNOWN']);
@@ -96,7 +96,7 @@ test('stock reference grouping does not change valuation or reuse provider indus
 test('crypto range P&L can reuse stored USD closes without a Kraken holding',async()=>{
  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEAR',currentPrice:12}]);
  getRatesToDisplay.mockResolvedValue({USD:1});
- require('../src/services/cryptoCategoriesService').getCategories.mockResolvedValue({categories:[],primaryCategory:null});
+ require('../src/services/cryptoCategoriesService').getDisplayCategories.mockResolvedValue({categories:[],primaryCategory:null});
  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'NEAR',quantity:100,price:8,acquired:'2025-12-01'}]:sql.includes('portfolio_reconstruction_prices')?[{symbol:'NEAR-USD',payload:{currency:'USD',prices:[{date:'2026-01-01',close:10},{date:'2026-02-01',close:12}]}}]:[]}));
  const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
  expect(result.holdings[0]).toMatchObject({pnl:200,pnlPercent:20});

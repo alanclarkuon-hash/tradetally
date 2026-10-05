@@ -137,7 +137,7 @@ async function getDashboard(userId, query={}, historical=null) {
   }
   const holdings=[],stablecoins=[];
   const categoryService=require('./cryptoCategoriesService');
-  const categoriesBySymbol=new Map(await Promise.all(positions.filter(p=>p.instrumentType==='crypto' && !STABLE.has(p.symbol) && !FIAT.has(p.symbol)).map(async p=>[p.symbol,await categoryService.getCategories(p.symbol)])));
+  const categoriesBySymbol=new Map(await Promise.all(positions.filter(p=>p.instrumentType==='crypto' && !STABLE.has(p.symbol) && !FIAT.has(p.symbol)).map(async p=>[p.symbol,await categoryService.getDisplayCategories(p.symbol)])));
   let missingPrices=0;
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
