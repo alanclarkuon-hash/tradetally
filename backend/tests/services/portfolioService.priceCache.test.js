@@ -19,7 +19,10 @@ test('persists Alpha Vantage candles and reuses them on the next request', async
   alpha.getDailyData.mockResolvedValue([candle]);
   expect(await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner')).toEqual([candle]);
   expect(cache.insertCandles).toHaveBeenCalledWith('MSFT', [candle], 'alphaVantage');
-  cache.getRange.mockResolvedValue([candle]);
+  cache.getRange.mockResolvedValue([
+    { ...candle, time: Date.parse('2026-08-01') / 1000 },
+    { ...candle, time: Date.parse('2026-08-31') / 1000 }
+  ]);
   cache.hasRange.mockResolvedValue(true);
   await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner');
   expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
@@ -43,5 +46,12 @@ test('background history returns cached prices immediately, coalesces downloads 
   finnhub.getStockCandles.mockRejectedValue(new Error('unavailable'));
   await new Promise(resolve => setImmediate(resolve));
   await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options);
+  expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
+});
+test('a compact trailing response does not count as complete coverage of a longer range', async () => {
+  cache.getRange.mockResolvedValue([candle]);
+  cache.hasRange.mockResolvedValue(true);
+  alpha.getDailyData.mockResolvedValue([candle]);
+  await PortfolioService._getDailySeries('PARTIAL', '2026-01-01', '2026-08-31', 'owner');
   expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
 });
