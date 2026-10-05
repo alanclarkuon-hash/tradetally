@@ -249,6 +249,10 @@ function select(value) {
   open.value = false
 }
 
+function selectClear() {
+  select('')
+}
+
 function selectFirstMatch() {
   const first = filteredOptions.value.find(o => !o.disabled)
   if (first) select(first.value)

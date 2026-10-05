@@ -48,6 +48,7 @@
                         >
                             Choose your preferred AI provider for
                             analytics and CUSIP resolution.
+                            With no personal provider selected, admin defaults apply.
                         </p>
                     </div>
 
