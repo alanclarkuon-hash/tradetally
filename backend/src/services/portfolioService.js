@@ -1584,14 +1584,10 @@ class PortfolioService {
       if (reusable.length) await historicalPriceCache.insertCandles(symbol, reusable, 'coingecko');
       cachedCandles = [...cachedCandles, ...reusable].sort((a,b)=>a.time-b.time);
     }
-    const start = Date.parse(`${startDate}T00:00:00Z`) / 1000;
-    const end = Date.parse(`${endDate}T00:00:00Z`) / 1000;
-    const times = cachedCandles.map(candle => candle.time);
-    // The shared cache's count threshold alone can accept a trailing compact
-    // response for a much longer range. Also require both requested boundaries.
-    const coversBoundaries = times.length > 0 && Math.min(...times) <= start + 7 * 86400 && Math.max(...times) >= end - 7 * 86400;
-    if (coversBoundaries && await historicalPriceCache.hasRange(symbol, startDate, endDate) &&
-      (instrumentType !== 'crypto' || !historyProvider.missingRanges(cachedCandles, startDate, endDate, true).length)) {
+    const calendar = instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(symbol);
+    // A candle count cannot distinguish real session gaps from market closures.
+    // Only require dates on which this instrument's exchange actually traded.
+    if (!historyProvider.missingRanges(cachedCandles, startDate, endDate, instrumentType === 'crypto', calendar).length) {
       incompleteHistory.delete(key);
       return cachedCandles;
     }
@@ -1635,7 +1631,8 @@ class PortfolioService {
       await historicalPriceCache.insertCandles(symbol, fresh, source);
       for (const c of fresh) merged.set(c.time, c);
     };
-    const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto);
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker);
+    const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto, calendar);
     if (ranges().length) await require('./brokerHistoryProviders').fetch({
       userId, symbol: ticker, instrumentType, ranges, onPrices: persist
     });

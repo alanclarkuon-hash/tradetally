@@ -19,6 +19,14 @@ History jobs have their own durable worker lane. They cannot block sequential em
 
 Daily comparison candles and portfolio reconstruction have different price conventions. Reconstruction requires quote currency, minor-unit normalization and historical split reversal. Its split-aware equity store is retained; the background reconstruction stage obtains that metadata and dated FX, preserves statement NAV precedence, and rebuilds earlier gaps. Crypto reconstruction reads the shared typed USD candle store while retaining saved native/archived valuation evidence.
 
+## Exchange sessions
+
+`exchangeCalendar.js` supplies shared session checks for price-download planning, exact cache coverage and displayed gaps (including previously saved gap lists). Listing metadata selects US equity, London or Xetra rules; `.L` and `.DE` identify their market explicitly. Unknown listings keep weekday gaps visible rather than guessing a US calendar. Crypto requires all calendar days. Half days remain valid sessions. Calendar rules cover 2020 onward; earlier and unsupported exchanges retain weekend-only handling. New exchange calendars can be registered without changing the download worker.
+
+Recurring holidays use dated Easter and observed-day rules, including the NYSE Saturday New Year's exception, US Juneteenth starting in 2022, UK substitute Christmas days, and Xetra's pre-2022 Whit Monday closures. Documented exceptional closures include US 9 January 2025 and UK VE Day, Jubilee, funeral and Coronation bank holidays. Future exceptional closures require calendar maintenance; no empty provider response is interpreted as a holiday.
+
+Sources: [NYSE schedules](https://www.nyse.com/markets/hours-calendars), [NYSE 2025 calendar](https://www.nyse.com/publicdocs/ICE_NYSE_2025_Yearly_Trading_Calendar.pdf), [Carter closure notice](https://www.nyse.com/publicdocs/nyse/markets/american-options/rule-interpretations/2025/National_Day_of_Mourning_20250102.pdf), [LSE business days](https://www.londonstockexchange.com/equities-trading/business-days), [LSE funeral notice](https://docs.londonstockexchange.com/sites/default/files/documents/n1622.pdf), [Xetra calendar and archive](https://www.cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours).
+
 ## Persistence and progress
 
 Finalized rows in `historical_prices` never expire and cannot be overwritten by subsequent providers. Live quotes carry `is_final=false`; after that date ends they are excluded from historical coverage until finalized daily candles replace them. Existing finalized data is preserved. Intraday quotes and downloaded current-day candles are provisional, not guaranteed daily closes.

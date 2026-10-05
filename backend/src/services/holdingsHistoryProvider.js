@@ -5,12 +5,12 @@ const DAY = 86400000;
 const iso = value => new Date(value).toISOString().slice(0, 10);
 
 // Only absent dates are requested. Weekends are not missing stock sessions.
-function missingRanges(candles, from, to, crypto = false) {
+function missingRanges(candles, from, to, crypto = false, calendar = null) {
   const known = new Set(candles.map(c => iso(c.time * 1000)));
   const ranges = []; let range;
   for (let t = Date.parse(from); t <= Date.parse(to); t += DAY) {
     const d = iso(t), weekday = new Date(t).getUTCDay();
-    if (!crypto && (weekday === 0 || weekday === 6)) continue;
+    if (!crypto && !require('./exchangeCalendar').isTradingDay(d, calendar)) continue;
     if (known.has(d)) { range = null; continue; }
     if (!range) { range = { from: d, to: d }; ranges.push(range); }
     else range.to = d;
