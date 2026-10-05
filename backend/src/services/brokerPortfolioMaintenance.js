@@ -1,6 +1,6 @@
 const db=require('../config/database');
 const pending=new Map();
-const supported=new Set(['ibkr','trading212','kraken','okx']);
+const supported=new Set(['ibkr','trading212','kraken','okx','etoro','ig']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
 async function maintain(userId,{broker=null,fetchPrices=true}={}) {
@@ -31,9 +31,11 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
       const snapshot=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='okx' AND account_identifier=$2",[userId,account.account_identifier])).rows[0];
       if(!snapshot?.payload?.historyComplete||snapshot.payload.funding?.length||snapshot.payload.positions?.length){warnings.push('okx: portfolio history awaits spot balance reconciliation.');continue;}
     }
-    const last=(await db.query(`SELECT MAX(value_date) AS latest FROM portfolio_reconstructed_values
-      WHERE user_id=$1 AND account_identifier=$2 AND holdings_usd IS NOT NULL AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0]?.latest;
-    const fromDate=last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
+    const coverage=(await db.query(`SELECT MAX(value_date) AS latest,
+      MIN(value_date) FILTER (WHERE holdings_usd IS NULL OR issues <> '[]'::jsonb) AS first_gap
+      FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0];
+    const last=coverage?.latest;
+    const fromDate=coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
     const summary=await require('./portfolioReconstructionService').reconstruct(userId,{broker:account.broker,
      accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true});
     rebuilt.push(...summary.map(s=>({broker:s.broker,days:s.days,gaps:s.gaps})));
@@ -48,6 +50,6 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
  try{return await job;}finally{if(pending.get(key)===job)pending.delete(key);}
 }
 async function maintainAllUsers() {
- for(const user of (await db.query('SELECT id FROM users')).rows)await maintain(user.id);
+ for(const user of (await db.query('SELECT id FROM users')).rows)await require('./historyBackfillService').enqueue(user.id);
 }
 module.exports={maintain,maintainAllUsers};

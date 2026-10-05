@@ -249,6 +249,11 @@ class BrokerSyncService {
         console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
       }
 
+      if (latestReportRetrieved && !result.failed && result.reconciliationRequired !== true) {
+        try { result.historyJobId = await require('../historyBackfillService').enqueue(connection.userId); }
+        catch { result.warnings = [...(result.warnings || []), 'Historical price backfill could not be queued; broker imports were retained.']; }
+      }
+
       return {
         success: true,
         syncLogId: syncLog.id,
