@@ -20,6 +20,7 @@ const NewsNotificationService = require('../../src/services/newsNotificationServ
 describe('NewsService widget refresh tracking', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    NewsService._retryAfter.clear();
   });
 
   afterEach(async () => {
@@ -67,7 +68,7 @@ describe('NewsService widget refresh tracking', () => {
     finnhub.getCompanyNews.mockResolvedValueOnce([article]);
     NewsNotificationService.publishForSymbol.mockRejectedValueOnce(new Error('storage unavailable'));
 
-    expect(await NewsService.refreshNewsForSymbols(['AAPL'])).toEqual([
+    expect(await NewsService.fetchAndCacheSymbol('AAPL')).toEqual([
       { ...article, symbol: 'AAPL' }
     ]);
   });
@@ -120,5 +121,50 @@ describe('NewsService widget refresh tracking', () => {
       errors: 1,
       failedSymbols: ['VOO']
     }));
+  });
+});
+
+
+describe('dashboard cache-first news', () => {
+  beforeEach(() => { jest.clearAllMocks(); NewsService._retryAfter.clear(); });
+  afterEach(() => jest.restoreAllMocks());
+
+  test('returns cached articles without waiting for uncached symbols or a slow provider', async () => {
+    const article = { id: 1, datetime: 100, headline: 'Cached' };
+    db.query.mockResolvedValueOnce({ rows: [{ symbol: 'MSFT', news_items: [article], fetched_at: new Date() }] });
+    const queued = jest.spyOn(NewsService, 'requestBackgroundRefresh').mockReturnValue({ enqueued: 1 });
+    finnhub.getCompanyNews.mockImplementation(() => new Promise(() => {}));
+    expect(await NewsService.getNewsForSymbols(['msft', 'MSFT', 'TEST.L'])).toEqual([{ ...article, symbol: 'MSFT' }]);
+    expect(queued).toHaveBeenCalledWith(['TEST.L'], { reason: 'dashboard_news', force: false });
+    expect(finnhub.getCompanyNews).not.toHaveBeenCalled();
+  });
+
+  test('manual refresh returns existing stories and queues a forced refresh', async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ symbol: 'MSFT', news_items: [], fetched_at: new Date() }] });
+    const queued = jest.spyOn(NewsService, 'requestBackgroundRefresh').mockReturnValue({ enqueued: 1 });
+    expect(await NewsService.refreshNewsForSymbols(['MSFT'])).toEqual([]);
+    expect(queued).toHaveBeenCalledWith(['MSFT'], { reason: 'dashboard_news', force: true });
+    expect(finnhub.getCompanyNews).not.toHaveBeenCalled();
+  });
+
+  test('failed provider requests retain old articles and throttle retries even when forced', async () => {
+    db.query.mockResolvedValue({ rows: [] });
+    finnhub.getCompanyNews.mockRejectedValue(new Error('403 unsupported resource'));
+    expect(await NewsService.refreshSymbolIfStale('TEST.L')).toEqual({ status: 'error', changed: false });
+    expect(await NewsService.refreshSymbolIfStale('TEST.L', { force: true })).toEqual({ status: 'error', changed: false });
+    expect(finnhub.getCompanyNews).toHaveBeenCalledTimes(1);
+    expect(db.query.mock.calls.some(([sql]) => sql.includes('INSERT'))).toBe(false);
+    expect(NewsService.requestBackgroundRefresh(['TEST.L'])).toEqual({ enqueued: 0, deduplicated: 0 });
+    NewsService._retryAfter.set('TEST.L', Date.now() - 1);
+    await NewsService.refreshSymbolIfStale('TEST.L');
+    expect(finnhub.getCompanyNews).toHaveBeenCalledTimes(2);
+  });
+
+  test('pending status includes symbols waiting behind another provider call', () => {
+    NewsService._activeBackgroundSymbols.add('TEST.L');
+    expect(NewsService.isRefreshPending(['test.l'])).toBe(true);
+    expect(NewsService.requestBackgroundRefresh(['TEST.L'])).toEqual({ enqueued: 0, deduplicated: 1 });
+    NewsService._activeBackgroundSymbols.clear();
+    expect(NewsService.isRefreshPending(['TEST.L'])).toBe(false);
   });
 });
