@@ -214,7 +214,7 @@ const analyzeStock = async (req, res) => {
       console.log(`[INVESTMENTS] ${symbol} detected as crypto, fetching from CoinGecko`);
 
       const finnhub = require('../utils/finnhub');
-      const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbol.toUpperCase()];
+      const coinGeckoId = (await require('../services/coinGeckoIdentityService').resolve(symbol))?.id;
 
       if (!coinGeckoId) {
         return res.status(404).json({ error: `Unknown crypto symbol: ${symbol}` });
@@ -222,15 +222,8 @@ const analyzeStock = async (req, res) => {
 
       try {
         // Get detailed crypto data from CoinGecko
-        const axios = require('axios');
-        const cgHeaders = { 'Accept': 'application/json' };
-        if (process.env.COINGECKO_API_KEY) {
-          cgHeaders['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
-        }
-        const response = await axios.get(
-          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}?localization=false&tickers=false&community_data=false&developer_data=false`,
-          { timeout: 10000, headers: cgHeaders }
-        );
+        const response = await require('../services/coinGeckoClient').get(`/coins/${coinGeckoId}`,
+          { params: { localization: false, tickers: false, community_data: false, developer_data: false }, ttl: 15 * 60000 });
 
         const coin = response.data;
 
@@ -1302,14 +1295,13 @@ const getChartData = async (req, res) => {
 
     if (isCrypto) {
       // Use CoinGecko for crypto charts (Finnhub crypto requires premium)
-      const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbol.toUpperCase()];
+      const coinGeckoId = (await require('../services/coinGeckoIdentityService').resolve(symbol))?.id;
 
       if (!coinGeckoId) {
         return res.status(404).json({ error: `Unknown crypto symbol: ${symbol}` });
       }
 
       try {
-        const axios = require('axios');
         // CoinGecko market_chart endpoint - days parameter
         let days;
         switch (period.toUpperCase()) {
@@ -1325,14 +1317,8 @@ const getChartData = async (req, res) => {
 
         console.log(`[INVESTMENTS] Fetching crypto chart from CoinGecko for ${symbol} (${days} days)`);
 
-        const cgChartHeaders = { 'Accept': 'application/json' };
-        if (process.env.COINGECKO_API_KEY) {
-          cgChartHeaders['x-cg-demo-api-key'] = process.env.COINGECKO_API_KEY;
-        }
-        const response = await axios.get(
-          `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart?vs_currency=usd&days=${days}`,
-          { timeout: 15000, headers: cgChartHeaders }
-        );
+        const response = await require('../services/coinGeckoClient').get(`/coins/${coinGeckoId}/market_chart`,
+          { params: { vs_currency: 'usd', days }, ttl: 86400000 });
 
         // Convert CoinGecko format to candle format
         // CoinGecko returns [timestamp, price] arrays

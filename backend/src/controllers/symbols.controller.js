@@ -313,6 +313,8 @@ async function getSymbolMetadata(req, res) {
 
     await Promise.all(symbols.filter(symbol=>metadata[symbol]?.asset_type==='crypto').map(async symbol=>{
       metadata[symbol].logo=await require('../services/cryptoCategoriesService').getLogo(symbol);
+      const identity=await require('../services/coinGeckoIdentityService').cached(symbol);
+      if(identity?.name)metadata[symbol].companyName=identity.name;
     }));
 
     const symbolsMissingMetadata = symbols.filter(symbol => {

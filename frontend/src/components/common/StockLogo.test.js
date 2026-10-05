@@ -47,6 +47,11 @@ describe('StockLogo', () => {
     expect(crypto.find('img').exists()).toBe(false)
     expect(stock.get('img').attributes('src')).toBe('https://stock.example/sui.png')
   })
+  it('uses CoinGecko metadata even if a holding profile supplies an old stock logo', () => {
+    metadataBySymbol['crypto:SUI']={asset_type:'crypto',logo:'https://assets.coingecko.com/coins/images/26375/small/sui.png'}
+    const wrapper=mount(StockLogo,{props:{symbol:'SUI',instrumentType:'crypto',logoUrl:'https://stock.example/sui.png'}})
+    expect(wrapper.get('img').attributes('src')).toContain('assets.coingecko.com')
+  })
 
   it('walks the CDN candidates before landing on initials', async () => {
     const wrapper = mount(StockLogo, { props: { symbol: 'EXCO.DE' } })

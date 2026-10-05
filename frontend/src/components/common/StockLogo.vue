@@ -65,8 +65,8 @@ const providedLogo = computed(() => props.logoUrl || metadata.value?.logo || nul
 // Provider logo first, then the keyless CDNs; running out lands on the initials.
 const logoCandidates = computed(() => {
   const logo = providedLogo.value
-  const safeCryptoLogo = /^https:\/\/(assets|coin-images)\.coingecko\.com\//.test(logo || '')
-  if(isCrypto.value) return safeCryptoLogo ? [logo] : []
+  const safeCryptoLogo = value => /^https:\/\/(assets|coin-images)\.coingecko\.com\//.test(value || '')
+  if(isCrypto.value) return [...new Set([props.logoUrl, metadata.value?.logo].filter(safeCryptoLogo))]
   const candidates = logo ? [logo] : []
   return candidates.concat(fallbackLogoUrls(normalizedSymbol.value))
 })

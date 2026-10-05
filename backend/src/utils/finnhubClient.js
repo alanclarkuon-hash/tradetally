@@ -322,13 +322,13 @@ class FinnhubClient {
    */
   async getCryptoQuote(symbol) {
     const symbolUpper = symbol.toUpperCase();
-    const coinGeckoId = FinnhubClient.CRYPTO_TO_COINGECKO[symbolUpper];
+    const coinGeckoId = (await require('../services/coinGeckoIdentityService').resolve(symbolUpper))?.id;
 
     if (!coinGeckoId) {
       throw new Error(`Unknown crypto symbol: ${symbolUpper}`);
     }
 
-    // Check cache first (1 minute TTL for crypto quotes)
+    // Quotes share the provider client's 15-minute batch cache.
     const cacheKey = `crypto_quote_${symbolUpper}`;
     const cached = await cache.get('crypto_quote', cacheKey);
     if (cached) {
@@ -340,18 +340,7 @@ class FinnhubClient {
       console.log(`[CRYPTO] Fetching quote from CoinGecko for ${symbolUpper} (${coinGeckoId})`);
 
       // CoinGecko API - works without key, but key improves rate limits
-      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinGeckoId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_last_updated_at=true`;
-
-      const headers = { 'Accept': 'application/json' };
-      const apiKey = process.env.COINGECKO_API_KEY;
-      if (apiKey) {
-        headers['x-cg-demo-api-key'] = apiKey;
-      }
-
-      const response = await axios.get(url, {
-        timeout: 10000,
-        headers
-      });
+      const response = await require('../services/coinGeckoClient').getPrices(coinGeckoId);
 
       const data = response.data[coinGeckoId];
       if (!data || !data.usd) {
@@ -371,8 +360,7 @@ class FinnhubClient {
         isCrypto: true                         // Flag to indicate this is crypto
       };
 
-      // Cache the result (1 minute TTL)
-      await cache.set('crypto_quote', cacheKey, quote);
+      await cache.set('crypto_quote', cacheKey, quote, 15 * 60000);
 
       // Persist today's crypto price to historical_prices DB table
       try {

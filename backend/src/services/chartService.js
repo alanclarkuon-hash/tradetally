@@ -4,7 +4,6 @@ const alphaVantage = require('../utils/alphaVantage');
 const databento = require('../utils/databento');
 const yahooFinance = require('../utils/yahooFinance');
 const replayDataService = require('./replayDataService');
-const axios = require('axios');
 const { resolvePriceScale, applyPriceScale } = require('../utils/candlePriceScale');
 const { getFuturesPointValue, getFuturesTickSize } = require('../utils/futuresUtils');
 
@@ -203,7 +202,7 @@ class ChartService {
   // Get crypto chart data from CoinGecko for a trade's date range
   static async getCryptoTradeChartData(symbol, entryDate, exitDate = null) {
     const symbolUpper = symbol.toUpperCase();
-    const coinGeckoId = finnhub.constructor.CRYPTO_TO_COINGECKO[symbolUpper];
+    const coinGeckoId = (await require('./coinGeckoIdentityService').resolve(symbolUpper))?.id;
 
     if (!coinGeckoId) {
       throw new Error(`Unknown crypto symbol: ${symbolUpper}. CoinGecko mapping not found.`);
@@ -220,16 +219,8 @@ class ChartService {
 
     console.log(`[CRYPTO-CHART] Fetching CoinGecko chart for ${symbolUpper} (${coinGeckoId}), ${days} days`);
 
-    const headers = { 'Accept': 'application/json' };
-    const apiKey = process.env.COINGECKO_API_KEY;
-    if (apiKey) {
-      headers['x-cg-demo-api-key'] = apiKey;
-    }
-
-    const response = await axios.get(
-      `https://api.coingecko.com/api/v3/coins/${coinGeckoId}/market_chart?vs_currency=usd&days=${days}`,
-      { timeout: 15000, headers }
-    );
+    const response = await require('./coinGeckoClient').get(`/coins/${coinGeckoId}/market_chart`,
+      { params: { vs_currency: 'usd', days }, ttl: 86400000 });
 
     const prices = response.data.prices || [];
     const candles = prices.map(([timestamp, price]) => ({
