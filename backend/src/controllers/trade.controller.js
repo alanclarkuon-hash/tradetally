@@ -4219,6 +4219,7 @@ const tradeController = {
       const NewsService = require('../services/newsService');
       const allNews = await NewsService.getNewsForSymbols(symbolList);
 
+      res.set('X-News-Refresh-Pending', String(NewsService.isRefreshPending(symbolList)));
       res.json(allNews);
     } catch (error) {
       next(error);
@@ -4249,6 +4250,7 @@ const tradeController = {
       const NewsService = require('../services/newsService');
       const allNews = await NewsService.refreshNewsForSymbols(symbolList);
 
+      res.set('X-News-Refresh-Pending', String(NewsService.isRefreshPending(symbolList)));
       res.json(allNews);
     } catch (error) {
       next(error);

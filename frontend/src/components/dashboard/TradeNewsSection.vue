@@ -5,7 +5,7 @@
         <h3 class="text-lg font-medium text-gray-900 dark:text-white">Latest News</h3>
         <button
           @click="refreshNews"
-          :disabled="loading"
+          :disabled="loading || refreshing"
           class="inline-flex items-center px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-md text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg
@@ -25,6 +25,9 @@
           Refresh
         </button>
       </div>
+
+      <p v-if="refreshing" role="status" class="text-sm text-gray-500 dark:text-gray-400 mb-3">Updating news in the background...</p>
+      <p v-else-if="refreshDeferred" role="status" class="text-sm text-gray-500 dark:text-gray-400 mb-3">News refresh is still queued. Check again shortly.</p>
 
       <div v-if="loading && !newsItems.length" class="flex justify-center py-8">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -102,7 +105,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import api from '@/services/api'
 import { useMonetaryPrivacy } from '@/composables/useDashboardPrivacy'
 
@@ -154,58 +157,65 @@ const toggleExpanded = (symbol) => {
   expandedSymbols.value[symbol] = !expandedSymbols.value[symbol]
 }
 
-const fetchNews = async () => {
+const refreshing = ref(false)
+const refreshDeferred = ref(false)
+let pollTimer = null
+let requestVersion = 0
+let pollCount = 0
+let disposed = false
+
+const loadNews = async (force = false, polling = false) => {
+  clearTimeout(pollTimer)
+  const version = ++requestVersion
+  if (!polling) pollCount = 0
+  refreshDeferred.value = false
   if (!props.symbols.length) {
     newsItems.value = []
+    error.value = null
+    loading.value = false
+    refreshing.value = false
     return
   }
-
   loading.value = true
   error.value = null
-
+  const symbols = props.symbols.join(',')
   try {
-    const response = await api.get('/trades/news', {
-      params: {
-        symbols: props.symbols.join(',')
+    const response = force
+      ? await api.post('/trades/news/refresh', { symbols })
+      : await api.get('/trades/news', { params: { symbols } })
+    if (disposed || version !== requestVersion) return
+    newsItems.value = response.data
+    refreshing.value = response.headers?.['x-news-refresh-pending'] === 'true'
+    if (refreshing.value) {
+      if (++pollCount <= 24) pollTimer = setTimeout(() => loadNews(false, true), 5000)
+      else {
+        refreshing.value = false
+        refreshDeferred.value = true
       }
-    })
-
-    newsItems.value = response.data
+    }
   } catch (err) {
+    if (disposed || version !== requestVersion) return
     console.error('Failed to fetch news:', err)
-    error.value = err.response?.data?.error || 'Failed to load news. Please try again later.'
+    refreshing.value = false
+    // Keep existing stories visible if a later read fails.
+    if (!newsItems.value.length) error.value = err.response?.data?.error || 'Failed to load news. Please try again later.'
   } finally {
-    loading.value = false
+    if (!disposed && version === requestVersion) loading.value = false
   }
 }
-
-const refreshNews = async () => {
-  if (!props.symbols.length) return
-
-  loading.value = true
-  error.value = null
-
-  try {
-    const response = await api.post('/trades/news/refresh', {
-      symbols: props.symbols.join(',')
-    })
-
-    newsItems.value = response.data
-  } catch (err) {
-    console.error('Failed to refresh news:', err)
-    error.value = err.response?.data?.error || 'Failed to refresh news. Please try again later.'
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(() => {
-  fetchNews()
+const fetchNews = () => loadNews()
+const refreshNews = () => loadNews(true)
+onMounted(fetchNews)
+watch(() => props.symbols, () => {
+  newsItems.value = []
+  loadNews()
+}, { deep: true })
+onBeforeUnmount(() => {
+  disposed = true
+  ++requestVersion
+  clearTimeout(pollTimer)
 })
 
-watch(() => props.symbols, () => {
-  fetchNews()
-}, { deep: true })
 </script>
 
 <style scoped>
