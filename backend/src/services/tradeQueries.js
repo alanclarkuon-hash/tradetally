@@ -1,5 +1,5 @@
 const {accountPredicate}=require('../utils/accountFilter');
-const {applyTradeSectorCategories,buildSectorPredicate}=require('../utils/sectorCategory');
+const {applyTradeSectorCategories,buildSectorPredicate,getSectorCategory}=require('../utils/sectorCategory');
 // TradeQueries — single seam for filtering trade data.
 //
 // Owns the WHERE-clause + parameter construction for trade list and analytics
@@ -17,6 +17,7 @@ const { getUserTimezone } = require('../utils/timezone');
 const { buildTradeDateRangeClause } = require('../utils/tradeDateFilter');
 const { buildExecutionDailyPnlRows } = require('../utils/executionPnlByDate');
 const { fxUsd } = require('../utils/tradeFx');
+const { tradeListSort } = require('../utils/tradeListSort');
 
 async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
@@ -478,11 +479,22 @@ class TradeQueries {
       await this._buildWhereClause(userId, filters);
 
     let paramCount = pcAfterWhere;
-    let subquery = `SELECT t.id FROM trades t`;
+    const sort = tradeListSort(filters.sortBy, filters.sortDirection);
+    if (filters.sortBy === 'sector') {
+      // Crypto themes include provider overrides and must match displayed labels.
+      // Read cached metadata only; sorting never requests market data.
+      const cryptoSymbols = (await db.query("SELECT DISTINCT symbol, instrument_type FROM trades WHERE user_id=$1 AND instrument_type='crypto'", [userId])).rows;
+      const themes = Object.create(null);
+      for (const trade of cryptoSymbols) themes[trade.symbol] = (await getSectorCategory(trade, null)).finnhub_industry;
+      values.push(JSON.stringify(themes));
+      sort.expression = `CASE WHEN t.instrument_type='crypto' THEN LOWER(COALESCE($${paramCount}::jsonb ->> t.symbol, 'Crypto · Unclassified')) ELSE ${sort.expression} END`;
+      paramCount++;
+    }
+    let subquery = `SELECT t.id, ${sort.expression} AS sort_value FROM trades t`;
     if (needsSectorOuterJoin) {
       subquery += ` LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol`;
     }
-    subquery += ` ${whereClause} ORDER BY t.entry_time DESC NULLS LAST, t.id DESC`;
+    subquery += ` ${whereClause} ORDER BY sort_value ${sort.direction} NULLS LAST, t.id DESC`;
 
     if (filters.limit) {
       subquery += ` LIMIT $${paramCount}`;
@@ -517,8 +529,8 @@ class TradeQueries {
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
       LEFT JOIN trade_position_groups tpg ON t.position_group_id = tpg.id
-      GROUP BY t.id, pm.current_price, pm.last_updated, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
-      ORDER BY t.entry_time DESC NULLS LAST, t.id DESC
+      GROUP BY t.id, trade_ids.sort_value, pm.current_price, pm.last_updated, sc.finnhub_industry, sc.company_name, tpg.detected_strategy, tpg.leg_count
+      ORDER BY trade_ids.sort_value ${sort.direction} NULLS LAST, t.id DESC
     `;
 
     const queryStartTime = Date.now();

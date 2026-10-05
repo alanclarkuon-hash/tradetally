@@ -503,8 +503,16 @@
               <th v-for="column in visibleDataColumns"
                   :key="column.key"
                   :data-column-key="column.key"
+                  :aria-sort="sorting.sortBy === column.key ? (sorting.sortDirection === 'asc' ? 'ascending' : 'descending') : undefined"
                   :class="[column.key === 'symbol' ? 'pl-0 pr-2 py-3' : getHeaderPadding, 'group relative text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider', { 'text-center': column.key === 'comments' || column.key === 'quality' }]">
-                <span class="block truncate">{{ column.label }}</span>
+                <button v-if="sortableTradeColumns.has(column.key)" type="button"
+                  class="flex w-full items-center gap-1 pr-2 text-left uppercase tracking-wider hover:text-primary-600 dark:hover:text-primary-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 rounded"
+                  :aria-label="`Sort by ${column.label} ${sorting.sortBy === column.key && sorting.sortDirection === 'asc' ? 'descending' : 'ascending'}`"
+                  @click="sortByColumn(column.key)">
+                  <span class="truncate">{{ column.label }}</span>
+                  <span class="shrink-0" :class="sorting.sortBy === column.key ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'" aria-hidden="true">{{ sorting.sortBy === column.key ? (sorting.sortDirection === 'asc' ? '↑' : '↓') : '↕' }}</span>
+                </button>
+                <span v-else class="block truncate" title="Sorting is not available for this column">{{ column.label }}</span>
                 <span
                   class="absolute inset-y-0 right-0 z-10 flex w-2 cursor-col-resize touch-none items-stretch justify-end focus:outline-none"
                   role="separator"
@@ -1195,6 +1203,7 @@ import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl, isTradeOpen } from '@/utils/tradePnl'
 import { getTradeSessionBadge } from '@/utils/tradeMarketSession'
 import { newsBadgeTone, tradeBadgeClass } from '@/utils/tradeBadges'
+import { sortableTradeColumns } from '@/utils/tradeListSort'
 
 const tradesStore = useTradesStore()
 const uiPreferencesStore = useUiPreferencesStore()
@@ -1348,6 +1357,14 @@ function openFiltersModal() {
 
 // Column management
 const tableColumns = ref([])
+const sorting = computed(() => tradesStore.sorting || { sortBy: 'entryDate', sortDirection: 'desc' })
+
+async function sortByColumn(key) {
+  const direction = sorting.value.sortBy === key && sorting.value.sortDirection === 'asc' ? 'desc' : 'asc'
+  selectedTrades.value = []
+  tradesStore.setSort(key, direction)
+  await tradesStore.fetchTrades({ skipCount: false, suppressAnalytics: true })
+}
 
 const isUnrealizedColumnVisible = computed(() => {
   return tableColumns.value.some(c => c.key === 'unrealizedPnl' && c.visible)

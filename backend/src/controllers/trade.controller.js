@@ -552,6 +552,8 @@ const tradeController = {
         // normal list and analytics requests retain the reporting defaults.
         includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1',
         // Pagination
+        sortBy: req.query.sortBy,
+        sortDirection: req.query.sortDirection,
         limit: parsedLimit,
         offset: parsedOffset
       };
