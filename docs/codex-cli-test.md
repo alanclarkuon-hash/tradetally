@@ -28,7 +28,7 @@ Then choose **OpenAI Codex CLI** in test Settings → AI Provider. Leave the mod
 blank to use the CLI default. Before requesting analysis, run this synthetic check:
 
 ```powershell
-docker compose --env-file .local/backup-secrets/test-server.env -f compose.test.yaml exec --user appuser app node scripts/test-codex-cli.js
+docker compose --env-file .local/backup-secrets/test-server.env -f compose.test.yaml exec --user appuser app node /app/backend/scripts/test-codex-cli.js
 ```
 
 It exercises TradeTally's actual provider runner without reading financial data.
