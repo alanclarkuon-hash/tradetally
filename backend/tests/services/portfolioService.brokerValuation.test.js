@@ -36,9 +36,32 @@ test('a manual holding without a dated broker quote does not inherit another acc
 
 test('a newer cached market quote can replace a blended broker valuation', async () => {
   const positions = Portfolio._mergePositions([], [position(2, 10, '2026-10-03T09:00:00Z'), position(3, 12, '2026-10-03T10:00:00Z')], {});
-  db.query.mockResolvedValueOnce({ rows: [{ symbol: 'TEST', current_price: '13', last_updated: '2026-10-03T11:00:00Z' }] });
+  db.query.mockResolvedValueOnce({ rows: [{ symbol: 'crypto:TEST', data_source:'coingecko', current_price: '13', last_updated: '2026-10-03T11:00:00Z' }] });
   jest.spyOn(Portfolio, '_refreshPricesInBackground').mockImplementation(() => {});
   await Portfolio._applyCurrentPrices('owner', positions);
   expect(positions[0].currentValue).toBe(65);
   expect(positions[0].priceAsOf).toBe('2026-10-03T11:00:00.000Z');
+});
+
+test('equity quote cannot replace a crypto broker valuation, including unknown new coins',async()=>{
+ const positions=[{...position(2,0.5,new Date().toISOString()),symbol:'NEWCOIN'}];
+ db.query.mockResolvedValueOnce({rows:[{symbol:'NEWCOIN',current_price:'40',data_source:'finnhub',last_updated:new Date().toISOString()}]});
+ jest.spyOn(Portfolio,'_refreshPricesInBackground').mockImplementation(()=>{});
+ await Portfolio._applyCurrentPrices('owner',positions);
+ expect(positions[0].currentValue).toBe(1);
+});
+
+test('same ticker crypto and stock keep independent quantities and cached values',async()=>{
+ const positions=Portfolio._mergePositions([], [
+   {...position(2,null,null),symbol:'SUI'},
+   {...position(3,null,null),symbol:'SUI',instrumentType:'stock'}
+ ], {});
+ db.query.mockResolvedValueOnce({rows:[
+   {symbol:'crypto:SUI',current_price:'1',data_source:'coingecko',last_updated:new Date().toISOString()},
+   {symbol:'SUI',current_price:'100',data_source:'finnhub',last_updated:new Date().toISOString()}
+ ]});
+ await Portfolio._applyCurrentPrices('owner',positions);
+ expect(positions).toHaveLength(2);
+ expect(positions.find(p=>p.instrumentType==='crypto').currentValue).toBe(2);
+ expect(positions.find(p=>p.instrumentType==='stock').currentValue).toBe(300);
 });

@@ -582,11 +582,12 @@ class HoldingsService {
     if (holdings.length === 0) return holdings;
 
     // Collect unique symbols
-    const uniqueSymbols = [...new Set(holdings.map(h => h.symbol))];
+    const {priceCacheKey} = require('../utils/priceCacheIdentity');
+    const uniqueSymbols = [...new Set(holdings.map(h => priceCacheKey(h.symbol,h.instrumentType)))];
 
     // Check price_monitoring cache first (2-minute staleness threshold)
     const cacheResult = await db.query(
-      `SELECT symbol, current_price
+      `SELECT symbol, current_price, data_source
        FROM price_monitoring
        WHERE symbol = ANY($1)
          AND last_updated > NOW() - INTERVAL '2 minutes'`,
@@ -595,6 +596,7 @@ class HoldingsService {
 
     const cachedPrices = {};
     for (const row of cacheResult.rows) {
+      if (!require('../utils/priceCacheIdentity').usablePriceRow(row,row.symbol.startsWith('crypto:')?'crypto':'stock')) continue;
       cachedPrices[row.symbol] = parseFloat(row.current_price);
     }
 
@@ -602,7 +604,7 @@ class HoldingsService {
     const uncachedHoldings = [];
     const persistenceJobs = [];
     for (const holding of holdings) {
-      const cached = cachedPrices[holding.symbol];
+      const cached = cachedPrices[priceCacheKey(holding.symbol,holding.instrumentType)];
       if (cached) {
         this._applyPriceToHolding(holding, cached);
         if (holding.source !== 'trades' && !String(holding.id).startsWith('trade-')) {
@@ -629,7 +631,7 @@ class HoldingsService {
         await Promise.allSettled(
           chunk.map(async (holding) => {
             try {
-              const quote = finnhub.isCryptoSymbol(holding.symbol)
+              const quote = holding.instrumentType === 'crypto'
                 ? await finnhub.getCryptoQuote(holding.symbol)
                 : await finnhub.getQuote(holding.symbol);
               if (quote && quote.c) {
@@ -710,7 +712,7 @@ class HoldingsService {
 
     try {
       // Use crypto quote for crypto symbols
-      const quote = finnhub.isCryptoSymbol(holding.symbol)
+      const quote = holding.instrumentType === 'crypto'
         ? await finnhub.getCryptoQuote(holding.symbol)
         : await finnhub.getQuote(holding.symbol);
       if (!quote || !quote.c) return;

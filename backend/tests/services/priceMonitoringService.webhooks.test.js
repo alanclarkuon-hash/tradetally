@@ -94,4 +94,37 @@ describe('priceMonitoringService price alert webhook publication', () => {
     expect(priceMonitoringService.failedSymbols.has('AAPL')).toBe(false);
     expect(db.query).not.toHaveBeenCalled();
   });
+
+  test('explicit new crypto uses CoinGecko and a separate key even outside the static list',async()=>{
+    finnhub.getCryptoQuote=jest.fn().mockResolvedValue({c:0.5});
+    await expect(priceMonitoringService.updateSymbolPrice('FET','crypto')).resolves.toBe(true);
+    expect(finnhub.getCryptoQuote).toHaveBeenCalledWith('FET');
+    expect(priceFallbackManager.getQuoteWithFallback).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO price_monitoring'),expect.arrayContaining(['crypto:FET','coingecko']));
+  });
+
+  test('unresolved crypto never falls back to an equity quote',async()=>{
+    finnhub.getCryptoQuote=jest.fn().mockRejectedValue(new Error('Unknown coin identity'));
+    await expect(priceMonitoringService.updateSymbolPrice('NEWCOIN','crypto')).resolves.toBe(false);
+    expect(priceFallbackManager.getQuoteWithFallback).not.toHaveBeenCalled();
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
+  test('explicit stock sharing a supported crypto ticker keeps its equity key and provider',async()=>{
+    finnhub.isCryptoSymbol.mockReturnValue(true);
+    finnhub.getCryptoQuote=jest.fn();
+    priceFallbackManager.getQuoteWithFallback.mockResolvedValue({data:{c:100},source:'finnhub'});
+    await expect(priceMonitoringService.updateSymbolPrice('SUI','stock')).resolves.toBe(true);
+    expect(finnhub.getCryptoQuote).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO price_monitoring'),expect.arrayContaining(['SUI','finnhub']));
+  });
+
+  test('scheduled monitoring retains trade instrument types instead of guessing from ticker',async()=>{
+    db.query.mockResolvedValueOnce({rows:[{symbol:'FET',instrument_type:'crypto'},{symbol:'FET',instrument_type:'stock'}]});
+    const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
+    await priceMonitoringService.monitorPrices();
+    expect(update).toHaveBeenCalledWith('FET','crypto');
+    expect(update).toHaveBeenCalledWith('FET','stock');
+    update.mockRestore();
+  });
 });

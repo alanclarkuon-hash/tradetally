@@ -10,6 +10,37 @@ const AppError = require('../utils/AppError');
 const { getCryptoAsset, searchCryptoAssets } = require('../utils/cryptoAssets');
 
 const CACHE_TTL = 300000; // 5 minutes
+const metadataRefreshes = new Map();
+let metadataQueue = Promise.resolve();
+
+function warmMetadata(symbol, entry, host) {
+  const key = `symbol_metadata_entry:${entry.asset_type || 'stock'}:${symbol}`;
+  if (metadataRefreshes.has(key)) return;
+  const job = (entry.asset_type === 'crypto' ? Promise.resolve() : metadataQueue).then(async () => {
+    let warmed = {...entry};
+    if (entry.asset_type === 'crypto') {
+      warmed.logo = (await require('../services/cryptoCategoriesService').getCategories(symbol, {requireLogo:true})).logo;
+      const identity = await require('../services/coinGeckoIdentityService').cached(symbol);
+      if (identity?.name) warmed.companyName = identity.name;
+    } else {
+      const category = (await symbolCategories.getSymbolCategories([symbol])).get(symbol);
+      warmed.companyName ||= category?.company_name || null;
+      warmed.exchange ||= category?.exchange || null;
+      warmed.logo ||= category?.logo || null;
+      if (!warmed.companyName) {
+        const names = {[symbol]:warmed};
+        await backfillCompanyNames(names, [symbol], host);
+        warmed = names[symbol];
+      }
+    }
+    cache.set(key, warmed, CACHE_TTL);
+  }).catch(() => {
+    // Optional metadata must not fail or delay a financial report.
+    cache.set(key, {...entry}, 60000);
+  }).finally(() => metadataRefreshes.delete(key));
+  metadataRefreshes.set(key, job);
+  if (entry.asset_type !== 'crypto') metadataQueue = job;
+}
 
 function normalizeSymbolsParam(symbolsParam) {
   if (typeof symbolsParam !== 'string') {
@@ -259,7 +290,7 @@ async function getSymbolMetadata(req, res) {
     const cryptoAssetFor = symbol => assetType==='stock' ? null : getCryptoAsset(symbol) || (assetType==='crypto' ? {name:symbol} : null);
     const cacheKey = `symbol_metadata:${assetType||'auto'}:${symbols.join(',')}`;
     const cached = cache.get(cacheKey);
-    if (cached && !Object.values(cached).some(row=>row.asset_type==='crypto' && !row.logo)) {
+    if (cached) {
       return res.json({ metadata: cached });
     }
 
@@ -312,41 +343,20 @@ async function getSymbolMetadata(req, res) {
     }
 
     await Promise.all(symbols.filter(symbol=>metadata[symbol]?.asset_type==='crypto').map(async symbol=>{
-      metadata[symbol].logo=await require('../services/cryptoCategoriesService').getLogo(symbol);
+      metadata[symbol].logo=(await require('../services/cryptoCategoriesService').getCachedCategories(symbol))?.logo || null;
       const identity=await require('../services/coinGeckoIdentityService').cached(symbol);
       if(identity?.name)metadata[symbol].companyName=identity.name;
     }));
 
-    const symbolsMissingMetadata = symbols.filter(symbol => {
+    for (const symbol of symbols) {
       const entry = metadata[symbol];
-      return entry && !entry.companyName && !entry.logo;
-    });
-
-    if (symbolsMissingMetadata.length > 0) {
-      const hydratedCategories = await symbolCategories.getSymbolCategories(symbolsMissingMetadata);
-      for (const symbol of symbolsMissingMetadata) {
-        const category = hydratedCategories.get(symbol);
-        if (!category) {
-          continue;
-        }
-
-        metadata[symbol] = {
-          symbol,
-          companyName: metadata[symbol].companyName || category.company_name || null,
-          exchange: metadata[symbol].exchange || category.exchange || null,
-          logo: metadata[symbol].logo || category.logo || null
-        };
-      }
+      const key = `symbol_metadata_entry:${entry.asset_type || 'stock'}:${symbol}`;
+      const saved = cache.get(key);
+      if (saved) metadata[symbol] = saved;
+      else if (!entry.companyName || !entry.logo) warmMetadata(symbol, entry, req.headers?.host);
+      if (metadataRefreshes.has(key)) metadata[symbol] = {...metadata[symbol], metadataPending:true};
     }
-
-    // Best-effort: a name is a nicety and must not fail the response.
-    try {
-      await backfillCompanyNames(metadata, symbols, req.headers?.host);
-    } catch (fallbackError) {
-      console.warn(`[SYMBOLS] Name fallback skipped: ${fallbackError.message}`);
-    }
-
-    cache.set(cacheKey, metadata, CACHE_TTL);
+    if (!Object.values(metadata).some(entry => entry.metadataPending)) cache.set(cacheKey, metadata, CACHE_TTL);
 
     return res.json({ metadata });
   } catch (error) {
