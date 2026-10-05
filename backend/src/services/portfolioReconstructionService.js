@@ -79,8 +79,19 @@ function parseYahoo(result) {
  return {currency:unit.code,prices,splits,source:'Yahoo daily close; later splits reversed; minor units normalized'};
 }
 
-async function loadMarket(symbol,from,to,{fetchPrices=false}={}) {
+async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
+ if(symbol.endsWith('-USD')) {
+  const coin=symbol.slice(0,-4);
+  const rows=fetchPrices&&userId?await require('./portfolioService')._getDailySeries(coin,from,to,userId,{instrumentType:'crypto'}):await require('../utils/historicalPriceCache').getRange('CRYPTO:'+coin,from,to);
+  const prices=new Map((cached?.prices||[]).map(p=>[p.date,p]));
+  for(const c of rows){const d=date(c.time*1000);if(!prices.has(d))prices.set(d,{date:d,close:c.close});}
+  if(prices.size){const payload={...cached,currency:'USD',prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),splits:[],from:cached?.from<from?cached.from:from,to:cached?.to>to?cached.to:to,source:'Shared broker/provider historical USD prices'};
+   if(fetchPrices)await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[symbol,payload]);
+   return payload;
+  }
+  return cached||null;
+ }
  if(cached&&cached.from<=from&&cached.to>=to)return cached;
  if(!fetchPrices)return cached||null;
  try {
@@ -122,8 +133,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
  const fx=await loadFx(from,end,{fetchPrices});
  const krakenPayload=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' LIMIT 1",[userId])).rows[0]?.payload;
  const publicCryptoRates=krakenPayload?.valuation?.rates||{};
- let cryptoPairs=null;
- if(fetchPrices)try{cryptoPairs=(await axios.get('https://api.kraken.com/0/public/AssetPairs',{timeout:15000,maxRedirects:0})).data.result;}catch{/* Keep existing price coverage. */}
+
  const summaries=[];
  for(const account of accounts) {
   onProgress({broker:account.broker,stage:'reconstructing'});
@@ -185,18 +195,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,end,{fetchPrices}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
-  if(account.broker==='kraken'&&fetchPrices&&cryptoPairs)for(const s of symbols) {
-   const coin=s.slice(0,-4),pair=Object.entries(cryptoPairs).find(([,p])=>assetCode(p.base)===coin&&assetCode(p.quote)==='USD');
-   if(!pair)continue;
-   try {
-    const response=(await axios.get('https://api.kraken.com/0/public/OHLC',{params:{pair:pair[0],interval:1440},timeout:15000,maxRedirects:0})).data;
-    if(response.error?.length)continue;
-    const prices=response.result?.[pair[0]]?.filter(c=>date(Number(c[0])*1000)<today).map(c=>({date:date(Number(c[0])*1000),close:Number(c[4])}));
-    if(prices?.length){const series={currency:'USD',prices,splits:[],from:start,to:today,source:'Kraken daily UTC closes'};market.set(s,series);await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[s,series]);}
-   }catch{/* Preserve gaps when a public market is unavailable. */}
-   await new Promise(resolve=>setTimeout(resolve,1100));
-  }
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,end,{fetchPrices,userId}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   // Retired markets may have disappeared from live pair metadata. Their
   // official daily archive retains actual historical closes.

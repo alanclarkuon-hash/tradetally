@@ -39,6 +39,7 @@ class BackgroundWorker {
       // Start sequential processing for the job types the parallel queue
       // does not own (see utils/jobQueueConfig.js for ownership)
       jobQueue.startProcessing();
+      require('../services/historyBackfillService').start();
       logger.logImport('[SUCCESS] Sequential job queue running for non-parallel job types');
       
       // Verify parallel job queue is actually processing
@@ -225,6 +226,7 @@ class BackgroundWorker {
     // Stop job processing
     parallelJobQueue.stop();
     jobQueue.stopProcessing();
+    require('../services/historyBackfillService').stop();
     
     // Clear status monitoring
     if (this.statusInterval) {

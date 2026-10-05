@@ -9,6 +9,7 @@
 
     <!-- IBKR Maintenance Notice -->
     <IBKRNoticeBanner />
+    <HistoryBackfillStatus allow-update />
 
     <!-- Broker sync is becoming a Pro feature: grace-period notice for existing free connections -->
     <div v-if="showGraceBanner" class="mb-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -418,6 +419,7 @@
 </template>
 
 <script setup>
+import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useBrokerSyncStore } from '@/stores/brokerSync'

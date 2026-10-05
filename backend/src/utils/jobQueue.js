@@ -1,7 +1,7 @@
 const db = require('../config/database');
 const logger = require('./logger');
 const marketData = require('./finnhub');
-const { PARALLEL_JOB_TYPES } = require('./jobQueueConfig');
+const { PARALLEL_JOB_TYPES, DEDICATED_JOB_TYPES } = require('./jobQueueConfig');
 
 class JobQueue {
   constructor() {
@@ -101,7 +101,8 @@ class JobQueue {
   notifyJobEnqueued(types = []) {
     try {
       const parallelTypes = types.filter(type => PARALLEL_JOB_TYPES.includes(type));
-      const sequentialTypes = types.filter(type => !PARALLEL_JOB_TYPES.includes(type));
+      const sequentialTypes = types.filter(type => !PARALLEL_JOB_TYPES.includes(type) && !DEDICATED_JOB_TYPES.includes(type));
+      if (types.includes('historical_price_backfill')) require('../services/historyBackfillService').nudge();
 
       if (sequentialTypes.length > 0) {
         this.resetBackoff();
@@ -155,7 +156,7 @@ class JobQueue {
     `;
 
     try {
-      const result = await db.query(query, [PARALLEL_JOB_TYPES]);
+      const result = await db.query(query, [[...PARALLEL_JOB_TYPES, ...DEDICATED_JOB_TYPES]]);
       
       if (result.rows[0]) {
         logger.logImport(`Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
@@ -341,6 +342,9 @@ class JobQueue {
       let result = null;
 
       switch (job.type) {
+        case 'historical_price_backfill':
+          result = await require('../services/historyBackfillService').process(job);
+          break;
         case 'cusip_resolution':
           result = await this.processCusipResolution(data);
           break;
