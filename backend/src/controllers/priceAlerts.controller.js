@@ -1,3 +1,4 @@
+const { priceCacheKey, autoPriceKeySql } = require('../utils/priceCacheIdentity');
 const db = require('../config/database');
 const logger = require('../utils/logger');
 const finnhub = require('../utils/finnhub');
@@ -31,7 +32,7 @@ const priceAlertsController = {
           pm.percent_change as current_percent_change,
           pm.last_updated as price_last_updated
         FROM price_alerts pa
-        LEFT JOIN price_monitoring pm ON pa.symbol = pm.symbol
+        LEFT JOIN price_monitoring pm ON pm.symbol = ${autoPriceKeySql('pa')}
         WHERE pa.user_id = $1
       `;
       
@@ -134,7 +135,8 @@ const priceAlertsController = {
       // Get current price for reference
       let currentPrice = null;
       try {
-        const priceData = await finnhub.getQuote(symbolUpper, userId);
+        const isCrypto = finnhub.isCryptoSymbol(symbolUpper);
+        const priceData = isCrypto ? await finnhub.getCryptoQuote(symbolUpper) : await finnhub.getQuote(symbolUpper, userId);
         if (priceData && priceData.c) {
           currentPrice = priceData.c;
           
@@ -169,7 +171,7 @@ const priceAlertsController = {
               volume = $6,
               last_updated = CURRENT_TIMESTAMP,
               data_source = $7
-          `, [symbolUpper, currentPrice, null, 0, 0, priceData.pc || 0, finnhub.providerName || 'finnhub']);
+          `, [priceCacheKey(symbolUpper,isCrypto ? 'crypto' : 'stock'), currentPrice, null, 0, 0, priceData.pc || 0, isCrypto ? 'coingecko' : finnhub.providerName || 'finnhub']);
         }
       } catch (priceError) {
         logger.logWarn(`Could not fetch current price for ${symbolUpper}:`, priceError.message);
@@ -541,7 +543,7 @@ const priceAlertsController = {
           u.email
         FROM price_alerts pa
         JOIN users u ON pa.user_id = u.id
-        LEFT JOIN price_monitoring pm ON pa.symbol = pm.symbol
+        LEFT JOIN price_monitoring pm ON pm.symbol = ${autoPriceKeySql('pa')}
         WHERE pa.is_active = true 
         AND pa.triggered_at IS NULL
         AND pm.current_price IS NOT NULL

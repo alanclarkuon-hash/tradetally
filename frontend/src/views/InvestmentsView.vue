@@ -205,7 +205,7 @@
                         @click="analyzeFromHistory(item.symbol)"
                     >
                         <div class="flex items-center gap-3 min-w-0">
-                            <StockLogo :symbol="item.symbol" size-class="w-8 h-8" />
+                            <StockLogo :symbol="item.symbol" :instrument-type="item.instrument_type || item.instrumentType" size-class="w-8 h-8" />
                             <div class="min-w-0">
                                 <span
                                     class="font-medium text-gray-900 dark:text-white"
@@ -631,6 +631,7 @@
                                         <div class="flex items-center gap-3">
                                             <StockLogo
                                                 :symbol="position.symbol"
+                                                :instrument-type="position.instrument_type || position.instrumentType"
                                                 size-class="w-8 h-8"
                                             />
                                             <div>

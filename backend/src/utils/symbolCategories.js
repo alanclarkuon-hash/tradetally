@@ -292,7 +292,7 @@ class SymbolCategoryManager {
         SELECT DISTINCT t.symbol 
         FROM trades t
         LEFT JOIN symbol_categories sc ON UPPER(t.symbol) = UPPER(sc.symbol)
-        WHERE (
+        WHERE t.instrument_type IS DISTINCT FROM 'crypto' AND (
           sc.symbol IS NULL
           OR sc.updated_at < NOW() - INTERVAL '30 days'
           OR (

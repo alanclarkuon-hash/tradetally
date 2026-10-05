@@ -32,9 +32,18 @@ services:
       FRONTEND_URL: http://127.0.0.1:8089
       API_BASE_URL: http://127.0.0.1:8089/api
       APP_ENVIRONMENT: test
-      DISABLE_BACKGROUND_JOBS: "true"
+      DISABLE_BACKGROUND_JOBS: "false"
       ENABLE_BROKER_SYNC_SCHEDULER: "false"
-      ENABLE_PRICE_MONITORING: "false"
+      ENABLE_PLAID_SYNC_SCHEDULER: "false"
+      ENABLE_PRICE_MONITORING: "true"
+      ENABLE_CATEGORY_SCHEDULER: "true"
+      ENABLE_TRADE_ENRICHMENT: "true"
+      ENABLE_JOB_RECOVERY: "true"
+      ENABLE_TRIAL_EMAILS: "false"
+      ENABLE_RETENTION_EMAILS: "false"
+      ENABLE_ENGAGEMENT_TRACKING: "false"
+      ENABLE_CRM_SYNC: "false"
+      ENABLE_PUSH_NOTIFICATIONS: "false"
       EMAIL_HOST: ""
       EMAIL_USER: ""
       EMAIL_PASS: ""

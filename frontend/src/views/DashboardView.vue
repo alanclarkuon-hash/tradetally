@@ -597,6 +597,7 @@
                 <div class="flex items-center gap-3">
                   <StockLogo
                     :symbol="position.symbol"
+                    :instrument-type="position.instrument_type || position.instrumentType"
                     size-class="w-10 h-10"
                   />
                   <div>
@@ -802,6 +803,7 @@
                       <div class="flex items-center gap-2">
                         <StockLogo
                           :symbol="position.symbol"
+                          :instrument-type="position.instrument_type || position.instrumentType"
                           size-class="w-8 h-8"
                         />
                         <div>

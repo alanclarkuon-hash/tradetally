@@ -338,6 +338,7 @@
                   >
                     <StockLogo
                       :symbol="symbol.symbol"
+                      :instrument-type="sector.industry.startsWith('Crypto · ')?'crypto':'stock'"
                       size-class="w-5 h-5"
                       rounded-class="rounded-sm"
                       fallback-text-class="text-[9px] font-semibold"

@@ -9,8 +9,11 @@ The `tradetally-test` Compose project has its own image, network and four named
 volumes. It restores a consistent database snapshot and copies retained files
 from the live instance. No production database or volumes are mounted by test.
 The private test environment file has separate database and login signing secrets.
-Broker auto-sync flags are turned off before the app starts, and background jobs
-are disabled in Compose even if a copied setting is subsequently changed.
+Broker auto-sync flags are turned off before the app starts. Compose keeps broker
+and Plaid bank sync schedulers disabled even if the private environment enables them.
+Non-broker data jobs are enabled for provider and enrichment testing, including
+categories, prices, trade enrichment and daily portfolio snapshots. Trial and
+retention emails, engagement messages, CRM sync and push notifications stay off.
 Manual sync buttons remain available; avoid using them during design testing.
 
 Initial setup: `node scripts/create-test-server.cjs`. It refuses an existing test
