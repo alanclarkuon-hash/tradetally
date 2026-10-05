@@ -10,25 +10,34 @@ Authentication lives in the dedicated `tradetally-test_codex_auth` Docker volume
 not the repository, test database, production or desktop Codex login. Never copy
 or commit its contents. Removing Compose volumes also removes this login.
 
-From the repository directory, sign in as the backend service user:
+## Sign in to Codex on test
+
+With the test container running, open PowerShell and run this from any directory:
 
 ```powershell
-docker compose --env-file .local/backup-secrets/test-server.env -f compose.test.yaml exec --user appuser app codex login --device-auth
+docker exec -it --user appuser tradetally-test-app-1 codex login --device-auth
 ```
 
-Complete the displayed OpenAI sign-in yourself. Device sign-in may need enabling
-in ChatGPT security settings. Do not send login codes, passwords or auth files
-through chat. Check authentication with:
+1. Open the OpenAI sign-in link displayed in PowerShell.
+2. Sign in with the ChatGPT account whose subscription you want to use.
+3. Enter the one-time device code shown in PowerShell and complete the sign-in.
+4. Wait for the terminal to confirm login succeeded.
+
+Device sign-in may need enabling in ChatGPT security settings. Do not send login
+codes, passwords or auth files through chat. Check authentication with:
 
 ```powershell
-docker compose --env-file .local/backup-secrets/test-server.env -f compose.test.yaml exec --user appuser app codex login status
+docker exec --user appuser tradetally-test-app-1 env -u OPENAI_API_KEY -u CODEX_API_KEY codex login status
 ```
 
-Then choose **OpenAI Codex CLI** in test Settings → AI Provider. Leave the model
-blank to use the CLI default. Before requesting analysis, run this synthetic check:
+The expected result is `Logged in using ChatGPT`.
+
+Then choose **OpenAI Codex CLI** in test **Settings → AI & Integrations →
+AI Provider**. Leave the model blank to use the CLI default and click
+**Save AI Settings**. Before requesting analysis, run this synthetic check:
 
 ```powershell
-docker compose --env-file .local/backup-secrets/test-server.env -f compose.test.yaml exec --user appuser app node /app/backend/scripts/test-codex-cli.js
+docker exec --user appuser tradetally-test-app-1 node /app/backend/scripts/test-codex-cli.js
 ```
 
 It exercises TradeTally's actual provider runner without reading financial data.
