@@ -76,7 +76,9 @@ async function stageBackup(filename, directory) {
       bytes += chunk.length;
       if (bytes > uploadLimit()) throw new Error('Backup exceeds upload limit');
       parser.write(chunk);
-      if (recordStart !== null && bytes - recordStart > MAX_RECORD_BYTES + 65536) throw new Error('Backup record exceeds 16 MiB');
+      // Pretty-printed legacy exports may have substantial whitespace. Bound
+      // their encoded span separately; the compact row limit is checked above.
+      if (recordStart !== null && bytes - recordStart > MAX_RECORD_BYTES * 8 + 65536) throw new Error('Backup record exceeds the encoded size limit');
       if (bytes - lastBoundary > MAX_RECORD_BYTES + 65536) throw new Error('Backup record exceeds 16 MiB');
     }
     if (!parser.isEnded) parser.end();
