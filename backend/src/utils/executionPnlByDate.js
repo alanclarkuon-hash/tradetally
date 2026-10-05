@@ -1,3 +1,4 @@
+const { calendarDateFormatter } = require('./calendarDateFormatter');
 const { computeTradePnl } = require('../services/pnlEngine');
 
 function parseNumericValue(value) {
@@ -20,12 +21,7 @@ function getExecutionDateString(timezone, ...candidates) {
     if (Number.isNaN(parsed.getTime())) continue;
 
     try {
-      const parts = new Intl.DateTimeFormat('en-CA', {
-        timeZone: timezone || 'UTC',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
-      }).formatToParts(parsed);
+      const parts = calendarDateFormatter(timezone).formatToParts(parsed);
       const part = (type) => parts.find((item) => item.type === type)?.value || '';
       return `${part('year').padStart(4, '0')}-${part('month')}-${part('day')}`;
     } catch {
