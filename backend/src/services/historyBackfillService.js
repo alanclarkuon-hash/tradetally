@@ -77,8 +77,9 @@ async function process(job) {
       await progress(job.id, state);
       try {
         const prices = await require('./portfolioService')._getDailySeries(task.symbol, task.from, task.to, job.user_id, { instrumentType: task.instrumentType });
-        const absent = missingRanges(prices, task.from, task.to, task.instrumentType === 'crypto');
-        if (absent.length) state.gaps.push({ ...task, ranges: absent, reason: task.instrumentType === 'crypto' ? 'No finalized broker/provider prices for these dates' : 'No prices returned; dates may include exchange holidays or unsupported history' });
+        task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol);
+        const absent = missingRanges(prices, task.from, task.to, task.instrumentType === 'crypto', task.calendar);
+        if (absent.length) state.gaps.push({ ...task, ranges: absent, reason: task.instrumentType === 'crypto' ? 'No finalized broker/provider prices for these dates' : task.calendar ? 'No prices returned for expected exchange sessions' : 'No prices returned; exchange calendar is unavailable' });
         else state.complete++;
       } catch {
         state.gaps.push({ ...task, ranges: [{ from: task.from, to: task.to }], reason: 'History download unavailable; next sync will retry missing dates' });
@@ -101,12 +102,19 @@ async function process(job) {
 async function status(userId) {
   const rows = (await db.query(`SELECT id,status,result,created_at,completed_at FROM job_queue
     WHERE user_id=$1 AND type=$2 ORDER BY CASE WHEN status IN ('pending','processing') THEN 0 ELSE 1 END,created_at DESC LIMIT 2`, [userId, TYPE])).rows;
-  return rows.map(row => {
+  return Promise.all(rows.map(async row => {
     const result = typeof row.result === 'string' ? JSON.parse(row.result) : row.result || {};
+    const gaps = await Promise.all((result.gaps || []).map(async gap => {
+      if(gap.instrumentType === 'crypto') return gap;
+      const calendar=gap.calendar || await require('./exchangeCalendar').resolve(gap.symbol);
+      const ranges=(gap.ranges || []).flatMap(r => missingRanges([],r.from,r.to,false,calendar));
+      return ranges.length ? {...gap,calendar,ranges,reason:calendar ? 'No prices returned for expected exchange sessions' : 'No prices returned; exchange calendar is unavailable'} : null;
+    }));
+    const remaining=gaps.filter(Boolean);
     return { id: row.id, status: row.status, stage: result.stage || 'queued', processed: result.processed || 0,
-      total: result.total || 0, complete: result.complete || 0, currentSymbol: result.currentSymbol || null,
-      gaps: result.gaps || [], portfolioWarnings: result.portfolioWarnings || [], createdAt: row.created_at, completedAt: row.completed_at };
-  });
+      total: result.total || 0, complete: (result.complete || 0)+(gaps.length-remaining.length), currentSymbol: result.currentSymbol || null,
+      gaps: remaining, portfolioWarnings: result.portfolioWarnings || [], createdAt: row.created_at, completedAt: row.completed_at };
+  }));
 }
 // A separate lane avoids delaying emails or occupying short enrichment slots.
 // The persisted lease is renewed by process(); restart recovery resumes its cursor.

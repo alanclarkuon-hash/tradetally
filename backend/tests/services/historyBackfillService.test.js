@@ -49,3 +49,12 @@ test('dedicated worker claims only history jobs atomically without enrichment ti
   expect(config.DEDICATED_JOB_TYPES).toContain(service.TYPE);
   expect(config.PARALLEL_JOB_TYPES).not.toContain(service.TYPE);
 });
+test('existing displayed gaps are recalculated without fetching prices; only full closures disappear',async()=>{
+ db.query.mockResolvedValueOnce({rows:[{id:'job',status:'completed',result:{processed:2,total:2,complete:0,gaps:[
+  {symbol:'SPY',instrumentType:'stock',calendar:'US',ranges:[{from:'2025-04-18',to:'2025-04-18'},{from:'2026-01-19',to:'2026-01-19'}]},
+  {symbol:'BTC',instrumentType:'crypto',ranges:[{from:'2025-04-18',to:'2025-04-18'}]}
+ ]}}]});
+ const [result]=await service.status('owner');
+ expect(result.complete).toBe(1); expect(result.gaps).toHaveLength(1); expect(result.gaps[0].symbol).toBe('BTC');
+ expect(portfolio._getDailySeries).not.toHaveBeenCalled();
+});

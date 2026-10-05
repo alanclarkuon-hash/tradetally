@@ -27,10 +27,7 @@ test('persists Alpha Vantage candles and reuses them on the next request', async
   alpha.getDailyData.mockResolvedValue([candle]);
   expect(await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner')).toEqual([candle]);
   expect(cache.insertCandles).toHaveBeenCalledWith('MSFT', [candle], 'alphaVantage');
-  cache.getRange.mockResolvedValue([
-    { ...candle, time: Date.parse('2026-08-01') / 1000 },
-    { ...candle, time: Date.parse('2026-08-31') / 1000 }
-  ]);
+  cache.getRange.mockResolvedValue(Array.from({length:31},(_,i)=>({...candle,time:Date.parse('2026-08-01')/1000+i*86400})));
   cache.hasRange.mockResolvedValue(true);
   await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner');
   expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
@@ -119,4 +116,12 @@ test('Yahoo fills only the missing stock dates after insufficient primary-provid
   expect(providers.yahoo.mock.calls).toEqual([['MSFT','2026-08-14','2026-08-14'], ['MSFT','2026-08-18','2026-08-18']]);
   expect(result).toContainEqual(existing);
   expect(alpha.getDailyData).not.toHaveBeenCalled();
+});
+test('a known exchange closure does not trigger any price download',async()=>{
+ const calendar=require('../../src/services/exchangeCalendar');
+ const resolve=jest.spyOn(calendar,'resolve').mockResolvedValue('US');
+ try {
+  expect(await PortfolioService._getDailySeries('HOLIDAY','2025-04-18','2025-04-18','holiday-owner')).toEqual([]);
+  expect(alpha.getDailyData).not.toHaveBeenCalled(); expect(finnhub.getStockCandles).not.toHaveBeenCalled(); expect(providers.yahoo).not.toHaveBeenCalled();
+ } finally {resolve.mockRestore();}
 });
