@@ -32,6 +32,22 @@ async function failCurrentImage(wrapper) {
 describe('StockLogo', () => {
   beforeEach(clearMetadata)
 
+  it('crypto uses CoinGecko images and never equity CDN fallbacks', async () => {
+    metadataBySymbol['crypto:SUI']={asset_type:'crypto',logo:'https://coin-images.coingecko.com/coins/images/26375/small/sui.png'}
+    const wrapper=mount(StockLogo,{props:{symbol:'SUI',instrumentType:'crypto'}})
+    expect(wrapper.get('img').attributes('src')).toContain('coingecko.com')
+    await failCurrentImage(wrapper)
+    expect(wrapper.find('img').exists()).toBe(false)
+  })
+  it('ignores a stock logo for crypto, while allowing the same equity ticker', () => {
+    metadataBySymbol['crypto:SUI']={logo:'https://stock.example/sui.png',asset_type:'crypto'}
+    metadataBySymbol['stock:SUI']={logo:'https://stock.example/sui.png'}
+    const crypto=mount(StockLogo,{props:{symbol:'SUI',instrumentType:'crypto'}})
+    const stock=mount(StockLogo,{props:{symbol:'SUI',instrumentType:'stock'}})
+    expect(crypto.find('img').exists()).toBe(false)
+    expect(stock.get('img').attributes('src')).toBe('https://stock.example/sui.png')
+  })
+
   it('walks the CDN candidates before landing on initials', async () => {
     const wrapper = mount(StockLogo, { props: { symbol: 'EXCO.DE' } })
 

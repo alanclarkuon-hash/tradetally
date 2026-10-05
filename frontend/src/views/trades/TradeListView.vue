@@ -551,6 +551,7 @@
                   <div class="flex items-center gap-2">
                     <StockLogo
                       :symbol="trade.symbol"
+                      :instrument-type="trade.instrument_type || trade.instrumentType"
                       size-class="w-8 h-8"
                     />
                     <div class="min-w-0 flex-1">

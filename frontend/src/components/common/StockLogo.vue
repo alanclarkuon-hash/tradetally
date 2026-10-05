@@ -33,6 +33,7 @@ const props = defineProps({
     type: String,
     default: null
   },
+  instrumentType: { type: String, default: '' },
   sizeClass: {
     type: String,
     default: 'w-8 h-8'
@@ -52,16 +53,21 @@ const props = defineProps({
 })
 
 const failedCandidates = ref(0)
-const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => props.symbol))
+const assetType = computed(() => props.instrumentType ? (props.instrumentType==='crypto'?'crypto':'stock') : '')
+const { metadataBySymbol, normalizeSymbol } = useSymbolMetadata(computed(() => props.symbol), assetType)
 
 const normalizedSymbol = computed(() => normalizeSymbol(props.symbol))
-const metadata = computed(() => metadataBySymbol[normalizedSymbol.value] || null)
+const metadata = computed(() => metadataBySymbol[assetType.value ? `${assetType.value}:${normalizedSymbol.value}` : normalizedSymbol.value] || null)
+const isCrypto = computed(() => assetType.value==='crypto' || metadata.value?.asset_type==='crypto')
 
 const providedLogo = computed(() => props.logoUrl || metadata.value?.logo || null)
 
 // Provider logo first, then the keyless CDNs; running out lands on the initials.
 const logoCandidates = computed(() => {
-  const candidates = providedLogo.value ? [providedLogo.value] : []
+  const logo = providedLogo.value
+  const safeCryptoLogo = /^https:\/\/(assets|coin-images)\.coingecko\.com\//.test(logo || '')
+  if(isCrypto.value) return safeCryptoLogo ? [logo] : []
+  const candidates = logo ? [logo] : []
   return candidates.concat(fallbackLogoUrls(normalizedSymbol.value))
 })
 
