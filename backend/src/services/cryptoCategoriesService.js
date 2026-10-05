@@ -1,11 +1,11 @@
-const axios = require('axios');
+const client = require('./coinGeckoClient');
+const identity = require('./coinGeckoIdentityService');
 const fs = require('fs/promises');
 const path = require('path');
-const {CRYPTO_TO_COINGECKO} = require('../utils/cryptoAssets');
 
 const file = path.join(__dirname, '../data/coingecko-categories.json');
-const DAY = 86400000;
-let records, loading, queue = Promise.resolve(), nextRequest = 0, cooldown = 0;
+const DAY = 7 * 86400000;
+let records, loading, queue = Promise.resolve();
 
 function cleanCategories(categories) {
   return Array.isArray(categories) ? [...new Set(categories.filter(c => typeof c==='string' && c.trim()).map(c=>c.trim()))] : [];
@@ -37,19 +37,14 @@ function cleanLogo(value) {
   try {const url=new URL(value);return url.protocol==='https:' && ['assets.coingecko.com','coin-images.coingecko.com'].includes(url.hostname) ? url.href : null;} catch {return null;}
 }
 async function getCategories(symbol, {requireLogo=false}={}) {
-  const id=CRYPTO_TO_COINGECKO[String(symbol).toUpperCase()];
+  const id=(await identity.resolve(symbol))?.id;
   if(!id)return result(null);
   await load();
   if(records[id] && (!requireLogo || cleanLogo(records[id].logo)) && Date.now()-Date.parse(records[id].asOf)<DAY)return result(records[id]);
   const job=queue.then(async()=>{
     if(records[id] && (!requireLogo || cleanLogo(records[id].logo)) && Date.now()-Date.parse(records[id].asOf)<DAY)return result(records[id]);
-    if(Date.now()<cooldown)return result(records[id]);
-    const delay=Math.max(0,nextRequest-Date.now());
-    if(delay)await new Promise(resolve=>setTimeout(resolve,delay));
-    nextRequest=Date.now()+3000;
     try {
-      const headers=process.env.COINGECKO_API_KEY?{'x-cg-demo-api-key':process.env.COINGECKO_API_KEY}:{};
-      const response=await axios.get(`https://api.coingecko.com/api/v3/coins/${id}`,{headers,timeout:10000,params:{localization:false,tickers:false,market_data:false,community_data:false,developer_data:false}});
+      const response=await client.get(`/coins/${id}`,{ttl:DAY,params:{localization:false,tickers:false,market_data:false,community_data:false,developer_data:false}});
       if(response.data?.id!==id || !Array.isArray(response.data.categories))return result(records[id]);
       const categories=cleanCategories(response.data.categories);
       const logo=cleanLogo(response.data.image?.small || response.data.image?.large || response.data.image?.thumb);
@@ -61,8 +56,7 @@ async function getCategories(symbol, {requireLogo=false}={}) {
       try {await persist();} catch {console.warn('[CRYPTO-CATEGORIES] Disk cache unavailable; labels retained in memory');}
     } catch(error) {
       // Never hammer the provider or discard previously fetched labels.
-      cooldown=Date.now()+(error.response?.status===429?15*60000:60000);
-      console.warn(`[CRYPTO-CATEGORIES] Category lookup paused (${error.response?.status || error.code || 'network error'})`);
+      console.warn('[CRYPTO-CATEGORIES] Metadata unavailable; cached labels and logos retained');
     }
     return result(records[id]);
   });
@@ -71,7 +65,7 @@ async function getCategories(symbol, {requireLogo=false}={}) {
 }
 async function getCachedCategories(symbol) {
   await load();
-  const record=records[CRYPTO_TO_COINGECKO[String(symbol).toUpperCase()]];
+  const record=records[(await identity.cached(symbol))?.id];
   return record ? result(record) : null;
 }
 async function getLogo(symbol) {

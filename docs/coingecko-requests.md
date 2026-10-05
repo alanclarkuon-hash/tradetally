@@ -1,0 +1,13 @@
+# CoinGecko requests
+
+All price, chart, investment-analysis and category/logo requests use `coinGeckoClient`. No caller sends direct CoinGecko HTTP requests. Verified known coin IDs remain explicit; previously unknown crypto tickers are resolved through the cached `/coins/list` directory. Only a unique exact ticker match is accepted. Ambiguous symbols remain unresolved until a verified mapping is supplied; they never inherit an equity logo.
+
+The current Demo plan publishes 100 requests/minute and 10,000 monthly credits. CoinGecko announced the increase from 30 to 100 requests/minute on 21 May 2026. Keyless access can have variable limits. Sources: https://www.coingecko.com/en/api/pricing and https://status.coingecko.com/info_notices.
+
+Each application deliberately limits calls to one every 10 seconds and 4,000 attempts in a rolling 31-day window. This reserves headroom for a second test/production environment when both run this client. Failed HTTP attempts count against the local budget. The budget and cooldown persist in `backend/src/data/coingecko-budget.json` on the app data volume. Do not delete this file or run multiple backend processes against the same file. Missing or corrupt storage fails closed, except a missing file initializes the first budget. The design assumes one backend process per environment, as in the current Compose deployments.
+
+Concurrent identical requests are deduplicated. Current prices are fetched as one batch for known coin IDs plus newly resolved IDs and cached for 15 minutes; provider timestamps are retained. Chart responses are cached for one day, categories/logos for seven days, and the coin directory for seven days. Metadata cache files survive deployments. Category updates preserve previously known labels and logo URLs when the provider omits them.
+
+HTTP 429 pauses all requests for at least 15 minutes, extending exponentially up to one day and respecting longer Retry-After values. Other failures pause requests for one minute, or longer if requested by the provider. There are no immediate automatic HTTP retries. Known metadata stays available during cooldown; missing logos show initials and are requested again on a subsequent page load. Logo image downloads use CoinGecko's image CDN, separate from API calls.
+
+These caps control this application's requests, not unrelated applications using the same API key or public IP. Production using older code is not governed by the new client until an approved deployment. A provider can still return 429 under keyless limits or shared account/IP traffic. Local enforcement prevents request storms and preserves the provider's cooldown; it cannot promise that other consumers will not exhaust an allowance.

@@ -148,3 +148,5 @@ zap.yaml
 
 # Public provider cache generated at runtime
 backend/src/data/coingecko-categories.json*
+backend/src/data/coingecko-budget.json*
+backend/src/data/coingecko-directory.json*
