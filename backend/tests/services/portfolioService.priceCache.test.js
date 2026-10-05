@@ -1,4 +1,5 @@
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
+jest.mock('axios',()=>({get:jest.fn().mockRejectedValue(new Error('Listing metadata unavailable'))}));
 jest.mock('../../src/utils/finnhub', () => ({ getStockCandles: jest.fn() }));
 jest.mock('../../src/utils/alphaVantage', () => ({ isConfigured: () => true, getDailyData: jest.fn() }));
 jest.mock('../../src/utils/historicalPriceCache', () => ({ getRange: jest.fn(), hasRange: jest.fn(), insertCandles: jest.fn() }));
@@ -42,6 +43,7 @@ test('retains available dated prices when both providers fail', async () => {
   expect(await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner')).toEqual([candle]);
 });
 test('background history returns cached prices immediately, coalesces downloads and cools down failures', async () => {
+  const venue = jest.spyOn(require('../../src/services/exchangeCalendar'),'resolve').mockResolvedValue(null);
   let rejectDownload;
   finnhub.getStockCandles.mockImplementation(() => new Promise((_, reject) => { rejectDownload = reject; }));
   cache.getRange.mockResolvedValue([candle]);
@@ -55,6 +57,7 @@ test('background history returns cached prices immediately, coalesces downloads 
   await new Promise(resolve => setImmediate(resolve));
   await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options);
   expect(finnhub.getStockCandles).toHaveBeenCalledTimes(1);
+  venue.mockRestore();
 });
 test('a compact trailing response does not count as complete coverage of a longer range', async () => {
   cache.getRange.mockResolvedValue([candle]);

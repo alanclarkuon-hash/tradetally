@@ -1631,7 +1631,7 @@ class PortfolioService {
       await historicalPriceCache.insertCandles(symbol, fresh, source);
       for (const c of fresh) merged.set(c.time, c);
     };
-    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker);
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true});
     const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto, calendar);
     if (ranges().length) await require('./brokerHistoryProviders').fetch({
       userId, symbol: ticker, instrumentType, ranges, onPrices: persist

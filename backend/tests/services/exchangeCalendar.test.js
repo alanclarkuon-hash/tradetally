@@ -1,4 +1,5 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
+jest.mock('axios',()=>({get:jest.fn()}));
 const calendar=require('../../src/services/exchangeCalendar');
 const {missingRanges}=require('../../src/services/holdingsHistoryProvider');
 test.each(['2025-04-18','2026-01-19','2025-01-09','2026-07-03','2022-06-20'])('US full closure %s does not need a candle',day=>{
@@ -36,4 +37,21 @@ test('recognized listing exchanges resolve but an ambiguous unsuffixed ticker ne
 });
 test('a real missing session next to a holiday remains a gap',()=>{
  expect(missingRanges([],'2025-04-18','2025-04-21',false,'US')).toEqual([{from:'2025-04-21',to:'2025-04-21'}]);
+});
+test('unknown listing metadata is fetched only when background lookup is allowed and then persisted/reused',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ db.query.mockResolvedValue({rows:[]});
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'ETF',exchangeName:'PCX'}}]}}});
+ expect(await calendar.resolve('ETF')).toBeNull(); expect(axios.get).not.toHaveBeenCalled();
+ expect(await calendar.resolve('ETF',{allowLookup:true})).toBe('US');
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO exchange_calendar_listings'),['ETF','PCX']);
+ expect(await calendar.resolve('ETF')).toBe('US'); expect(axios.get).toHaveBeenCalledTimes(1);
+});
+test('verified unsupported exchanges do not repeatedly request listing metadata',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ db.query.mockResolvedValue({rows:[{exchange:'HKG',source:'yahoo'},{exchange:'NYSE',source:'classification'}]});
+ const before=axios.get.mock.calls.length;
+ expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
+ expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
+ expect(axios.get).toHaveBeenCalledTimes(before);
 });

@@ -71,6 +71,16 @@ async function process(job) {
   timer.unref?.();
   try {
     await progress(job.id, state);
+    // Restarted jobs may carry gaps saved before their listing venue was known.
+    // Resolve these in the worker, never in a status/page request.
+    const pendingCalendars=state.gaps.filter(g=>g.instrumentType!=='crypto'&&!g.calendar);
+    for(let i=0;i<pendingCalendars.length;i++) {
+      state.stage='calendars'; state.currentSymbol=pendingCalendars[i].symbol;
+      state.calendarProcessed=i; state.calendarTotal=pendingCalendars.length;
+      await progress(job.id,state);
+      pendingCalendars[i].calendar=await require('./exchangeCalendar').resolve(pendingCalendars[i].symbol,{allowLookup:true});
+    }
+    state.stage='prices';
     for (let i = state.processed; i < tasks.length; i++) {
       const task = tasks[i];
       state.currentSymbol = task.symbol;
@@ -113,6 +123,7 @@ async function status(userId) {
     const remaining=gaps.filter(Boolean);
     return { id: row.id, status: row.status, stage: result.stage || 'queued', processed: result.processed || 0,
       total: result.total || 0, complete: (result.complete || 0)+(gaps.length-remaining.length), currentSymbol: result.currentSymbol || null,
+      calendarProcessed:result.calendarProcessed||0,calendarTotal:result.calendarTotal||0,
       gaps: remaining, portfolioWarnings: result.portfolioWarnings || [], createdAt: row.created_at, completedAt: row.completed_at };
   }));
 }
