@@ -88,6 +88,15 @@ class BackupController {
    * Get all backups
    * GET /api/admin/backup
    */
+  async getFailureStatus(req, res, next) {
+    try {
+      const status = await backupService.getFailureStatus();
+      res.set('Cache-Control', 'no-store');
+      res.json(status);
+    } catch (error) {
+      next(error);
+    }
+  }
   async getBackups(req, res, next) {
     try {
       const { type, limit } = req.query;
