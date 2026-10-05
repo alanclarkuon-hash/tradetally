@@ -28,6 +28,12 @@ function normalizeAccountsFilter(value) {
 export const useTradesStore = defineStore('trades', () => {
   const trades = ref([])
   const currentTrade = ref(null)
+  const sorting = ref({ sortBy: 'entryDate', sortDirection: 'desc' })
+
+  function setSort(sortBy, sortDirection) {
+    sorting.value = { sortBy, sortDirection }
+    pagination.value.page = 1
+  }
   const loading = ref(false)
   const initialLoading = ref(true)
   const analyticsLoading = ref(false)
@@ -220,6 +226,7 @@ export const useTradesStore = defineStore('trades', () => {
     }
 
     if (options.includePagination) {
+      Object.assign(merged, sorting.value)
       merged.limit = pagination.value.limit
       merged.offset = (pagination.value.page - 1) * pagination.value.limit
     }
@@ -738,6 +745,8 @@ export const useTradesStore = defineStore('trades', () => {
   return {
     trades,
     currentTrade,
+    sorting,
+    setSort,
     loading,
     initialLoading,
     analyticsLoading,
