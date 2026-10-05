@@ -22,7 +22,7 @@ async function resolve(symbol) {
   if (Date.now() - directory.asOf >= 7 * 86400000) {
     if (!refresh) refresh = (async () => {
       const response = await client.get('/coins/list', { ttl: 7 * 86400000 });
-      if (!Array.isArray(response.data) || !response.data.every(c => typeof c.id === 'string' && /^[a-z0-9-]+$/.test(c.id) && typeof c.symbol === 'string' && typeof c.name === 'string')) throw new Error('Invalid CoinGecko directory');
+      if (!Array.isArray(response.data) || !response.data.every(c => typeof c.id === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(c.id) && typeof c.symbol === 'string' && typeof c.name === 'string')) throw new Error('Invalid CoinGecko directory');
       directory = { asOf: Date.now(), coins: response.data };
       await fs.mkdir(path.dirname(file), { recursive: true });
       await fs.writeFile(file + '.tmp', JSON.stringify(directory));

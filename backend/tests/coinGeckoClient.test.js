@@ -38,6 +38,11 @@ test('malformed persisted budget fails closed',async()=>{
  const f=fixture();f.storage.readFile.mockResolvedValue('{}');
  await expect(f.client.get('/coins/sui')).rejects.toThrow('budget unavailable');expect(f.transport.get).not.toHaveBeenCalled();
 });
+test('accepts real provider underscore IDs while rejecting URL path traversal',async()=>{
+ const f=fixture();await f.client.get('/coins/aaai_agent-by-virtuals');
+ await expect(f.client.get('/coins/../secret')).rejects.toThrow('Invalid CoinGecko endpoint');
+ expect(f.transport.get).toHaveBeenCalledTimes(1);
+});
 test('HTTP-date Retry-After pauses every endpoint type',async()=>{
  const f=fixture();f.transport.get.mockRejectedValueOnce({response:{status:429,headers:{'retry-after':new Date(7300000).toUTCString()}}});
  await expect(f.client.get('/coins/sui')).rejects.toThrow('429');f.advance(3600000);

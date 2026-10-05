@@ -3091,9 +3091,11 @@ const analyticsController = {
       `;
 
       const result = await db.query(query);
-      const sectors = result.rows.map(row => row.finnhub_industry);
+      const sectors = new Set(result.rows.map(row => row.finnhub_industry));
+      const cryptoTrades = await db.query("SELECT DISTINCT symbol, instrument_type FROM trades WHERE user_id=$1 AND instrument_type='crypto'", [req.user.id]);
+      for (const trade of cryptoTrades.rows) sectors.add((await getSectorCategory(trade, null)).finnhub_industry);
 
-      res.json({ sectors });
+      res.json({ sectors: [...sectors].sort() });
     } catch (error) {
       console.error('Error getting available sectors:', error);
       next(error);
