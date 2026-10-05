@@ -55,3 +55,14 @@ test('a compact trailing response does not count as complete coverage of a longe
   await PortfolioService._getDailySeries('PARTIAL', '2026-01-01', '2026-08-31', 'owner');
   expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
 });
+test('incomplete history cannot create or display a drawdown alert', async () => {
+  jest.spyOn(PortfolioService, 'getPreferences').mockResolvedValue({ alertsEnabled: true, driftThresholdPercent: 5, drawdownThresholdPercent: 10 });
+  jest.spyOn(PortfolioService, 'getRebalancePlan').mockResolvedValue({ positions: [] });
+  jest.spyOn(PortfolioService, 'getPerformance').mockResolvedValue({ historyIncomplete: true, metrics: { maxDrawdownPercent: 99 } });
+  jest.spyOn(PortfolioService, '_getRecentPortfolioAlerts').mockResolvedValue([]);
+  const notify = jest.spyOn(PortfolioService, '_createPortfolioAlert').mockResolvedValue({});
+  expect((await PortfolioService.getAlertSummary('owner')).activeConditions).toEqual([]);
+  expect(await PortfolioService.evaluateAlerts('owner')).toEqual([]);
+  expect(notify).not.toHaveBeenCalled();
+  jest.restoreAllMocks();
+});
