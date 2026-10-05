@@ -51,6 +51,11 @@ function buildCliInvocation(provider, modelName, workingDirectory) {
         'read-only',
         '--ignore-user-config',
         '--ignore-rules',
+        '-c', 'features.shell_tool=false',
+        '-c', 'features.unified_exec=false',
+        '-c', 'web_search="disabled"',
+        ...(process.env.CODEX_CLI_AUTH_MODE === 'chatgpt'
+          ? ['-c', 'forced_login_method="chatgpt"'] : []),
         '--color',
         'never',
         '--cd',
@@ -92,7 +97,20 @@ function formatSpawnError(error, config) {
       `Install and authenticate it, or set ${config.executableEnv} to its executable path.`
     );
   }
-  return new Error(`${config.label} failed to start: ${error?.message || 'Unknown error'}`);
+  return new Error(`${config.label} failed to start. Check its installation and service-user permissions.`);
+}
+
+function buildCliEnvironment(provider) {
+  if (provider !== 'codex_cli') return process.env;
+  // The CLI only needs its own login and network/runtime configuration, never
+  // database, broker or unrelated AI credentials (including API billing keys).
+  const allowed = ['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'TMP', 'TEMP',
+    'LANG', 'LC_ALL', 'SYSTEMROOT', 'SystemRoot', 'WINDIR',
+    'HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY', 'NO_PROXY',
+    'https_proxy', 'http_proxy', 'all_proxy', 'no_proxy',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS'];
+  return Object.fromEntries(allowed.filter(key => process.env[key] !== undefined)
+    .map(key => [key, process.env[key]]));
 }
 
 function runCliCommand(provider, executable, args, prompt, workingDirectory) {
@@ -109,7 +127,7 @@ function runCliCommand(provider, executable, args, prompt, workingDirectory) {
 
     const child = spawn(executable, args, {
       cwd: workingDirectory,
-      env: process.env,
+      env: buildCliEnvironment(provider),
       shell: false,
       stdio: ['pipe', 'pipe', 'pipe']
     });
@@ -160,9 +178,13 @@ function runCliCommand(provider, executable, args, prompt, workingDirectory) {
           return;
         }
         if (code !== 0) {
-          const details = stderr.trim().slice(0, 1000);
+          const details = /not logged in|authentication|unauthorized|401/i.test(stderr)
+            ? ' Complete the CLI login as the TradeTally backend service user.'
+            : /rate limit|usage limit|quota/i.test(stderr)
+              ? ' The provider usage limit was reached; try again after it resets.'
+              : ' Check the CLI setup and selected model.';
           reject(new Error(
-            `${config.label} exited with code ${code}${details ? `: ${details}` : '.'}`
+            `${config.label} exited with code ${code}.${details}`
           ));
           return;
         }
@@ -221,6 +243,7 @@ async function generateResponse(prompt, settings = {}) {
 
 module.exports = {
   buildCliInvocation,
+  buildCliEnvironment,
   generateResponse,
   runCliCommand
 };

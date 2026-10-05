@@ -100,5 +100,15 @@ RUN chmod +x /app/start.sh /app/docker-entrypoint.sh
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
     chown -R appuser:appgroup /app
 
+# Optional host AI provider. Disabled in production builds unless explicitly selected.
+ARG CODEX_CLI_VERSION=""
+RUN if [ -n "$CODEX_CLI_VERSION" ]; then \
+      npm install -g "@openai/codex@$CODEX_CLI_VERSION" && \
+      codex --version && \
+      mkdir -p /home/appuser/.codex && \
+      chown appuser:appgroup /home/appuser/.codex && \
+      chmod 700 /home/appuser/.codex; \
+    fi
+
 EXPOSE 80 3000
 CMD ["/app/start.sh"]
