@@ -48,7 +48,10 @@ async function getCategories(symbol) {
       const headers=process.env.COINGECKO_API_KEY?{'x-cg-demo-api-key':process.env.COINGECKO_API_KEY}:{};
       const response=await axios.get(`https://api.coingecko.com/api/v3/coins/${id}`,{headers,timeout:10000,params:{localization:false,tickers:false,market_data:false,community_data:false,developer_data:false}});
       if(response.data?.id!==id || !Array.isArray(response.data.categories))return result(records[id]);
-      records[id]={categories:cleanCategories(response.data.categories),asOf:new Date().toISOString()};
+      const categories=cleanCategories(response.data.categories);
+      // An empty provider response must not erase previously known labels.
+      if(!categories.length)return result(records[id]);
+      records[id]={categories,asOf:new Date().toISOString()};
       try {await persist();} catch {console.warn('[CRYPTO-CATEGORIES] Disk cache unavailable; labels retained in memory');}
     } catch(error) {
       // Never hammer the provider or discard previously fetched labels.
