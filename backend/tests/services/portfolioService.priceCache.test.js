@@ -31,3 +31,17 @@ test('retains available dated prices when both providers fail', async () => {
   finnhub.getStockCandles.mockRejectedValue(new Error('unavailable'));
   expect(await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner')).toEqual([candle]);
 });
+test('background history returns cached prices immediately, coalesces downloads and cools down failures', async () => {
+  let rejectDownload;
+  alpha.getDailyData.mockImplementation(() => new Promise((_, reject) => { rejectDownload = reject; }));
+  cache.getRange.mockResolvedValue([candle]);
+  const options = { background: true };
+  expect(await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options)).toEqual([candle]);
+  await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options);
+  expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
+  rejectDownload(new Error('unavailable'));
+  finnhub.getStockCandles.mockRejectedValue(new Error('unavailable'));
+  await new Promise(resolve => setImmediate(resolve));
+  await PortfolioService._getDailySeries('BACKGROUND', '2026-08-01', '2026-08-31', 'owner', options);
+  expect(alpha.getDailyData).toHaveBeenCalledTimes(1);
+});

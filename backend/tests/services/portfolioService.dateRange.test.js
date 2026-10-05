@@ -13,8 +13,8 @@ test('explicit date bounds override rolling periods for benchmark and position d
   const benchmark = jest.spyOn(PortfolioService, '_getDailySeries').mockResolvedValue([]);
   const positions = jest.spyOn(PortfolioService, '_getPriceSeriesMap').mockResolvedValue(new Map());
   const result = await PortfolioService._getPerformance('owner', { accounts: 'acct-1', period: '1Y', start_date: '2026-08-01', end_date: '2026-08-31' });
-  expect(benchmark).toHaveBeenCalledWith('SPY', '2026-08-01', '2026-08-31', 'owner');
-  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner');
+  expect(benchmark).toHaveBeenCalledWith('SPY', '2026-08-01', '2026-08-31', 'owner', { background: true });
+  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner', { background: true });
   expect(PortfolioService._getPositionComponents).toHaveBeenCalledWith('owner', ['acct-1']);
   expect(result.startDate).toBe('2026-08-01');
   expect(result.endDate).toBe('2026-08-31');

@@ -47,6 +47,26 @@ function fxUsd(column, alias = 't') {
   return `trade_amount_usd(${a}${column}, ${a}original_currency, ${a}exchange_rate, ${a}original_entry_price_currency)`;
 }
 
+// Same conversion rules as trade_amount_usd(), but let aggregate queries read
+// the latest USD rate map once instead of entering that SQL function per value.
+function fxUsdFromSnapshot(column, alias = 't') {
+  const a = alias ? `${alias}.` : '';
+  return `(CASE WHEN ${a}${column} IS NULL THEN NULL
+    WHEN ${a}original_entry_price_currency IS NOT NULL THEN ${a}${column}
+    WHEN ${a}original_currency IS NULL OR ${a}original_currency = '' OR UPPER(${a}original_currency) = 'USD' THEN ${a}${column}
+    ELSE COALESCE(${a}${column} / NULLIF((SELECT (rates ->> UPPER(${a}original_currency))::numeric FROM trade_fx_snapshot), 0), ${a}${column}) END)`;
+}
+
+function withUsdRateSnapshot(sql) {
+  if (!sql.includes('FROM trade_fx_snapshot')) return sql;
+  const snapshot = `trade_fx_snapshot AS MATERIALIZED (
+    SELECT rates FROM fx_daily_rates WHERE base_code = 'USD' ORDER BY rate_date DESC LIMIT 1
+  )`;
+  return /^\s*WITH\s/i.test(sql)
+    ? sql.replace(/^\s*WITH\s/i, `WITH ${snapshot}, `)
+    : `WITH ${snapshot} ${sql}`;
+}
+
 /**
  * USD-per-currency map for today (from the daily FX store). Returns null
  * when no snapshot is available (offline before first fetch) - callers then
@@ -107,6 +127,8 @@ module.exports = {
   tradeBaseCurrency,
   tradeAmountUsd: fxUsd,
   fxUsd,
+  fxUsdFromSnapshot,
+  withUsdRateSnapshot,
   getUsdRateMap,
   normalizeRowToUsd
 };

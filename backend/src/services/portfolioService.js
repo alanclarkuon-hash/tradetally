@@ -23,6 +23,12 @@ const inFlightPriceSymbols = new Set();
 // parallel. These endpoints all derive from the same position snapshot, so a
 // per-process single-flight latch prevents duplicate DB scans and quote work.
 const inFlightPortfolioComputations = new Map();
+const historyRefreshAfter = new Map();
+const incompleteHistory = new Set();
+const HISTORY_RETRY_MS = 15 * 60 * 1000;
+function historyKey(symbol, startDate, endDate, userId) {
+  return `history:${userId}:${symbol}:${startDate}:${endDate}`;
+}
 
 function coalescePortfolio(key, compute) {
   const existing = inFlightPortfolioComputations.get(key);
@@ -499,10 +505,11 @@ class PortfolioService {
       : getPeriodRange(options.period);
     const components = await this._getPositionComponents(userId, accounts);
     const symbols = [...new Set(components.map(component => component.symbol))];
+    const historyRequestedAt = Date.now();
 
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
-      this._getDailySeries(benchmark, startDate, endDate, userId),
-      this._getPriceSeriesMap(symbols, startDate, endDate, userId)
+      this._getDailySeries(benchmark, startDate, endDate, userId, { background: true }),
+      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: true })
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -613,6 +620,11 @@ class PortfolioService {
       startDate,
       endDate,
       benchmark,
+      historyUpdating: [benchmark, ...symbols].some(symbol =>
+        inFlightPortfolioComputations.has(historyKey(symbol, startDate, endDate, userId)) ||
+        (historyRefreshAfter.get(historyKey(symbol, startDate, endDate, userId)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
+      historyMissingSymbols: symbols.filter(symbol => !(priceSeriesMap.get(symbol)?.length)),
+      historyIncomplete: [benchmark, ...symbols].some(symbol => incompleteHistory.has(historyKey(symbol, startDate, endDate, userId))),
       metrics: {
         totalReturnPercent: round(totalReturnDecimal * 100),
         benchmarkReturnPercent: round(benchmarkReturnDecimal * 100),
@@ -656,7 +668,7 @@ class PortfolioService {
       });
     }
 
-    if (performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
+    if (!performance.historyUpdating && !performance.historyIncomplete && !performance.historyMissingSymbols?.length && performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
       activeConditions.push({
         category: 'drawdown',
         symbol: 'Portfolio',
@@ -835,7 +847,7 @@ class PortfolioService {
       }
     }
 
-    if (performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
+    if (!performance.historyUpdating && !performance.historyIncomplete && !performance.historyMissingSymbols?.length && performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
       const alertKey = `drawdown:${preferences.drawdownThresholdPercent}`;
       const message = `Portfolio drawdown reached ${performance.metrics.maxDrawdownPercent.toFixed(2)}% over the last 6 months.`;
       const created = await this._createPortfolioAlert(userId, alertKey, 'Portfolio', message, {
@@ -1552,10 +1564,10 @@ class PortfolioService {
     }));
   }
 
-  static async _getPriceSeriesMap(symbols, startDate, endDate, userId) {
+  static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId);
+        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, options);
         return [symbol, candles];
       })
     );
@@ -1563,11 +1575,33 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false } = {}) {
+    const key = historyKey(symbol, startDate, endDate, userId);
     const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
     if (cachedCandles.length > 0 && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+      incompleteHistory.delete(key);
       return cachedCandles;
     }
+
+    incompleteHistory.add(key);
+    while (incompleteHistory.size > 256) incompleteHistory.delete(incompleteHistory.values().next().value);
+    if (background) {
+      if (!inFlightPortfolioComputations.has(key) && Date.now() >= (historyRefreshAfter.get(key) || 0)) {
+        // Missing provider history must never hold a page response open. Keep
+        // each exact range single-flight; failed/partial downloads cool down.
+        coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles))
+          .catch(() => cachedCandles)
+          .finally(() => {
+            historyRefreshAfter.set(key, Date.now() + HISTORY_RETRY_MS);
+            while (historyRefreshAfter.size > 256) historyRefreshAfter.delete(historyRefreshAfter.keys().next().value);
+          });
+      }
+      return cachedCandles;
+    }
+    return coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles));
+  }
+
+  static async _fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles = []) {
 
     if (alphaVantage.isConfigured()) {
       try {
