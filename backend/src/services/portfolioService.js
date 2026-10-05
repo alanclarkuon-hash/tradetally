@@ -1572,6 +1572,7 @@ class PortfolioService {
     if (alphaVantage.isConfigured()) {
       try {
         const candles = await alphaVantage.getDailyData(symbol, 'compact');
+        await historicalPriceCache.insertCandles(symbol, candles, 'alphaVantage');
         return candles.filter(candle => {
           const date = this._toDateString(candle.time);
           return date >= startDate && date <= endDate;
@@ -1588,7 +1589,7 @@ class PortfolioService {
       await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
       return candles;
     } catch (error) {
-      return [];
+      return cachedCandles;
     }
   }
 

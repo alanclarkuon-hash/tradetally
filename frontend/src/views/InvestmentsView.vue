@@ -473,6 +473,9 @@
                                     </div>
                                 </div>
                             </div>
+                            <div v-else-if="performanceLoading" class="text-center py-16 text-gray-500 dark:text-gray-400" role="status">
+                                Loading historical benchmark data…
+                            </div>
                             <div v-else class="text-center py-16 text-gray-500 dark:text-gray-400">
                                 Historical benchmark data is not available yet for the current selection.
                             </div>
@@ -1606,6 +1609,7 @@ const portfolioPeriod = ref("6M");
 // portfolioLoading because the loading flag is only set inside store actions,
 // not during the preferences/accounts pre-fetch that happens first.
 const initialLoading = ref(true);
+const performanceLoading = ref(false);
 const PORTFOLIO_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
 // Per-period cache: Map<cacheKey, { fetchedAt, overview, positions, performance, rebalance, alerts }>
 // Key is `period|account|benchmark` so switching back to a previous period is instant.
@@ -1934,11 +1938,15 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
                 maybeStartPricePolling();
             }
             portfolioLoadedAt.value = new Date(cached.fetchedAt);
+            initialLoading.value = false;
             return;
         }
     }
 
     const params = buildPortfolioParams();
+    performanceLoading.value = true;
+    const performanceRequest = investmentsStore.fetchPortfolioPerformance(params)
+        .finally(() => { performanceLoading.value = false; });
 
     if (periodOnly) {
         // Only update the chart and metrics. Positions and the allocation
@@ -1946,18 +1954,23 @@ async function loadPortfolioData({ force = false, periodOnly = false, preserveTa
         // the selected time range so there's no need to blank them out.
         await Promise.allSettled([
             investmentsStore.fetchPortfolioOverview(params),
-            investmentsStore.fetchPortfolioPerformance(params),
+            performanceRequest,
         ]);
     } else {
-        const results = await Promise.allSettled([
-            investmentsStore.fetchPortfolioOverview(params),
-            investmentsStore.fetchPortfolioPositions(params),
-            investmentsStore.fetchPortfolioPerformance(params),
+        const optionalRequests = Promise.allSettled([
+            performanceRequest,
             investmentsStore.fetchPortfolioRebalance(params),
             investmentsStore.fetchPortfolioAlerts(params),
         ]);
+        const results = await Promise.allSettled([
+            investmentsStore.fetchPortfolioOverview(params),
+            investmentsStore.fetchPortfolioPositions(params),
+        ]);
         const positions = results[1].status === "fulfilled" ? results[1].value : [];
         syncTargetAllocationDrafts(positions, { preserveEdits: preserveTargetEdits });
+        initialLoading.value = false;
+        maybeStartPricePolling();
+        await optionalRequests;
     }
 
     // Save freshly-fetched data. For period-only loads, preserve the cached
@@ -2143,8 +2156,9 @@ onMounted(async () => {
                 preferences?.drawdownThresholdPercent ?? 10,
             alertsEnabled: preferences?.alertsEnabled ?? true,
         };
-        await loadPortfolioData();
-        await loadAccountComparison();
+        if (activeTab.value === "holdings") {
+            await Promise.all([loadPortfolioData(), loadAccountComparison()]);
+        }
         restoreComparisonSelectionFromQuery();
     } catch (error) {
         console.error("Failed to load portfolio data:", error);
