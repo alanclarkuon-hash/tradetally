@@ -17,7 +17,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
   totals: { portfolioValue: 100, holdingsValue: 60, cashValue: 40, stablecoinValue: 0, pnl: 0, pnlPercent: 0 },
   coverage: { missingCash: 0, missingPrices: 0, missingPnl: 0, unclassified: 0 } }
-const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true } } })
+const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true } } })
 
 beforeEach(() => {
   localStorage.removeItem('portfolioDashboardLayout')
@@ -35,6 +35,18 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('uses crypto identities for heatmap logos and omits logos from tiny holdings',async()=>{
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
+      {symbol:'SUI',value:80,assetClass:'Crypto assets',category:'Layer 1'},
+      {symbol:'MSFT',value:80,assetClass:'Stocks',sector:'Technology',industry:'Software'},
+      {symbol:'TINY',value:.001,assetClass:'Stocks',sector:'Technology',industry:'Software'}
+    ]}:{change:25}}));
+    const view=create();await flushPromises();
+    const logos=view.findAllComponents({name:'StockLogo'});
+    expect(logos.map(logo=>[logo.props('symbol'),logo.props('instrumentType')])).toEqual(expect.arrayContaining([['SUI','crypto'],['MSFT','stock']]));
+    expect(logos.some(logo=>logo.props('symbol')==='TINY')).toBe(false);
+    view.unmount();
+  })
   it('loads automatically when a shared account fetch finishes after mounting',async()=>{
     mock.accounts.value=[]
     const view=create();await flushPromises()
