@@ -4,7 +4,8 @@ Issue: https://github.com/alanclarkuon-hash/tradetally/issues/24
 
 The test Compose configuration installs pinned Codex CLI 0.160.0. The normal
 Docker build leaves the CLI disabled unless `CODEX_CLI_VERSION` is explicitly set.
-Production is not changed by this setup.
+The local production Compose configuration also opts into this version following
+release authorization. Test and production use separate login volumes.
 
 Authentication lives in the dedicated `tradetally-test_codex_auth` Docker volume,
 not the repository, test database, production or desktop Codex login. Never copy
@@ -77,3 +78,29 @@ docker exec --user appuser tradetally-test-app-1 env -u OPENAI_API_KEY -u CODEX_
 The expected result is `Not logged in`.
 
 Official documentation: https://learn.chatgpt.com/docs/auth
+
+## Local production login and logout
+
+Production uses its own `tradetally-local_codex_auth` volume. Do not copy the test
+login into it. After deployment, sign in separately:
+
+```powershell
+docker exec -it --user appuser tradetally-local-app-1 codex login --device-auth
+```
+
+Follow the same sign-in steps above, then select **OpenAI Codex CLI** in production
+Settings → AI & Integrations and save. Leave the model blank for the CLI default.
+
+Verify the production connection with the synthetic check:
+
+```powershell
+docker exec --user appuser tradetally-local-app-1 node /app/backend/scripts/test-codex-cli.js
+```
+
+To disconnect production (without affecting test or the desktop login):
+
+```powershell
+docker exec --user appuser tradetally-local-app-1 codex logout
+```
+
+Then choose another provider or **No provider** in production settings and save.
