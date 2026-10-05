@@ -1,5 +1,6 @@
 import { computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useMonetaryPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
 
 // Currency metadata for symbol extraction and display
 const CURRENCY_OPTIONS = [
@@ -43,8 +44,9 @@ function normalizeFractionDigits(minimumFractionDigits = 2, maximumFractionDigit
   }
 }
 
-export function useCurrencyFormatter() {
+export function useCurrencyFormatter({ privacy } = {}) {
   const authStore = useAuthStore()
+  const hidden = privacy || useMonetaryPrivacy().hideAmounts
 
   const currencyCode = computed(() => {
     return authStore.user?.settings?.display_currency || 'USD'
@@ -73,6 +75,7 @@ export function useCurrencyFormatter() {
    * @param {boolean} [options.abs=false] - Format absolute value
    */
   function formatCurrency(value, options = {}) {
+    if (hidden.value) return MONEY_MASK
     if (value === null || value === undefined || isNaN(value)) return '-'
 
     const {
@@ -111,6 +114,7 @@ export function useCurrencyFormatter() {
    * e.g., "+$1,234.56" or "-$567.89"
    */
   function formatSignedCurrency(value, options = {}) {
+    if (hidden.value) return MONEY_MASK
     if (value === null || value === undefined || isNaN(value)) return '-'
     const formatted = formatCurrency(Math.abs(value), { ...options, abs: false })
     const sign = value >= 0 ? '+' : '-'

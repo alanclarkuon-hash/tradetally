@@ -45,6 +45,7 @@
              clean. Filter button shows a dot when a non-default range is
              active. Customize button highlights primary when in edit mode. -->
         <div class="mt-4 sm:mt-0 flex flex-wrap gap-2 items-center justify-end">
+          <MoneyPrivacyToggle />
           <div class="relative" data-dropdown="timeRange">
             <button
               @click.stop="showTimeRangeDropdown = !showTimeRangeDropdown"
@@ -1633,6 +1634,8 @@
 
 <script setup>
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
+import { useDashboardPrivacy } from '@/composables/useDashboardPrivacy'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRouter } from 'vue-router'
@@ -1696,7 +1699,8 @@ import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
-const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter()
+const { hideAmounts } = useDashboardPrivacy()
+const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter({ privacy: hideAmounts })
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const uiPreferencesStore = useUiPreferencesStore()

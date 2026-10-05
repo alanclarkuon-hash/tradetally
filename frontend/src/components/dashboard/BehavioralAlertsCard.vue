@@ -71,7 +71,7 @@
               {{ proAlert.title || formatPatternType(proAlert.pattern_type) || 'Behavioral alert' }}
             </div>
             <div v-if="proAlert.message" class="text-xs text-gray-600 dark:text-gray-300 mt-0.5 line-clamp-2">
-              {{ proAlert.message }}
+              {{ maskMoneyText(proAlert.message) }}
             </div>
             <div class="text-[10px] text-gray-500 dark:text-gray-400 mt-1 text-mono-num">
               Pro · {{ relativeTime(proAlert.created_at) }}
@@ -95,14 +95,14 @@
               <div class="flex items-baseline justify-between gap-2">
                 <span class="text-sm font-medium text-gray-900 dark:text-white">{{ signal.label }}</span>
                 <span v-if="signal.value !== undefined" class="text-mono-num text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                  {{ signal.value }}<span v-if="signal.unit" class="ml-0.5">{{ signal.unit ? '' : '' }}</span>
+                  {{ maskMoneyText(signal.value) }}<span v-if="signal.unit" class="ml-0.5">{{ signal.unit ? '' : '' }}</span>
                 </span>
               </div>
               <p v-if="signal.unit" class="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                 {{ signal.unit }}
               </p>
               <p class="text-xs text-gray-600 dark:text-gray-300 mt-1 leading-relaxed">
-                {{ signal.message }}
+                {{ maskMoneyText(signal.message) }}
               </p>
             </div>
           </div>
@@ -161,6 +161,8 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useMonetaryPrivacy } from '@/composables/useDashboardPrivacy'
+const { maskMoneyText } = useMonetaryPrivacy()
 import MdiIcon from '@/components/MdiIcon.vue'
 import {
   mdiShieldAlertOutline,
