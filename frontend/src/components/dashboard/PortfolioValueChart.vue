@@ -16,6 +16,8 @@
 <script setup>
 import {ref,computed,watch,onBeforeUnmount,nextTick} from 'vue'
 import {Chart} from '@/lib/chartSetup'
+import {useMonetaryPrivacy,MONEY_MASK} from '@/composables/useDashboardPrivacy'
+const {hideAmounts}=useMonetaryPrivacy()
 import {dateNumber,valueChartPoints,fundingAdjustedHistory} from '@/utils/portfolioValueChart'
 const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'}})
 const includeFunding=ref(true)
@@ -23,9 +25,9 @@ const adjusted=computed(()=>fundingAdjustedHistory(props.history))
 const displayedChange=computed(()=>includeFunding.value ? props.history?.change : adjusted.value.change)
 const canvas=ref(null)
 let chart=null
-const money=value=>value==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:props.currency,maximumFractionDigits:2}).format(value)
-const signedMoney=value=>(value>=0?'+':'−')+money(Math.abs(value))
-const nativeMoney=event=>event.crypto ? `${event.quantity.toLocaleString('en-GB',{maximumFractionDigits:10})} ${event.asset}` : new Intl.NumberFormat('en-GB',{style:'currency',currency:event.nativeCurrency}).format(event.nativeAmount)
+const money=value=>hideAmounts.value?MONEY_MASK:value==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:props.currency,maximumFractionDigits:2}).format(value)
+const signedMoney=value=>hideAmounts.value?MONEY_MASK:(value>=0?'+':'−')+money(Math.abs(value))
+const nativeMoney=event=>hideAmounts.value?(event.crypto?`${MONEY_MASK} ${event.asset}`:MONEY_MASK):event.crypto ? `${event.quantity.toLocaleString('en-GB',{maximumFractionDigits:10})} ${event.asset}` : new Intl.NumberFormat('en-GB',{style:'currency',currency:event.nativeCurrency}).format(event.nativeAmount)
 const dateLabel=date=>date?new Date(dateNumber(date)).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',timeZone:'UTC'}):'Unavailable'
 async function render() {
   await nextTick()
@@ -44,7 +46,7 @@ async function render() {
     return [...(includeFunding.value?[`Combined portfolio: ${money(point.y)}`]:[`Overall gains: ${money(point.y)}`,`Portfolio value: ${money(point.portfolioValue)}`,`Net funding since baseline: ${signedMoney(point.netFunding)}`,...(point.missingFunding?['Funding amounts unavailable']:[])]),`Holdings: ${money(point.holdings)}`,`Cash: ${money(point.cash)}`,`Stablecoins: ${money(point.stablecoins)}`,...(point.estimatedAccounts?['Estimate: missing historical prices valued at zero']:[]),...(point.migrationEstimatedAccounts?['Estimate: documented 1:1 token migration price']:[]),...(point.statementEstimatedAccounts?['Estimate: IBKR weekend holdings at last reported close']:[]),...(point.carryForwardBalances||[]).map(balance=>`Estimate: ${balance.account}; last known value ${dateLabel(balance.from)}`),...(point.igCarryForwardAccounts?['Estimate: last available IG balance; no open positions confirmed']:[]),...(point.reconstructedAccounts?['Rebuilt from historical records and closing prices']:['Recorded snapshot or statement']),...(point.stalePrices?['Includes older market quotes']:[])]
   }}}},scales:{x:{type:'linear',...bounds,grid:{display:false},ticks:{color:'#8290a1',maxTicksLimit:7,callback:value=>new Date(value).toLocaleDateString('en-GB',{...(dates.length&&Math.max(...dates)-Math.min(...dates)<=90*86400000?{day:'numeric',month:'short'}:{month:'short',year:'2-digit'}),timeZone:'UTC'})}},value:{axis:'y',type:'linear',display:history.coverage.recordedDays>0,grid:{color:'#71809618'},ticks:{color:'#8290a1',callback:value=>money(value)}},funding:{axis:'y',type:'linear',display:false,min:0,max:1}}}})
 }
-watch(()=>[props.history,props.loading,props.error,props.currency,includeFunding.value],render,{immediate:true})
+watch(()=>[props.history,props.loading,props.error,props.currency,includeFunding.value,hideAmounts.value],render,{immediate:true})
 onBeforeUnmount(()=>chart?.destroy())
 </script>
 
