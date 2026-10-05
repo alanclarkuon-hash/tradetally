@@ -41,6 +41,7 @@
             <div v-for="sector in group.sectors" :key="sector.name" :style="{left:sector.x+'%',top:sector.y+'%',width:sector.w+'%',height:sector.h+'%'}" class="stock-sector" :title="sector.name"><span :style="{height:sector.labelHeight+'%'}">{{ sector.name }}</span></div>
             <template v-for="category in group.categories" :key="category.key||category.name"><div v-if="category.showLabel" :style="{left:category.x+'%',top:category.y+'%',width:category.w+'%',height:category.labelHeight+'%'}" class="crypto-category-label" :title="category.name">{{ category.name }}</div></template>
             <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${money(tile.value)}, ${percent(tile.pnlPercent)}`" :title="`${tile.symbol}${tile.name ? ' · '+tile.name : ''} · ${money(tile.value)} · ${percent(tile.pnlPercent)}`">
+              <StockLogo v-if="tile.pixelW>=75 && tile.area/tile.pixelW>=115" class="heatmap-logo" :symbol="tile.symbol" :instrument-type="tile.assetClass==='Crypto assets'?'crypto':'stock'" size-class="w-9 h-9" rounded-class="rounded-full" aria-hidden="true" />
               <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}</span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ money(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}</span>
             </button>
           </div></div>
@@ -69,6 +70,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
+import StockLogo from '@/components/common/StockLogo.vue'
 const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,setAccounts,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
@@ -129,6 +131,10 @@ onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()}
 </script>
 
 <style scoped>
+.holding-tile{container-type:size}
+.heatmap-logo{pointer-events:none}
+@container (max-width:60px){.heatmap-logo{display:none}}
+@container (max-height:110px){.heatmap-logo{display:none}}
 .portfolio-header,.section-line{display:flex;justify-content:space-between;align-items:center;gap:20px}
 .portfolio-header{margin-bottom:32px}
 .subtitle,.scope-note,.updated{@apply text-sm text-gray-600 dark:text-gray-400; margin-top:4px}
