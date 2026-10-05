@@ -46,6 +46,11 @@ const tradesStoreMock = {
   pagination: { page: 1, limit: 50, total: 1, totalPages: 1 },
   filters: { accounts: '', includeArchived: false, tags: [] },
   fetchTrades,
+  sorting: { sortBy: 'entryDate', sortDirection: 'desc' },
+  setSort: vi.fn((sortBy, sortDirection) => {
+    tradesStoreMock.sorting = { sortBy, sortDirection }
+    tradesStoreMock.pagination.page = 1
+  }),
   fetchAnalytics: vi.fn().mockResolvedValue(undefined),
   setFilters: vi.fn(),
   setPage: vi.fn(),
@@ -143,6 +148,19 @@ describe('TradeListView column resizing', () => {
     expect(JSON.parse(localStorage.getItem(WIDTHS_KEY))).toEqual({ pnl: 108 })
     expect(notifyChanged).toHaveBeenCalledWith(WIDTHS_KEY, { pnl: 108 })
     expect(colStyles(wrapper)).toContain('width: 108px;')
+  })
+
+  it('sorts through keyboard-accessible headings, resets pagination, and leaves resize controls independent', async () => {
+    const wrapper = await mountView()
+    tradesStoreMock.pagination.page = 3
+    await wrapper.get('th[data-column-key="symbol"] button').trigger('click')
+    expect(tradesStoreMock.setSort).toHaveBeenCalledWith('symbol', 'asc')
+    expect(tradesStoreMock.pagination.page).toBe(1)
+    expect(fetchTrades).toHaveBeenCalledWith({skipCount:false,suppressAnalytics:true})
+    const calls = tradesStoreMock.setSort.mock.calls.length
+    await handleFor(wrapper, 'symbol').trigger('click')
+    expect(tradesStoreMock.setSort).toHaveBeenCalledTimes(calls)
+    wrapper.unmount()
   })
 
   it('leaves widths untouched when a click never moves', async () => {
