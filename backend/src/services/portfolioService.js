@@ -490,7 +490,8 @@ class PortfolioService {
       resolved_range,
       accounts,
       benchmark: options.benchmark ? normalizeSymbol(options.benchmark) : 'default',
-      period: String(options.period || DEFAULT_PERIOD).toUpperCase()
+      period: String(options.period || DEFAULT_PERIOD).toUpperCase(),
+      waitForHistory: options.waitForHistory === true
     })}`;
     return coalescePortfolio(key, () => this._getPerformance(userId, options));
   }
@@ -508,8 +509,8 @@ class PortfolioService {
     const historyRequestedAt = Date.now();
 
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
-      this._getDailySeries(benchmark, startDate, endDate, userId, { background: true }),
-      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: true })
+      this._getDailySeries(benchmark, startDate, endDate, userId, { background: options.waitForHistory !== true }),
+      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: options.waitForHistory !== true })
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -770,8 +771,10 @@ class PortfolioService {
     for (const accountIdentifier of accountIdentifiers) {
       const performance = await this.getPerformance(userId, {
         accounts: accountIdentifier || undefined,
-        period: `${days}D_INTERNAL`
+        period: `${days}D_INTERNAL`,
+        waitForHistory: true
       });
+      if (performance.historyUpdating || performance.historyIncomplete) continue;
       const currentOverview = await this.getOverview(userId, {
         accounts: accountIdentifier || undefined
       });
