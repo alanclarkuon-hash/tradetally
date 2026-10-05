@@ -159,68 +159,56 @@ class BackupService {
   async fetchAllData() {
     console.log('[BACKUP] Fetching all site data...');
 
-    // Dynamically discover all tables from the database schema
-    // This ensures new tables from migrations are automatically included
     const EXCLUDED_TABLES = new Set([
-      'backups',
-      'backup_settings',
-      'migrations',
-      'schema_migrations',
-      'api_cache'
+      'backups', 'backup_settings', 'migrations', 'schema_migrations', 'api_cache'
     ]);
-
-    const tablesResult = await db.query(`
-      SELECT table_name FROM information_schema.tables
-      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
-      ORDER BY table_name
-    `);
-
-    const tableNames = tablesResult.rows
-      .map(row => row.table_name)
-      .filter(name => !EXCLUDED_TABLES.has(name));
-
-    console.log(`[BACKUP] Discovered ${tableNames.length} tables to backup`);
-
-    // Execute all queries in parallel
-    const queries = tableNames.map(tableName =>
-      db.query(`SELECT * FROM "${tableName}"`).catch(error => {
-        console.warn(`[BACKUP] Table ${tableName} error: ${error.message}`);
-        return { rows: [] };
-      })
-    );
-
-    const results = await Promise.all(queries);
-
-    // Build tables object with camelCase keys for backward compatibility
-    // Also build a mapping so restore can convert back precisely
-    const tables = {};
-    const statistics = {};
-    const tableNameMapping = {}; // camelCase -> snake_case
-
-    tableNames.forEach((tableName, index) => {
-      const camelCaseName = toCamelCase(tableName);
-      tables[camelCaseName] = results[index].rows;
-      statistics[tableName] = results[index].rows.length;
-      tableNameMapping[camelCaseName] = tableName;
-    });
-
-    // Calculate summary statistics
-    const data = {
-      version: '3.0',
-      exportDate: new Date().toISOString(),
-      tables,
-      tableNameMapping,
-      statistics: {
-        ...statistics,
-        totalTables: tableNames.length,
-        totalRecords: Object.values(tables).reduce((sum, rows) => sum + rows.length, 0)
+    // Pool queries may read different versions of related tables. Export the
+    // whole database from one consistent snapshot on a dedicated connection.
+    let client, readingTable = null;
+    try {
+      client = await db.connect();
+      await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const tablesResult = await client.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+        ORDER BY table_name
+      `);
+      const tableNames = tablesResult.rows.map(row => row.table_name)
+        .filter(name => !EXCLUDED_TABLES.has(name));
+      const tables = {}, statistics = {}, tableNameMapping = {};
+      for (const tableName of tableNames) {
+        // Validate before using the identifier, including in error messages.
+        const quoted = quoteIdentifier(tableName);
+        readingTable = tableName;
+        const result = await client.query(`SELECT * FROM ${quoted}`);
+        const key = toCamelCase(tableName);
+        tables[key] = result.rows;
+        statistics[tableName] = result.rows.length;
+        tableNameMapping[key] = tableName;
+        readingTable = null;
       }
-    };
-
-    console.log('[BACKUP] Data fetched successfully. Tables:', tableNames.length, 'Total records:', data.statistics.totalRecords);
-    return data;
+      await client.query('COMMIT');
+      const data = {
+        version: '3.0', exportDate: new Date().toISOString(), tables, tableNameMapping,
+        statistics: {
+          ...statistics, totalTables: tableNames.length,
+          totalRecords: Object.values(tables).reduce((sum, rows) => sum + rows.length, 0)
+        }
+      };
+      console.log('[BACKUP] Data fetched successfully. Tables:', tableNames.length, 'Total records:', data.statistics.totalRecords);
+      return data;
+    } catch {
+      try { if (client) await client.query('ROLLBACK'); }
+      catch { console.warn('[BACKUP] Export rollback failed'); }
+      // Never replace a failed read with an empty table or expose raw query
+      // errors, which may contain private values. No export file is written.
+      throw new Error(readingTable
+        ? `Backup export failed while reading table "${readingTable}". No complete backup was created.`
+        : 'Backup export failed. No complete backup was created.');
+    } finally {
+      client?.release();
+    }
   }
-
   /**
    * Get all backups
    * @param {Object} filters - Optional filters
@@ -489,9 +477,10 @@ class BackupService {
       // Serialize a value for INSERT based on its column data type
       const serializeValue = (value, colType) => {
         if (value == null) return null;
-        if (colType === 'jsonb') {
-          // JSONB columns: always JSON.stringify (handles both objects AND arrays)
-          return typeof value === 'string' ? value : JSON.stringify(value);
+        if (colType === 'jsonb' || colType === 'json') {
+          // pg decodes JSON scalars as native values. Strings need quoting too:
+          // "true" must remain a string, rather than becoming a JSON boolean.
+          return JSON.stringify(value);
         }
         if (Array.isArray(value)) {
           // PostgreSQL array columns (text[], integer[], etc.): pass through for pg driver

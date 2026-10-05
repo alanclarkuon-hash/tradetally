@@ -34,7 +34,7 @@ function createRestoreClient(columnsByTable = {}, user_ids = []) {
       const normalized = String(sql).replace(/\s+/g, ' ').trim();
       if (normalized.includes('FROM information_schema.columns')) {
         const columns = columnsByTable[params[0]] || [];
-        return { rows: columns.map(column => ({ column_name: column, data_type: 'text' })) };
+        return { rows: columns.map(column => typeof column === 'string' ? { column_name: column, data_type: 'text' } : column) };
       }
       if (normalized.includes("tc.constraint_type = 'PRIMARY KEY'")) {
         return { rows: [{ column_name: 'id' }] };
@@ -122,8 +122,8 @@ describe('backup service hardening', () => {
   });
 
   test('createFullSiteBackup ensures backup directory before writing file', async () => {
+    createRestoreClient();
     db.query
-      .mockResolvedValueOnce({ rows: [] })
       .mockResolvedValueOnce({
         rows: [{
           id: 'backup-1',
@@ -200,5 +200,105 @@ describe('backup service hardening', () => {
     const insert = client.query.mock.calls.find(([query]) => String(query).startsWith('INSERT INTO'));
     expect(insert[0]).toContain('INSERT INTO "custom_table" ("id", "label")');
     expect(insert[0]).toContain('RETURNING "id"');
+  });
+});
+
+describe('full-site export snapshot and failure handling (#36)', () => {
+  function exportClient(failTable = null) {
+    const client = {
+      release: jest.fn(),
+      query: jest.fn(async sql => {
+        if (sql.includes('information_schema.tables')) return { rows: [
+          { table_name: 'users' }, { table_name: 'trades' },
+          { table_name: 'broker_connections' }, { table_name: 'backups' }
+        ] };
+        if (sql === `SELECT * FROM "${failTable}"`) throw Error('private-value-from-query');
+        if (sql === 'SELECT * FROM "users"') return { rows: [{ id: 'synthetic-user' }] };
+        return { rows: [] };
+      })
+    };
+    db.connect.mockResolvedValue(client);
+    return client;
+  }
+  beforeEach(() => {
+    jest.resetAllMocks();
+    fs.mkdir.mockResolvedValue();
+    fs.writeFile.mockResolvedValue();
+    fs.stat.mockResolvedValue({ size: 10 });
+    db.query.mockResolvedValue({ rows: [] });
+  });
+  test('exports real empty tables and related records from one read-only snapshot', async () => {
+    const client = exportClient();
+    const result = await backupService.fetchAllData();
+    expect(result.tables).toEqual({ users: [{ id: 'synthetic-user' }], trades: [], brokerConnections: [] });
+    expect(result.tableNameMapping.brokerConnections).toBe('broker_connections');
+    expect(result.statistics).toMatchObject({ totalTables: 3, totalRecords: 1, trades: 0 });
+    expect(client.query.mock.calls[0][0]).toBe('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+    expect(client.query.mock.calls.at(-1)[0]).toBe('COMMIT');
+    expect(client.query).not.toHaveBeenCalledWith('SELECT * FROM "backups"');
+    expect(db.query).not.toHaveBeenCalled();
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+  test('rejects a failed table read, rolls back and releases without returning partial records', async () => {
+    const client = exportClient('trades');
+    await expect(backupService.fetchAllData()).rejects.toThrow('Backup export failed while reading table "trades"');
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(client.query).not.toHaveBeenCalledWith('COMMIT');
+    expect(client.query).not.toHaveBeenCalledWith('SELECT * FROM "broker_connections"');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+  test('never writes a file or marks a failed export completed', async () => {
+    exportClient('trades');
+    await expect(backupService.createFullSiteBackup('synthetic-user')).rejects.toThrow('Backup export failed');
+    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(fs.stat).not.toHaveBeenCalled();
+    expect(db.query).toHaveBeenCalledTimes(1);
+    const parameters = db.query.mock.calls[0][1];
+    expect(parameters[4]).toBe('failed');
+    expect(parameters[5]).toContain('table "trades"');
+    expect(parameters[5]).not.toContain('private-value');
+  });
+  test('marks completed only after the whole snapshot is committed and the file is saved', async () => {
+    const client = exportClient();
+    db.query.mockResolvedValue({ rows: [{ status: 'completed' }] });
+    const result = await backupService.createFullSiteBackup('synthetic-user');
+    expect(result.success).toBe(true);
+    const commit = client.query.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
+    expect(client.query.mock.invocationCallOrder[commit]).toBeLessThan(fs.writeFile.mock.invocationCallOrder[0]);
+    expect(fs.stat.mock.invocationCallOrder[0]).toBeLessThan(db.query.mock.invocationCallOrder[0]);
+    expect(db.query.mock.calls[0][1][5]).toBe('completed');
+  });
+  test('rejects discovery errors with a sanitized message', async () => {
+    const client = exportClient();
+    client.query.mockRejectedValueOnce(Error('private metadata'));
+    await expect(backupService.fetchAllData()).rejects.toThrow('Backup export failed. No complete backup was created.');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+  test('still releases the connection when rollback fails', async () => {
+    const client = exportClient('trades');
+    const original = client.query.getMockImplementation();
+    client.query.mockImplementation(sql => sql === 'ROLLBACK' ? Promise.reject(Error('rollback failed')) : original(sql));
+    await expect(backupService.fetchAllData()).rejects.toThrow('table "trades"');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+  test('sanitizes connection failures and never writes a file', async () => {
+    db.connect.mockRejectedValue(Error('private connection details'));
+    await expect(backupService.createFullSiteBackup('synthetic-user')).rejects.toThrow('Backup export failed.');
+    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(db.query.mock.calls[0][1][4]).toBe('failed');
+  });
+});
+describe('restoring native JSON values (#41)', () => {
+  beforeEach(() => jest.resetAllMocks());
+  test.each(['json', 'jsonb'])('preserves native %s scalar types, objects and arrays', async type => {
+    const values = ['plain text', 'true', '42', 'null', '{"key":"value"}', '"quoted"', true, 42, { key: 'value' }, ['a', 'b']];
+    const client = createRestoreClient({ custom_table: ['id', { column_name: 'value', data_type: type }] });
+    const result = await backupService.restoreFromBackup({ version: '3.0', tables: {
+      customTable: values.map((value, index) => ({ id: `synthetic-${index}`, value }))
+    } });
+    expect(result.tableResults.custom_table.errors).toBe(0);
+    const restored = client.query.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO "custom_table"'))
+      .map(([,params]) => JSON.parse(params[1]));
+    expect(restored).toEqual(values);
   });
 });

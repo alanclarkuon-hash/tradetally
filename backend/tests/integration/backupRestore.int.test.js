@@ -17,7 +17,14 @@ describe('backup restore with real PostgreSQL', () => {
   });
   afterAll(async () => {
     try {
-      if (original_backup) await backup_service.restoreFromBackup(original_backup, { clearExisting: true });
+      if (original_backup) {
+        const result = await backup_service.restoreFromBackup(original_backup, { clearExisting: true });
+        expect(result.results.other.errors).toBe(0);
+        const restored = await db.query('SELECT key, value FROM instance_config ORDER BY key');
+        const expected = original_backup.tables.instanceConfig.map(({ key, value }) => ({ key, value }))
+          .sort((a,b) => a.key.localeCompare(b.key));
+        expect(restored.rows).toEqual(expected);
+      }
     } finally {
       await db.pool.end();
     }
@@ -74,4 +81,37 @@ describe('backup restore with real PostgreSQL', () => {
     const repeated = await backup_service.restoreFromBackup(backup, { overwriteUsers: true });
     expect(repeated.results.trades).toEqual({ added: 0, skipped: trades.length, errors: 0 });
   });
-});
+  test('exports a consistent parent/child snapshot while another connection writes (#36)', async () => {
+    await db.query('CREATE TABLE backup_export_probe_a (id INTEGER PRIMARY KEY)');
+    await db.query('CREATE TABLE backup_export_probe_b (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES backup_export_probe_a(id))');
+    const connect = db.connect.bind(db);
+    let written = false;
+    const spy = jest.spyOn(db, 'connect').mockImplementation(async () => {
+      const client = await connect();
+      const query = client.query.bind(client);
+      client.query = async (...args) => {
+        const result = await query(...args);
+        if (args[0] === 'SELECT * FROM "backup_export_probe_a"' && !written) {
+          written = true;
+          await db.withTransaction(async writer => {
+            await writer.query('INSERT INTO backup_export_probe_a VALUES (2)');
+            await writer.query('INSERT INTO backup_export_probe_b VALUES (2,2)');
+          });
+        }
+        return result;
+      };
+      return client;
+    });
+    try {
+      await db.query('INSERT INTO backup_export_probe_a VALUES (1)');
+      await db.query('INSERT INTO backup_export_probe_b VALUES (1,1)');
+      const exported = await backup_service.fetchAllData();
+      expect(written).toBe(true);
+      expect(exported.tables.backupExportProbeA).toEqual([{ id: 1 }]);
+      expect(exported.tables.backupExportProbeB).toEqual([{ id: 1, parent_id: 1 }]);
+      expect((await db.query('SELECT * FROM backup_export_probe_b')).rows).toHaveLength(2);
+    } finally {
+      spy.mockRestore();
+      await db.query('DROP TABLE backup_export_probe_b, backup_export_probe_a');
+    }
+  });});
