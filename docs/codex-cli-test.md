@@ -41,7 +41,30 @@ requires ChatGPT authentication, preventing an implicit switch to API-key billin
 Analysis prompts are sent to OpenAI and consume the signed-in plan's allowance.
 The CLI is text-only here; screenshot analysis is unsupported.
 
-To disconnect, run the same Compose command with `codex logout` and select another
-AI provider in test settings. Broker automatic syncs remain disabled.
+## Disconnect the test Codex login
+
+Run this in PowerShell (from any directory while the test container is running):
+
+```powershell
+docker exec --user appuser tradetally-test-app-1 codex logout
+```
+
+This clears the test container's saved credentials. TradeTally needs a new
+ChatGPT sign-in before its Codex provider can work again. The desktop
+ChatGPT/Codex login and production settings are separate and unaffected.
+This command clears local credentials; it is not an account-wide session revocation.
+
+In test, go to **Settings → AI & Integrations → AI Provider**, select another
+provider or **No provider**, and save to avoid authentication errors.
+Broker automatic syncs remain disabled.
+
+To verify the saved ChatGPT login was removed without using any API key from
+the container environment:
+
+```powershell
+docker exec --user appuser tradetally-test-app-1 env -u OPENAI_API_KEY -u CODEX_API_KEY codex login status
+```
+
+The expected result is `Not logged in`.
 
 Official documentation: https://learn.chatgpt.com/docs/auth
