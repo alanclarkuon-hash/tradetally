@@ -1578,7 +1578,13 @@ class PortfolioService {
   static async _getDailySeries(symbol, startDate, endDate, userId, { background = false } = {}) {
     const key = historyKey(symbol, startDate, endDate, userId);
     const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
-    if (cachedCandles.length > 0 && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+    const start = Date.parse(`${startDate}T00:00:00Z`) / 1000;
+    const end = Date.parse(`${endDate}T00:00:00Z`) / 1000;
+    const times = cachedCandles.map(candle => candle.time);
+    // The shared cache's count threshold alone can accept a trailing compact
+    // response for a much longer range. Also require both requested boundaries.
+    const coversBoundaries = times.length > 0 && Math.min(...times) <= start + 7 * 86400 && Math.max(...times) >= end - 7 * 86400;
+    if (coversBoundaries && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
       incompleteHistory.delete(key);
       return cachedCandles;
     }
