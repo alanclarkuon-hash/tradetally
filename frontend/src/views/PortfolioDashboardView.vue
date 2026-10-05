@@ -5,7 +5,6 @@
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
         <MoneyPrivacyToggle />
-        <details ref="accountPicker" class="account-picker"><summary aria-label="Accounts filter" :title="selected===null ? 'All accounts' : selected.length ? `${selected.length} accounts selected` : 'No accounts selected'"><BuildingOfficeIcon class="h-5 w-5" aria-hidden="true" /><span v-if="selected!==null" class="filter-dot" aria-hidden="true"></span><ChevronDownIcon class="h-4 w-4" aria-hidden="true" /></summary><div class="account-menu"><button @click="selectAllAccounts">Select all accounts</button><label v-for="account in accounts" :key="account.value"><input type="checkbox" :checked="selected===null || selected.includes(account.value)" @change="toggleAccount(account.value,$event.target.checked)">{{ account.label }}</label></div></details>
         <details ref="periodPicker" class="period-picker">
           <summary aria-label="Date range filter" :title="periodLabel">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18M6 8h12M10 12h4M11 16h2" /></svg>
@@ -63,7 +62,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
-import { BuildingOfficeIcon, ChevronDownIcon, Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
+import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { formatLocalDate } from '@/utils/date'
 import {accountSelection} from '@/utils/accountSelection'
@@ -76,23 +75,18 @@ import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
 import { useDashboardPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
 const { hideAmounts } = useDashboardPrivacy()
 const isCustomizing=ref(false),cardLayout=ref(null)
-const {accounts,selectedAccount,setAccounts,fetchAccounts}=useGlobalAccountFilter()
+const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
 const selected=computed(()=>portfolioSelection(selectedAccount.value)),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
-const periodPicker=ref(null),accountPicker=ref(null)
+const periodPicker=ref(null)
 const hasAccountSelection=computed(()=>selected.value===null ? accounts.value.length>0 : selected.value.length>0)
-function selectAllAccounts(){setAccounts(null)}
-function toggleAccount(value,checked){
-  const current=selected.value??accounts.value.map(account=>account.value)
-  setAccounts(checked?[...new Set([...current,value])]:current.filter(account=>account!==value))
-}
 function dismissFilters(event){
-  for(const picker of [accountPicker.value,periodPicker.value]){
+  for(const picker of [periodPicker.value]){
     if(picker && !picker.contains(event.target))picker.open=false
   }
 }
-function dismissOnEscape(event){if(event.key==='Escape'){for(const picker of [accountPicker.value,periodPicker.value]){if(picker?.open){picker.open=false;picker.querySelector('summary')?.focus()}}}}
+function dismissOnEscape(event){if(event.key==='Escape'){const picker=periodPicker.value;if(picker?.open){picker.open=false;picker.querySelector('summary')?.focus()}}}
 onMounted(()=>{document.addEventListener('pointerdown',dismissFilters);document.addEventListener('keydown',dismissOnEscape)})
 onUnmounted(()=>{document.removeEventListener('pointerdown',dismissFilters);document.removeEventListener('keydown',dismissOnEscape)})
 const timeRangeOptions=[...monthPresetOptions,{value:'all',label:'All Time'},{value:'7d',label:'Last 7 Days'},{value:'30d',label:'Last 30 Days'},{value:'ytd',label:'Year to Date'},{value:'custom',label:'Custom Range'}]
@@ -144,25 +138,22 @@ onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()}
 .subtitle,.scope-note,.updated{@apply text-sm text-gray-600 dark:text-gray-400; margin-top:4px}
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .controls select,.custom-dates input{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm; padding:8px 12px;min-height:40px}
-.refresh,.account-picker summary,.period-picker summary{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700; padding:8px 12px;min-height:40px;cursor:pointer}
+.refresh,.period-picker summary{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm hover:bg-gray-50 dark:hover:bg-gray-700; padding:8px 12px;min-height:40px;cursor:pointer}
 .customize-button{@apply border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700;display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px}
 .customize-button.customizing{@apply bg-primary-600 text-white border-primary-600 hover:bg-primary-700}
 .customize-button:focus-visible{@apply outline-none ring-2 ring-primary-500}
 .refresh:disabled{opacity:.5;cursor:wait}
-.controls select:focus-visible,.refresh:focus-visible,.account-picker summary:focus-visible,.period-picker summary:focus-visible,.custom-dates input:focus-visible{@apply outline-none ring-2 ring-primary-500}
-.account-picker,.period-picker{position:relative}
-.account-picker summary,.period-picker summary{display:flex;align-items:center;justify-content:center;gap:8px;list-style:none}
-.account-picker summary::-webkit-details-marker,.period-picker summary::-webkit-details-marker{display:none}
+.controls select:focus-visible,.refresh:focus-visible,.period-picker summary:focus-visible,.custom-dates input:focus-visible{@apply outline-none ring-2 ring-primary-500}
+.period-picker{position:relative}
+.period-picker summary{display:flex;align-items:center;justify-content:center;gap:8px;list-style:none}
+.period-picker summary::-webkit-details-marker{display:none}
 .period-picker summary{width:40px;height:40px;padding:0;position:relative}
-.filter-dot,.date-filter-dot{@apply bg-primary-500; width:8px;height:8px;border-radius:50%}
+.date-filter-dot{@apply bg-primary-500; width:8px;height:8px;border-radius:50%}
 .date-filter-dot{@apply ring-2 ring-white dark:ring-gray-900;position:absolute;top:-2px;right:-2px}
 .period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
 .period-menu button{@apply text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 16px;font-size:14px}
 .period-menu button.active{@apply bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300}
 .period-menu button:focus-visible{@apply outline-none ring-2 ring-inset ring-primary-500}
-.account-menu{@apply bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg;position:absolute;right:0;top:44px;z-index:30;padding:12px;min-width:260px;max-height:360px;overflow:auto}
-.account-menu label{display:flex;gap:10px;padding:8px;font-size:14px}
-.account-menu button{@apply text-primary-600 dark:text-primary-400; padding:8px;font-size:14px}
 .value-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .value-card{padding:20px}
 .money{@apply text-gray-900 dark:text-white; font-size:30px;font-weight:600;margin:10px 0;font-variant-numeric:tabular-nums}
