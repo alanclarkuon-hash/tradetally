@@ -6,6 +6,7 @@
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" role="status" aria-live="polite">
           <template v-if="job?.status === 'pending'">Queued after broker sync</template>
           <template v-else-if="job?.status === 'processing' && job.stage === 'portfolio'">Updating portfolio history from downloaded prices</template>
+          <template v-else-if="job?.status === 'processing' && job.stage === 'calendars'">Checking exchange calendar for {{ job.currentSymbol }} · {{ job.calendarProcessed }}/{{ job.calendarTotal }} listings checked</template>
           <template v-else-if="job?.status === 'processing'">Downloading {{ job.currentSymbol || 'missing prices' }} · {{ job.processed }}/{{ job.total }} assets checked</template>
           <template v-else-if="job?.status === 'failed'">History update needs attention. Saved prices are retained; the next sync retries missing dates.</template>
           <template v-else-if="job">Download finished · {{ job.complete }}/{{ job.total }} assets have daily coverage · {{ job.gaps.length }} with dates to review</template>

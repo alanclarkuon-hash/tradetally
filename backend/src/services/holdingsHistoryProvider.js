@@ -9,7 +9,7 @@ function missingRanges(candles, from, to, crypto = false, calendar = null) {
   const known = new Set(candles.map(c => iso(c.time * 1000)));
   const ranges = []; let range;
   for (let t = Date.parse(from); t <= Date.parse(to); t += DAY) {
-    const d = iso(t), weekday = new Date(t).getUTCDay();
+    const d = iso(t);
     if (!crypto && !require('./exchangeCalendar').isTradingDay(d, calendar)) continue;
     if (known.has(d)) { range = null; continue; }
     if (!range) { range = { from: d, to: d }; ranges.push(range); }
