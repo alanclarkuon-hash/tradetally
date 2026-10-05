@@ -5,6 +5,7 @@ const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
+const { priceCacheKey, usablePriceRow } = require('../utils/priceCacheIdentity');
 
 const UNSORTED_ACCOUNT = '__unsorted__';
 const DEFAULT_BENCHMARK = 'SPY';
@@ -1185,11 +1186,11 @@ class PortfolioService {
         STRING_AGG(DISTINCT broker, ', ') AS brokers,
         COUNT(*) AS trade_count,
         MIN(entry_time) AS opened_at,
-        MAX(instrument_type) AS instrument_type,
+        instrument_type,
         MAX(contract_size) AS contract_size,
         MAX(point_value) AS point_value
       FROM trade_executions
-      GROUP BY symbol
+      GROUP BY symbol, instrument_type
       HAVING COALESCE(SUM(net_position), 0) > 0
     `;
 
@@ -1222,9 +1223,10 @@ class PortfolioService {
     const bySymbol = new Map();
 
     const upsert = (position) => {
-      const existing = bySymbol.get(position.symbol);
+      const identity = `${position.instrumentType || 'stock'}:${position.symbol}`;
+      const existing = bySymbol.get(identity);
       if (!existing) {
-        bySymbol.set(position.symbol, {
+        bySymbol.set(identity, {
           ...position,
           accountIdentifiers: [...new Set(position.accountIdentifiers || [])],
           instrumentType: position.instrumentType || 'stock',
@@ -1320,9 +1322,9 @@ class PortfolioService {
       return;
     }
 
-    const symbols = [...new Set(positions.map(position => position.symbol))];
+    const symbols = [...new Set(positions.flatMap(position => [position.symbol, priceCacheKey(position.symbol, position.instrumentType)]))];
     const cacheResult = await db.query(
-      `SELECT symbol, current_price, last_updated
+      `SELECT symbol, current_price, last_updated, data_source
        FROM price_monitoring
        WHERE symbol = ANY($1)`,
       [symbols]
@@ -1333,6 +1335,7 @@ class PortfolioService {
     for (const row of cacheResult.rows) {
       const price = parseFloat(row.current_price);
       cachedPrices.set(row.symbol, {
+        ...row,
         price: Number.isFinite(price) ? price : null,
         updatedAt: row.last_updated ? new Date(row.last_updated) : null
       });
@@ -1341,7 +1344,9 @@ class PortfolioService {
     const symbolsNeedingRefresh = new Set();
 
     for (const position of positions) {
-      const cached = cachedPrices.get(position.symbol);
+      const key = priceCacheKey(position.symbol, position.instrumentType);
+      const row = cachedPrices.get(key) || cachedPrices.get(position.symbol);
+      const cached = usablePriceRow(row, position.instrumentType) ? row : null;
       const brokerDate = position.brokerPriceAsOf ? new Date(position.brokerPriceAsOf) : null;
       const useBroker = Number.isFinite(position.brokerCurrentPrice) &&
         (!cached?.updatedAt || cached.updatedAt < brokerDate);
@@ -1351,7 +1356,7 @@ class PortfolioService {
       const priceStale = currentPrice === null || ageMs > PRICE_FRESH_MS;
 
       if (priceStale) {
-        symbolsNeedingRefresh.add(position.symbol);
+        symbolsNeedingRefresh.add(key);
       }
 
       const valueMultiplier = position.source === 'trades'
@@ -1411,7 +1416,9 @@ class PortfolioService {
             await new Promise(resolve => setTimeout(resolve, 1050));
           }
           await Promise.allSettled(
-            chunk.map(symbol => priceMonitoringService.updateSymbolPrice(symbol))
+            chunk.map(key => priceMonitoringService.updateSymbolPrice(
+              key.startsWith('crypto:') ? key.slice(7) : key,
+              key.startsWith('crypto:') ? 'crypto' : 'stock'))
           );
         }
       } catch (error) {

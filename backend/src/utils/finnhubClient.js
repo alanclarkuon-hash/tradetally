@@ -416,7 +416,7 @@ class FinnhubClient {
       const settled = await Promise.allSettled(
         chunk.map(async (symbol) => {
           try {
-            if (this.isCryptoSymbol(symbol)) {
+            if (options.assetType === 'crypto' || (options.assetType !== 'stock' && this.isCryptoSymbol(symbol))) {
               console.log(`[CRYPTO] ${symbol} detected as crypto, using crypto quote`);
               const quote = await this.getCryptoQuote(symbol);
               return { symbol, quote };

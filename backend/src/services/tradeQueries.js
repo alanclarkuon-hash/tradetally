@@ -511,7 +511,8 @@ class TradeQueries {
         tpg.leg_count as group_leg_count
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
-      LEFT JOIN price_monitoring pm ON pm.symbol = t.symbol
+      LEFT JOIN price_monitoring pm ON pm.symbol = CASE WHEN t.instrument_type='crypto' THEN 'crypto:' || t.symbol ELSE t.symbol END
+        AND CASE WHEN t.instrument_type='crypto' THEN pm.data_source='coingecko' ELSE pm.data_source IS DISTINCT FROM 'coingecko' END
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol

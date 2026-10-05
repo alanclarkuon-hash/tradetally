@@ -14,6 +14,7 @@ const { groupTradesIntoPositions, storedCurrency } = require('../utils/openPosit
 const yahooFinance = require('../utils/yahooFinance');
 const { convertQuoteCurrency } = require('../utils/quoteCurrency');
 const { usesEquityQuotes, selectPositionQuote } = require('../utils/positionQuote');
+const { priceCacheKey } = require('../utils/priceCacheIdentity');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
@@ -382,7 +383,7 @@ function isFreshPositivePrice(trade) {
   return Number.isFinite(updatedTime) && Date.now() - updatedTime <= TRADE_LIST_PRICE_FRESH_MS;
 }
 
-async function persistTradeListQuote(symbol, quote) {
+async function persistTradeListQuote(symbol, quote, instrumentType='stock') {
   const currentPrice = Number(quote?.c);
   if (!symbol || !Number.isFinite(currentPrice) || currentPrice <= 0) return;
 
@@ -409,7 +410,7 @@ async function persistTradeListQuote(symbol, quote) {
         last_updated = CURRENT_TIMESTAMP,
         data_source = $9
     `, [
-      symbol,
+      priceCacheKey(symbol, instrumentType),
       currentPrice,
       previousClose,
       priceChange,
@@ -417,7 +418,7 @@ async function persistTradeListQuote(symbol, quote) {
       Number.isFinite(Number(quote?.h)) ? Number(quote.h) : null,
       Number.isFinite(Number(quote?.l)) ? Number(quote.l) : null,
       Number.isFinite(Number(quote?.o)) ? Number(quote.o) : null,
-      finnhub.providerName || 'market_data'
+      instrumentType === 'crypto' ? 'coingecko' : finnhub.providerName || 'market_data'
     ]);
   } catch (error) {
     console.warn('[TRADE-LIST] Failed to persist quote for', symbol, '-', error.message);
@@ -428,27 +429,38 @@ async function hydrateOpenTradePrices(trades, userId) {
   const openTrades = trades.filter(isOpenTradeForQuoteHydration);
   if (openTrades.length === 0) return;
 
-  const symbolsToFetch = new Set();
+  const symbolsToFetch = new Map();
   for (const trade of openTrades) {
     if (isFreshPositivePrice(trade)) continue;
 
     // Do not let stale price_monitoring rows drive current unrealized P&L.
     trade.current_price = null;
     const symbol = trade.underlying_symbol || trade.symbol;
-    if (symbol) symbolsToFetch.add(String(symbol).toUpperCase());
+    if (symbol) {
+      const type = trade.instrument_type || trade.instrumentType || 'stock';
+      symbolsToFetch.set(priceCacheKey(symbol,type), {symbol:String(symbol).toUpperCase(),type});
+    }
   }
 
-  if (symbolsToFetch.size === 0 || !finnhub.isConfigured()) return;
+  if (symbolsToFetch.size === 0) return;
 
   try {
-    const symbols = [...symbolsToFetch];
-    const quotes = await timeAsyncOperation('tradeList.finnhubQuoteFetch', () => withTimeout(
-      finnhub.getBatchQuotes(symbols, {
+    const symbols = [...symbolsToFetch.values()].filter(row=>row.type!=='crypto').map(row=>row.symbol);
+    const quotes = {};
+    const stockJob = symbols.length && finnhub.isConfigured() ? finnhub.getBatchQuotes(symbols, {
         source: 'trade_list',
         priority: 0,
+        assetType:'stock',
         userId,
         maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS
-      }),
+      }).then(data=>Object.assign(quotes,data)) : Promise.resolve();
+    const cryptoJobs = [...symbolsToFetch.values()].filter(row=>row.type==='crypto').map(async row=>{
+      const quote=await finnhub.getCryptoQuote(row.symbol);
+      quotes[priceCacheKey(row.symbol,'crypto')]=quote;
+      await persistTradeListQuote(row.symbol,quote,'crypto');
+    });
+    await timeAsyncOperation('tradeList.finnhubQuoteFetch', () => withTimeout(
+      Promise.allSettled([stockJob,...cryptoJobs]),
       OPEN_POSITIONS_FINNHUB_TIMEOUT_MS,
       'Trade list quote fetch'
     ));
@@ -456,13 +468,14 @@ async function hydrateOpenTradePrices(trades, userId) {
     const persistJobs = [];
     for (const trade of openTrades) {
       const symbol = String(trade.underlying_symbol || trade.symbol || '').toUpperCase();
-      const quote = quotes?.[symbol];
+      const type=trade.instrument_type || trade.instrumentType || 'stock';
+      const quote = quotes?.[priceCacheKey(symbol,type)];
       const price = Number(quote?.c);
       if (!Number.isFinite(price) || price <= 0) continue;
 
       trade.current_price = price;
       trade.currentPrice = price;
-      persistJobs.push(persistTradeListQuote(symbol, quote));
+      if(type!=='crypto') persistJobs.push(persistTradeListQuote(symbol, quote, type));
     }
 
     await Promise.allSettled(persistJobs);
@@ -475,17 +488,24 @@ async function hydrateOpenTradePrices(trades, userId) {
 // same sources as the dashboard Open Positions table: the price_monitoring cache
 // (kept warm by the price monitor) first, then a single Finnhub quote. Never
 // throws - an open trade just keeps showing "Open" if no price is available.
-async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD', host) {
+async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD', host, instrumentType='stock') {
   if (!symbol) return null;
   try {
     const cached = await db.query(
       `SELECT current_price FROM price_monitoring
        WHERE symbol = $1 AND last_updated > NOW() - INTERVAL '2 minutes'
+         AND CASE WHEN $2='crypto' THEN data_source='coingecko' ELSE data_source IS DISTINCT FROM 'coingecko' END
        LIMIT 1`,
-      [symbol]
+      [priceCacheKey(symbol,instrumentType),instrumentType]
     );
     const cachedPrice = cached.rows[0] ? parseFloat(cached.rows[0].current_price) : null;
     if (targetCurrency === 'USD' && Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
+
+    if(instrumentType==='crypto') {
+      const quote=await withTimeout(finnhub.getCryptoQuote(symbol),TRADE_DETAIL_QUOTE_TIMEOUT_MS,'Crypto quote');
+      const converted=await convertQuoteCurrency({...quote,currency:'USD'},targetCurrency);
+      return Number(converted?.c)>0 ? Number(converted.c) : null;
+    }
 
     if (!finnhub.isConfigured() || symbol.endsWith('.L')) {
       const TierService = require('../services/tierService');
@@ -1040,7 +1060,7 @@ const tradeController = {
       if (isOpenPosition && trade.instrument_type !== 'option') {
         const price = await fetchCurrentPriceForSymbol(
           trade.underlying_symbol || trade.symbol, req.user?.id,
-          storedCurrency(trade), req.headers.host
+          storedCurrency(trade), req.headers.host, trade.instrument_type
         );
         if (price != null) trade.current_price = price;
       }
@@ -3141,7 +3161,8 @@ const tradeController = {
                     high_of_day, low_of_day, open_price
              FROM price_monitoring
              WHERE symbol = ANY($1)
-               AND last_updated > NOW() - INTERVAL '2 minutes'`,
+               AND last_updated > NOW() - INTERVAL '2 minutes'
+               AND data_source IS DISTINCT FROM 'coingecko'`,
             [symbols]
           ));
 
@@ -3168,6 +3189,7 @@ const tradeController = {
               const freshQuotes = await timeAsyncOperation('openPositions.finnhubQuoteFetch', () => withTimeout(
                 finnhub.getBatchQuotes(uncachedSymbols, {
                   source: 'open_positions',
+                  assetType: 'stock',
                   priority: 0,
                   userId: req.user.id,
                   maxQueueWaitMs: OPEN_POSITIONS_FINNHUB_TIMEOUT_MS

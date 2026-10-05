@@ -25,7 +25,7 @@ jest.mock('../../src/config/database', () => mockDb);
 jest.mock('../../src/utils/finnhub', () => mockFinnhub);
 jest.mock('../../src/utils/cache', () => mockCache);
 jest.mock('../../src/utils/symbolCategories', () => mockSymbolCategories);
-jest.mock('../../src/services/cryptoCategoriesService', () => ({getLogo:jest.fn().mockResolvedValue('https://coin-images.coingecko.com/coins/images/26375/small/sui.png')}));
+jest.mock('../../src/services/cryptoCategoriesService', () => ({getCachedCategories:jest.fn().mockResolvedValue({logo:'https://coin-images.coingecko.com/coins/images/26375/small/sui.png'})}));
 
 const symbolsController = require('../../src/controllers/symbols.controller');
 
@@ -57,7 +57,7 @@ describe('symbols controller', () => {
     expect(res.json).toHaveBeenCalledWith({metadata:{SUI:expect.objectContaining({companyName:'Sun Communities',logo:'https://stock.example/sui.png'})}});
   });
 
-  test('getSymbolMetadata hydrates missing metadata from symbol categories on demand', async () => {
+  test('getSymbolMetadata returns cached data before background hydration', async () => {
     mockDb.query.mockResolvedValue({
       rows: [{
         symbol: 'NVDA',
@@ -84,16 +84,23 @@ describe('symbols controller', () => {
     await symbolsController.getSymbolMetadata(req, res);
 
     expect(mockSymbolCategories.getSymbolCategories).toHaveBeenCalledWith(['NVDA']);
-    expect(res.json).toHaveBeenCalledWith({
-      metadata: {
-        NVDA: {
-          symbol: 'NVDA',
-          companyName: 'NVIDIA Corporation',
-          exchange: 'NASDAQ',
-          logo: 'https://logo.test/nvda.png'
-        }
-      }
-    });
+    expect(res.json).toHaveBeenCalledWith({metadata:{NVDA:expect.objectContaining({companyName:null,metadataPending:true})}});
+    await new Promise(resolve=>setImmediate(resolve));
+    expect(mockCache.set).toHaveBeenCalledWith('symbol_metadata_entry:stock:NVDA',expect.objectContaining({companyName:'NVIDIA Corporation'}),expect.any(Number));
+  });
+
+  test('stalled provider does not delay metadata response and warming is deduplicated',async()=>{
+    mockDb.query.mockResolvedValue({rows:[]});
+    let finish;
+    mockSymbolCategories.getSymbolCategories.mockImplementation(()=>new Promise(resolve=>{finish=resolve;}));
+    const req={query:{symbols:'COLD',asset_type:'stock'}};
+    const first=createRes(),second=createRes();
+    await symbolsController.getSymbolMetadata(req,first);
+    await symbolsController.getSymbolMetadata(req,second);
+    expect(first.json).toHaveBeenCalledWith({metadata:{COLD:expect.objectContaining({metadataPending:true})}});
+    expect(mockSymbolCategories.getSymbolCategories).toHaveBeenCalledTimes(1);
+    finish(new Map([['COLD',{company_name:'Cold test',logo:'https://example.com/logo.png'}]]));
+    await new Promise(resolve=>setImmediate(resolve));
   });
 
   test('searchSymbols hydrates traded symbols that are missing local metadata', async () => {

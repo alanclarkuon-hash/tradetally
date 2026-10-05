@@ -241,7 +241,7 @@ class FmpClient {
       const chunk = validSymbols.slice(i, i + chunkSize);
       const settled = await Promise.allSettled(chunk.map(async (symbol) => {
         try {
-          const quote = this.isCryptoSymbol(symbol)
+          const quote = options.assetType === 'crypto' || (options.assetType !== 'stock' && this.isCryptoSymbol(symbol))
             ? await this.getCryptoQuote(symbol)
             : await this.getQuote(symbol, options);
           return { symbol, quote };

@@ -5,6 +5,7 @@ const metadataBySymbol = reactive({})
 const pendingSymbols = new Set()
 const inFlightSymbols = new Set()
 let flushTimer = null
+const metadataRetries = new Map()
 
 // localStorage-backed persistence for symbol metadata (mostly logo URLs +
 // company names). Survives page reloads so logos render instantly on the
@@ -51,7 +52,7 @@ function persistToStorage() {
     const now = Date.now()
     for (const [symbol, data] of Object.entries(metadataBySymbol)) {
       // Skip empty/null-only entries so we keep retrying them next session.
-      if (!data) continue
+      if (!data || data.metadataPending) continue
       if (!data.logo && (!data.companyName || data.asset_type==='crypto')) continue
       payload[symbol] = { ...data, cachedAt: now }
     }
@@ -119,6 +120,17 @@ async function flushPendingSymbols() {
         exchange: null,
         logo: null
       }
+      // Cached data paints immediately; bounded polling picks up the optional
+      // background hydration without starting a new provider lookup.
+      if (metadata[symbol]?.metadataPending && (metadataRetries.get(key) || 0) < 20) {
+        metadataRetries.set(key, (metadataRetries.get(key) || 0) + 1)
+        window.setTimeout(() => {
+          if (!inFlightSymbols.has(key)) {
+            pendingSymbols.add(key)
+            scheduleFlush()
+          }
+        }, 3000)
+      } else if (!metadata[symbol]?.metadataPending) metadataRetries.delete(key)
       })
     }))
     // Persist the freshly-fetched entries (only those with real data are
