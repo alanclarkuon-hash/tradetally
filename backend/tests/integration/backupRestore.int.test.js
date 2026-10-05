@@ -11,6 +11,43 @@ const contracts = require('../../../tests/fixtures/trading-calculation-contracts
 
 describe('backup restore with real PostgreSQL', () => {
   let original_backup;
+  test('streams a JSON backup above 50 MiB into PostgreSQL without holding table arrays', async () => {
+    const fs = require('node:fs/promises');
+    const path = require('node:path');
+    const os = require('node:os');
+    const { stageBackup } = require('../../src/services/backupFile.service');
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'tt-large-roundtrip-'));
+    const filename = path.join(directory, 'synthetic.json');
+    await db.query('CREATE TABLE backup_large_probe (id integer PRIMARY KEY, payload text NOT NULL)');
+    try {
+      const file = await fs.open(filename, 'w');
+      try {
+        await file.write('{"version":"1","tables":{"backupLargeProbe":[');
+        for (let id = 0; id < 6; id++) {
+          await file.write((id ? ',' : '') + JSON.stringify({ id, payload: 'x'.repeat(9 * 1024 * 1024) }));
+        }
+        await file.write(']}}');
+      } finally { await file.close(); }
+      expect((await fs.stat(filename)).size).toBeGreaterThan(50 * 1024 * 1024);
+      const backup = await stageBackup(filename, directory);
+      expect(Array.isArray(backup.tables.backupLargeProbe)).toBe(false);
+      const result = await backup_service.restoreFromBackup(backup);
+      expect(result.results.other.errors).toBe(0);
+      expect(result.results.other.added).toBe(6);
+      const check = await db.query('SELECT count(*)::int n, min(length(payload))::int bytes FROM backup_large_probe');
+      expect(check.rows[0]).toEqual({ n: 6, bytes: 9 * 1024 * 1024 });
+      // Exercise multipart disk staging as well as the PostgreSQL row reader.
+      const express = require('express');
+      const app = express();
+      app.post('/restore', (req, res, next) => { req.user = { id: 'synthetic-admin' }; next(); }, require('../../src/middleware/backupUpload'));
+      const response = await require('supertest')(app).post('/restore').attach('file', filename).expect(200);
+      expect(response.body.results.other.errors).toBe(0);
+      expect(response.body.results.other.skipped).toBe(6);
+    } finally {
+      await db.query('DROP TABLE backup_large_probe');
+      await fs.rm(directory, { recursive: true, force: true });
+    }
+  }, 60000);
   beforeAll(async () => {
     original_backup = await backup_service.fetchAllData();
     expect(original_backup.tables.migrations).toBeUndefined();

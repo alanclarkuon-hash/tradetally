@@ -950,7 +950,7 @@ async function startServer() {
     }
 
     // Start the server
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);
       logger.info(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
       logger.info(`✓ Log level: ${process.env.LOG_LEVEL || 'INFO'}`);
@@ -960,6 +960,9 @@ async function startServer() {
         scheduleBackgroundServices(backgroundJobsDisabled);
       }
     });
+    // Permit the bounded, authenticated full-site upload to complete. Header
+    // timeouts and normal request/body limits remain independently enforced.
+    server.requestTimeout = 900000;
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
