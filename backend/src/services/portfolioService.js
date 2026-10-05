@@ -3,6 +3,7 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
+const historyProvider = require('./holdingsHistoryProvider');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
 const { priceCacheKey, usablePriceRow } = require('../utils/priceCacheIdentity');
@@ -506,11 +507,14 @@ class PortfolioService {
       : getPeriodRange(options.period);
     const components = await this._getPositionComponents(userId, accounts);
     const symbols = [...new Set(components.map(component => component.symbol))];
+    const cryptoSymbols = new Set(components.filter(c => c.instrumentType === 'crypto').map(c => c.symbol));
+    const trackedHistorySymbols = [benchmark, ...symbols.map(s => priceCacheKey(s, cryptoSymbols.has(s) ? 'crypto' : 'stock'))];
     const historyRequestedAt = Date.now();
 
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
       this._getDailySeries(benchmark, startDate, endDate, userId, { background: options.waitForHistory !== true }),
-      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: options.waitForHistory !== true })
+      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: options.waitForHistory !== true,
+        cryptoSymbols })
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -621,11 +625,11 @@ class PortfolioService {
       startDate,
       endDate,
       benchmark,
-      historyUpdating: [benchmark, ...symbols].some(symbol =>
+      historyUpdating: trackedHistorySymbols.some(symbol =>
         inFlightPortfolioComputations.has(historyKey(symbol, startDate, endDate, userId)) ||
         (historyRefreshAfter.get(historyKey(symbol, startDate, endDate, userId)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
       historyMissingSymbols: symbols.filter(symbol => !(priceSeriesMap.get(symbol)?.length)),
-      historyIncomplete: [benchmark, ...symbols].some(symbol => incompleteHistory.has(historyKey(symbol, startDate, endDate, userId))),
+      historyIncomplete: trackedHistorySymbols.some(symbol => incompleteHistory.has(historyKey(symbol, startDate, endDate, userId))),
       metrics: {
         totalReturnPercent: round(totalReturnDecimal * 100),
         benchmarkReturnPercent: round(benchmarkReturnDecimal * 100),
@@ -1558,6 +1562,7 @@ class PortfolioService {
     return result.rows.map(row => ({
       symbol: row.symbol,
       shares: parseFloat(row.net_position) || 0,
+      instrumentType: row.instrument_type || 'stock',
       effectiveDate: this._normalizeDateValue(row.entry_time),
       valueMultiplier: row.instrument_type === 'future'
         ? (parseFloat(row.point_value) || 1)
@@ -1570,7 +1575,8 @@ class PortfolioService {
   static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, options);
+        const candles = await this._getDailySeries(symbol, startDate, endDate, userId, { ...options,
+          instrumentType: options?.cryptoSymbols?.has(symbol) ? 'crypto' : 'stock' });
         return [symbol, candles];
       })
     );
@@ -1578,16 +1584,29 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false } = {}) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false, instrumentType = 'stock' } = {}) {
+    // Separate coin prices from identically named equities (for example SUI).
+    symbol = priceCacheKey(symbol, instrumentType);
     const key = historyKey(symbol, startDate, endDate, userId);
-    const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
+    let cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
+    if (instrumentType === 'crypto') {
+      // Earlier coin monitoring stored unprefixed rows; accept only verified
+      // CoinGecko history, never a same-ticker stock quote.
+      const legacy = await db.query(`SELECT price_date, close FROM historical_prices
+        WHERE symbol=$1 AND data_source='coingecko' AND price_date BETWEEN $2 AND $3`, [symbol.slice(7), startDate, endDate]);
+      const known = new Set(cachedCandles.map(c => c.time));
+      const reusable = legacy.rows.map(r => ({time: Date.parse(r.price_date)/1000, close: Number(r.close), open: Number(r.close), high: Number(r.close), low: Number(r.close), volume:0})).filter(c => !known.has(c.time));
+      if (reusable.length) await historicalPriceCache.insertCandles(symbol, reusable, 'coingecko');
+      cachedCandles = [...cachedCandles, ...reusable].sort((a,b)=>a.time-b.time);
+    }
     const start = Date.parse(`${startDate}T00:00:00Z`) / 1000;
     const end = Date.parse(`${endDate}T00:00:00Z`) / 1000;
     const times = cachedCandles.map(candle => candle.time);
     // The shared cache's count threshold alone can accept a trailing compact
     // response for a much longer range. Also require both requested boundaries.
     const coversBoundaries = times.length > 0 && Math.min(...times) <= start + 7 * 86400 && Math.max(...times) >= end - 7 * 86400;
-    if (coversBoundaries && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+    if (coversBoundaries && await historicalPriceCache.hasRange(symbol, startDate, endDate) &&
+      (instrumentType !== 'crypto' || !historyProvider.missingRanges(cachedCandles, startDate, endDate, true).length)) {
       incompleteHistory.delete(key);
       return cachedCandles;
     }
@@ -1598,7 +1617,7 @@ class PortfolioService {
       if (!inFlightPortfolioComputations.has(key) && Date.now() >= (historyRefreshAfter.get(key) || 0)) {
         // Missing provider history must never hold a page response open. Keep
         // each exact range single-flight; failed/partial downloads cool down.
-        coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles))
+        coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles, instrumentType))
           .catch(() => cachedCandles)
           .finally(() => {
             historyRefreshAfter.set(key, Date.now() + HISTORY_RETRY_MS);
@@ -1607,16 +1626,34 @@ class PortfolioService {
       }
       return cachedCandles;
     }
-    return coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles));
+    return coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles, instrumentType));
   }
 
-  static async _fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles = []) {
+  static async _fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles = [], instrumentType = 'stock') {
+    const crypto = instrumentType === 'crypto';
+    const ticker = crypto ? symbol.slice(7) : symbol;
+    const merged = new Map(cachedCandles.map(c => [c.time, c]));
+    const persist = async (candles, source) => {
+      const fresh = (candles || []).filter(c => !merged.has(c.time));
+      await historicalPriceCache.insertCandles(symbol, fresh, source);
+      for (const c of fresh) merged.set(c.time, c);
+    };
+    const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto);
+    if (crypto) {
+      for (const range of ranges()) {
+        try { await persist(await historyProvider.crypto(ticker, range.from, range.to), 'coingecko'); }
+        catch { break; } // Shared client enforces cooldown and the persistent API budget.
+      }
+      return [...merged.values()].sort((a, b) => a.time - b.time);
+    }
 
-    if (alphaVantage.isConfigured()) {
+    // Alpha's compact endpoint has no date bounds; only use it on an empty
+    // cache. Range-capable providers fill partial caches without re-fetching them.
+    if (!cachedCandles.length && alphaVantage.isConfigured()) {
       try {
         const candles = await alphaVantage.getDailyData(symbol, 'compact');
-        await historicalPriceCache.insertCandles(symbol, candles, 'alphaVantage');
-        return candles.filter(candle => {
+        await persist(candles, 'alphaVantage');
+        if (!ranges().length) return [...merged.values()].filter(candle => {
           const date = this._toDateString(candle.time);
           return date >= startDate && date <= endDate;
         });
@@ -1626,14 +1663,20 @@ class PortfolioService {
     }
 
     try {
-      const from = Math.floor(new Date(`${startDate}T00:00:00.000Z`).getTime() / 1000);
-      const to = Math.floor(new Date(`${endDate}T23:59:59.999Z`).getTime() / 1000);
-      const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
-      await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
-      return candles;
+      for (const range of ranges()) {
+        const from = Date.parse(range.from) / 1000;
+        const to = Date.parse(range.to) / 1000 + 86399;
+        const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
+        await persist(candles, finnhub.providerName || 'finnhub');
+      }
     } catch (error) {
-      return cachedCandles;
+      // Missing primary-provider coverage is filled through Yahoo below.
     }
+    for (const range of ranges()) {
+      try { await persist(await historyProvider.yahoo(ticker, range.from, range.to), 'yahoo'); }
+      catch { break; }
+    }
+    return [...merged.values()].filter(c => c.time >= Date.parse(startDate)/1000 && c.time < Date.parse(endDate)/1000+86400).sort((a,b) => a.time-b.time);
   }
 
   static _buildDateUnion(priceSeriesMap) {
