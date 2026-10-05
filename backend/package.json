@@ -21,6 +21,7 @@
     "@opentelemetry/sdk-logs": "^0.220.0",
     "@parse/node-apn": "^8.1.0",
     "@simplewebauthn/server": "^13.3.2",
+    "@streamparser/json": "0.0.26",
     "archiver": "^8.0.0",
     "axios": "^1.18.1",
     "bcrypt": "^6.0.0",
