@@ -302,3 +302,17 @@ describe('restoring native JSON values (#41)', () => {
     expect(restored).toEqual(values);
   });
 });
+describe('backup failure banner status (#44)', () => {
+  beforeEach(() => jest.resetAllMocks());
+  test('returns only sanitized failure state and timestamp', async () => {
+    db.query.mockResolvedValue({ rows: [{ status: 'failed', created_at: '2026-01-01T12:00:00Z', file_path: '/private/file', error_message: 'private error' }] });
+    await expect(backupService.getFailureStatus()).resolves.toEqual({ failed: true, failedAt: '2026-01-01T12:00:00Z' });
+    const sql = db.query.mock.calls[0][0];
+    expect(sql).toContain("WHERE status IN ('failed', 'completed')");
+    expect(sql).toContain('ORDER BY created_at DESC');
+  });
+  test.each([{ rows: [] }, { rows: [{ status: 'completed', created_at: '2026-01-02T12:00:00Z' }] }])('hides the banner for no history or a successful latest attempt', async ({ rows }) => {
+    db.query.mockResolvedValue({ rows });
+    await expect(backupService.getFailureStatus()).resolves.toEqual({ failed: false, failedAt: null });
+  });
+});
