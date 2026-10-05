@@ -14,7 +14,7 @@ test('explicit date bounds override rolling periods for benchmark and position d
   const positions = jest.spyOn(PortfolioService, '_getPriceSeriesMap').mockResolvedValue(new Map());
   const result = await PortfolioService._getPerformance('owner', { accounts: 'acct-1', period: '1Y', start_date: '2026-08-01', end_date: '2026-08-31' });
   expect(benchmark).toHaveBeenCalledWith('SPY', '2026-08-01', '2026-08-31', 'owner', { background: true });
-  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner', { background: true, cryptoSymbols: new Set() });
+  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner', { background: true, cryptoSymbols: new Set(), historyStarts: new Map() });
   expect(PortfolioService._getPositionComponents).toHaveBeenCalledWith('owner', ['acct-1']);
   expect(result.startDate).toBe('2026-08-01');
   expect(result.endDate).toBe('2026-08-31');
@@ -44,4 +44,32 @@ test('completed month totals exclude candles outside both boundaries', async () 
   const result = await PortfolioService._getPerformance('owner', { start_date: '2026-08-01', end_date: '2026-08-31' });
   expect(result.series.map(point => point.date)).toEqual(['2026-08-01', '2026-08-31']);
   expect(result.metrics.totalReturnPercent).toBe(10);
+});
+
+
+test('comparison components use canonical broker holdings and contract multipliers', async () => {
+  jest.spyOn(PortfolioService, '_getTradePositions').mockResolvedValue([
+    {symbol:'RKLB',instrumentType:'stock',totalShares:2,openedAt:'2026-06-01'},
+    {symbol:'SUI',instrumentType:'crypto',totalShares:3,openedAt:'2026-07-01'},
+    {symbol:'OPTION',instrumentType:'option',totalShares:1,contractSize:100,openedAt:'2026-07-01'},
+    {symbol:'CLOSED',totalShares:0}
+  ]);
+  const rows=await PortfolioService._getOpenTradeComponents('owner', ['account']);
+  expect(rows.map(r=>r.symbol)).toEqual(['RKLB','SUI','OPTION']);
+  expect(rows[1].instrumentType).toBe('crypto');
+  expect(rows[2].valueMultiplier).toBe(100);
+});
+
+test('history requests start when the earliest retained holding was acquired', async () => {
+  jest.spyOn(PortfolioService,'getPreferences').mockResolvedValue({defaultBenchmarkSymbol:'SPY'});
+  jest.spyOn(PortfolioService,'_getPositionComponents').mockResolvedValue([
+    {symbol:'NEWETF',shares:1,effectiveDate:'2026-06-15',valueMultiplier:1},
+    {symbol:'NEWETF',shares:2,effectiveDate:'2026-07-01',valueMultiplier:1},
+    {symbol:'LATER',shares:1,effectiveDate:'2026-11-01',valueMultiplier:1}
+  ]);
+  jest.spyOn(PortfolioService,'_getDailySeries').mockResolvedValue([]);
+  const requests=jest.spyOn(PortfolioService,'_getPriceSeriesMap').mockResolvedValue(new Map());
+  await PortfolioService._getPerformance('owner', {start_date:'2026-04-05',end_date:'2026-10-05'});
+  expect(requests.mock.calls[0][0]).toEqual(['NEWETF']);
+  expect(requests.mock.calls[0][4].historyStarts.get('NEWETF')).toBe('2026-06-15');
 });

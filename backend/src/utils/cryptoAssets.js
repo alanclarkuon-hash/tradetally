@@ -1,4 +1,13 @@
 const CRYPTO_ASSETS = Object.freeze([
+  // Verified API IDs from https://www.coingecko.com/en/coins/<coin_gecko_id>.
+  // Explicit identities prevent ambiguous ticker / bridged-token matches.
+  { symbol: 'BABY', name: 'Babylon', coin_gecko_id: 'babylon' },
+  { symbol: 'CRV', name: 'Curve DAO', coin_gecko_id: 'curve-dao-token' },
+  { symbol: 'HYPE', name: 'Hyperliquid', coin_gecko_id: 'hyperliquid' },
+  { symbol: 'POL', name: 'Polygon', coin_gecko_id: 'polygon-ecosystem-token' },
+  { symbol: 'SEI', name: 'Sei', coin_gecko_id: 'sei-network' },
+  { symbol: 'TAO', name: 'Bittensor', coin_gecko_id: 'bittensor' },
+  { symbol: 'TIA', name: 'Celestia', coin_gecko_id: 'celestia' },
   { symbol: 'BTC', name: 'Bitcoin', coin_gecko_id: 'bitcoin' },
   { symbol: 'ETH', name: 'Ethereum', coin_gecko_id: 'ethereum' },
   { symbol: 'XRP', name: 'XRP', coin_gecko_id: 'ripple' },

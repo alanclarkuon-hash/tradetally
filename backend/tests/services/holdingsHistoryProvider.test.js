@@ -27,3 +27,12 @@ test('unknown coin identity fails safely instead of querying an equity ticker',a
  await expect(provider.crypto('UNKNOWN','2026-08-01','2026-08-02')).rejects.toThrow('identity');
  expect(client.get).not.toHaveBeenCalled(); expect(axios.get).not.toHaveBeenCalled();
 });
+
+
+test.each([
+ ['BABY','babylon'],['CRV','curve-dao-token'],['HYPE','hyperliquid'],
+ ['POL','polygon-ecosystem-token'],['SEI','sei-network'],['TAO','bittensor'],['TIA','celestia']
+])('verified %s identity does not depend on ambiguous ticker candidates', (symbol,id)=>{
+ const {CRYPTO_TO_COINGECKO}=jest.requireActual('../../src/utils/cryptoAssets');
+ expect(CRYPTO_TO_COINGECKO[symbol]).toBe(id);
+});
