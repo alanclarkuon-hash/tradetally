@@ -250,12 +250,12 @@
                      :class="showCompletionMessage ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
                   <span>
                     <MdiIcon v-if="showCompletionMessage" :icon="mdiCheckCircle" :size="16" class="mr-1 text-green-500" />
-                    {{ showCompletionMessage ? 'All symbols processed!' : 'Processing symbols in background...' }}
+                    {{ showCompletionMessage ? 'All symbols processed!' : sectorEnrichmentMessage }}
                   </span>
                   <span>{{ categorizationProgress.completed }}/{{ categorizationProgress.total }}</span>
                 </div>
                 <div v-if="!showCompletionMessage && sectorStats.failedSymbols > 0" class="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  {{ sectorStats.symbolsAnalyzed }} categorized, {{ sectorStats.failedSymbols }} failed, {{ sectorStats.uncategorizedSymbols }} pending
+                  {{ sectorStats.symbolsAnalyzed }} categorized, {{ sectorStats.failedSymbols }} without industry data, {{ sectorStats.uncategorizedSymbols }} not yet categorized
                 </div>
                 <div class="w-full rounded-full h-1.5"
                      :class="showCompletionMessage ? 'bg-green-200 dark:bg-green-800' : 'bg-amber-200 dark:bg-amber-800'">
@@ -712,6 +712,7 @@
 <script setup>
 import { resolveDatePreset, resolveMonthlyFilterParams } from '@/utils/datePresets'
 import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
+import {sectorEnrichmentMessage as enrichmentMessage} from '@/utils/sectorEnrichmentStatus'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useUiPreferencesStore } from '@/stores/uiPreferences'
@@ -909,6 +910,8 @@ const recommendations = ref(null)
 const recommendationError = ref(null)
 
 // Sector Performance
+const sectorEnrichmentStatus=ref(null)
+const sectorEnrichmentMessage=computed(()=>enrichmentMessage(sectorEnrichmentStatus.value))
 const sectorData = ref([])
 const allSectorData = ref([]) // Store all sectors
 const sectorsToShow = ref(10) // Number of sectors to display
@@ -2600,6 +2603,7 @@ async function fetchSectorData() {
     console.log('[SECTORS] Sector response:', response.data)
     sectorData.value = response.data.sectors || []
     allSectorData.value = response.data.sectors || []
+    sectorEnrichmentStatus.value=response.data.enrichmentStatus||null
     
     // Update sector stats
     sectorStats.value = {
@@ -2658,6 +2662,7 @@ async function refreshSectorData() {
     const response = await api.get(`/analytics/sectors/refresh?${params}`)
     sectorData.value = response.data.sectors || []
     allSectorData.value = response.data.sectors || []
+    sectorEnrichmentStatus.value=response.data.enrichmentStatus||null
     
     // Update sector stats
     const oldUncategorized = sectorStats.value.uncategorizedSymbols

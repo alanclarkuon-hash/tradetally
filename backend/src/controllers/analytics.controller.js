@@ -3012,6 +3012,7 @@ const analyticsController = {
         uncategorizedSymbols: uncategorizedSymbols.length,
         failedSymbols: failedSymbols,
         processedSymbols: categorizedCount + failedSymbols,
+        enrichmentStatus: require('../services/symbolCategoryScheduler').getStatus(),
         dateRange: {
           startDate: startDate || null,
           endDate: endDate || null
@@ -3248,6 +3249,7 @@ const analyticsController = {
         uncategorizedSymbols: uncategorizedSymbols.length,
         failedSymbols: failedSymbols,
         processedSymbols: categorizedCount + failedSymbols,
+        enrichmentStatus: require('../services/symbolCategoryScheduler').getStatus(),
         dateRange: {
           startDate: startDate || null,
           endDate: endDate || null
