@@ -739,6 +739,10 @@ function scheduleBackgroundServices(backgroundJobsDisabled) {
     console.log('Portfolio snapshot scheduler disabled (ENABLE_PORTFOLIO_SNAPSHOT_SCHEDULER=false)');
   }
 
+  if (!backgroundJobsDisabled && process.env.ENABLE_IG_STATEMENT_INGESTER === 'true') {
+    defer('ig-statement-ingester', () => require('./services/igStatementScheduler').start());
+  }
+
   if (backgroundJobsDisabled) {
     console.log('Web mention scheduler disabled (DISABLE_BACKGROUND_JOBS=true)');
   } else if (process.env.ENABLE_WEB_MENTION_SCHEDULER !== 'false') {

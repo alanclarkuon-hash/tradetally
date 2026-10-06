@@ -31,6 +31,11 @@ router.get('/connections', brokerSyncController.getConnections);
 // Get all sync logs for current user
 router.get('/logs', brokerSyncController.getAllSyncLogs);
 router.get('/transfers', brokerSyncController.getTransfers);
+router.get('/ig-ingestion',async(req,res,next)=>{
+  try{const data=await require('../services/brokerSync/igStatementIngester').status(req.user.id);
+    res.json({data:{...data,source:data.enabled?require('../services/igStatementScheduler').status():null}});
+  }catch(e){next(e);}
+});
 router.use('/ig-files', brokerSyncLimiter, require('./igUploads.routes'));
 router.use('/etoro-statements', brokerSyncLimiter, require('./etoroUploads.routes'));
 

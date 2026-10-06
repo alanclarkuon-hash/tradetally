@@ -87,6 +87,7 @@
       </div>
 
       <IgFileImport />
+      <IgIngestionStatus />
       <TransferLinks :revision="JSON.stringify(store.connections.map(connection => connection.lastSyncAt))" />
 
       <!-- Add New Connection (Pro only) -->
@@ -427,6 +428,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import api from '@/services/api'
 import TransferLinks from '@/components/broker-sync/TransferLinks.vue'
 import IgFileImport from '@/components/broker-sync/IgFileImport.vue'
+import IgIngestionStatus from '@/components/broker-sync/IgIngestionStatus.vue'
 import BrokerConnectionCard from '@/components/broker-sync/BrokerConnectionCard.vue'
 import IBKRConnectionModal from '@/components/broker-sync/IBKRConnectionModal.vue'
 import Trading212ConnectionModal from '@/components/broker-sync/Trading212ConnectionModal.vue'
