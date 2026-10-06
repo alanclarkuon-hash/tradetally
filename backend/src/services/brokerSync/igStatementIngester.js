@@ -11,6 +11,7 @@ const reasons={invalid_date:'The statement date could not be verified.',unknown_
  changed_accounts:'An account changed during processing. Retry after other imports finish.',import_failed:'The statement could not be reconciled with saved history. Updated reports or a review are needed.',
  fx_unavailable:'The dated GBP exchange rate is unavailable. Retry later.',maintenance:'Imported, but portfolio maintenance needs a retry.',
  activity_pending:'Portfolio valuation imported. Cash or trade history needs reconciliation with the missing statements or CSV reports.',
+ resolved_by_later_history:'Resolved by subsequent statement and transaction history. Original PDF retained for audit; its conflicting chart value remains excluded.',
  backup_failed:'The required backup failed. No financial changes were applied. Check backup status before retrying.'};
 const hash=buffer=>crypto.createHash('sha256').update(buffer).digest('hex');
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);

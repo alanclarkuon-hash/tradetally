@@ -17,3 +17,7 @@ test('cash-date conflicts remain visible even though the original PDF receipt wa
  db.query.mockResolvedValue({rows:[{status:'imported',reason:'cash_date_conflict'}]});
  const result=await service.status('owner');expect(result.documents[0].needsReview).toBe(true);expect(result.documents[0].reason).toContain('conflicting chart value is excluded');
 });
+test('resolved historical evidence is informative rather than an active warning',async()=>{
+ db.query.mockResolvedValue({rows:[{status:'imported',reason:'resolved_by_later_history'}]});
+ const result=await service.status('owner');expect(result.documents[0].needsReview).toBe(false);expect(result.documents[0].reason).toContain('Resolved by subsequent statement');
+});
