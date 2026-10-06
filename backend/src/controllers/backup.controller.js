@@ -1,6 +1,7 @@
 const backupService = require('../services/backup.service');
 const path = require('path');
 const fs = require('fs').promises;
+const { stageBackup } = require('../services/backupFile.service');
 
 /**
  * Backup Controller
@@ -26,10 +27,9 @@ class BackupController {
       // Parse the uploaded backup file
       let backupData;
       try {
-        const fileContent = req.file.buffer.toString('utf8');
-        backupData = JSON.parse(fileContent);
+        backupData = await stageBackup(req.file.path, req.backupUploadDirectory);
       } catch (parseError) {
-        return res.status(400).json({ error: 'Invalid backup file format. Must be valid JSON.' });
+        return res.status(400).json({ error: 'Invalid backup file. Use a complete full-site JSON backup with version and table rows. Each record must be at most 16 MiB. No data was restored.' });
       }
 
       // Validate backup structure
