@@ -6,9 +6,9 @@ const crypto=require('node:crypto');
 const {spawn}=require('node:child_process');
 const {pipeline}=require('node:stream/promises');
 const ROOT=path.resolve(__dirname,'..');
-const PRIVATE=path.join(ROOT,'.local','backup-secrets');
-const OUTPUT=path.join(ROOT,'.local','backup-output');
-const STAGING=path.join(ROOT,'.local','backup-staging');
+const {productionPaths,productionCompose}=require('./private-storage.cjs');
+const paths=productionPaths(ROOT);
+const PRIVATE=paths.secrets,OUTPUT=paths.output,STAGING=paths.staging;
 const HEADER=Buffer.from('TTBK0001');
 async function command(exe,args,file,stdin){
   const child=spawn(exe,args,{cwd:ROOT,env:{...process.env,TRADETALLY_PRODUCTION_ENV_FILE:paths.env},windowsHide:true,stdio:['pipe','pipe','pipe']});
