@@ -1,26 +1,32 @@
 // Initial setup only: refuses an existing test database/container.
-// No private data is written outside the ignored, protected .local directories.
+// Private secrets and staging stay outside the Git working tree.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { command } = require('./backup-offsite.cjs');
 const ROOT = path.resolve(__dirname, '..');
-const ENV = '.local/backup-secrets/test-server.env';
+const PRIVATE = path.resolve(process.env.TRADETALLY_PRIVATE_DIR || path.join(require('node:os').homedir(),'TradeTally','Private'));
+const privateRelative=path.relative(ROOT,PRIVATE);
+if(!privateRelative||(!privateRelative.startsWith('..'+path.sep)&&privateRelative!=='..'&&!path.isAbsolute(privateRelative)))throw Error('Private storage must be outside the repository');
+const ENV = path.join(PRIVATE,'test','config','test-server.env');
 const compose = ['compose', '-f', 'compose.test.yaml', '--env-file', ENV];
 
 async function main() {
-  const work = await fs.mkdtemp(path.join(ROOT, '.local/backup-staging/test-'));
+  const staging=path.join(PRIVATE,'test','staging');
+  await fs.mkdir(staging,{recursive:true,mode:0o700});
+  const work = await fs.mkdtemp(path.join(staging,'setup-'));
   try {
     // Query before changing anything. Compose interpolation needs an environment file.
     const existing = path.join(work, 'existing.txt');
-    await command('docker', ['compose', '-f', 'compose.test.yaml', '--env-file', '.env', 'ps', '--all', '--quiet', 'postgres'], existing);
+    await command('docker', ['ps','-aq','--filter','label=com.docker.compose.project=tradetally-test','--filter','label=com.docker.compose.service=postgres'], existing);
     if ((await fs.readFile(existing, 'utf8')).trim()) throw Error('Test server already exists; initial setup refused');
     const volumes = path.join(work, 'volumes.txt');
     await command('docker', ['volume', 'ls', '--format', '{{.Name}}', '--filter', 'name=tradetally-test_postgres_data'], volumes);
     if ((await fs.readFile(volumes, 'utf8')).split(/\r?\n/).includes('tradetally-test_postgres_data')) throw Error('Existing test data must not be overwritten');
     const liveEnv = await fs.readFile(path.join(ROOT, '.env'), 'utf8');
     const overrides = `\nDB_PASSWORD=${crypto.randomBytes(32).toString('hex')}\nJWT_SECRET=${crypto.randomBytes(48).toString('hex')}\nDB_NAME=tradetally_test\nDB_HOST=postgres\n`;
-    await fs.writeFile(path.join(ROOT, ENV), liveEnv + overrides, { flag: 'wx' });
+    await fs.mkdir(path.dirname(ENV),{recursive:true,mode:0o700});
+    await fs.writeFile(ENV, liveEnv + overrides+`\nTRADETALLY_TEST_ENV_FILE=${ENV.replace(/\\/g,'/')}\n`, { flag: 'wx',mode:0o600 });
     const dump = path.join(work, 'database.dump');
     await command('docker', ['compose', '-f', 'compose.local.yaml', 'exec', '-T', 'postgres', 'sh', '-c', 'exec pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"'], dump);
     const files = path.join(work, 'files.tar.gz');
@@ -35,7 +41,7 @@ async function main() {
     await command('docker', [...compose, 'up', '-d', '--wait', 'app']);
     console.log('Test server ready at http://127.0.0.1:8089; copied broker auto-syncs disabled.');
   } finally {
-    if (path.dirname(work) !== path.join(ROOT, '.local/backup-staging')) throw Error('Unsafe staging path');
+    if (path.dirname(work) !== staging) throw Error('Unsafe staging path');
     await fs.rm(work, { recursive: true, force: true });
   }
 }

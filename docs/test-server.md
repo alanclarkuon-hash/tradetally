@@ -23,14 +23,26 @@ the test database is not refreshed automatically.
 Start or rebuild only test:
 
 ```powershell
-docker compose -f compose.test.yaml --env-file .local/backup-secrets/test-server.env up -d --build
+.\scripts\test-compose.ps1 up -d --build
 ```
 
 Stop only test (retains its data):
 
 ```powershell
-docker compose -f compose.test.yaml --env-file .local/backup-secrets/test-server.env stop
+.\scripts\test-compose.ps1 stop
 ```
+
+Test secrets and ingestion records live outside the checkout under
+`%USERPROFILE%\TradeTally\Private\test\`: `config\test-server.env`,
+`config\ingestion.compose.yaml`, `config\ig-ingester-test-relay.json`,
+`ingester\Processed\`, `runtime\` and `backups\`. The launcher includes the
+private ingestion mount when configured. Set `TRADETALLY_PRIVATE_DIR` to choose
+another external root; the environment file must contain `TRADETALLY_TEST_ENV_FILE`
+with its absolute path. Initial setup refuses a private root inside the checkout.
+The host relay task must point to the external runtime and config. Production
+uses separate private settings and is not modified by the test launcher.
+Use a normal user-profile folder rather than AppData when desktop application
+redirection prevents Windows scheduled tasks from seeing the same files.
 
 Keep all private dumps, environment files and backups outside Git. Changes are
 tested here first; deploying to the live Compose project is a separate step.
