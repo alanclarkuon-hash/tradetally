@@ -121,8 +121,8 @@ class OkxService {
     const origin=ORIGINS[connection.brokerEnvironment||'global'];
     if(!origin)throw new Error('Unsupported OKX region');
     let response;
-    try {response=await axios.get(origin+'/api/v5/market/history-index-candles',
-      {params:{instId:'USDT-USD',bar:'1Dutc',limit:'100'},timeout:30000,maxRedirects:0});}
+    try {response={data:await require('../brokerMarketData').read('okx',origin+'/api/v5/market/history-index-candles',
+      {instId:'USDT-USD',bar:'1Dutc',limit:'100'})};}
     catch {throw new Error('Unable to retrieve the historical OKX USDT/USD index. Previous reports were preserved.');}
     if(response.data?.code!=='0'||!Array.isArray(response.data.data))throw new Error('Invalid OKX USDT/USD index');
     const rates={};

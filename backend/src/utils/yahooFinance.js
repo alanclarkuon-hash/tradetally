@@ -440,7 +440,8 @@ class YahooFinanceClient {
         l: asNumber(meta?.regularMarketDayLow),
         o: null,
         currency: meta?.currency || null,
-        source: 'yahoo'
+        source: 'yahoo',
+        t: asNumber(meta?.regularMarketTime)
       };
 
       await cache.set('yahoo_quote', yahooSymbol, quote);
