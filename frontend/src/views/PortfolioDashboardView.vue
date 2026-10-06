@@ -124,10 +124,10 @@ async function load(){
   if(id!==request)return
   if(!data.value){historyLoading.value=false;return}
   try{
-    await api.post('/investments/portfolio/value-history/capture',{accounts:params.accounts},{timeout:180000})
+    const capture=await api.post('/investments/portfolio/value-history/capture',{accounts:params.accounts},{timeout:180000})
     if(id!==request)return
     const response=await api.get('/investments/portfolio/value-history',{params,timeout:180000})
-    if(id===request)history.value=response.data
+    if(id===request)history.value={...response.data,captureWarnings:capture.data?.warnings||[]}
   }catch(e){if(id===request)historyError.value=e.response?.data?.error||'Portfolio history is unavailable. Current balances are still shown above.'}
   finally{if(id===request)historyLoading.value=false}
 }
