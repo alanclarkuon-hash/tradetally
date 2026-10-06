@@ -1,13 +1,15 @@
 // Restore only to this fixed disposable database. Never target the live database.
 const fs=require('node:fs');const fsp=fs.promises;const path=require('node:path');
 const {decrypt,command,digest}=require('./backup-offsite.cjs');
-const ROOT=path.resolve(__dirname,'..'),BASE=path.join(ROOT,'.local','backup-staging');
+const ROOT=path.resolve(__dirname,'..');
+const {productionPaths,productionCompose}=require('./private-storage.cjs');
+const paths=productionPaths(ROOT),BASE=paths.staging;
 const DATABASE='tradetally_offsite_restore_check';
 async function main(){
   const input=process.argv[2];if(!input||path.extname(input)!=='.ttbackup')throw Error('Choose an encrypted backup');
-  const key=Buffer.from((await fsp.readFile(path.join(ROOT,'.local','backup-secrets','recovery.key'),'utf8')).trim(),'hex');
+  const key=Buffer.from((await fsp.readFile(path.join(paths.secrets,'recovery.key'),'utf8')).trim(),'hex');
   const work=await fsp.mkdtemp(path.join(BASE,'verify-'));let created=false;
-  const compose=['compose','-f','compose.local.yaml','exec','-T','postgres','sh','-c'];
+  const compose=[...productionCompose(ROOT,paths),'exec','-T','postgres','sh','-c'];
   try{
     const archive=path.join(work,'backup.tar.gz');await decrypt(input,archive,key);
     await command('tar',['-xzf',archive,'-C',work,'database.dump','retained-files.tar.gz','manifest.json']);
