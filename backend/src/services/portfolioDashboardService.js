@@ -3,6 +3,7 @@ const Portfolio = require('./portfolioService');
 const Account = require('../models/Account');
 const {getRatesToDisplay} = require('../utils/displayCurrency');
 const {parseReportDateRange} = require('../utils/reportDateRange');
+const {previousDay} = require('../utils/heatmapPeriod');
 const STABLE = new Set(['USDT','USDC','USDG','DAI','FDUSD','TUSD','USDP','PYUSD','EURC','EURT']);
 const FIAT = new Set(['USD','GBP','EUR','CAD','AUD','JPY','CHF']);
 
@@ -18,7 +19,7 @@ function periodResult(position, range, rates, lots) {
   const quote = key => {
     const exact = rates?.[key];
     if (exact>0) return exact;
-    for(let days=1;days<=4;days++) {
+    for(let days=1;days<=(position.instrumentType==='crypto'?0:7);days++) {
       const d=new Date(key+'T00:00:00Z');d.setUTCDate(d.getUTCDate()-days);
       if(rates?.[d.toISOString().slice(0,10)]>0)return rates[d.toISOString().slice(0,10)];
     }
@@ -31,7 +32,7 @@ function periodResult(position, range, rates, lots) {
   for (const lot of lots) {
     const acquired=new Date(lot.acquired).toISOString().slice(0,10);
     if(acquired>range.end_date)continue;
-    const startPrice=acquired>=range.start_date ? Number(lot.price) : quote(range.start_date);
+    const startPrice=acquired>=range.start_date ? Number(lot.price) : quote(previousDay(range.start_date));
     if(!(startPrice>0))return {pnl:null,percent:null};
     basis+=Number(lot.quantity)*startPrice;
     value+=Number(lot.quantity)*endPrice;
@@ -115,7 +116,7 @@ async function getDashboard(userId, query={}, historical=null) {
     }
     const equities=positions.filter(p=>p.instrumentType==='stock' && lotMap.has(p.symbol));
     const converter=require('../utils/currencyConverter');
-    const from=new Date(range.start_date+'T00:00:00Z');from.setUTCDate(from.getUTCDate()-5);
+    const from=new Date(range.start_date+'T00:00:00Z');from.setUTCDate(from.getUTCDate()-15);
     for(let i=0;i<equities.length;i+=4) {
       await Promise.all(equities.slice(i,i+4).map(async p=>{
         try {
@@ -123,7 +124,7 @@ async function getDashboard(userId, query={}, historical=null) {
           const prices={};
           // Only the boundary prices are needed. The provider declares the
           // currency and normalizes GBp/GBX before we convert to dated USD.
-          for(const boundary of [range.start_date,range.end_date]) {
+          for(const boundary of [previousDay(range.start_date),range.end_date]) {
             const candidates=chart.candles.filter(c=>new Date(c.time*1000).toISOString().slice(0,10)<=boundary);
             const candle=candidates.at(-1);if(!candle)continue;
             const day=new Date(candle.time*1000).toISOString().slice(0,10);
