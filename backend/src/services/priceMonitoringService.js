@@ -170,8 +170,7 @@ class PriceMonitoringService {
           
           // If we have too many consecutive failures, the API might be down
           if (consecutiveFailures >= 5) {
-            logger.warn(`Detected possible API outage after ${consecutiveFailures} consecutive failures. Pausing monitoring for this cycle.`);
-            break;
+            logger.warn(`Detected ${consecutiveFailures} consecutive quote failures; continuing to independent symbols and sources.`);
           }
         }
         
@@ -254,46 +253,7 @@ class PriceMonitoringService {
         this.failedSymbols.delete(key);
       }
 
-      const currentPrice = priceData.c;
-      const previousClose = priceData.pc || 0;
-      const priceChange = priceData.d || (currentPrice - previousClose);
-      const percentChange = priceData.dp || (previousClose > 0 ? ((currentPrice - previousClose) / previousClose) * 100 : 0);
-
-      // Extract LOD/HOD data if available
-      const highOfDay = priceData.h || null;
-      const lowOfDay = priceData.l || null;
-      const openPrice = priceData.o || null;
-
-      // Update price monitoring table with LOD/HOD data
-      await db.query(`
-        INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, high_of_day, low_of_day, open_price, data_source, last_updated)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (symbol) DO UPDATE SET
-          previous_price = price_monitoring.current_price,
-          current_price = $2,
-          price_change = $4,
-          percent_change = $5,
-          high_of_day = COALESCE($6, price_monitoring.high_of_day),
-          low_of_day = COALESCE($7, price_monitoring.low_of_day),
-          open_price = COALESCE($8, price_monitoring.open_price),
-          last_updated = $10,
-          data_source = $9
-      `, [key, currentPrice, previousClose, priceChange, percentChange, highOfDay, lowOfDay, openPrice, dataSource,
-        priceData.asOf || new Date().toISOString()]);
-
-      // Persist today's price to historical_prices DB table
-      try {
-        await historicalPriceCache.upsertToday(key, {
-          o: openPrice,
-          h: highOfDay,
-          l: lowOfDay,
-          c: currentPrice
-        }, 'price_monitor');
-      } catch (dbErr) {
-        logger.debug(`[PRICE-CACHE] Failed to persist monitored price for ${symbol}: ${dbErr.message}`);
-      }
-
-      logger.debug(`Updated price for ${symbol}: ${currentPrice} (${percentChange >= 0 ? '+' : ''}${percentChange.toFixed(2)}%)`);
+      await require('./marketQuoteCache').save(symbol,crypto ? 'crypto' : 'stock',priceData,dataSource);
 
       // Return true to indicate success
       return true;

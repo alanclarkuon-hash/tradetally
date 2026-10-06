@@ -217,11 +217,6 @@ class FmpClient {
     }
 
     await cache.set('quote', `fmp_${symbolUpper}`, quote);
-    try {
-      await historicalPriceCache.upsertToday(symbolUpper, quote, 'fmp');
-    } catch (dbErr) {
-      console.warn(`[PRICE-CACHE] Failed to persist FMP quote for ${symbolUpper}: ${dbErr.message}`);
-    }
     if (userId) {
       await ApiUsageService.trackApiCall(userId, 'quote');
     }
