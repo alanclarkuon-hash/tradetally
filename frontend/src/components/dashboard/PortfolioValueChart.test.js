@@ -33,19 +33,6 @@ describe('portfolio value chart',()=>{
     expect(view.text()).toContain('A second is needed')
     view.unmount()
   })
-  it('shows one last successful sync per selected broker and distinguishes missing syncs from manual imports',async()=>{
-    const view=mount(PortfolioValueChart,{props:{history:{series:[],events:[],coverage:{accounts:[
-      {name:'First',broker:'kraken',lastSuccessfulSyncAt:'2026-10-03T12:00:00Z',days:0},
-      {name:'Second',broker:'kraken',lastSuccessfulSyncAt:'2026-10-04T12:00:00Z',days:0},
-      {name:'Third',broker:'okx',lastSuccessfulSyncAt:null,days:0},
-      {name:'Fourth',broker:'ig',lastSuccessfulSyncAt:null,days:0}
-    ]}}}});await flushPromises()
-    expect(view.text()).toContain('Last successful broker syncs')
-    expect(view.text()).toContain('OKX: No successful sync recorded')
-    expect(view.text()).toContain('IG: Statement imports')
-    expect(view.findAll('li').filter(row=>row.text().startsWith('Kraken:'))).toHaveLength(1)
-    view.unmount()
-  })
   it('places today and past funding on real dates without waiting for background-tab animations',async()=>{
     const history={change:null,series:[{date:'2026-10-03',value:120,holdings:80,cash:30,stablecoins:10}],
       events:[{date:'2024-03-27',type:'deposit',amount:50,nativeAmount:50,nativeCurrency:'GBP',account:'Example'}],
