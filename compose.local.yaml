@@ -26,7 +26,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file: .env
+    env_file: ${TRADETALLY_PRODUCTION_ENV_FILE:?Use scripts/production-compose.ps1 or set the external production environment file}
     environment:
       CODEX_HOME: /home/appuser/.codex
       CODEX_CLI_AUTH_MODE: chatgpt

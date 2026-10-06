@@ -1,4 +1,4 @@
-// Private data and recovery keys stay under .local, never in Git or build context.
+// Private data and recovery keys stay outside the repository.
 const fs=require('node:fs');
 const fsp=fs.promises;
 const path=require('node:path');
@@ -11,7 +11,7 @@ const OUTPUT=path.join(ROOT,'.local','backup-output');
 const STAGING=path.join(ROOT,'.local','backup-staging');
 const HEADER=Buffer.from('TTBK0001');
 async function command(exe,args,file,stdin){
-  const child=spawn(exe,args,{cwd:ROOT,windowsHide:true,stdio:['pipe','pipe','pipe']});
+  const child=spawn(exe,args,{cwd:ROOT,env:{...process.env,TRADETALLY_PRODUCTION_ENV_FILE:paths.env},windowsHide:true,stdio:['pipe','pipe','pipe']});
   const completion=new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>code===0?resolve():reject(Error(`${exe} failed (${code})`)));});
   // Do not print private command output or pg_dump diagnostics into public logs.
   child.stderr.resume();
@@ -44,10 +44,10 @@ async function main(){
     const keyFile=path.join(PRIVATE,'recovery.key');
     if(!fs.existsSync(keyFile))await fsp.writeFile(keyFile,crypto.randomBytes(32).toString('hex'),{flag:'wx'});
     const key=Buffer.from((await fsp.readFile(keyFile,'utf8')).trim(),'hex');if(key.length!==32)throw Error('Invalid recovery key');
-    const compose=['compose','-f','compose.local.yaml','exec','-T'];
+    const compose=[...productionCompose(ROOT,paths),'exec','-T'];
     await command('docker',[...compose,'postgres','sh','-c','exec pg_dump -Fc -U "$POSTGRES_USER" "$POSTGRES_DB"'],path.join(work,'database.dump'));
     await command('docker',[...compose,'app','tar','-czf','-','--exclude=backend/src/data/backups','--exclude=backend/src/data/logs','-C','/app','backend/uploads','backend/src/data'],path.join(work,'retained-files.tar.gz'));
-    await fsp.copyFile(path.join(ROOT,'.env'),path.join(work,'environment.env'));
+    await fsp.copyFile(paths.env,path.join(work,'environment.env'));
     await fsp.copyFile(path.join(ROOT,'compose.local.yaml'),path.join(work,'compose.local.yaml'));
     const hashes={};for(const name of ['database.dump','retained-files.tar.gz','environment.env','compose.local.yaml'])hashes[name]=await digest(path.join(work,name));
     await fsp.writeFile(path.join(work,'manifest.json'),JSON.stringify({format:1,createdAt:new Date().toISOString(),databaseFormat:'PostgreSQL custom dump',files:hashes,notes:'Database snapshot is consistent. Retained files are copied while the app runs. Recovery key is stored separately.'},null,2));

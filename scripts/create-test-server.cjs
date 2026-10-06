@@ -23,7 +23,7 @@ async function main() {
     const volumes = path.join(work, 'volumes.txt');
     await command('docker', ['volume', 'ls', '--format', '{{.Name}}', '--filter', 'name=tradetally-test_postgres_data'], volumes);
     if ((await fs.readFile(volumes, 'utf8')).split(/\r?\n/).includes('tradetally-test_postgres_data')) throw Error('Existing test data must not be overwritten');
-    const liveEnv = await fs.readFile(path.join(ROOT, '.env'), 'utf8');
+    const liveEnv = await fs.readFile(require('./private-storage.cjs').productionPaths(ROOT).env, 'utf8');
     const overrides = `\nDB_PASSWORD=${crypto.randomBytes(32).toString('hex')}\nJWT_SECRET=${crypto.randomBytes(48).toString('hex')}\nDB_NAME=tradetally_test\nDB_HOST=postgres\n`;
     await fs.mkdir(path.dirname(ENV),{recursive:true,mode:0o700});
     await fs.writeFile(ENV, liveEnv + overrides+`\nTRADETALLY_TEST_ENV_FILE=${ENV.replace(/\\/g,'/')}\n`, { flag: 'wx',mode:0o600 });
