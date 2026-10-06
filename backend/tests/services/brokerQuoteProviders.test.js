@@ -8,6 +8,17 @@ const db=require('../../src/config/database'),BC=require('../../src/models/Broke
 const etoro=require('../../src/services/brokerSync/etoroService'),market=require('../../src/services/brokerMarketData');
 const providers=require('../../src/services/brokerQuoteProviders');
 beforeEach(()=>jest.resetAllMocks());
+test('concurrent Trading 212 symbols share one pending positions read',async()=>{
+ const service=require('../../src/services/brokerSync/trading212Service');
+ let release;service.fetchPositions.mockImplementation(()=>new Promise(resolve=>{release=resolve}));
+ db.query.mockResolvedValue({rows:[{positions:[]}]});
+ const connection={id:'concurrent-position-read'};
+ const a=providers.trading212Quote({symbol:'TESTA',instrumentType:'stock',connection});
+ const b=providers.trading212Quote({symbol:'TESTB',instrumentType:'stock',connection});
+ release([{instrument:{ticker:'TESTA_US_EQ',currency:'USD'},currentPrice:10},{instrument:{ticker:'TESTB_US_EQ',currency:'USD'},currentPrice:20}]);
+ expect((await Promise.all([a,b])).map(q=>q.c)).toEqual([10,20]);
+ expect(service.fetchPositions).toHaveBeenCalledTimes(1);
+});
 test('eToro validates type and ID and uses broker USD conversion with original timestamp',async()=>{
  db.query.mockResolvedValue({rows:[{payload:{instruments:[{symbolFull:'TEST',instrumentId:1,instrumentTypeID:2}],instrumentTypes:[{instrumentTypeID:2,instrumentTypeDescription:'Stocks'}]}}]});
  const date=new Date().toISOString();etoro.get.mockResolvedValue({rates:[{instrumentID:1,bid:10,conversionRateBid:1.5,date}]});

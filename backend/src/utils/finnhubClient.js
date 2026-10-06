@@ -231,13 +231,6 @@ class FinnhubClient {
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
 
-      // Persist today's price to historical_prices DB table
-      try {
-        await historicalPriceCache.upsertToday(symbolUpper, quote, 'finnhub');
-      } catch (dbErr) {
-        console.warn(`[PRICE-CACHE] Failed to persist quote for ${symbolUpper}: ${dbErr.message}`);
-      }
-
       // Track usage if userId provided
       if (userId) {
         await ApiUsageService.trackApiCall(userId, 'quote');
@@ -361,13 +354,6 @@ class FinnhubClient {
       };
 
       await cache.set('crypto_quote', cacheKey, quote, 15 * 60000);
-
-      // Persist today's crypto price to historical_prices DB table
-      try {
-        await historicalPriceCache.upsertToday(symbolUpper, quote, 'coingecko');
-      } catch (dbErr) {
-        console.warn(`[PRICE-CACHE] Failed to persist crypto quote for ${symbolUpper}: ${dbErr.message}`);
-      }
 
       console.log(`[CRYPTO] Quote for ${symbolUpper}: $${quote.c.toLocaleString()}`);
       return quote;

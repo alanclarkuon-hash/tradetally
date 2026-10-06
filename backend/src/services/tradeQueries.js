@@ -524,7 +524,9 @@ class TradeQueries {
       FROM (${subquery}) AS trade_ids
       INNER JOIN trades t ON t.id = trade_ids.id
       LEFT JOIN price_monitoring pm ON pm.symbol = CASE WHEN t.instrument_type='crypto' THEN 'crypto:' || t.symbol ELSE t.symbol END
-        AND CASE WHEN t.instrument_type='crypto' THEN pm.data_source='coingecko' ELSE pm.data_source IS DISTINCT FROM 'coingecko' END
+        AND CASE WHEN t.instrument_type='crypto'
+          THEN (pm.data_source='coingecko' OR pm.data_source ~ '^broker:[^:]+:crypto$')
+          ELSE pm.data_source IS DISTINCT FROM 'coingecko' AND COALESCE(pm.data_source !~ '^broker:[^:]+:crypto$',TRUE) END
       LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
       LEFT JOIN trade_comments tc ON t.id = tc.trade_id
       LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
