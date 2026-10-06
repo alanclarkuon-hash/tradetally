@@ -7,6 +7,7 @@ const {assetCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {statementSplits,statementLotMetadata,historicalLotQuantity}=require('./etoroHistoricalSplits');
 const {cfdEquity}=require('./etoroHistoricalCfd');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
+const {previousDay}=require('../utils/heatmapPeriod');
 const day=v=>new Date(v).toISOString().slice(0,10);
 const FIAT=new Set(['USD','GBP','EUR','CAD','AUD','JPY','CHF']);
 
@@ -26,6 +27,7 @@ function remainingLots(events,end) {
 }
 
 async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
+  const baselineDate=previousDay(range.start_date);
   const {historicalPrice,migrationPriceAliases}=require('./portfolioReconstructionService');
   const [prices,fxRows,snapshots,reports,portfolios,trades]=await Promise.all([
     db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices'),
@@ -81,13 +83,13 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const tradeQuantity=tradeLots.reduce((n,t)=>n+Number(t.quantity),0);
         if(Math.abs(tradeQuantity-q)<Math.max(1e-8,q*1e-7)) {
           for(const t of tradeLots) {
-            const acquired=day(t.entry_time||t.trade_date),start=acquired>=range.start_date?Number(t.entry_price):price(s,range.start_date);
+            const acquired=day(t.entry_time||t.trade_date),start=acquired>=range.start_date?Number(t.entry_price):price(s,baselineDate);
             if(!(start>0)){known=false;break;}basis+=Number(t.quantity)*start;
           }
         }else {
         for(const l of held) {
           if(l.acquired>=range.start_date){known=false;break;} // Transfers/rewards are not purchases with an established cost.
-          const start=price(s,range.start_date);if(!(start>0)){known=false;break;}basis+=l.quantity*start;
+          const start=price(s,baselineDate);if(!(start>0)){known=false;break;}basis+=l.quantity*start;
         }
         }
         add(s,'crypto',account,q,p>0?q*p:null,known?basis:null,known?[]:['Period basis unavailable for ledger acquisitions or transfers']);
@@ -110,8 +112,8 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const series=market.get(s),q=held.reduce((n,l)=>n+l.quantity,0),p=quote(s,range.end_date);
         let basis=0,known=true;
         for(const l of held) {
-          const later=historySplits(s,series?.splits||[]).filter(x=>x.date>range.start_date&&x.date<=range.end_date).reduce((n,x)=>n*x.ratio,1);
-          const start=l.acquired>=range.start_date?l.price:quote(s,range.start_date)/later;
+          const later=historySplits(s,series?.splits||[]).filter(x=>x.date>baselineDate&&x.date<=range.end_date).reduce((n,x)=>n*x.ratio,1);
+          const start=l.acquired>=range.start_date?l.price:quote(s,baselineDate)/later;
           if(!(start>0)){known=false;break;}basis+=l.quantity*start;
         }
         add(s,'stock',account,q,p>0?q*p:null,known?basis:null);
@@ -125,7 +127,7 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const series=market.get(s);
         const units=d=>account.broker==='etoro'?historicalLotQuantity(t,d,opened,closed,meta?.splits||[],series?.splits||[],meta):
           Number(t.quantity)/(series?.splits||[]).filter(x=>x.date>d&&x.date>opened&&(!closed||x.date<=closed)).reduce((n,x)=>n*x.ratio,1);
-        const q=units(range.end_date),startDate=opened>=range.start_date?opened:range.start_date;
+        const q=units(range.end_date),startDate=opened>=range.start_date?opened:baselineDate;
         if(q==null){warnings.push(`${t.symbol}: historic split allocation unavailable`);continue;}
         const p=quote(s,range.end_date),startPrice=quote(s,startDate),startQ=units(startDate);
         let value=p>0?q*p:null,basis=startPrice>0&&startQ!=null?startQ*startPrice:null;
