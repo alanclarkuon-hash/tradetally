@@ -23,6 +23,8 @@ const {carryForward}=require('./statementPortfolioCarryForward');
 async function accountsFor(userId,query={}) {
   const requested=String(query.accounts||'').split(',').map(x=>x.trim()).filter(Boolean);
   const rows=(await db.query(`SELECT id,account_identifier,account_name,broker,currency,initial_balance_date,
+    (SELECT MAX(c.last_sync_at) FROM broker_connections c
+      WHERE c.user_id=user_accounts.user_id AND c.broker_type=user_accounts.broker) AS last_successful_sync_at,
     EXISTS(SELECT 1 FROM broker_import_snapshots s WHERE s.user_id=user_accounts.user_id
       AND s.account_identifier=user_accounts.account_identifier AND s.broker_type='ig'
       AND s.payload->'igFileInput'->>'kind'='spread_bet') AS is_ig_spread
@@ -217,7 +219,7 @@ async function getHistory(userId,query={}) {
       statementEstimatedDays:valid.filter(p=>p.statementEstimatedAccounts>0).length,
       igCarryForwardDays:valid.filter(p=>p.igCarryForwardAccounts>0).length,
       manualCarryForwardDays:valid.filter(p=>p.manualCarryForwardAccounts>0).length,
-      accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
+      accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,broker:a.broker,lastSuccessfulSyncAt:a.last_successful_sync_at||null,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:true,cryptoTransferCount:cryptoEvents.length,missingCryptoTransferPrices:cryptoEvents.filter(e=>e.amount==null).length},
     change:valid.length>=2?money(valid.at(-1).value-valid[0].value):null};

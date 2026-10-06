@@ -1,4 +1,6 @@
-import {describe,it,expect,vi} from 'vitest'
+import {describe,it,expect,vi,beforeEach} from 'vitest'
+import {createPinia,setActivePinia} from 'pinia'
+beforeEach(()=>setActivePinia(createPinia()))
 import {mount,flushPromises} from '@vue/test-utils'
 const captured=vi.hoisted(()=>[])
 vi.mock('@/lib/chartSetup',()=>({Chart:class {constructor(canvas,config){captured.push(config)}destroy(){}}}))
@@ -29,6 +31,19 @@ describe('portfolio value chart',()=>{
     await view.setProps({history:{...history,series:[{date:'2026-10-05',value:100}],coverage:{recordedDays:1,accounts:[]}}});await flushPromises()
     expect(view.find('canvas').exists()).toBe(true)
     expect(view.text()).toContain('A second is needed')
+    view.unmount()
+  })
+  it('shows one last successful sync per selected broker and distinguishes missing syncs from manual imports',async()=>{
+    const view=mount(PortfolioValueChart,{props:{history:{series:[],events:[],coverage:{accounts:[
+      {name:'First',broker:'kraken',lastSuccessfulSyncAt:'2026-10-03T12:00:00Z',days:0},
+      {name:'Second',broker:'kraken',lastSuccessfulSyncAt:'2026-10-04T12:00:00Z',days:0},
+      {name:'Third',broker:'okx',lastSuccessfulSyncAt:null,days:0},
+      {name:'Fourth',broker:'ig',lastSuccessfulSyncAt:null,days:0}
+    ]}}}});await flushPromises()
+    expect(view.text()).toContain('Last successful broker syncs')
+    expect(view.text()).toContain('OKX: No successful sync recorded')
+    expect(view.text()).toContain('IG: Statement imports')
+    expect(view.findAll('li').filter(row=>row.text().startsWith('Kraken:'))).toHaveLength(1)
     view.unmount()
   })
   it('places today and past funding on real dates without waiting for background-tab animations',async()=>{
