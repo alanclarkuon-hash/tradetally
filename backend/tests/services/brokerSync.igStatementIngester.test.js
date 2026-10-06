@@ -13,3 +13,7 @@ test('status is user scoped and replaces internal reasons with safe messages',as
  db.query.mockResolvedValue({rows:[{id:'synthetic',status:'review',reason:'activity_pending',statement_date:'2026-10-05'}]});
  const result=await service.status('owner');expect(db.query.mock.calls[0][1]).toEqual(['owner']);expect(result.documents[0].reason).toContain('Portfolio valuation imported');
 });
+test('cash-date conflicts remain visible even though the original PDF receipt was imported',async()=>{
+ db.query.mockResolvedValue({rows:[{status:'imported',reason:'cash_date_conflict'}]});
+ const result=await service.status('owner');expect(result.documents[0].needsReview).toBe(true);expect(result.documents[0].reason).toContain('conflicting chart value is excluded');
+});

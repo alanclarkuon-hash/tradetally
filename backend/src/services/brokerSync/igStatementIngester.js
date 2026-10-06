@@ -6,7 +6,7 @@ const active=new Set();
 const reasons={invalid_date:'The statement date could not be verified.',unknown_account:'The PDF does not match exactly one configured IG account.',
  unsupported_layout:'The statement layout is not supported.',unsupported_positions:'The complete positions table could not be reconciled.',
  new_share_execution_required:'A new share holding needs its execution statement and CSV history.',equity_conflict:'Reported equity does not equal cash plus holdings or running P&L.',
- cash_conflict:'The statement cash activity does not reconcile.',unsupported_activity:'The PDF includes activity that needs updated CSV or execution reports.',
+ cash_conflict:'The statement cash activity does not reconcile.',cash_date_conflict:'The PDF cash summary conflicts with transaction history on its reporting date. Its conflicting chart value is excluded; original statement evidence is retained for review.',unsupported_activity:'The PDF includes activity that needs updated CSV or execution reports.',
  conflicting_statement:'Different values are already stored for this account and date. Review the correction before applying it.',
  changed_accounts:'An account changed during processing. Retry after other imports finish.',import_failed:'The statement could not be reconciled with saved history. Updated reports or a review are needed.',
  fx_unavailable:'The dated GBP exchange rate is unavailable. Retry later.',maintenance:'Imported, but portfolio maintenance needs a retry.',
@@ -42,6 +42,7 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
   if(matches.length!==1)daily.fail('unknown_account');account=matches[0];const base=account.payload.igFileInput;
   const named=daily.dateFromName(filename);if(statementDate&&named&&statementDate!==named)daily.fail('invalid_date');
   p=daily.parse(text,statementDate||named,base);
+  if(base.kind==='share_dealing'&&p.date<=day(base.confirmation.cutoff)&&require('./igEmailReconciliation').cashAt(p,require('./igStatement').prepare(base).records)!==cents(p.cash))daily.fail('cash_date_conflict');
   await checkPoint(db,userId,account.account_identifier,p);
   const currentDay=day(base.confirmation.cutoff),isNew=p.date>=currentDay;
   const sameHoldings=base.kind==='share_dealing'
@@ -116,6 +117,6 @@ async function status(userId){
  const rows=(await db.query(`SELECT i.id,i.statement_date,i.status,i.reason,i.processed_at,a.account_name FROM ig_statement_ingestion i
  LEFT JOIN user_accounts a ON a.user_id=i.user_id AND a.account_identifier=i.account_identifier WHERE i.user_id=$1 ORDER BY i.received_at DESC LIMIT 100`,[userId])).rows;
  return {enabled:process.env.ENABLE_IG_STATEMENT_INGESTER==='true'&&process.env.IG_INGEST_USER_ID===userId,
-  running:active.has(userId),documents:rows.map(r=>({...r,needsReview:['review','conflict','rejected'].includes(r.status)||r.reason==='activity_pending',reason:reasons[r.reason]||null}))};
+  running:active.has(userId),documents:rows.map(r=>({...r,needsReview:['review','conflict','rejected'].includes(r.status)||['activity_pending','cash_date_conflict'].includes(r.reason),reason:reasons[r.reason]||null}))};
 }
 module.exports={ingest,status,samePoint,reasons};
