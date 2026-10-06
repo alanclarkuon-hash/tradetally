@@ -135,4 +135,11 @@ describe('priceMonitoringService price alert webhook publication', () => {
     release({rows:[]});await first;
     expect(priceMonitoringService.cycleRunning).toBe(false);
   });
+  test('failed symbols do not starve later independent broker holdings',async()=>{
+    db.query.mockResolvedValueOnce({rows:Array.from({length:6},(_,i)=>({symbol:'FAILED'+i,instrument_type:'stock'})).concat([{symbol:'WAGB.L',instrument_type:'stock'}])}).mockResolvedValue({rows:[]});
+    const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
+    await priceMonitoringService.monitorPrices();
+    expect(update).toHaveBeenCalledWith('WAGB.L','stock');
+    expect(update).toHaveBeenCalledTimes(7);update.mockRestore();
+  });
 });
