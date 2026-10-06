@@ -1,0 +1,8 @@
+
+# Private data storage
+
+- Never place private, personal or financial data anywhere inside a repository checkout or Git worktree, even temporarily or when the files are Git-ignored or untracked. `.gitignore` is not a privacy boundary.
+- This applies to credentials, API keys, tokens, environment files containing secrets, recovery keys, broker statements, email attachments, financial exports, database dumps, private backups, screenshots, diagnostic output and logs containing private data. Download, extraction, backup and restore staging must also stay outside the repository.
+- Use external private storage for both test and production, currently `%USERPROFILE%\TradeTally\Private\test` and `%USERPROFILE%\TradeTally\Private\production`. Keep appropriate access restrictions on these directories. Database and application data may remain in Docker volumes outside the checkout.
+- Repository files may contain code, synthetic test fixtures and placeholder-only configuration examples. Reference external private paths without copying their contents into Git, GitHub issues, PR descriptions or public logs.
+- Before creating or downloading potentially private files, verify the resolved destination is outside every repository checkout and worktree. If private files are discovered inside a checkout, stop writing there, report the finding and arrange verified relocation while preserving active service and backup dependencies.
