@@ -1,6 +1,6 @@
 let timer,running=false;const state={lastRun:null,error:null,pending:0};
 async function run(){
- if(running)return;running=true;
+ if(running)return;running=true;state.error=null;
  try{
   const userId=process.env.IG_INGEST_USER_ID,root=process.env.IG_INGEST_FOLDER;
   if(!userId||!root)throw Error('not_configured');
@@ -9,6 +9,9 @@ async function run(){
    const delivery=await source.deliveryHealth();
    if(!delivery||delivery.errors||!Number.isFinite(Date.parse(delivery.lastRun))||Date.now()-Date.parse(delivery.lastRun)>5*60000)
     state.error='Drive folder delivery needs attention. Check Drive desktop and the host ingestion task.';
+   else if((process.env.IG_INGEST_REQUIRE_COLLECTOR==='true'&&!delivery.collector)||
+    (delivery.collector&&(delivery.collector.errors||!Number.isFinite(Date.parse(delivery.collector.lastRun))||Date.now()-Date.parse(delivery.collector.lastRun)>60*60000)))
+    state.error='Gmail statement collection needs attention. Check the collector execution log and pending emails.';
   }
   let backupPromise;
   const backup=()=>backupPromise||(backupPromise=require('./backup.service').createFullSiteBackup(userId));
@@ -30,7 +33,7 @@ async function run(){
  }catch{state.error='The IG ingestion folder is unavailable or not configured.';}
  finally{running=false;}
 }
-function start(){if(timer)return;run();timer=setInterval(()=>{state.error=null;run();},60000);timer.unref();}
+function start(){if(timer)return;run();timer=setInterval(run,60000);timer.unref();}
 function stop(){clearInterval(timer);timer=null;}
 function status(){return {...state,running};}
 module.exports={start,stop,run,status};

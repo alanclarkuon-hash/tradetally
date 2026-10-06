@@ -30,3 +30,15 @@ test('failed maintenance remains marked for a future automatic retry',async()=>{
  maintenance.rebuild.mockResolvedValue({failed:true});expect((await run('owner',{backup:jest.fn()})).maintenanceFailed).toBe(true);
  expect(db.query).toHaveBeenCalledWith(expect.stringContaining("SET reason='maintenance'"),['owner','synthetic']);
 });
+
+test.each([true,false])('conflict-only automatic retry applies only provably resolvable evidence (%s)',async resolvable=>{
+ const input={name:'Synthetic',identity:'demo',kind:'share_dealing',transactions:'TextDate,DateUtc,Reference,MarketName,TransactionType,PL Amount,CurrencyIsoCode\nx,2026-10-01T12:00:00,old,Cash Interest Paid,DEPO,10,GBP',confirmation:{cash:10,cutoff:'2026-10-06T23:59:59Z',holdings:[]}};
+ const saved={account_identifier:'synthetic',payload:{igFileInput:input}};
+ const point={date:'2026-10-02',cash:10,holdings:0,positions:[],records:[],activitySupported:true};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('SELECT account_identifier,statement_date')?[{account_identifier:'synthetic',statement_date:point.date,reason:'conflicting_statement'}]:sql.includes('SELECT account_identifier,payload')?[saved]:sql.includes('SELECT status,reason,evidence')?[{status:'conflict',reason:'conflicting_statement',evidence:point},{status:'imported',evidence:{...point,date:'2026-10-05',cash:resolvable?10:99}}]:[]}));
+ csv.reconcile.mockResolvedValue(input);
+ const backup=jest.fn().mockResolvedValue({});
+ expect((await run('owner',{backup})).reconciled).toBe(resolvable);
+ expect(backup).toHaveBeenCalledTimes(resolvable?1:0);
+ expect(imports.importAccounts).toHaveBeenCalledTimes(resolvable?2:0);
+});

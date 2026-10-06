@@ -14,6 +14,12 @@ Set Script Property `IG_TRASH_PROCESSED=true` to clean up Gmail copies. The coll
 
 The exporter uses message receipts and PDF hashes. It writes a PDF and bounded JSON metadata containing its checksum and reporting date. PDFs with the same filename from different accounts cannot overwrite each other. Original filenames and statement accounts are not public test fixtures.
 
+Message receipts now live in the private Drive `.collector-receipts` folder. Legacy `done:` Script Properties migrate in batches of 25, including receipts for messages already in Trash; they are removed from Properties only after a durable Drive write. Each collector run scans up to 50 messages with a 45-second work budget and resumable page/offset state. A failed message stays in Gmail while other messages continue. The private `.collector-status.json` contains only health counts and timestamps; the relay delivers this health to Broker Sync. Never remove the receipt archive to force replay.
+
+Use a separate Apps Script project for testing, point it to the Test Drive folder, set `IG_TRASH_PROCESSED=false`, and run manually without installing its trigger. In its manifest, use only `gmail.readonly` and `drive` OAuth scopes; omit `script.scriptapp`. The manual collector runs with these scopes, while Trash and trigger installation are unavailable. Production retains its own project, folder and trigger until a separately approved collector rollout.
+
+For an attachment-path smoke test without sending new email, also set `IG_TEST_MODE=true` in that isolated project and run `verifyIgCollectorOnRetainedEmails`. It reads retained daily emails, including Trash, into a separate `Collector validation` child folder in Test. Use a separate temporary relay configuration and test ingestion subfolder to verify duplicate acknowledgement. It never restores or deletes emails. Do not enable this mode in production.
+
 ## TradeTally setup
 
 Mount only the dedicated ingestion folder into the app container, for example at `/app/ig-ingester`. Set private environment variables:
@@ -22,6 +28,8 @@ Mount only the dedicated ingestion folder into the app container, for example at
 ENABLE_IG_STATEMENT_INGESTER=true
 IG_INGEST_FOLDER=/app/ig-ingester
 IG_INGEST_USER_ID=<the owning TradeTally user UUID>
+IG_INGEST_REQUIRE_RELAY=true
+IG_INGEST_REQUIRE_COLLECTOR=true
 ```
 
 Keep test and production source folders separate. An enabled environment moves successfully committed PDFs into `Processed` inside its own source folder. Files needing review remain in the input folder; private database receipts prevent repeated imports. File errors are shown on Broker Sync, alongside statement results. The source interface is `list`, `read`, `acknowledge`; a cloud Google Drive API adapter can replace local-folder delivery without changing parsing or financial validation. Cloud API authorization is a separate deployment step, not provided by Drive desktop.
@@ -45,4 +53,8 @@ Unchanged share holdings and recognised non-trade GBP cash activity can update t
 Reconciled PDF valuations are independent of cash/journal completeness. If preceding cash history is missing, save the reported dated valuation and mark cash/trade activity as pending reconciliation; never invent a balancing deposit or income entry. Unchanged, verified holding identities can receive newer statement prices, and the portfolio cash card uses the latest dated statement cash. New spread-bet cash activity or opening/closing journal changes that require the full Past Activity/P&L breakdown reports remain for review. New share acquisitions or disposals likewise require execution/CSV evidence. Parsed activity is retained privately; a monthly CSV upload continues to be the full journal reconciliation path. Older uploads cannot overwrite a newer holdings snapshot.
 
 Backups precede financial application. Financial import and its durable receipt commit together. Derived portfolio reconstruction follows the commit; maintenance failure is reported separately and cannot cause duplicate financial postings on retry. Broker Sync shows import status without financial values. Credentials, PDFs, mailbox identifiers and backups must never be committed or included in GitHub issues.
+
+Manual CSV/PDF applications recheck their saved-account revision inside the advisory-locked transaction after the backup. A changed preview is rejected before financial writes. Recoverable review/rejected PDFs are tried again when saved account/execution evidence or reporting-date metadata changes, or a parser-version change adds support. Unchanged failures stay skipped; backup/FX/transient account-change failures retain their cooldown. Valuation conflicts use the separately guarded ledger/later-statement reconciliation path.
+
+Monthly, quarterly and annual report routing remains follow-up work in issue #88. The daily collector does not interpret those periodic statement subjects.
 
