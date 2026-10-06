@@ -101,3 +101,9 @@ test('crypto range P&L can reuse stored USD closes without a Kraken holding',asy
  const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
  expect(result.holdings[0]).toMatchObject({pnl:200,pnlPercent:20});
 });
+
+test.each([['GBP',1,0.8,80],['USD',1.25,1,100]])('IG statement cash preserves native GBP before conversion to %s',async(currency,gbpRate,usdRate,expected)=>{
+ Portfolio.getPositions.mockResolvedValue([]);getRatesToDisplay.mockResolvedValue({USD:usdRate,GBP:gbpRate});
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM user_accounts')?[{id:'one',account_identifier:'demo',broker:'ig',currency:'GBP'}]:sql.includes('FROM portfolio_statement_values')?[{cash_usd:100,gbp_per_usd:0.8}]:[]}));
+ const result=await getDashboard('owner',{currency});expect(result.totals.cashValue).toBe(expected);expect(Account.getCashflow).not.toHaveBeenCalled();
+});

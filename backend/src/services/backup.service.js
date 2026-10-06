@@ -113,11 +113,9 @@ class BackupService {
     const backupFilePath = path.join(this.backupDir, backupFileName);
 
     try {
-      // Fetch all data from database
-      const data = await this.fetchAllData();
-
-      // Write data to file
-      await fs.writeFile(backupFilePath, JSON.stringify(data, null, 2));
+      // Bound memory and individual strings as price/history tables grow.
+      // Publish only after a consistent snapshot is complete.
+      await require('../utils/siteBackupJsonWriter').writeSiteBackupJson(backupFilePath);
 
       // Get file stats
       const stats = await fs.stat(backupFilePath);

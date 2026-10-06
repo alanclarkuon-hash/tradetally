@@ -58,13 +58,15 @@ function prepare(input) {
   const rows = csv(input.transactions, 'TextDate');
   if (!rows.length) fail('empty transaction history');
   const seen = new Set();
-  const records = rows.map(r => {
+  let records = rows.map(r => {
     if (r.CurrencyIsoCode !== 'GBP' || !r.Reference || seen.has(r.Reference)) fail('duplicate reference or unsupported currency');
     seen.add(r.Reference);
     const [type, description] = classify(r,input.kind), time = utc(r.DateUtc), amount = cents(r['PL Amount']) / 100;
     if (['deposit','transfer_in'].includes(type) && amount < 0 || ['withdrawal','transfer_out','tax'].includes(type) && amount > 0) fail('cash direction mismatch');
     return { reference: r.Reference, time, date: time.slice(0,10), amount, cash: amount, type, description };
   }).sort((a,b) => a.time.localeCompare(b.time) || a.reference.localeCompare(b.reference));
+  const emailMerge=require('./igEmailCash').merge(records,input.emailCashRecords);
+  records=emailMerge.records;
   const balance = records.reduce((sum,r) => sum + cents(r.cash), 0);
   const confirmation = input.confirmation;
   if (!confirmation || !/^\d{4}-\d{2}-\d{2}T/.test(confirmation.cutoff)) fail('missing statement balance verification');
@@ -155,7 +157,7 @@ function prepare(input) {
   const identifier = `IG ${input.kind === 'spread_bet' ? 'SB' : 'SD'} ${input.identity}`;
   const fingerprint = crypto.createHash('sha256').update(JSON.stringify({records,trades})).digest('hex');
   return {name:input.name, identifier, kind:input.kind, records, trades, fingerprint,
-    from:records[0].date, to:records.at(-1).date, endingCash:balance / 100, confirmation,openingSignatures};
+    from:records[0].date, to:records.at(-1).date, endingCash:balance / 100, confirmation,openingSignatures,cashAliases:emailMerge.aliases};
 }
 
 function pairTransfers(accounts) {

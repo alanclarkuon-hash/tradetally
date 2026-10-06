@@ -23,7 +23,7 @@ function sameCash(a,b,shareMigration=false) {
   return !!a && !!b && ['reference','time','date','amount','cash',...(shareMigration?[]:['type','description'])].every(key=>a[key]===b[key]);
 }
 
-async function importAccounts(userId,inputs,{dryRun=true}={}) {
+async function importAccounts(userId,inputs,{dryRun=true,beforeImport,beforeCommit}={}) {
   const accounts = inputs.map(prepare), pairs = pairTransfers(accounts);
   if (new Set(accounts.map(a=>a.identifier)).size !== accounts.length) throw Error('Duplicated IG account identity');
   // Persist dated FX through the existing rate store; missing FX stops import.
@@ -39,6 +39,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`ig-file:${userId}`]);
+    if(beforeImport)await beforeImport(client);
     const result = {dryRun,accounts:[],transfers:pairs.length,importedTrades:0,matchedTrades:0,importedEvents:0,updatedOpenPositions:0,updatedSharePositions:0,closedOpenPositions:0,portfolioDates:0};
     for (const a of accounts) {
       let old = (await client.query("SELECT * FROM user_accounts WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
@@ -50,10 +51,16 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       const reports=(await client.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='ig' FOR UPDATE",[userId,account.id])).rows;
       const current=new Map(a.records.map(r=>[r.reference,r]));
       for(const report of reports) for(const record of report.records) {
-        const next=current.get(record.reference);
+        const alias=a.cashAliases?.get(record.reference);
+        const next=current.get(alias||record.reference);
         const shareMigration=a.kind==='share_dealing'&&record.type==='asset_adjustment'&&next?.type==='share_trade';
-        if(!sameCash(next,record,shareMigration)) throw Error('An existing IG cash record changed or full history is missing');
+        if(!sameCash(next,alias?{...record,reference:alias}:record,shareMigration)) throw Error('An existing IG cash record changed or full history is missing');
       }
+      // A later CSV supplies IG's export reference for an email-only cash row.
+      // Replace the provisional event inside this transaction, never count both.
+      for(const [emailReference] of a.cashAliases||[])await client.query(
+        "DELETE FROM broker_cash_events WHERE user_id=$1 AND account_id=$2 AND broker_type='ig' AND reference_id=$3 AND metadata->>'source'='ig_file'",
+        [userId,account.id,emailReference]);
       const previous=(await client.query("SELECT id,executions,exit_time FROM trades WHERE user_id=$1 AND broker='ig' AND account_identifier=$2 FOR UPDATE",[userId,a.identifier])).rows;
       const byKey=new Map(previous.map(t=>[t.executions?.[0]?.ig_record_key,t]));
       if(byKey.size!==previous.length || byKey.has(undefined)) throw Error('Unrecognised existing IG journal entry');
@@ -184,7 +191,8 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
       }
       await client.query(`INSERT INTO broker_portfolio_snapshots(user_id,broker_type,account_identifier,positions,synced_at)
         VALUES($1,'ig',$2,$3::jsonb,$4) ON CONFLICT(user_id,broker_type,account_identifier)
-        DO UPDATE SET positions=EXCLUDED.positions,synced_at=EXCLUDED.synced_at`,
+        DO UPDATE SET positions=EXCLUDED.positions,synced_at=EXCLUDED.synced_at
+        WHERE broker_portfolio_snapshots.synced_at<=EXCLUDED.synced_at`,
         [userId,a.identifier,JSON.stringify(holdings),a.confirmation.openBets?.[0]?.asOf || a.confirmation.holdings?.[0]?.asOf || a.confirmation.cutoff]);
       await client.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,payload,captured_at)
         VALUES($1,'ig',$2,$3::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
@@ -197,6 +205,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         result.portfolioDates++;
       }
       result.accounts.push({name:a.name,cash:a.endingCash,closedTrades:a.trades.filter(t=>t.exitTime).length,holdings:a.trades.filter(t=>!t.exitTime).length});
+      if(!dryRun)await require('./igEmailReconciliation').clear(client,userId,a.identifier,a.records,a.confirmation.cutoff);
     }
     for(const {out,incoming} of pairs) {
       const previous=(await client.query(`SELECT * FROM broker_transfer_matches WHERE user_id=$1 AND
@@ -210,6 +219,7 @@ async function importAccounts(userId,inputs,{dryRun=true}={}) {
         asset,quantity,source_fee,sent_at,received_at,match_method) VALUES($1,'ig',$2,$3,'ig',$4,$5,'GBP',$6,0,$7,$8,'unique_amount_time')`,
         [userId,out.account,out.reference,incoming.account,incoming.reference,-out.amount,out.time,incoming.time]);
     }
+    if(!dryRun&&beforeCommit)await beforeCommit(client);
     if(!dryRun) await client.query('DELETE FROM analytics_cache WHERE user_id=$1',[userId]);
     await client.query(dryRun?'ROLLBACK':'COMMIT');
     if(!dryRun) await require('../analyticsCache').invalidate(userId);

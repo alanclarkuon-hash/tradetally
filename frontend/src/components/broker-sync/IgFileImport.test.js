@@ -37,6 +37,17 @@ it('sends multiple optional trade-day statements for the selected account',async
   await input.trigger('change');await w.get('form').trigger('submit');await flushPromises();
   const form=api.post.mock.calls[0][1];expect(form.getAll('synthetic:execution')).toHaveLength(2);
 });
+it('CSV reconciliation requires only Transactions and omits stale PDF selections',async()=>{
+ api.get.mockResolvedValue({data:{data:[{...account,csvReconciliation:true}]}});
+ const w=await ready();await w.findAll('input[type=checkbox]')[1].setValue(true);
+ expect(w.findAll('input[type=file][required]')).toHaveLength(1);
+ await w.get('form').trigger('submit');await flushPromises();
+ const form=api.post.mock.calls[0][1];expect([...form.keys()]).toEqual(['synthetic:transactions']);expect(w.text()).toContain('Import finished');expect(api.post).toHaveBeenLastCalledWith('/broker-sync/ig-files/apply',{token:'preview-token'},expect.any(Object));
+});
+it('CSV validation failures never trigger automatic application',async()=>{
+ api.get.mockResolvedValue({data:{data:[{...account,csvReconciliation:true}]}});const w=await ready();await w.findAll('input[type=checkbox]')[1].setValue(true);
+ api.post.mockRejectedValueOnce({response:{data:{message:'Cash mismatch'}}});await w.get('form').trigger('submit');await flushPromises();expect(api.post).toHaveBeenCalledTimes(1);expect(w.text()).toContain('Cash mismatch');
+});
 it('allows daily spread-bet PDFs alone and sends them as history evidence',async()=>{
   api.get.mockResolvedValue({data:{data:[{...account,kind:'spread_bet',required:['transactions','activity','breakdown','trading','ledger']}]}});
   const w=mount(IgFileImport);await flushPromises();await w.get('input[type=checkbox]').setValue(true);
