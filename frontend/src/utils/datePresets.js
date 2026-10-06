@@ -6,6 +6,7 @@ export const monthPresetOptions = [
 ]
 
 export const dashboardDateRangeOptions = [
+  { value: 'today', label: 'Today' },
   { value: 'this_week', label: 'This Week' },
   ...monthPresetOptions,
   { value: 'all', label: 'All Time' },
