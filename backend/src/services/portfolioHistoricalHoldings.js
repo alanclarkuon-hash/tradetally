@@ -38,14 +38,32 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     db.query('SELECT * FROM trades WHERE user_id=$1',[userId])
   ]);
   const market=new Map(prices.rows.map(r=>[r.symbol,r.payload]));
+  const baselineFrom=new Date(baselineDate+'T00:00:00Z');baselineFrom.setUTCDate(baselineFrom.getUTCDate()-14);
+  const sharedRows=(await db.query(`SELECT symbol,price_date,close FROM historical_prices
+    WHERE price_date BETWEEN $1 AND $2 AND is_final AND price_currency='USD'
+    AND (symbol LIKE 'crypto:%' OR data_source NOT IN ('coingecko','okx','kraken'))`,[day(baselineFrom),range.end_date])).rows;
+  const shared=new Map();
+  for(const row of sharedRows){const list=shared.get(row.symbol)||new Map();list.set(day(row.price_date),Number(row.close));shared.set(row.symbol,list);}
+  const calendarMap=new Map();
+  const calendarSymbols=[...new Set(trades.rows.filter(t=>t.instrument_type!=='crypto'&&Number.isFinite(Date.parse(t.entry_time||t.trade_date))).map(t=>historicalMarketSymbol(t.symbol,t.instrument_type,day(t.entry_time||t.trade_date))))];
+  for(const s of calendarSymbols)calendarMap.set(s,await require('./exchangeCalendar').resolve(s));
   const fx=(currency,date)=>{
     if(currency==='USD')return 1;
     const row=fxRows.rows.filter(r=>day(r.rate_date)<=date).at(-1);
     return row&&Date.parse(date)-Date.parse(day(row.rate_date))<=7*86400000&&Number(row.rates[currency])>0?1/Number(row.rates[currency]):null;
   };
   const quote=(symbol,date)=>{
-    const series=market.get(symbol),price=historicalPrice(series,date,symbol.endsWith('-USD'));
-    const rate=series?fx(series.currency,date):null;
+    const crypto=symbol.endsWith('-USD');
+    const expected=require('../utils/heatmapPeriod').sessionOnOrBefore(date,calendarMap.get(symbol)||require('./exchangeCalendar').identify(symbol),crypto);
+    const key=crypto?'crypto:'+symbol.slice(0,-4):symbol;
+    const series=market.get(symbol);
+    const canonical=shared.get(key)?.get(expected);
+    if(canonical>0){const split=crypto?1:(series?.splits||[]).filter(s=>s.date>expected).reduce((n,s)=>n*s.ratio,1);return canonical*split;}
+    // A missing open-session close is a gap, not permission to use Friday's
+    // price on a Monday. Legacy split-aware reconstruction remains a fallback.
+    const exact=series?.prices?.find(p=>p.date===expected);
+    const price=exact?.close;
+    const rate=series?fx(series.currency,expected):null;
     return price>0&&rate>0?price*rate:null;
   };
   const publicRates=snapshots.rows.find(r=>r.broker_type==='kraken')?.payload?.valuation?.rates||{};

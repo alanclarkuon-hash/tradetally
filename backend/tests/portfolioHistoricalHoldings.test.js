@@ -13,6 +13,12 @@ function fixture({trades=[],prices=[],reports=[],snapshots=[]}={}) {
    sql.includes('FROM trades')?trades:[]}));
 }
 beforeEach(()=>jest.clearAllMocks());
+test('historical holdings prefer canonical completed shared prices over older reconstruction values',async()=>{
+ fixture({trades:[{symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'}],
+  prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('FROM historical_prices')?Promise.resolve({rows:[{symbol:'HELD',price_date:'2023-12-29',close:11},{symbol:'HELD',price_date:range.end_date,close:15}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[account],range);expect(result.positions[0].periodResult).toMatchObject({basis:110,pnl:40});
+});
 test('historical heatmap uses a close strictly before the start and ignores the start-day candle',async()=>{
  fixture({trades:[{symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'}],
   prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.start_date,close:11},{date:range.end_date,close:12}]}}]});
