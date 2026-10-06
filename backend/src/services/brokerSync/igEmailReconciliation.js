@@ -31,6 +31,7 @@ function conflictResolution(point,rows,records,cutoff){
  return 'correct';
 }
 async function clear(client,userId,identifier,records,cutoff){
+ const changedDates=[];
  const rows=(await client.query("SELECT id,evidence,reason,status FROM ig_statement_ingestion WHERE user_id=$1 AND account_identifier=$2 AND (status='imported' OR (status='review' AND reason='cash_date_conflict') OR (status='conflict' AND reason='conflicting_statement')) FOR UPDATE",[userId,identifier])).rows;
  for(const row of rows){
   if(row.status==='conflict'&&row.reason==='conflicting_statement'){
@@ -39,6 +40,7 @@ async function clear(client,userId,identifier,records,cutoff){
    const stored=(await client.query('SELECT cash_usd,holdings_usd,gbp_per_usd FROM portfolio_statement_values WHERE user_id=$1 AND account_identifier=$2 AND value_date=$3 FOR UPDATE',[userId,identifier,row.evidence.date])).rows[0];
    if(resolution==='correct'){
     await require('./igNavHistory').savePoint(client,userId,identifier,row.evidence,stored?.gbp_per_usd);
+    changedDates.push(row.evidence.date);
     await client.query(`UPDATE broker_import_snapshots SET payload=jsonb_set(payload,'{igFileInput,statementValues}',
      COALESCE((SELECT jsonb_agg(value) FROM jsonb_array_elements(COALESCE(payload#>'{igFileInput,statementValues}','[]'::jsonb)) WHERE value->>'date'<>$3),'[]'::jsonb)||$4::jsonb),captured_at=NOW()
      WHERE user_id=$1 AND account_identifier=$2 AND broker_type='ig'`,
@@ -48,6 +50,7 @@ async function clear(client,userId,identifier,records,cutoff){
     // Keep a separate ledger-consistent anchor. Only the contradictory PDF's
     // own anchor is excluded; its original evidence remains intact.
     if(stored&&require('./igStatementIngester').samePoint(stored,row.evidence)){
+     changedDates.push(row.evidence.date);
      await client.query('DELETE FROM portfolio_statement_values WHERE user_id=$1 AND account_identifier=$2 AND value_date=$3',[userId,identifier,row.evidence.date]);
      await client.query(`UPDATE broker_import_snapshots SET payload=jsonb_set(payload,'{igFileInput,statementValues}',
       COALESCE((SELECT jsonb_agg(value) FROM jsonb_array_elements(COALESCE(payload#>'{igFileInput,statementValues}','[]'::jsonb)) WHERE value->>'date'<>$3),'[]'::jsonb)),captured_at=NOW()
@@ -71,5 +74,6 @@ async function clear(client,userId,identifier,records,cutoff){
    else await client.query("UPDATE ig_statement_ingestion SET reason='cash_date_conflict' WHERE id=$1 AND user_id=$2",[row.id,userId]);
   }
  }
+ return {changedDates};
 }
 module.exports={clear,reconciled,cashAt,superseded,conflictResolution};

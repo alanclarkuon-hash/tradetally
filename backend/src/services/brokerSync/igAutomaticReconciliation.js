@@ -23,18 +23,20 @@ async function run(userId,{backup}={}){
    }
    catch(e){if(!e.message?.startsWith('IG upload:')&&!e.message?.startsWith('IG statement:'))throw e;}
   }
+  let corrections=[];
   if(selected.length){
    const importer=require('./igImport');
    await importer.importAccounts(userId,inputs,{dryRun:true});
    await (backup?backup():require('../backup.service').createFullSiteBackup(userId));
-   await importer.importAccounts(userId,inputs,{dryRun:false,beforeImport:async()=>{
+   const result=await importer.importAccounts(userId,inputs,{dryRun:false,beforeImport:async()=>{
     if(revision(await saved(userId))!==revision(rows))throw Error('IG account changed during automatic reconciliation');
    }});
+   corrections=result?.reconciledStatementAccounts||[];
   }
-  const affected=[...new Set([...selected,...pending.filter(p=>p.reason==='maintenance').map(p=>p.account_identifier)])];
+  const affected=[...new Set([...selected,...corrections.map(c=>c.identifier),...pending.filter(p=>p.reason==='maintenance').map(p=>p.account_identifier)])];
   let failed=false;
   for(const identifier of affected){
-   const dates=pending.filter(p=>p.account_identifier===identifier).map(p=>p.statement_date).sort();
+   const dates=[...pending.filter(p=>p.account_identifier===identifier).map(p=>p.statement_date),...corrections.filter(c=>c.identifier===identifier).flatMap(c=>c.dates)].sort();
    const result=await require('../manualPortfolioMaintenance').rebuild(userId,'ig',[identifier],dates[0]);
    if(result.failed){
     failed=true;
