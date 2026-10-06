@@ -26,19 +26,24 @@ async function checkPoint(client,userId,identifier,p){
 }
 async function ingest(userId,buffer,{statementDate,filename,backup}={}){
  if(active.has(userId))return {status:'busy'};
- active.add(userId);const fingerprint=hash(buffer);let p,account;
+ active.add(userId);const fingerprint=hash(buffer);let p,account,context;
  const ensureBackup=async()=>{try{await (backup?backup():require('../backup.service').createFullSiteBackup(userId));}catch{daily.fail('backup_failed');}};
  try{
   if(buffer.length>5*1024*1024)daily.fail('unsupported_layout');
-  const prior=(await db.query('SELECT status,reason,processed_at FROM ig_statement_ingestion WHERE user_id=$1 AND attachment_hash=$2',[userId,fingerprint])).rows[0];
+  const prior=(await db.query('SELECT status,reason,processed_at,retry_context FROM ig_statement_ingestion WHERE user_id=$1 AND attachment_hash=$2',[userId,fingerprint])).rows[0];
   if(prior&&['imported','duplicate'].includes(prior.status))return {status:'duplicate',hash:fingerprint,skipped:true};
+  const rows=await saved(userId);
+  // Bump the parser version when layout support changes. Retry after evidence
+  // or reporting-date corrections, never repeatedly against unchanged inputs.
+  context=hash(Buffer.from(JSON.stringify({parserVersion:1,revision:revision(rows),date:statementDate||null,filenameDate:daily.dateFromName(filename)||null})));
   if(prior&&['review','rejected','conflict'].includes(prior.status)){
-   if(!['backup_failed','fx_unavailable','changed_accounts'].includes(prior.reason)||Date.now()-Date.parse(prior.processed_at)<5*60000)
+   const timed=['backup_failed','fx_unavailable','changed_accounts'].includes(prior.reason);
+   if(prior.reason==='conflicting_statement'||(prior.retry_context===context&&(!timed||Date.now()-Date.parse(prior.processed_at)<5*60000)))
     return {status:prior.status,hash:fingerprint,reason:prior.reason,skipped:true};
   }
-  await db.query(`INSERT INTO ig_statement_ingestion(user_id,attachment_hash,status) VALUES($1,$2,'processing')
-    ON CONFLICT(user_id,attachment_hash) DO UPDATE SET status='processing',reason=NULL`,[userId,fingerprint]);
-  const rows=await saved(userId),text=await pdf.text(buffer),id=daily.identity(text);
+  await db.query(`INSERT INTO ig_statement_ingestion(user_id,attachment_hash,status,retry_context) VALUES($1,$2,'processing',$3)
+    ON CONFLICT(user_id,attachment_hash) DO UPDATE SET status='processing',reason=NULL,retry_context=EXCLUDED.retry_context`,[userId,fingerprint,context]);
+  const text=await pdf.text(buffer),id=daily.identity(text);
   const matches=rows.filter(r=>r.payload?.igFileInput?.statementMask===id.mask&&r.payload?.igFileInput?.statementLabel===id.label);
   if(matches.length!==1)daily.fail('unknown_account');account=matches[0];const base=account.payload.igFileInput;
   const named=daily.dateFromName(filename);if(statementDate&&named&&statementDate!==named)daily.fail('invalid_date');

@@ -13,7 +13,7 @@ function folderSource(root){
  return {
   async deliveryHealth(){
    try{const entry=await safe('.relay-status.json');if(entry.st.size>8192)throw Error('Invalid delivery status');
-    const value=JSON.parse(await fs.readFile(entry.file,'utf8'));return {lastRun:typeof value.lastRun==='string'?value.lastRun:null,errors:Number(value.errors)||0};
+    const value=JSON.parse(await fs.readFile(entry.file,'utf8'));return {lastRun:typeof value.lastRun==='string'?value.lastRun:null,errors:Number(value.errors)||0,collector:value.collector?{lastRun:value.collector.lastRun,errors:Number(value.collector.errors)||0}:null};
    }catch(e){if(e.code==='ENOENT')return null;throw e;}
   },
   async list(){return (await fs.readdir(base)).filter(n=>/\.pdf$/i.test(n)).sort();},

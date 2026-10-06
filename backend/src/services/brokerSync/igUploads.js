@@ -6,10 +6,10 @@ const {importAccounts}=require('./igImport');
 const previews=new Map(),active=new Set();
 const reject=message=>{throw Error(`IG upload: ${message}`);};
 const required=kind=>kind==='spread_bet'?['transactions','activity','breakdown','trading','ledger']:['transactions','trading','ledger'];
-async function saved(userId) {
-  const rows=(await db.query(`SELECT a.id,a.account_name,s.payload,s.captured_at FROM user_accounts a
+async function saved(userId,client=db) {
+  const rows=(await client.query(`SELECT a.id,a.account_name,s.payload,s.captured_at FROM user_accounts a
     JOIN broker_import_snapshots s ON s.user_id=a.user_id AND s.account_identifier=a.account_identifier AND s.broker_type='ig'
-    WHERE a.user_id=$1 AND a.broker='ig' AND NOT a.is_archived ORDER BY a.account_name`,[userId])).rows;
+    WHERE a.user_id=$1 AND a.broker='ig' AND NOT a.is_archived ORDER BY a.account_name${client===db?'':' FOR UPDATE OF s'}`,[userId])).rows;
   if(!rows.length||rows.some(r=>!r.payload?.igFileInput?.ledgerAccountId))reject('The IG accounts need their statement identities configured before uploading.');
   return {rows,revision:crypto.createHash('sha256').update(JSON.stringify(rows.map(r=>[r.id,r.captured_at,r.payload]))).digest('hex')};
 }
@@ -93,7 +93,9 @@ async function apply(userId,token) {
   try {
     if((await saved(userId)).revision!==item.revision)reject('An account was updated after this preview. Please preview again.');
     await require('../backup.service').createFullSiteBackup(userId);
-    const result=await importAccounts(userId,item.inputs,{dryRun:false});
+    const result=await importAccounts(userId,item.inputs,{dryRun:false,beforeImport:async client=>{
+      if((await saved(userId,client)).revision!==item.revision)reject('An account was updated after this preview. Please preview again.');
+    }});
     previews.delete(token);
     const corrections=result.reconciledStatementAccounts||[];
     const dates=[...item.inputs.flatMap(i=>(i.statementValues||[]).map(p=>p.date)),...corrections.flatMap(c=>c.dates)];
