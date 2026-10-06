@@ -63,7 +63,9 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
-import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { resolveDatePreset, dashboardDateRangeOptions, profileCalendarDate } from '@/utils/datePresets'
+import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
+import { useAuthStore } from '@/stores/auth'
 import { formatLocalDate } from '@/utils/date'
 import {accountSelection} from '@/utils/accountSelection'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
@@ -77,8 +79,11 @@ const { hideAmounts } = useDashboardPrivacy()
 const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
-const selected=computed(()=>portfolioSelection(selectedAccount.value)),period=ref('all'),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
-const today=formatLocalDate(new Date()),start=ref(today.slice(0,4)+'-01-01'),end=ref(today)
+const dateFilter=useDashboardDateFilterStore(),authStore=useAuthStore()
+const selected=computed(()=>portfolioSelection(selectedAccount.value)),currency=ref('GBP'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
+const dateField=field=>computed({get:()=>dateFilter.selection[field],set:value=>dateFilter.selection[field]=value})
+const period=dateField('timeRange'),start=dateField('startDate'),end=dateField('endDate')
+const today=formatLocalDate(profileCalendarDate(new Date(),authStore.user?.timezone||'UTC'))
 const periodPicker=ref(null)
 const hasAccountSelection=computed(()=>selected.value===null ? accounts.value.length>0 : selected.value.length>0)
 function dismissFilters(event){
@@ -89,9 +94,9 @@ function dismissFilters(event){
 function dismissOnEscape(event){if(event.key==='Escape'){const picker=periodPicker.value;if(picker?.open){picker.open=false;picker.querySelector('summary')?.focus()}}}
 onMounted(()=>{document.addEventListener('pointerdown',dismissFilters);document.addEventListener('keydown',dismissOnEscape)})
 onUnmounted(()=>{document.removeEventListener('pointerdown',dismissFilters);document.removeEventListener('keydown',dismissOnEscape)})
-const timeRangeOptions=[...monthPresetOptions,{value:'all',label:'All Time'},{value:'7d',label:'Last 7 Days'},{value:'30d',label:'Last 30 Days'},{value:'ytd',label:'Year to Date'},{value:'custom',label:'Custom Range'}]
+const timeRangeOptions=dashboardDateRangeOptions
 const periodLabel=computed(()=>timeRangeOptions.find(option=>option.value===period.value)?.label || 'All Time')
-function selectPeriod(value){period.value=value;if(periodPicker.value)periodPicker.value.open=false}
+function selectPeriod(value){dateFilter.selectPreset(value,authStore.user?.timezone||'UTC');if(periodPicker.value)periodPicker.value.open=false}
 let request=0
 const history=ref(null),historyLoading=ref(false),historyError=ref('')
 const money=v=>hideAmounts.value?MONEY_MASK:v==null?'Unavailable':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency.value,maximumFractionDigits:2}).format(v)
@@ -104,11 +109,12 @@ const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.cove
 const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
 const groups=computed(()=>holdingGroups(data.value?.heatmapHoldings??data.value?.holdings??[]))
 async function load(){
+  if(period.value==='custom' && (!start.value || !end.value || start.value>end.value))return
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
   if(!hasAccountSelection.value){data.value=null;loading.value=false;historyLoading.value=false;return}
   const params={currency:currency.value,accounts:selected.value?.join(',')||''}
   if(period.value!=='all'){
-    Object.assign(params,period.value==='custom'?{start_date:start.value,end_date:end.value}:resolveDatePreset(period.value))
+    Object.assign(params,period.value==='custom'?{start_date:start.value,end_date:end.value}:resolveDatePreset(period.value,new Date(),authStore.user?.timezone||'UTC'))
   }
   try{const response=await api.get('/investments/portfolio/dashboard',{params,timeout:180000});if(id===request)data.value=response.data}
   catch(e){if(id===request){error.value=e.response?.data?.error||'Could not load portfolio';data.value=null}}
@@ -150,8 +156,8 @@ onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()}
 .period-picker summary{width:40px;height:40px;padding:0;position:relative}
 .date-filter-dot{@apply bg-primary-500; width:8px;height:8px;border-radius:50%}
 .date-filter-dot{@apply ring-2 ring-white dark:ring-gray-900;position:absolute;top:-2px;right:-2px}
-.period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
-.period-menu button{@apply text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 16px;font-size:14px}
+.period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md max-h-60 overflow-auto ring-1 ring-black ring-opacity-5 focus:outline-none;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
+.period-menu button{@apply text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 12px}
 .period-menu button.active{@apply bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300}
 .period-menu button:focus-visible{@apply outline-none ring-2 ring-inset ring-primary-500}
 .value-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}

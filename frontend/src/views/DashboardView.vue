@@ -18,7 +18,7 @@
           >
             Viewing: <span class="ml-1 truncate">{{ selectedAccountLabel }}</span>
           </div>
-          
+
           <!-- Market Status and Refresh Indicator -->
           <div class="mt-2 flex items-center space-x-4 text-xs">
             <div class="flex items-center space-x-2">
@@ -34,13 +34,13 @@
                 </span>
               </div>
             </div>
-            
+
             <div v-if="isAutoUpdating" class="text-gray-500 dark:text-gray-400">
               <span>{{ nextRefreshIn }}s</span>
             </div>
           </div>
         </div>
-        
+
         <!-- Filters and Customization Controls — icon-only to keep the header
              clean. Filter button shows a dot when a non-default range is
              active. Customize button highlights primary when in edit mode. -->
@@ -64,15 +64,17 @@
               />
             </button>
             <div v-if="showTimeRangeDropdown" class="absolute right-0 z-10 mt-1 w-44 bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 overflow-auto focus:outline-none">
-              <div
+              <button
                 v-for="option in timeRangeOptions"
                 :key="option.value"
+                type="button"
+                :aria-pressed="filters.timeRange === option.value"
                 @click="selectTimeRange(option.value)"
-                class="px-3 py-2 cursor-pointer text-sm"
+                class="block w-full text-left px-3 py-2 cursor-pointer text-sm"
                 :class="filters.timeRange === option.value ? 'bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'"
               >
                 {{ option.label }}
-              </div>
+              </button>
             </div>
           </div>
 
@@ -81,7 +83,7 @@
             <input
               type="date"
               v-model="filters.startDate"
-              @change="applyFilters"
+
               @keydown.enter="applyFilters"
               class="input text-sm"
               placeholder="Start Date"
@@ -89,7 +91,7 @@
             <input
               type="date"
               v-model="filters.endDate"
-              @change="applyFilters"
+
               @keydown.enter="applyFilters"
               class="input text-sm"
               placeholder="End Date"
@@ -930,7 +932,7 @@
                       <span v-else class="text-xs text-gray-400">Position Total</span>
                     </td>
                   </tr>
-                  
+
                   <!-- Individual Trade Rows (only show when position has multiple trades) -->
                   <tr v-if="position.trades.length > 1" v-for="trade in position.trades" :key="trade.id" class="hover:bg-gray-50 dark:hover:bg-gray-800">
                     <td class="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 pl-6">
@@ -1405,7 +1407,7 @@
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Top Trades
                     </h3>
-                    
+
                     <div class="space-y-4">
                       <div>
                         <h4 class="text-sm font-medium text-green-600 mb-2">Best Trades</h4>
@@ -1633,7 +1635,9 @@
 </template>
 
 <script setup>
-import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
+import { resolveDatePreset, dashboardDateRangeOptions } from '@/utils/datePresets'
+import { storeToRefs } from 'pinia'
+import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
 import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
 import { useDashboardPrivacy } from '@/composables/useDashboardPrivacy'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
@@ -1825,11 +1829,8 @@ function getOptionPnL(position) {
   return { currentValue, unrealizedPnL, unrealizedPnLPercent }
 }
 
-const filters = ref({
-  timeRange: 'all',
-  startDate: '',
-  endDate: ''
-})
+const dateFilter = useDashboardDateFilterStore()
+const { selection: filters } = storeToRefs(dateFilter)
 
 // Hero ribbon display mode: false = dollars, true = R-multiples. Persisted +
 // synced so the choice (e.g. hide dollar values when sharing) follows the user.
@@ -1905,14 +1906,7 @@ function hydrateSharedTradeFilters() {
 
 const showTimeRangeDropdown = ref(false)
 
-const timeRangeOptions = [
-  ...monthPresetOptions,
-  { value: 'all', label: 'All Time' },
-  { value: '7d', label: 'Last 7 Days' },
-  { value: '30d', label: 'Last 30 Days' },
-  { value: 'ytd', label: 'Year to Date' },
-  { value: 'custom', label: 'Custom Range' }
-]
+const timeRangeOptions = dashboardDateRangeOptions
 
 function getSelectedTimeRangeText() {
   const option = timeRangeOptions.find(o => o.value === filters.value.timeRange)
@@ -1920,9 +1914,8 @@ function getSelectedTimeRangeText() {
 }
 
 function selectTimeRange(value) {
-  filters.value.timeRange = value
+  dateFilter.selectPreset(value, authStore.user?.timezone || 'UTC')
   showTimeRangeDropdown.value = false
-  applyFilters()
 }
 
 // Dashboard charts (equity curve, win/loss doughnut, daily win-rate) now live
@@ -2344,7 +2337,7 @@ watch(dashboardLayout, () => {
   if (isInitialLoad) {
     return
   }
-  
+
   if (saveLayoutTimeout) clearTimeout(saveLayoutTimeout)
   saveLayoutTimeout = setTimeout(() => {
     saveDashboardLayout()
@@ -2487,7 +2480,7 @@ function formatLastRefresh(timestamp) {
   if (!timestamp) return ''
   const now = new Date()
   const diff = Math.floor((now - timestamp) / 1000)
-  
+
   if (diff < 60) {
     return `${diff}s ago`
   } else if (diff < 3600) {
@@ -2501,14 +2494,14 @@ function getDateRange(range) {
   if (range === 'all') {
     return { startDate: undefined, endDate: undefined }
   }
-  
+
   if (range === 'custom') {
     return {
       startDate: filters.value.startDate || undefined,
       endDate: filters.value.endDate || undefined
     }
   }
-  
+
   // Handle dynamic month ranges (e.g., month_2026_2 = March 2026)
   const monthMatch = range.match(/^month_(\d{4})_(\d{1,2})$/)
   if (monthMatch) {
@@ -2522,7 +2515,7 @@ function getDateRange(range) {
     }
   }
 
-  const { start_date, end_date } = resolveDatePreset(range)
+  const { start_date, end_date } = resolveDatePreset(range, new Date(), authStore.user?.timezone || 'UTC')
   return { startDate: start_date || undefined, endDate: end_date || undefined }
 }
 
@@ -2872,31 +2865,7 @@ async function fetchOpenTrades(options = {}) {
   }
 }
 
-// Save filters to localStorage immediately when they change
-function saveFiltersToStorage() {
-  try {
-    localStorage.setItem('dashboardTimeRange', filters.value.timeRange)
-    uiPreferencesStore.notifyChanged('dashboardTimeRange', filters.value.timeRange)
-    if (filters.value.timeRange === 'custom') {
-      localStorage.setItem('dashboardCustomStartDate', filters.value.startDate || '')
-      localStorage.setItem('dashboardCustomEndDate', filters.value.endDate || '')
-      uiPreferencesStore.notifyChanged('dashboardCustomStartDate', filters.value.startDate || '')
-      uiPreferencesStore.notifyChanged('dashboardCustomEndDate', filters.value.endDate || '')
-    } else {
-      // Clear custom dates when not in custom mode
-      localStorage.removeItem('dashboardCustomStartDate')
-      localStorage.removeItem('dashboardCustomEndDate')
-      uiPreferencesStore.notifyChanged('dashboardCustomStartDate', null)
-      uiPreferencesStore.notifyChanged('dashboardCustomEndDate', null)
-    }
-  } catch (e) {
-    // localStorage save failed
-    console.error('Failed to save filters to localStorage:', e)
-  }
-}
-
 function applyFilters() {
-  saveFiltersToStorage()
   fetchAnalytics()
   fetchOpenTrades()
   fetchAiInsight()
@@ -2948,7 +2917,7 @@ function navigateToTradesBySymbolAndDate(symbol, tradeDate) {
   console.log('Navigating to trades for:', symbol, tradeDate)
   const date = new Date(tradeDate)
   const formattedDate = date.toISOString().split('T')[0]
-  
+
   router.push({
     name: 'trades',
     query: { 
@@ -2965,7 +2934,7 @@ function navigateToTradesBySymbolAndDate(symbol, tradeDate) {
 function navigateToTradesFiltered(type) {
   console.log('Navigating to trades filtered by:', type)
   const queryParams = {}
-  
+
   if (type === 'best' && analytics.value.bestTradeDetails) {
     // Filter to show trades for the specific symbol and date of the best trade
     const bestTrade = analytics.value.bestTradeDetails
@@ -2996,7 +2965,7 @@ function navigateToTradesFiltered(type) {
       queryParams.pnlType = 'loss'
     }
   }
-  
+
   router.push({
     name: 'trades',
     query: queryParams
@@ -3027,12 +2996,12 @@ function navigateToTradesByPnLType(type) {
     pnlType = 'loss'
   }
   // For breakeven, we don't have a specific filter, so show all trades
-  
+
   const query = {}
   if (pnlType) {
     query.pnlType = pnlType
   }
-  
+
   router.push({
     name: 'trades',
     query
@@ -3041,39 +3010,12 @@ function navigateToTradesByPnLType(type) {
   })
 }
 
-// Watch for changes to timeRange and save immediately
-watch(() => filters.value.timeRange, (newRange) => {
-  saveFiltersToStorage()
-  // If switching to custom, restore saved dates if available
-  if (newRange === 'custom') {
-    try {
-      const savedStartDate = localStorage.getItem('dashboardCustomStartDate')
-      const savedEndDate = localStorage.getItem('dashboardCustomEndDate')
-      if (savedStartDate && !filters.value.startDate) {
-        filters.value.startDate = savedStartDate
-      }
-      if (savedEndDate && !filters.value.endDate) {
-        filters.value.endDate = savedEndDate
-      }
-    } catch (e) {
-      console.error('Failed to restore custom dates:', e)
-    }
-  }
-})
-
-// Watch for changes to custom dates and save immediately
-watch(() => filters.value.startDate, (newDate) => {
-  if (filters.value.timeRange === 'custom') {
-    saveFiltersToStorage()
-  }
-})
-
-watch(() => filters.value.endDate, (newDate) => {
-  if (filters.value.timeRange === 'custom') {
-    saveFiltersToStorage()
-  }
-})
-
+// Shared selection changes refresh the Trading cards, including changes made
+// by Portfolio while this view is kept alive.
+watch(filters, () => {
+  if (filters.value.timeRange === 'custom' && (!filters.value.startDate || !filters.value.endDate || filters.value.startDate > filters.value.endDate)) return
+  applyFilters()
+}, { deep: true })
 // Watch for global account filter changes
 watch(selectedAccount, () => {
   analytics.value=null;recentTrades.value=[];aiInsights.value=[];behavioralSummary.value=null;openTrades.value=[]
@@ -3089,7 +3031,7 @@ async function fetchUserSettings() {
   try {
     const response = await api.get('/settings')
     userSettings.value = response.data.settings
-    
+
     // Load dashboard layout if saved (disable watch during load)
     isInitialLoad = true
     loadDashboardLayout()
@@ -3119,7 +3061,7 @@ function updateMarketStatus() {
 function startCountdown(intervalMs) {
   clearInterval(countdownInterval)
   nextRefreshIn.value = Math.floor(intervalMs / 1000)
-  
+
   countdownInterval = setInterval(() => {
     nextRefreshIn.value--
     if (nextRefreshIn.value <= 0) {
@@ -3258,20 +3200,6 @@ onMounted(async () => {
 
   // Load manual option prices from localStorage
   loadManualOptionPrices()
-
-  // Load saved time range from localStorage
-  try {
-    const savedTimeRange = localStorage.getItem('dashboardTimeRange')
-    if (savedTimeRange) {
-      filters.value.timeRange = savedTimeRange
-      if (savedTimeRange === 'custom') {
-        filters.value.startDate = localStorage.getItem('dashboardCustomStartDate') || ''
-        filters.value.endDate = localStorage.getItem('dashboardCustomEndDate') || ''
-      }
-    }
-  } catch (e) {
-    // localStorage load failed
-  }
 
   // Restore hero ribbon $/R display mode
   try {
