@@ -5,11 +5,29 @@ export const monthPresetOptions = [
   { value: 'last_month', label: 'Last Month' }
 ]
 
+export const dashboardDateRangeOptions = [
+  { value: 'this_week', label: 'This Week' },
+  ...monthPresetOptions,
+  { value: 'all', label: 'All Time' },
+  { value: '7d', label: 'Last 7 Days' },
+  { value: '30d', label: 'Last 30 Days' },
+  { value: 'ytd', label: 'Year to Date' },
+  { value: 'custom', label: 'Custom Range' }
+]
+
+export function profileCalendarDate(now = new Date(), timezone = 'UTC') {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now)
+  const value = type => Number(parts.find(part => part.type === type).value)
+  return new Date(value('year'), value('month') - 1, value('day'), 12)
+}
+
 // Resolve calendar dates locally; never convert them through UTC.
-export function resolveDatePreset(preset, now = new Date()) {
+export function resolveDatePreset(preset, now = new Date(), timezone = null) {
+  if (timezone) now = profileCalendarDate(now, timezone)
   const start = new Date(now)
   let end = new Date(now)
   switch (preset) {
+    case 'this_week': start.setDate(start.getDate() - (start.getDay() + 6) % 7); break
     case 'this_month': start.setDate(1); break
     case 'last_month':
       start.setDate(1)
