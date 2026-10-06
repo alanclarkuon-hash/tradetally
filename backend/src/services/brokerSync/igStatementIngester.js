@@ -96,7 +96,7 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
    });
   }
   const maintenance=await require('../manualPortfolioMaintenance').rebuild(userId,'ig',[account.account_identifier],p.date);
-  if(maintenance.warnings?.length&&!activityPending)await db.query("UPDATE ig_statement_ingestion SET reason='maintenance' WHERE user_id=$1 AND attachment_hash=$2",[userId,fingerprint]);
+  if(maintenance.failed&&!activityPending)await db.query("UPDATE ig_statement_ingestion SET reason='maintenance' WHERE user_id=$1 AND attachment_hash=$2",[userId,fingerprint]);
   return {status:'imported',hash:fingerprint,date:p.date,activityPending,maintenance};
  }catch(e){
   // Import commit can succeed even if derived cache invalidation fails.
