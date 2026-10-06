@@ -420,12 +420,14 @@ class YahooFinanceClient {
         {
           timeout: 8000,
           headers: { Accept: 'application/json', 'User-Agent': USER_AGENT },
-          params: { interval: '1d', range: '5d' }
+          params: { interval: '1m', range: '1d', includePrePost: true }
         }
       );
 
-      const meta = response.data?.chart?.result?.[0]?.meta;
-      const current = asNumber(meta?.regularMarketPrice);
+      const result = response.data?.chart?.result?.[0];
+      const meta = result?.meta;
+      const selected = require('./quoteSession').yahooQuote(result);
+      const current = selected?.c ?? null;
       if (current === null) return null;
 
       const previousClose = asNumber(meta?.chartPreviousClose) ?? asNumber(meta?.previousClose) ?? 0;
@@ -441,7 +443,8 @@ class YahooFinanceClient {
         o: null,
         currency: meta?.currency || null,
         source: 'yahoo',
-        t: asNumber(meta?.regularMarketTime)
+        t: selected.t,
+        session: selected.session
       };
 
       await cache.set('yahoo_quote', yahooSymbol, quote);
