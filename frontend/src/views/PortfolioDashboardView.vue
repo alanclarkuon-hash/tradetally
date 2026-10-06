@@ -40,9 +40,9 @@
           <div v-for="group in groups" :key="group.name" class="industry" :style="rectStyle(group,true)"><div class="industry-label" :title="group.name">{{ group.name }} <span>{{ money(group.value) }}</span></div><div class="industry-tiles">
             <div v-for="sector in group.sectors" :key="sector.name" :style="{left:sector.x+'%',top:sector.y+'%',width:sector.w+'%',height:sector.h+'%'}" class="stock-sector" :title="sector.name"><span :style="{height:sector.labelHeight+'%'}">{{ sector.name }}</span></div>
             <template v-for="category in group.categories" :key="category.key||category.name"><div v-if="category.showLabel" :style="{left:category.x+'%',top:category.y+'%',width:category.w+'%',height:category.labelHeight+'%'}" class="crypto-category-label" :title="category.name">{{ category.name }}</div></template>
-            <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${money(tile.value)}, ${percent(tile.pnlPercent)}${isDelayedQuote(tile) ? ', quote more than 5 minutes old' : ''}`" :title="`${tile.symbol}${tile.name ? ' · '+tile.name : ''} · ${money(tile.value)} · ${percent(tile.pnlPercent)}`">
+            <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${money(tile.value)}, ${percent(tile.pnlPercent)}${isDelayedQuote(tile) ? ', quote more than 15 minutes old' : ''}`" :title="`${tile.symbol}${tile.name ? ' · '+tile.name : ''} · ${money(tile.value)} · ${percent(tile.pnlPercent)}`">
               <StockLogo v-if="tile.pixelW>=75 && tile.area/tile.pixelW>=115" class="heatmap-logo" :symbol="tile.symbol" :instrument-type="tile.assetClass==='Crypto assets'?'crypto':'stock'" size-class="w-7 h-7" rounded-class="rounded-full" aria-hidden="true" />
-              <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 5 minutes old" aria-label="Quote more than 5 minutes old">d</sup></span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ money(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 5 minutes old" aria-label="Quote more than 5 minutes old">d</sup></span>
+              <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ money(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span>
             </button>
           </div></div>
         </div><p v-else class="empty">No priced holdings for these accounts.</p>
@@ -108,7 +108,7 @@ onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now()},300
 onUnmounted(()=>clearInterval(quoteClockTimer))
 const isDelayedQuote=holding=>{
   const asOf=holding.priceAsOf ? Date.parse(holding.priceAsOf) : NaN
-  return Number.isFinite(asOf) && quoteClock.value-asOf>5*60000
+  return Number.isFinite(asOf) && quoteClock.value-asOf>15*60000
 }
 const groups=computed(()=>holdingGroups(data.value?.heatmapHoldings??data.value?.holdings??[]))
 async function load(){

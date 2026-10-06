@@ -165,11 +165,11 @@ describe('Portfolio filter interactions', () => {
 
 
 describe('Delayed heatmap quotes',()=>{
-  it('marks quotes older than five minutes, including tiny tiles, but not fresh or unknown dates',async()=>{
+  it('marks quotes older than fifteen minutes, including tiny tiles, but not fresh or unknown dates',async()=>{
     const now=Date.now();
-    const assets=[{symbol:'OLD',value:99,priceAsOf:new Date(now-360000).toISOString()},
-      {symbol:'TINY',value:0.01,priceAsOf:new Date(now-360000).toISOString()},
-      {symbol:'FRESH',value:80,priceAsOf:new Date(now-60000).toISOString()},
+    const assets=[{symbol:'OLD',value:99,priceAsOf:new Date(now-960000).toISOString()},
+      {symbol:'TINY',value:0.01,priceAsOf:new Date(now-960000).toISOString()},
+      {symbol:'FRESH',value:80,priceAsOf:new Date(now-600000).toISOString()},
       {symbol:'UNKNOWN',value:50,priceAsOf:null}].map(p=>({...p,assetClass:'Stocks',sector:'Technology',industry:'Software',pnlPercent:1}));
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:assets}:{change:25}}));
     const view=create();await flushPromises();
@@ -177,7 +177,7 @@ describe('Delayed heatmap quotes',()=>{
     for(const symbol of ['OLD','TINY']){
       const tile=tiles.find(t=>t.attributes('aria-label').startsWith(symbol+','));
       expect(tile.find('sup.quote-delay-marker').text()).toBe('d');
-      expect(tile.attributes('aria-label')).toContain('quote more than 5 minutes old');
+      expect(tile.attributes('aria-label')).toContain('quote more than 15 minutes old');
     }
     for(const symbol of ['FRESH','UNKNOWN'])expect(tiles.find(t=>t.attributes('aria-label').startsWith(symbol+',')).find('sup').exists()).toBe(false);
     view.unmount();
@@ -185,7 +185,7 @@ describe('Delayed heatmap quotes',()=>{
   it('updates age while the page stays open and clears its timer when unmounted',async()=>{
     vi.useFakeTimers({toFake:['Date','setInterval','clearInterval']});
     const now=Date.now();
-    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[{symbol:'BOUNDARY',value:50,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:new Date(now-300000).toISOString()}]}:{change:25}}));
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[{symbol:'BOUNDARY',value:50,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:new Date(now-900000).toISOString()}]}:{change:25}}));
     const view=create();
     try{
       await flushPromises();expect(view.find('.quote-delay-marker').exists()).toBe(false);
