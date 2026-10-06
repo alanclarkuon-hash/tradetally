@@ -9,7 +9,8 @@ async function run(){
    const delivery=await source.deliveryHealth();
    if(!delivery||delivery.errors||!Number.isFinite(Date.parse(delivery.lastRun))||Date.now()-Date.parse(delivery.lastRun)>5*60000)
     state.error='Drive folder delivery needs attention. Check Drive desktop and the host ingestion task.';
-   else if(delivery.collector&&(delivery.collector.errors||!Number.isFinite(Date.parse(delivery.collector.lastRun))||Date.now()-Date.parse(delivery.collector.lastRun)>60*60000))
+   else if((process.env.IG_INGEST_REQUIRE_COLLECTOR==='true'&&!delivery.collector)||
+    (delivery.collector&&(delivery.collector.errors||!Number.isFinite(Date.parse(delivery.collector.lastRun))||Date.now()-Date.parse(delivery.collector.lastRun)>60*60000)))
     state.error='Gmail statement collection needs attention. Check the collector execution log and pending emails.';
   }
   let backupPromise;

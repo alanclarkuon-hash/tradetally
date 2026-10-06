@@ -16,7 +16,7 @@ The exporter uses message receipts and PDF hashes. It writes a PDF and bounded J
 
 Message receipts now live in the private Drive `.collector-receipts` folder. Legacy `done:` Script Properties migrate in batches of 25, including receipts for messages already in Trash; they are removed from Properties only after a durable Drive write. Each collector run scans up to 50 messages with a 45-second work budget and resumable page/offset state. A failed message stays in Gmail while other messages continue. The private `.collector-status.json` contains only health counts and timestamps; the relay delivers this health to Broker Sync. Never remove the receipt archive to force replay.
 
-Use a separate Apps Script project for testing, point it to the Test Drive folder, set `IG_TRASH_PROCESSED=false`, and run manually without installing its trigger. This prevents test collection from moving Gmail messages to Trash. Production retains its own project, folder and trigger until a separately approved collector rollout.
+Use a separate Apps Script project for testing, point it to the Test Drive folder, set `IG_TRASH_PROCESSED=false`, and run manually without installing its trigger. In its manifest, use only `gmail.readonly` and `drive` OAuth scopes; omit `script.scriptapp`. The manual collector runs with these scopes, while Trash and trigger installation are unavailable. Production retains its own project, folder and trigger until a separately approved collector rollout.
 
 ## TradeTally setup
 
@@ -26,6 +26,8 @@ Mount only the dedicated ingestion folder into the app container, for example at
 ENABLE_IG_STATEMENT_INGESTER=true
 IG_INGEST_FOLDER=/app/ig-ingester
 IG_INGEST_USER_ID=<the owning TradeTally user UUID>
+IG_INGEST_REQUIRE_RELAY=true
+IG_INGEST_REQUIRE_COLLECTOR=true
 ```
 
 Keep test and production source folders separate. An enabled environment moves successfully committed PDFs into `Processed` inside its own source folder. Files needing review remain in the input folder; private database receipts prevent repeated imports. File errors are shown on Broker Sync, alongside statement results. The source interface is `list`, `read`, `acknowledge`; a cloud Google Drive API adapter can replace local-folder delivery without changing parsing or financial validation. Cloud API authorization is a separate deployment step, not provided by Drive desktop.
