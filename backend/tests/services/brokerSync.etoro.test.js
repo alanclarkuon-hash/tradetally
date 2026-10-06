@@ -12,6 +12,15 @@ const closed = { positionId: 10, instrumentId: 100, orderId: 20,
   closeTimestamp: '2026-09-01T10:00:00Z', units: 0.05 };
 
 beforeEach(() => jest.clearAllMocks());
+test('background quotes yield to sync reads and exhausted rate headers impose cooldown',async()=>{
+  const service=new EtoroService();let release;
+  axios.get.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve}));
+  const sync=service.get(connection,'/me');await Promise.resolve();await Promise.resolve();
+  expect(await service.get(connection,'/market-data/instruments/rates',{instrumentIds:'1'},{background:true})).toBeNull();
+  release({data:{},headers:{'ratelimit-remaining':'0','ratelimit-reset':'60'}});await sync;
+  expect(await service.get(connection,'/market-data/instruments/rates',{instrumentIds:'1'},{background:true})).toBeNull();
+  expect(axios.get).toHaveBeenCalledTimes(1);
+});
 
 test('keeps fractional crypto and de-duplicates direct/copied positions', () => {
   expect(flattenPositions({ positions: [position], mirrors: [{ positions: [{ ...position }] }] })).toEqual([position]);
