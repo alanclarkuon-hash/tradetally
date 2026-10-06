@@ -75,7 +75,7 @@ describe('Portfolio summary cards', () => {
     expect(view.findAll('article')[1].text()).toContain('£60.00')
     expect(view.findAll('article')[0].text()).not.toContain('change')
     expect(view.findAll('article')[1].text()).not.toContain('since acquisition')
-    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25})
+    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25,captureWarnings:[]})
     view.unmount()
   })
 
