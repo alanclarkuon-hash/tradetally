@@ -15,7 +15,7 @@ async function saved(userId) {
 }
 async function accounts(userId) {
   const {rows}=await saved(userId);
-  return rows.map(r=>({id:r.id,name:r.account_name,kind:r.payload.igFileInput.kind,required:required(r.payload.igFileInput.kind)}));
+  return rows.map(r=>({id:r.id,name:r.account_name,kind:r.payload.igFileInput.kind,required:required(r.payload.igFileInput.kind),csvReconciliation:r.payload.igFileInput.kind==='share_dealing'}));
 }
 async function preview(userId,files) {
   if(active.has(userId))reject('An IG import is already running. Please wait for it to finish.');
@@ -44,6 +44,8 @@ async function preview(userId,files) {
       if(!fields){inputs.push(original);continue;}
       const needed=required(original.kind);
       const dailyOnly=Object.keys(fields).every(k=>k==='daily');
+      const csvOnly=Object.keys(fields).length===1&&fields.transactions;
+      if(csvOnly){inputs.push(await require('./igCsvReconciliation').reconcile(userId,original,fields.transactions.buffer.toString('utf8')));continue;}
       if(!dailyOnly&&(needed.some(k=>!fields[k])||Object.keys(fields).some(k=>!needed.includes(k)&&!['execution','daily'].includes(k))))reject('Please include every requested report for each selected account.');
       const updated={...original};
       if(!dailyOnly) {
@@ -61,7 +63,7 @@ async function preview(userId,files) {
         ...(original.shareSecurities||original.confirmation.holdings),...updated.confirmation.holdings
       ].map(h=>[h.isin,{name:h.name,symbol:h.symbol,isin:h.isin}])).values()];
       }
-      const prepared=prepare(updated),points=new Map();
+      const prepared=prepare(updated),points=new Map((original.statementValues||[]).map(p=>[p.date,p]));
       for(const f of fields.daily||[]) {
         const point=require('./igNavHistory').readSpreadStatement(await pdf.text(f.buffer),updated,
           {from_date:prepared.from,starting_cash:0,records:prepared.records});
