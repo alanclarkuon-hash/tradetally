@@ -21,6 +21,12 @@ async function relay({source,target}){
  await fs.mkdir(target,{recursive:true});
  if((await fs.lstat(target)).isSymbolicLink())throw Error('Invalid destination');
  const result={copied:0,archived:0,errors:0,lastRun:new Date().toISOString()};
+ try{
+  const status=await regular(source,'.collector-status.json');if(status.st.size>8192)throw Error('Invalid collector status');
+  const value=JSON.parse(await fs.readFile(status.file,'utf8'));
+  if(value.version!==1||!Number.isFinite(Date.parse(value.lastRun))||!Number.isInteger(value.errors)||value.errors<0)throw Error('Invalid collector status');
+  result.collector={lastRun:value.lastRun,errors:value.errors};
+ }catch(e){if(e.code!=='ENOENT')result.errors++;}
  for(const name of (await fs.readdir(source)).filter(n=>/^[a-f0-9]{64} - .*\.pdf$/i.test(n))){
   try{
    const {file,st}=await regular(source,name);if(Date.now()-st.mtimeMs<3000)continue;

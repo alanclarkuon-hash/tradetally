@@ -20,9 +20,25 @@ test('preview runs rollback-only validation; another user cannot apply its token
 test('apply requires a backup, applies once and consumes the preview token',async()=>{
   const p=await service.preview('user-c',files());await service.apply('user-c',p.token);
   expect(backup.createFullSiteBackup).toHaveBeenCalledWith('user-c');
-  expect(importAccounts).toHaveBeenLastCalledWith('user-c',expect.any(Array),{dryRun:false});
+  expect(importAccounts).toHaveBeenLastCalledWith('user-c',expect.any(Array),{dryRun:false,beforeImport:expect.any(Function)});
   expect(backup.createFullSiteBackup.mock.invocationCallOrder[0]).toBeLessThan(importAccounts.mock.invocationCallOrder[1]);
   await expect(service.apply('user-c',p.token)).rejects.toThrow(/expired/);
+});
+
+test.each(['csv','pdf'])('account changes during backup reject stale %s imports under the transaction lock',async kind=>{
+ if(kind==='csv')require('../../src/services/brokerSync/igCsvReconciliation').reconcile.mockResolvedValue(rows()[0].payload.igFileInput);
+ const p=await service.preview('race-owner',kind==='csv'?[files()[0]]:files());
+ const client={query:jest.fn().mockResolvedValue({rows:[{...rows()[0],captured_at:'2026-06-02'}]})};
+ importAccounts.mockImplementationOnce(async(_,__,options)=>{await options.beforeImport(client);throw Error('Financial writes must not be reached');});
+ await expect(service.apply('race-owner',p.token)).rejects.toThrow('updated after');
+ expect(client.query).toHaveBeenCalledWith(expect.stringContaining('FOR UPDATE OF s'),['race-owner']);
+});
+
+test('CSV application rebuilds every corrected account from the earliest corrected date',async()=>{
+ const p=await service.preview('correction-owner',files());
+ importAccounts.mockResolvedValueOnce({accounts:[],reconciledStatementAccounts:[{identifier:'other-account',dates:['2025-09-02','2025-09-01']}]});
+ await service.apply('correction-owner',p.token);
+ expect(require('../../src/services/manualPortfolioMaintenance').rebuild).toHaveBeenCalledWith('correction-owner','ig',['synthetic','other-account'],'2025-09-01');
 });
 test('a missing backup prevents apply',async()=>{
   const p=await service.preview('user-d',files());backup.createFullSiteBackup.mockRejectedValueOnce(Error('Backup unavailable'));
