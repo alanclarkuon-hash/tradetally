@@ -23,8 +23,8 @@
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
     <section v-if="!hasAccountSelection && !loading" class="card-dense p-6" role="status"><h2 class="heading-card">No accounts selected</h2><p class="subtitle">Select an account using the accounts filter to view your portfolio.</p></section>
-    <template v-if="hasAccountSelection && data && !loading">
-      <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing">
+    <template>
+      <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing" :data-available="!!(hasAccountSelection && data && !loading)">
         <template #total><CurrencyCard preference-key="portfoliodashboardview-1" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency,currency:cardCurrency}"><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</p><div class="money main-money">{{ formatCurrency(data.totals.portfolioValue) }}</div><p class="card-foot">Latest · {{ data.accountCount }} accounts · {{ cardCurrency }}</p></article></CurrencyCard></template>
         <template #holdings><CurrencyCard preference-key="portfoliodashboardview-2" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency,currency:cardCurrency}"><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Holdings value</p><div class="money">{{ formatCurrency(data.totals.holdingsValue) }}</div></article></CurrencyCard></template>
         <template #cash><CurrencyCard preference-key="portfoliodashboardview-3" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency,currency:cardCurrency}"><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Cash &amp; stablecoins</p><div class="money">{{ formatCurrency(data.totals.cashValue+data.totals.stablecoinValue) }}</div><p class="card-foot">Cash {{ formatCurrency(data.totals.cashValue) }} <span class="muted">· Stablecoins {{ formatCurrency(data.totals.stablecoinValue) }}</span></p></article></CurrencyCard></template>
@@ -33,6 +33,7 @@
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${formatCurrency(part.value)}`"></div></div>
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ formatCurrency(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section></CurrencyCard></template>
+    <template #brokerSyncs><BrokerSyncStatusCard /></template>
     <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" /></template>
     <template #heatmap><CurrencyCard preference-key="portfoliodashboardview-5" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency}"><section class="card-dense heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Asset Class → Sector → Industry</p><p v-if="data.heatmapDate" class="subtitle">Holdings owned on {{ new Date(data.heatmapDate+'T12:00:00Z').toLocaleDateString('en-GB') }}</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
@@ -77,6 +78,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
+import BrokerSyncStatusCard from '@/components/dashboard/BrokerSyncStatusCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import QuoteSessionMarker from '@/components/common/QuoteSessionMarker.vue'
 import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
