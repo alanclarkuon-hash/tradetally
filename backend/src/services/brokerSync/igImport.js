@@ -205,7 +205,7 @@ async function importAccounts(userId,inputs,{dryRun=true,beforeImport,beforeComm
         result.portfolioDates++;
       }
       result.accounts.push({name:a.name,cash:a.endingCash,closedTrades:a.trades.filter(t=>t.exitTime).length,holdings:a.trades.filter(t=>!t.exitTime).length});
-      if(!dryRun)await require('./igEmailReconciliation').clear(client,userId,a.identifier,a.records);
+      if(!dryRun)await require('./igEmailReconciliation').clear(client,userId,a.identifier,a.records,a.confirmation.cutoff);
     }
     for(const {out,incoming} of pairs) {
       const previous=(await client.query(`SELECT * FROM broker_transfer_matches WHERE user_id=$1 AND
