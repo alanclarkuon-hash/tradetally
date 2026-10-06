@@ -5,7 +5,7 @@ jest.mock('../../src/services/brokerSync/etoroService', () => ({ get: jest.fn(),
 const registry = require('../../src/services/brokerHistoryProviders');
 const db = require('../../src/config/database');
 const BC = require('../../src/models/BrokerConnection');
-beforeEach(() => { jest.clearAllMocks(); });
+beforeEach(() => { jest.resetAllMocks(); });
 test('adding a broker adapter requires no orchestrator change and uses remaining ranges', async () => {
   db.query.mockResolvedValue({ rows: [{ id: 'one', broker_type: 'new-broker' }, { id: 'two', broker_type: 'another' }] });
   BC.findById.mockResolvedValue({});
@@ -33,7 +33,7 @@ test('uncommitted and out-of-range candles never enter broker history', () => {
   expect(registry.candle(Date.parse(current), [1,1,1,NaN,0])).toBeNull();
 });
 test('eToro verifies stable instrument ID, explicit USD units and bounded cursor pages', async () => {
-  db.query.mockResolvedValue({ rows: [{ payload: { instruments: [{ instrumentId: 1, symbolFull: 'BTC' }] } }] });
+  db.query.mockResolvedValue({ rows: [{ payload: { instruments: [{ instrumentId: 1, symbolFull: 'BTC',instrumentTypeId:2 }],instrumentTypes:[{instrumentTypeId:2,instrumentTypeDescription:'Crypto'}] } }] });
   const etoro = require('../../src/services/brokerSync/etoroService');
   etoro.get.mockResolvedValueOnce({instrumentId:1,intervals:[{interval:'1d',candles:1}]}).mockResolvedValueOnce({ instrumentId: 1, symbol: 'BTC/USD', interval:'1d',side:'bid',results: [{ time: '2026-01-01T00:00:00Z', open: 10, high: 10, low: 10, close: 10, volume: 0 }], pagination: { hasNext: false } });
   expect(await registry.etoroCandles({ symbol: 'BTC', instrumentType: 'crypto', from: '2026-01-01', to: '2026-01-01', userId: 'owner', connection: { id: 'conn' } })).toHaveLength(1);
@@ -58,12 +58,17 @@ test('eToro validates session date, currency and split scale against permanent r
 });
 test('eToro discovers a historical equity missing from the recent snapshot and uses its native currency',async()=>{
  const etoro=require('../../src/services/brokerSync/etoroService');
- db.query.mockResolvedValueOnce({rows:[{payload:{instruments:[]}}]}).mockResolvedValueOnce({rows:[{payload:{currency:'HKD',prices:[{date:'2021-10-15',close:500}],splits:[]}}]});
- etoro.get.mockResolvedValueOnce({items:[{instrumentId:23,internalSymbolFull:'0700.HK'},{instrumentId:9,internalSymbolFull:'WRONG'}]})
+ db.query.mockResolvedValueOnce({rows:[{payload:{instruments:[],instrumentTypes:[{instrumentTypeId:1,instrumentTypeDescription:'Stocks'}]}}]}).mockResolvedValueOnce({rows:[{payload:{currency:'HKD',prices:[{date:'2021-10-15',close:500}],splits:[]}}]});
+ etoro.get.mockResolvedValueOnce({items:[{instrumentId:23,instrumentTypeId:1,internalSymbolFull:'0700.HK'},{instrumentId:9,internalSymbolFull:'WRONG'}]})
  .mockResolvedValueOnce({instrumentId:23,intervals:[{interval:'1d',candles:20}]})
  .mockResolvedValueOnce({instrumentId:23,symbol:'0700.HK/HKD',interval:'1d',side:'bid',results:[{time:'2021-10-14T21:00:00Z',close:500}],pagination:{hasNext:false}});
  expect(await registry.etoroCandles({symbol:'0700.HK',instrumentType:'stock',from:'2021-10-15',to:'2021-10-15',userId:'owner',connection:{id:'conn'}})).toEqual([expect.objectContaining({close:500,time:Date.parse('2021-10-15')/1000})]);
  expect(etoro.get.mock.calls[2][2].from).toBe('2021-10-14T00:00:00.000Z');
+});
+test('eToro history rejects a same-ticker equity when asked for a coin',async()=>{
+ db.query.mockResolvedValue({rows:[{payload:{instruments:[{symbolFull:'SUI',instrumentId:1,instrumentTypeId:1}],instrumentTypes:[{instrumentTypeId:1,instrumentTypeDescription:'Stocks'}]}}]});
+ expect(await registry.etoroCandles({symbol:'SUI',instrumentType:'crypto',from:'2026-01-01',to:'2026-01-02',userId:'owner',connection:{id:'conn'}})).toEqual([]);
+ expect(require('../../src/services/brokerSync/etoroService').get).not.toHaveBeenCalled();
 });
 test('UTC broker bars reject invalid OHLC and non-UTC daily boundaries',()=>{
  expect(registry.candle(Date.parse('2026-01-01T21:00:00Z'),[1,2,1,1,0])).toBeNull();

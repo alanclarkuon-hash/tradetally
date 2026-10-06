@@ -4,19 +4,22 @@
       <div>
         <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Historical prices</h2>
         <p class="mt-1 text-sm text-gray-600 dark:text-gray-400" role="status" aria-live="polite">
-          <template v-if="job?.status === 'pending'">Queued after broker sync</template>
+          <template v-if="job?.status === 'pending'">{{ job.mode==='broker_refresh'?'Saved-price refresh queued':'Queued after broker sync' }}</template>
+          <template v-else-if="job?.status === 'processing' && job.stage === 'quotes'">Refreshing saved quotes · {{ job.quoteProcessed }}/{{ job.quoteTotal }} checked</template>
+          <template v-else-if="job?.status === 'processing' && job.stage === 'broker_refresh'">Checking broker history for {{ job.currentSymbol }} · {{ job.processed }}/{{ job.total }} assets checked</template>
           <template v-else-if="job?.status === 'processing' && job.stage === 'portfolio'">Updating portfolio history from downloaded prices</template>
           <template v-else-if="job?.status === 'processing' && job.stage === 'calendars'">Checking exchange calendar for {{ job.currentSymbol }} · {{ job.calendarProcessed }}/{{ job.calendarTotal }} listings checked</template>
           <template v-else-if="job?.status === 'processing'">Downloading {{ job.currentSymbol || 'missing prices' }} · {{ job.processed }}/{{ job.total }} assets checked</template>
           <template v-else-if="job?.status === 'failed'">History update needs attention. Saved prices are retained; the next sync retries missing dates.</template>
+          <template v-else-if="job?.mode==='broker_refresh'">Price refresh finished · {{ job.processed }}/{{ job.total }} assets checked · {{ job.brokerRows }} broker closes saved · {{ job.gaps.length }} with dates to review</template>
           <template v-else-if="job">Download finished · {{ job.complete }}/{{ job.total }} assets have daily coverage · {{ job.gaps.length }} with dates to review</template>
           <template v-else>Missing history will download after the next broker sync.</template>
         </p>
       </div>
       <button v-if="allowUpdate" type="button" class="btn-secondary text-sm" :disabled="active || requesting" @click="update">{{ requesting ? 'Queuing…' : 'Update history' }}</button>
     </div>
-    <div v-if="active" class="mt-3 h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Assets checked" :aria-valuenow="job.processed" :aria-valuemax="job.total || 1" aria-valuemin="0">
-      <div class="h-full bg-primary-500 transition-all" :class="{'animate-pulse': !job.total || job.stage === 'portfolio'}" :style="{width: `${job.total ? Math.max(3,job.processed/job.total*100) : 8}%`}"></div>
+    <div v-if="active" class="mt-3 h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Assets checked" :aria-valuenow="progressNow" :aria-valuemax="progressTotal || 1" aria-valuemin="0">
+      <div class="h-full bg-primary-500 transition-all" :class="{'animate-pulse': !progressTotal || job.stage === 'portfolio'}" :style="{width: `${progressTotal ? Math.max(3,progressNow/progressTotal*100) : 8}%`}"></div>
     </div>
     <p v-if="error" role="alert" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <details v-if="job?.gaps.length || job?.portfolioWarnings.length" class="mt-3 text-sm text-gray-600 dark:text-gray-400">
@@ -37,6 +40,8 @@ import api from '@/services/api'
 defineProps({ allowUpdate: { type: Boolean, default: false } })
 const job = ref(null), error = ref(''), requesting = ref(false)
 const active = computed(() => ['pending','processing'].includes(job.value?.status))
+const progressNow=computed(()=>job.value?.stage==='quotes'?job.value.quoteProcessed:job.value?.processed||0)
+const progressTotal=computed(()=>job.value?.stage==='quotes'?job.value.quoteTotal:job.value?.total||0)
 let mounted = false
 async function poll() {
   try {

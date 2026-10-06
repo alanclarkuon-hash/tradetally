@@ -86,12 +86,17 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     // Search is public metadata, but its filter can be ignored: verify exact identity.
     matches = await directory(`etoro-identity:${symbol}`,async()=>{
       const data=await etoro.get(connection,'/market-data/search',{
-        fields:'instrumentId,internalSymbolFull',internalSymbolFull:symbol,pageSize:100,pageNumber:1
+        fields:'instrumentId,internalSymbolFull,instrumentTypeID',internalSymbolFull:symbol,pageSize:100,pageNumber:1
       });
       return (data.items||[]).filter(i=>String(field(i,'internalSymbolFull')).toUpperCase()===symbol);
     });
   }
   if (matches.length !== 1) return [];
+  const types=snapshot?.instrumentTypes||await directory('etoro-history-types',async()=>
+    field(await etoro.get(connection,'/market-data/instrument-types'),'instrumentTypes'));
+  const typeId=field(matches[0],'instrumentTypeId');
+  const description=String(field(types?.find(t=>String(field(t,'instrumentTypeId'))===String(typeId)),'instrumentTypeDescription')||'').toLowerCase();
+  if(!description||(instrumentType==='crypto'?!/crypto/.test(description):!/stock|equity|etf|fund/.test(description)))return [];
   const id = Number(field(matches[0], 'instrumentId'));
   if (!Number.isSafeInteger(id) || id <= 0) return [];
   const coverage=await etoro.get(connection, `/data/instruments/${id}/candles/coverage`);
@@ -140,7 +145,7 @@ function etoroDaily(row,type,currency,reference) {
   const values=[close,close/split].filter(v=>v>0&&Math.abs(v/target-1)<=0.01);
   if(!values.length)return null;
   const normalized=values.sort((a,b)=>Math.abs(a-target)-Math.abs(b-target))[0];
-  return {time:Date.parse(session)/1000,close:normalized,open:normalized,high:normalized,low:normalized,volume:0};
+  return {time:Date.parse(session)/1000,close:normalized,open:normalized,high:normalized,low:normalized,volume:0,currency:unit.code};
 }
 
 // Register a new broker capability here; callers, queue and UI need no broker switch.
@@ -156,7 +161,7 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
       const connection = await BrokerConnection.findById(row.id, row.broker_type === 'etoro');
       for (const { from, to } of ranges()) {
         const prices = await adapter({ userId, symbol, instrumentType, from, to, connection });
-        if (prices.length) await onPrices(prices, row.broker_type);
+        if (prices.length) await onPrices(prices.map(c=>({...c,currency:c.currency||(instrumentType==='crypto'?'USD':null)})), row.broker_type);
       }
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }

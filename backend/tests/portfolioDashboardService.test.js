@@ -1,5 +1,6 @@
 jest.mock('../src/config/database',()=>({query:jest.fn()}));
-jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn()}));
+jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn(),_getDailySeries:jest.fn()}));
+jest.mock('../src/services/exchangeCalendar',()=>({...jest.requireActual('../src/services/exchangeCalendar'),resolve:jest.fn()}));
 jest.mock('../src/models/Account',()=>({getCashflow:jest.fn()}));
 jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockTradeChartData:jest.fn()}));
@@ -32,16 +33,27 @@ test('Today compares the current quote with previous close and keeps new purchas
  expect(periodResult(p,{start_date:today,end_date:today},rates,[{quantity:100,price:102,acquired:today}]).percent).toBeCloseTo(100*2/102);
  expect(periodResult(p,{start_date:today,end_date:today},{[today]:104.5},[{quantity:100,price:80,acquired:'2020-01-01'}]).pnl).toBeNull();
 });
-beforeEach(()=>{jest.resetAllMocks();require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+beforeEach(()=>{jest.resetAllMocks();require('../src/services/exchangeCalendar').resolve.mockResolvedValue('US');Portfolio._getDailySeries.mockResolvedValue([]);require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+test('a missing prior open-session close stays unavailable instead of falling back to Friday',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-06T12:00:00Z'));
+ try{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE',instrumentType:'stock',currentPrice:104}]);getRatesToDisplay.mockResolvedValue({USD:1});
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'EXAMPLE',quantity:100,price:80,acquired:'2025-01-01'}]:[]}));
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-10-02')/1000,close:100},{time:Date.parse('2026-10-06')/1000,close:104}]);
+  const result=await getDashboard('owner',{start_date:'2026-10-06',end_date:'2026-10-06'});
+  expect(result.holdings[0].pnlPercent).toBeNull();
+  expect(require('../src/utils/yahooFinance').getStockTradeChartData).not.toHaveBeenCalled();
+ }finally{jest.useRealTimers();}
+});
 test('current ticker uses original account lots for period P&L and current market symbol for charts',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEW',name:'Current company',sourceSymbols:['OLD'],accountIdentifiers:['demo'],instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'OLD',account_identifier:'demo',quantity:100,price:1,acquired:'2025-01-01'}]:[]}));
-  require('../src/utils/yahooFinance').getStockTradeChartData.mockResolvedValue({candles_currency:'USD',candles:[{time:Date.parse('2025-12-31')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]});
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]);
   require('../src/utils/currencyConverter').getForexRate.mockResolvedValue(1);
   const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
   expect(result.holdings[0]).toMatchObject({symbol:'NEW',name:'Current company',pnl:100,pnlPercent:100});
-  expect(require('../src/utils/yahooFinance').getStockTradeChartData).toHaveBeenCalledWith('NEW',expect.any(String),expect.any(String),'D');
+  expect(Portfolio._getDailySeries).toHaveBeenCalledWith('NEW',expect.any(String),expect.any(String),'test-user',expect.objectContaining({instrumentType:'stock',background:true}));
 });
 test('fund identity overrides cached industry and keeps value counted once',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE.L',instrumentType:'stock'}]);
@@ -95,11 +107,11 @@ test('dated stock candles are converted to USD before comparing portfolio prices
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'SYNTH.L',instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'SYNTH.L',quantity:100,price:1,acquired:'2025-01-01'}]:[]}));
-  require('../src/utils/yahooFinance').getStockTradeChartData.mockResolvedValue({candles_currency:'GBP',candles:[{time:Date.parse('2025-12-31')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]});
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:1.25},{time:Date.parse('2026-02-01')/1000,close:2.5}]);
   require('../src/utils/currencyConverter').getForexRate.mockResolvedValue(1.25);
   const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
   expect(result.holdings[0].pnl).toBe(125);expect(result.holdings[0].pnlPercent).toBe(100);
-  expect(require('../src/utils/currencyConverter').getForexRate).toHaveBeenCalledWith('GBP','USD','2025-12-31');
+  expect(require('../src/utils/currencyConverter').getForexRate).not.toHaveBeenCalled();
 });
 
 test('stock reference grouping does not change valuation or reuse provider industry',async()=>{
@@ -116,6 +128,7 @@ test('stock reference grouping does not change valuation or reuse provider indus
 
 test('crypto range P&L can reuse stored USD closes without a Kraken holding',async()=>{
  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEAR',currentPrice:12}]);
+ Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:10},{time:Date.parse('2026-02-01')/1000,close:12}]);
  getRatesToDisplay.mockResolvedValue({USD:1});
  require('../src/services/cryptoCategoriesService').getDisplayCategories.mockResolvedValue({categories:[],primaryCategory:null});
  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'NEAR',quantity:100,price:8,acquired:'2025-12-01'}]:sql.includes('portfolio_reconstruction_prices')?[{symbol:'NEAR-USD',payload:{currency:'USD',prices:[{date:'2025-12-31',close:10},{date:'2026-02-01',close:12}]}}]:[]}));

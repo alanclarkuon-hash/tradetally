@@ -5,6 +5,13 @@ import api from '@/services/api'
 vi.mock('@/services/api', () => ({ default: { get: vi.fn(), post: vi.fn() } }))
 vi.mock('@/composables/useVisibilityPolling', () => ({ useVisibilityPolling: fn => ({ start: fn, stop: vi.fn() }) }))
 beforeEach(() => vi.clearAllMocks())
+it('shows saved-quote refresh progress without confusing it with historical coverage',async()=>{
+ api.get.mockResolvedValue({data:{data:[{status:'processing',mode:'broker_refresh',stage:'quotes',quoteProcessed:4,quoteTotal:10,processed:0,total:100,gaps:[],portfolioWarnings:[]}]}});
+ const view=mount(HistoryBackfillStatus);await flushPromises();
+ expect(view.text()).toContain('Refreshing saved quotes · 4/10 checked');
+ expect(view.get('[role=progressbar]').attributes('aria-valuenow')).toBe('4');
+ expect(view.get('[role=progressbar]').attributes('aria-valuemax')).toBe('10');view.unmount();
+});
 it('shows progress, prevents duplicate updates and lists unresolved dates', async () => {
   api.get.mockResolvedValue({ data: { data: [{ id: 'one', status: 'processing', stage: 'prices', currentSymbol: 'BTC', processed: 2, total: 4, complete: 1, gaps: [{ symbol: 'GAP', instrumentType: 'crypto', ranges: [{ from: '2026-01-01', to: '2026-01-02' }], reason: 'Unsupported dates' }], portfolioWarnings: [] }] } });
   const view = mount(HistoryBackfillStatus, { props: { allowUpdate: true } }); await flushPromises()
