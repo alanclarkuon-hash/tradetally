@@ -19,10 +19,6 @@
       <div class="history-legend"><span><i class="value-key"></i>{{ includeFunding ? "Portfolio value" : "Overall gains" }}</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer</span></div>
       <div class="history-canvas"><canvas ref="canvas" role="img" :aria-label="includeFunding ? 'Recorded portfolio values and funding activity over time.' : 'Overall portfolio gains excluding cash funding over time.'" /></div>
       </template>
-      <div v-if="brokerSyncs.length" class="history-message">
-        <p class="font-medium">Last successful broker syncs ({{ timezoneLabel }})</p>
-        <ul class="mt-1"><li v-for="broker in brokerSyncs" :key="broker.type">{{ broker.label }}: {{ broker.lastSync ? formatDateTime(broker.lastSync) : broker.type==='ig' ? 'Statement imports · no API sync' : 'No successful sync recorded' }}</li></ul>
-      </div>
     </template>
   </section>
 </template>
@@ -33,26 +29,14 @@ import {Chart} from '@/lib/chartSetup'
 import {useMonetaryPrivacy,MONEY_MASK} from '@/composables/useDashboardPrivacy'
 const {hideAmounts}=useMonetaryPrivacy()
 import {dateNumber,valueChartPoints,fundingAdjustedHistory} from '@/utils/portfolioValueChart'
-import {useUserTimezone} from '@/composables/useUserTimezone'
-const {formatDateTime,timezoneLabel}=useUserTimezone()
+
+
 const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:'GBP'}})
 const includeFunding=ref(true)
 const adjusted=computed(()=>fundingAdjustedHistory(props.history))
 const displayedSeries=computed(()=>includeFunding.value ? props.history?.series||[] : adjusted.value.series||[])
 const completePoints=computed(()=>displayedSeries.value.filter(point=>point.value!=null && Number.isFinite(Number(point.value))))
 const accountsWithoutValues=computed(()=>(props.history?.coverage?.accounts||[]).filter(account=>!account.days).map(account=>account.name))
-const brokerSyncs=computed(()=>{
-  const labels={ibkr:'IBKR',trading212:'Trading 212',okx:'OKX',kraken:'Kraken',etoro:'eToro',ig:'IG'}
-  const brokers=new Map()
-  for(const account of props.history?.coverage?.accounts||[]) {
-    if(!account.broker)continue
-    const prior=brokers.get(account.broker)
-    const lastSync=Number.isFinite(Date.parse(account.lastSuccessfulSyncAt)) ? account.lastSuccessfulSyncAt : null
-    if(!prior || (lastSync && (!prior.lastSync || Date.parse(lastSync)>Date.parse(prior.lastSync))))
-      brokers.set(account.broker,{type:account.broker,label:labels[account.broker]||account.broker,lastSync})
-  }
-  return [...brokers.values()]
-})
 const isTestEnvironment=window.__APP_CONFIG__?.APP_ENVIRONMENT==='test'
 const displayedChange=computed(()=>includeFunding.value ? props.history?.change : adjusted.value.change)
 const canvas=ref(null)

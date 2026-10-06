@@ -20,7 +20,7 @@ describe('Portfolio card customization',()=>{
   it('reorders cards, restores the order and resets to defaults',async()=>{
     const view=create();await flushPromises()
     await view.find('[aria-label="Move Portfolio Value up"]').trigger('click')
-    expect(view.findAll('[data-card]').map(card=>card.attributes('data-card'))).toEqual(['total','holdings','cash','history','allocation','heatmap'])
+    expect(view.findAll('[data-card]').map(card=>card.attributes('data-card'))).toEqual(['total','holdings','cash','history','allocation','heatmap','brokerSyncs'])
     view.unmount()
     const next=create();await flushPromises()
     expect(next.findAll('[data-card]')[3].attributes('data-card')).toBe('history')
@@ -30,7 +30,7 @@ describe('Portfolio card customization',()=>{
   it('ignores obsolete and duplicate saved cards and appends missing cards',async()=>{
     localStorage.setItem('portfolioDashboardLayout',JSON.stringify([{id:'history',visible:false},{id:'history'},{id:'obsolete'}]))
     const view=create();await flushPromises()
-    expect(view.findAll('[data-card]')).toHaveLength(6)
+    expect(view.findAll('[data-card]')).toHaveLength(7)
     expect(view.findAll('[data-card]')[0].attributes('data-card')).toBe('history')
     expect(view.text()).not.toContain('History chart');view.unmount()
   })

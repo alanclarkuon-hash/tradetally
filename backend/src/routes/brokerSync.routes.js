@@ -27,6 +27,10 @@ router.use((req, res, next) => {
 
 // Get all broker connections for current user
 router.get('/connections', brokerSyncController.getConnections);
+router.get('/status-summary', async (req, res, next) => {
+  try { res.json({data: await require('../services/brokerSyncStatusService').getStatus(req.user.id)}); }
+  catch (error) { next(error); }
+});
 
 // Get all sync logs for current user
 router.get('/logs', brokerSyncController.getAllSyncLogs);
