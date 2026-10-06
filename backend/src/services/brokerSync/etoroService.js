@@ -54,7 +54,7 @@ function historyStart(requested, now = new Date()) {
 }
 
 class EtoroService {
-  constructor() { this.lastRequestAt = 0; this.requestQueue = Promise.resolve(); }
+  constructor() { this.lastRequestAt = 0; this.requestQueue = Promise.resolve(); this.cooldownUntil = 0; }
 
   async get(connection, path, params) {
     const pending = this.requestQueue.then(() => this.read(connection, path, params));
@@ -63,9 +63,10 @@ class EtoroService {
   }
 
   async read(connection, path, params) {
+    if (Date.now() < this.cooldownUntil) throw new Error('eToro rate limit cooling down. Please wait before trying again.');
     if (!connection.etoroApiKey || !connection.etoroUserKey) throw new Error('Both eToro keys are required.');
     // Only fixed GET paths are exposed. Never follow a redirect with secret headers.
-    if (!/^\/(me|trading\/info\/real\/pnl|trading\/info\/trade\/history|market-data\/(instruments|instrument-types))$/.test(path)) {
+    if (!/^\/(me|trading\/info\/real\/pnl|trading\/info\/trade\/history|market-data\/(instruments|instrument-types|search)|data\/instruments\/[1-9]\d*\/candles(?:\/coverage)?)$/.test(path)) {
       throw new Error('Unsupported eToro read endpoint.');
     }
     const wait = Math.max(0, this.lastRequestAt + 1100 - Date.now());
@@ -75,14 +76,17 @@ class EtoroService {
       const response = await axios.get(`${ORIGIN}${path}`, {
         headers: { 'x-api-key': connection.etoroApiKey, 'x-user-key': connection.etoroUserKey,
           'x-request-id': randomUUID() },
-        params, timeout: 30000, maxRedirects: 0
+        params, timeout: 30000, maxRedirects: 0, maxContentLength: 8 * 1024 * 1024
       });
       return response.data;
     } catch (error) {
       // Axios errors contain request headers. Never propagate or log them.
       const status = error.response?.status;
       if (status === 401 || status === 403) throw new Error('eToro rejected the keys or permissions. Use real-account Read All keys.');
-      if (status === 429) throw new Error('eToro rate limit reached. Please wait a minute before trying again.');
+      if (status === 429) {
+        this.cooldownUntil = Date.now() + Math.max(60, Number(error.response?.headers?.['retry-after']) || 60) * 1000;
+        throw new Error('eToro rate limit reached. Please wait a minute before trying again.');
+      }
       throw new Error(`Unable to read eToro data${status ? ` (HTTP ${status})` : ''}. Please try again later.`);
     }
   }
@@ -171,3 +175,4 @@ module.exports = new EtoroService();
 module.exports.EtoroService = EtoroService;
 module.exports.flattenPositions = flattenPositions;
 module.exports.historyStart = historyStart;
+module.exports.field = field;

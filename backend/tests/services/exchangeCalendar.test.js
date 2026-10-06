@@ -1,0 +1,71 @@
+jest.mock('../../src/config/database',()=>({query:jest.fn()}));
+jest.mock('axios',()=>({get:jest.fn()}));
+const calendar=require('../../src/services/exchangeCalendar');
+const {missingRanges}=require('../../src/services/holdingsHistoryProvider');
+test.each(['2025-04-18','2026-01-19','2025-01-09','2026-07-03','2022-06-20'])('US full closure %s does not need a candle',day=>{
+ expect(missingRanges([],day,day,false,'US')).toEqual([]);
+});
+test.each(['2025-07-03','2025-11-28','2025-12-24','2021-12-31','2021-06-18','2026-10-12'])('US early closes and bank-only holidays %s still need a candle',day=>{
+ expect(calendar.isTradingDay(day,'US')).toBe(true);
+});
+test('exchange-specific closures do not hide another market session or crypto history',()=>{
+ expect(calendar.isTradingDay('2026-01-19','LSE')).toBe(true);
+ expect(calendar.isTradingDay('2025-04-21','US')).toBe(true);
+ expect(calendar.isTradingDay('2025-04-21','LSE')).toBe(false);
+ expect(missingRanges([],'2025-04-18','2025-04-18',true,'US')).toEqual([{from:'2025-04-18',to:'2025-04-18'}]);
+ expect(calendar.isTradingDay('2026-01-19',null)).toBe(true);
+});
+test.each(['2020-05-08','2021-12-27','2021-12-28','2022-06-02','2022-06-03','2022-09-19','2023-05-08'])('LSE observed/exceptional closure %s',day=>{
+ expect(calendar.isTradingDay(day,'LSE')).toBe(false);
+});
+test('Xetra historical rules preserve trading on modern Whit Monday and German Unity Day',()=>{
+ expect(calendar.isTradingDay('2021-05-24','XETRA')).toBe(false);
+ expect(calendar.isTradingDay('2025-06-09','XETRA')).toBe(true);
+ expect(calendar.isTradingDay('2025-10-03','XETRA')).toBe(true);
+ expect(calendar.isTradingDay('2025-12-24','XETRA')).toBe(false);
+});
+test('recognized listing exchanges resolve but an ambiguous unsuffixed ticker never defaults to US',async()=>{
+ expect(calendar.identify('MSFT','NASDAQ NMS - GLOBAL MARKET')).toBe('US');
+ expect(calendar.identify('SPY','NYSEArca')).toBe('US');
+ expect(calendar.identify('VWRL.L','NYSE')).toBe('LSE');
+ expect(calendar.identify('RHM.DE')).toBe('XETRA');
+ expect(calendar.identify('UNKNOWN')).toBeNull();
+ const db=require('../../src/config/database'); db.query.mockResolvedValue({rows:[{exchange:'London'}]});
+ expect(await calendar.resolve('LISTED')).toBe('LSE');
+ expect(await calendar.resolve('LISTED')).toBe('LSE');
+ expect(db.query).toHaveBeenCalledTimes(1);
+});
+test('a real missing session next to a holiday remains a gap',()=>{
+ expect(missingRanges([],'2025-04-18','2025-04-21',false,'US')).toEqual([{from:'2025-04-21',to:'2025-04-21'}]);
+});
+test('unknown listing metadata is fetched only when background lookup is allowed and then persisted/reused',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ db.query.mockResolvedValue({rows:[]});
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'ETF',exchangeName:'PCX'}}]}}});
+ expect(await calendar.resolve('ETF')).toBeNull(); expect(axios.get).not.toHaveBeenCalled();
+ expect(await calendar.resolve('ETF',{allowLookup:true})).toBe('US');
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO exchange_calendar_listings'),['ETF','PCX']);
+ expect(await calendar.resolve('ETF')).toBe('US'); expect(axios.get).toHaveBeenCalledTimes(1);
+});
+test('verified unsupported exchanges do not repeatedly request listing metadata',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ db.query.mockResolvedValue({rows:[{exchange:'JPX',source:'yahoo'},{exchange:'NYSE',source:'classification'}]});
+ const before=axios.get.mock.calls.length;
+ expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
+ expect(await calendar.resolve('UNSUPPORTED',{allowLookup:true})).toBeNull();
+ expect(axios.get).toHaveBeenCalledTimes(before);
+});
+
+test.each(['2021-10-13','2021-10-14','2021-04-06','2023-07-17','2023-09-01','2023-09-08','2024-09-06','2026-04-07'])('HKEX full closure %s is not missing data',day=>{
+ expect(missingRanges([],day,day,false,'HKEX')).toEqual([]);
+});
+test.each(['2021-02-11','2021-12-24','2021-12-31','2022-08-25','2022-11-02','2022-11-03','2024-10-01'])('HKEX partial sessions and another year holiday %s stay required',day=>{
+ if(day==='2024-10-01')expect(calendar.isTradingDay(day,'US')).toBe(true);
+ else expect(calendar.isTradingDay(day,'HKEX')).toBe(true);
+});
+test('Hong Kong identity works for suffix and verified exchange',async()=>{
+ expect(await calendar.resolve('0700.HK')).toBe('HKEX');
+ expect(calendar.identify('TENCENT','HKG')).toBe('HKEX');
+ expect(missingRanges([],'2021-10-12','2021-10-15',false,'HKEX')).toEqual([{from:'2021-10-12',to:'2021-10-15'}]);
+ expect(missingRanges([],'2021-10-13','2021-10-14',true,'HKEX')).toHaveLength(1);
+});

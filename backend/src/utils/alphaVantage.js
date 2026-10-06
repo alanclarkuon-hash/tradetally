@@ -133,35 +133,28 @@ class AlphaVantageClient {
   }
 
   async waitForRateLimit() {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    const oneDayAgo = now - 24 * 60 * 60 * 1000;
-    
-    // Clean up old timestamps
-    this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > oneMinuteAgo);
-    this.dailyCalls = this.dailyCalls.filter(timestamp => timestamp > oneDayAgo);
-    
-    // Check daily limit (25 calls per day for free tier)
-    if (this.dailyCalls.length >= 25) {
-      throw new Error('Alpha Vantage daily API limit reached (25 calls). Try again tomorrow.');
-    }
-    
-    // Check minute limit (5 calls per minute)
-    if (this.callTimestamps.length >= 5) {
-      const oldestCall = this.callTimestamps[0];
-      const waitTime = 60000 - (now - oldestCall) + 1000; // Add 1s buffer
-      
-      if (waitTime > 0) {
-        console.log(`Alpha Vantage rate limit reached, waiting ${waitTime}ms`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-    
-    // Record this call
-    this.callTimestamps.push(now);
-    this.dailyCalls.push(now);
+    const reservation = (this.rateLimitQueue || Promise.resolve()).then(() => this.reserveRateLimit());
+    this.rateLimitQueue = reservation.catch(() => {});
+    return reservation;
   }
 
+  async reserveRateLimit() {
+    while (true) {
+      const now = Date.now();
+      this.callTimestamps = this.callTimestamps.filter(timestamp => timestamp > now - 60000);
+      this.dailyCalls = this.dailyCalls.filter(timestamp => timestamp > now - 24 * 60 * 60 * 1000);
+      if (this.dailyCalls.length >= 25) {
+        throw new Error('Alpha Vantage daily API limit reached (25 calls). Try again tomorrow.');
+      }
+      if (this.callTimestamps.length >= 5) {
+        await new Promise(resolve => setTimeout(resolve, 61000 - (now - this.callTimestamps[0])));
+        continue;
+      }
+      this.callTimestamps.push(now);
+      this.dailyCalls.push(now);
+      return;
+    }
+  }
   async makeRequest(params) {
     if (!this.apiKey) {
       throw new Error('Alpha Vantage API key not configured');

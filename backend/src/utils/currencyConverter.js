@@ -359,6 +359,25 @@ async function getForexRate(base, target = 'USD', date = null) {
     return 1.0;
   }
 
+  // A persisted historical map already contains this date's published rate.
+  // Use it before retrying a provider (which may be queued or not entitled).
+  // Never substitute the latest snapshot for a requested historical date.
+  if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const pairKey = `${baseUpper}_${targetUpper}_${date}`;
+    const pair = frankfurterCache.get(pairKey);
+    if (pair && Date.now() - pair.timestamp < CACHE_TTL) return pair.rate;
+    const mapKey = `map_${baseUpper}_${date}`;
+    const memory = frankfurterCache.get(mapKey);
+    const rates = memory && Date.now() - memory.timestamp < CACHE_TTL
+      ? memory.rates : await loadRateMapFromDb(baseUpper, date);
+    const rate = Number(rates?.[targetUpper]);
+    if (Number.isFinite(rate) && rate > 0) {
+      frankfurterCache.set(mapKey, { rates, timestamp: Date.now() });
+      frankfurterCache.set(pairKey, { rate, timestamp: Date.now() });
+      return rate;
+    }
+  }
+
   // An override replaces the provider only for a current rate. Applying it to
   // a dated lookup would rewrite history: importing a 2019 trade would bake
   // today's administrator rate into that trade's stored USD amounts forever.

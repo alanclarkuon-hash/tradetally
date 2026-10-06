@@ -16,7 +16,7 @@ async function getRange(symbol, startDate, endDate) {
   const result = await db.query(
     `SELECT price_date, open, high, low, close, volume
      FROM historical_prices
-     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3
+     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND (is_final OR price_date=CURRENT_DATE)
      ORDER BY price_date ASC`,
     [symbol.toUpperCase(), startDate, endDate]
   );
@@ -44,7 +44,7 @@ async function hasRange(symbol, startDate, endDate) {
   const result = await db.query(
     `SELECT COUNT(*) as count
      FROM historical_prices
-     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3`,
+     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND is_final`,
     [symbol.toUpperCase(), startDate, endDate]
   );
 
@@ -65,13 +65,17 @@ async function hasRange(symbol, startDate, endDate) {
 
 /**
  * Bulk insert candles (immutable historical data).
- * Uses ON CONFLICT DO NOTHING since historical prices don't change.
+ * Finalized rows are immutable; provisional live quotes can be finalized.
  * @param {string} symbol
  * @param {Array} candles - Array of {time, open, high, low, close, volume}
  * @param {string} dataSource - e.g. 'alphavantage', 'finnhub'
  */
 async function insertCandles(symbol, candles, dataSource) {
   if (!candles || candles.length === 0) return;
+  if (candles.length > 1000) {
+    for (let offset=0; offset<candles.length; offset+=1000) await insertCandles(symbol, candles.slice(offset,offset+1000), dataSource);
+    return;
+  }
 
   const symbolUpper = symbol.toUpperCase();
 
@@ -86,7 +90,7 @@ async function insertCandles(symbol, candles, dataSource) {
     const dateStr = date.toISOString().split('T')[0];
 
     placeholders.push(
-      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`
+      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8})`
     );
     values.push(
       symbolUpper,
@@ -97,15 +101,19 @@ async function insertCandles(symbol, candles, dataSource) {
       candle.close,
       // FMP occasionally reports fractional volumes; the column is BIGINT
       Math.round(Number(candle.volume) || 0),
-      dataSource
+      dataSource,
+      dateStr < new Date().toISOString().slice(0, 10)
     );
-    paramIndex += 8;
+    paramIndex += 9;
   }
 
   const query = `
-    INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source)
+    INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, is_final)
     VALUES ${placeholders.join(', ')}
-    ON CONFLICT (symbol, price_date) DO NOTHING
+    ON CONFLICT (symbol, price_date) DO UPDATE SET
+      open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,close=EXCLUDED.close,
+      volume=EXCLUDED.volume,data_source=EXCLUDED.data_source,is_final=EXCLUDED.is_final,updated_at=NOW()
+    WHERE NOT historical_prices.is_final
   `;
 
   await db.query(query, values);
@@ -130,8 +138,8 @@ async function upsertToday(symbol, priceData, dataSource) {
   const volume = priceData.volume ?? priceData.v ?? null;
 
   await db.query(
-    `INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+    `INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, updated_at, is_final)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, FALSE)
      ON CONFLICT (symbol, price_date) DO UPDATE SET
        open = COALESCE($3, historical_prices.open),
        high = COALESCE($4, historical_prices.high),
@@ -139,6 +147,7 @@ async function upsertToday(symbol, priceData, dataSource) {
        close = COALESCE($6, historical_prices.close),
        volume = COALESCE($7, historical_prices.volume),
        data_source = $8,
+       is_final = FALSE,
        updated_at = CURRENT_TIMESTAMP`,
     [symbolUpper, today, open, high, low, close, volume, dataSource]
   );

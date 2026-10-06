@@ -18,6 +18,7 @@
         <button @click="load" :disabled="loading" class="refresh">{{ loading ? 'Loading…' : 'Refresh' }}</button>
       </div>
     </header>
+    <HistoryBackfillStatus />
     <div v-if="period==='custom'" class="custom-dates"><label>From <input type="date" v-model="start" :max="end"></label><label>To <input type="date" v-model="end" :min="start" :max="today"></label></div>
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
@@ -60,6 +61,7 @@
 </template>
 
 <script setup>
+import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'

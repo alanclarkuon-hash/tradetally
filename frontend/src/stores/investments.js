@@ -390,10 +390,10 @@ export const useInvestmentsStore = defineStore('investments', () => {
     }
   }
 
-  async function fetchPortfolioPerformance(params = {}) {
-    portfolioLoading.value = true
+  async function fetchPortfolioPerformance(params = {}, { silent = false } = {}) {
+    if (!silent) portfolioLoading.value = true
     error.value = null
-    portfolioPerformance.value = null
+    if (!silent) portfolioPerformance.value = null
 
     try {
       const response = await api.get('/investments/portfolio/performance', { params })
@@ -403,7 +403,7 @@ export const useInvestmentsStore = defineStore('investments', () => {
       error.value = err.response?.data?.error || 'Failed to fetch portfolio performance'
       throw err
     } finally {
-      portfolioLoading.value = false
+      if (!silent) portfolioLoading.value = false
     }
   }
 
