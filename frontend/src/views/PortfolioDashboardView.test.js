@@ -186,6 +186,16 @@ describe('Portfolio filter interactions', () => {
 
 
 describe('Delayed heatmap quotes',()=>{
+  it('shows identified quote sessions on large and tiny tiles alongside independent delay markers',async()=>{
+    const assets=[['PRE','pre',80],['POST','post',80],['NIGHT','overnight',.01],['UNKNOWN',null,80],['CRYPTO','continuous',80]]
+      .map(([symbol,quoteSession,value])=>({symbol,quoteSession,value,priceAsOf:new Date(Date.now()-960000).toISOString(),assetClass:'Stocks',sector:'Technology',industry:'Software'}));
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:assets}:{change:25}}));
+    const view=create();await flushPromises();
+    expect(view.findAll('.quote-session-marker').map(m=>m.attributes('title'))).toEqual(expect.arrayContaining(['Pre-market quote','Post-market quote','Overnight quote']));
+    expect(view.findAll('.quote-session-marker')).toHaveLength(3);
+    expect(view.findAll('.quote-delay-marker')).toHaveLength(5);
+    view.unmount();
+  });
   it('marks quotes older than fifteen minutes, including tiny tiles, but not fresh or unknown dates',async()=>{
     const now=Date.now();
     const assets=[{symbol:'OLD',value:99,priceAsOf:new Date(now-960000).toISOString()},
