@@ -32,7 +32,7 @@ function periodResult(position, range, rates, lots) {
   for (const lot of lots) {
     const acquired=new Date(lot.acquired).toISOString().slice(0,10);
     if(acquired>range.end_date)continue;
-    const startPrice=acquired>=range.start_date ? Number(lot.price) : quote(previousDay(range.start_date));
+    const startPrice=acquired>=range.start_date ? Number(lot.price) : (rates?._baselineDate ? rates[rates._baselineDate] : quote(previousDay(range.start_date)));
     if(!(startPrice>0))return {pnl:null,percent:null};
     basis+=Number(lot.quantity)*startPrice;
     value+=Number(lot.quantity)*endPrice;
@@ -114,22 +114,20 @@ async function getDashboard(userId, query={}, historical=null) {
         cryptoRates[coin]=prices;
       }
     }
-    const equities=positions.filter(p=>p.instrumentType==='stock' && lotMap.has(p.symbol));
-    const converter=require('../utils/currencyConverter');
+    const equities=positions.filter(p=>['stock','crypto'].includes(p.instrumentType) && lotMap.has(p.symbol));
     const from=new Date(range.start_date+'T00:00:00Z');from.setUTCDate(from.getUTCDate()-15);
     for(let i=0;i<equities.length;i+=4) {
       await Promise.all(equities.slice(i,i+4).map(async p=>{
         try {
-          const chart=await yahoo.getStockTradeChartData(p.symbol,from.toISOString(),range.end_date+'T23:59:59Z','D');
-          const prices={};
-          // Only the boundary prices are needed. The provider declares the
-          // currency and normalizes GBp/GBX before we convert to dated USD.
-          for(const boundary of [previousDay(range.start_date),range.end_date]) {
-            const candidates=chart.candles.filter(c=>new Date(c.time*1000).toISOString().slice(0,10)<=boundary);
-            const candle=candidates.at(-1);if(!candle)continue;
+          const calendar=p.instrumentType==='crypto'?null:await require('./exchangeCalendar').resolve(p.symbol);
+          const baseline=require('../utils/heatmapPeriod').sessionOnOrBefore(previousDay(range.start_date),calendar,p.instrumentType==='crypto');
+          const candles=await Portfolio._getDailySeries(p.symbol,from.toISOString().slice(0,10),range.end_date,userId,{instrumentType:p.instrumentType,background:true});
+          const prices={_baselineDate:baseline};
+          // The shared daily cache is explicitly USD. Do not mix raw Yahoo
+          // minor units or a provisional quote with a completed opening close.
+          for(const candle of candles) {
             const day=new Date(candle.time*1000).toISOString().slice(0,10);
-            const rate=await converter.getForexRate(chart.candles_currency,'USD',day);
-            if(rate>0)prices[day]=candle.close*rate;
+            prices[day]=candle.close;
           }
           cryptoRates[p.symbol]=prices;
         } catch (_) { /* Missing price history stays explicitly unavailable. */ }

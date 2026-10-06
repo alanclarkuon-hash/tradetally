@@ -5,3 +5,12 @@ function previousDay(date) {
   return d.toISOString().slice(0,10);
 }
 module.exports={previousDay};
+function sessionOnOrBefore(date,calendar,crypto=false) {
+  if(crypto)return date;
+  for(let i=0;i<=14;i++) {
+    if(require('../services/exchangeCalendar').isTradingDay(date,calendar))return date;
+    date=previousDay(date);
+  }
+  return null;
+}
+module.exports.sessionOnOrBefore=sessionOnOrBefore;

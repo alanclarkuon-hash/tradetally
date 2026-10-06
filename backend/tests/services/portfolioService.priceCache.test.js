@@ -13,7 +13,7 @@ const cache = require('../../src/utils/historicalPriceCache');
 const alpha = require('../../src/utils/alphaVantage');
 const finnhub = require('../../src/utils/finnhub');
 const providers = require('../../src/services/holdingsHistoryProvider');
-const candle = { time: Date.parse('2026-08-15') / 1000, close: 100 };
+const candle = { time: Date.parse('2026-08-15') / 1000, close: 100,open:100,high:100,low:100,currency:'USD' };
 beforeEach(() => {
   jest.clearAllMocks();
   cache.getRange.mockResolvedValue([]);
@@ -27,7 +27,7 @@ beforeEach(() => {
 test('persists Alpha Vantage candles and reuses them on the next request', async () => {
   alpha.getDailyData.mockResolvedValue([candle]);
   expect(await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner')).toEqual([candle]);
-  expect(cache.insertCandles).toHaveBeenCalledWith('MSFT', [candle], 'alphaVantage');
+  expect(cache.insertCandles).toHaveBeenCalledWith('MSFT', [candle], 'alphaVantage',{currency:'USD'});
   cache.getRange.mockResolvedValue(Array.from({length:31},(_,i)=>({...candle,time:Date.parse('2026-08-01')/1000+i*86400})));
   cache.hasRange.mockResolvedValue(true);
   await PortfolioService._getDailySeries('MSFT', '2026-08-01', '2026-08-31', 'owner');
@@ -97,7 +97,7 @@ test('crypto uses CoinGecko only, preserves cached days and never asks stock pro
   expect(cache.getRange).toHaveBeenCalledWith('crypto:SUI', '2026-08-01', '2026-08-02');
   expect(providers.crypto).toHaveBeenCalledWith('SUI', '2026-08-02', '2026-08-02');
   expect(result.map(c=>c.close)).toEqual([2, 3]);
-  expect(cache.insertCandles).toHaveBeenCalledWith('crypto:SUI', [expect.objectContaining({close:3})], 'coingecko');
+  expect(cache.insertCandles).toHaveBeenCalledWith('crypto:SUI', [expect.objectContaining({close:3})], 'coingecko',{currency:'USD'});
   expect(alpha.getDailyData).not.toHaveBeenCalled();
   expect(finnhub.getStockCandles).not.toHaveBeenCalled();
   expect(providers.yahoo).not.toHaveBeenCalled();

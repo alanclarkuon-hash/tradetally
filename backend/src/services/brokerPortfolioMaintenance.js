@@ -3,7 +3,7 @@ const pending=new Map();
 const supported=new Set(['ibkr','trading212','kraken','okx','etoro','ig']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
-async function maintain(userId,{broker=null,fetchPrices=true}={}) {
+async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false}={}) {
  // Serialize recovery for each user, including scheduler/manual overlap.
  const key=userId,prior=pending.get(key)||Promise.resolve();
  const job=(async()=>{
@@ -35,7 +35,7 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
       MIN(value_date) FILTER (WHERE holdings_usd IS NULL OR issues <> '[]'::jsonb) AS first_gap
       FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0];
     const last=coverage?.latest;
-    const fromDate=coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
+    const fromDate=fullHistory&&account.initial_balance_date?day(account.initial_balance_date):coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
     const summary=await require('./portfolioReconstructionService').reconstruct(userId,{broker:account.broker,
      accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true});
     rebuilt.push(...summary.map(s=>({broker:s.broker,days:s.days,gaps:s.gaps})));
