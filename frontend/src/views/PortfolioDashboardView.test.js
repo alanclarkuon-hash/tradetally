@@ -1,6 +1,8 @@
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PortfolioDashboardView from './PortfolioDashboardView.vue'
+import { createPinia, setActivePinia } from 'pinia'
+import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
 
 vi.mock('@/stores/uiPreferences',()=>({useUiPreferencesStore:()=>({init:async()=>{},notifyChanged:vi.fn()})}))
 
@@ -20,6 +22,10 @@ const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
 const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true, HistoryBackfillStatus: true } } })
 
 beforeEach(() => {
+  setActivePinia(createPinia())
+  localStorage.removeItem('dashboardTimeRange')
+  localStorage.removeItem('dashboardCustomStartDate')
+  localStorage.removeItem('dashboardCustomEndDate')
   localStorage.removeItem('portfolioDashboardLayout')
   vi.clearAllMocks()
   mock.selection.value=null
@@ -111,6 +117,21 @@ describe('Portfolio summary cards', () => {
 })
 
 describe('Portfolio filter interactions', () => {
+  it('uses shared custom dates for summary/heatmap and chart requests, then updates the shared preset',async()=>{
+    const dates=useDashboardDateFilterStore()
+    dates.selection={timeRange:'custom',startDate:'2024-05-10',endDate:'2024-06-01'}
+    const view=create();await flushPromises()
+    for(const [url,config] of mock.get.mock.calls.filter(([url])=>url.includes('/portfolio/'))) {
+      expect(config.params.start_date).toBe('2024-05-10')
+      expect(config.params.end_date).toBe('2024-06-01')
+    }
+    await view.find('[data-period="this_week"]').trigger('click');await flushPromises()
+    expect(dates.selection.timeRange).toBe('this_week')
+    expect(view.find('.period-picker summary').attributes('title')).toBe('This Week')
+    dates.selection={timeRange:'custom',startDate:'2023-01-01',endDate:'2023-02-01'};await flushPromises()
+    expect(view.find('.custom-dates input').element.value).toBe('2023-01-01')
+    view.unmount()
+  })
   it('uses only the shared filter and reacts to named, Unsorted, empty and All selections',async()=>{
     const view=create();await flushPromises()
     expect(view.find('.account-picker').exists()).toBe(false)
