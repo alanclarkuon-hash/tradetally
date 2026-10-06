@@ -5,7 +5,7 @@ function priceCacheKey(symbol, instrumentType) {
 
 function usablePriceRow(row, instrumentType) {
   if (!row) return false;
-  const cryptoSource = row.data_source === 'coingecko';
+  const cryptoSource = row.data_source === 'coingecko' || /^broker:[^:]+:crypto$/.test(row.data_source || '');
   return instrumentType === 'crypto' ? cryptoSource : !cryptoSource;
 }
 
