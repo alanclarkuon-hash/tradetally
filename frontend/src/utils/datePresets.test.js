@@ -3,6 +3,15 @@ import { resolveDatePreset, resolveMonthlyFilterParams } from './datePresets'
 
 describe('calendar-month reporting presets', () => {
   it.each([
+    ['2026-10-05T12:00:00Z', 'Europe/London', '2026-10-05', '2026-10-05'],
+    ['2026-10-11T12:00:00Z', 'Europe/London', '2026-10-05', '2026-10-11'],
+    ['2026-10-05T00:30:00Z', 'America/Los_Angeles', '2026-09-28', '2026-10-04'],
+    ['2026-01-01T12:00:00Z', 'Europe/London', '2025-12-29', '2026-01-01'],
+    ['2026-03-29T12:00:00Z', 'Europe/London', '2026-03-23', '2026-03-29']
+  ])('resolves This Week for %s in %s', (now, timezone, start, end) => {
+    expect(resolveDatePreset('this_week', new Date(now), timezone)).toEqual({ start_date: start, end_date: end })
+  })
+  it.each([
     [new Date(2026, 8, 28, 23, 59), '2026-09-01', '2026-09-28', '2026-08-01', '2026-08-31'],
     [new Date(2026, 0, 1), '2026-01-01', '2026-01-01', '2025-12-01', '2025-12-31'],
     [new Date(2024, 2, 31), '2024-03-01', '2024-03-31', '2024-02-01', '2024-02-29'],

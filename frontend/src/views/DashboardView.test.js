@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
 
 // Mount the real dashboard and vuedraggable item slots: replacing the draggable
 // with an empty stub misses render errors that it displays as red stack traces.
@@ -155,6 +156,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
     setActivePinia(pinia)
     apiMock.get.mockImplementation(defaultGetImplementation)
     sessionStorage.clear()
+    for (const key of ['dashboardTimeRange','dashboardCustomStartDate','dashboardCustomEndDate']) localStorage.removeItem(key)
   })
 
   afterEach(() => {
@@ -192,6 +194,21 @@ describe('DashboardView loading and advanced filter wiring', () => {
     // resolves and mounts before the test queries it via findComponent.
     await flushPromises()
   }
+
+  it('refreshes Trading requests when shared dates change and publishes its This Week selection', async () => {
+    wrapper = await mountDashboard()
+    const dates = useDashboardDateFilterStore()
+    apiMock.get.mockClear()
+    dates.selection = { timeRange: 'custom', startDate: '2024-05-10', endDate: '2024-06-01' }
+    await flushPromises()
+    const requests = apiMock.get.mock.calls.map(([url]) => String(url))
+    expect(requests.some(url => url.includes('startDate=2024-05-10') && url.includes('endDate=2024-06-01'))).toBe(true)
+    await wrapper.find('[data-dropdown="timeRange"] > button').trigger('click')
+    await wrapper.findAll('button').find(button => button.text() === 'This Week').trigger('click')
+    await flushPromises()
+    expect(dates.selection.timeRange).toBe('this_week')
+    expect(wrapper.find('[data-dropdown="timeRange"] > button').attributes('title')).toContain('This Week')
+  })
 
   it('hydrates persisted filters on mount without counting symbolExact:false toward the badge', async () => {
     localStorage.setItem('tradeFilters', JSON.stringify({ tags: ['swing'], symbolExact: false }))
