@@ -1,12 +1,14 @@
 // User-owned Google Apps Script. Keep configuration in Script Properties.
 // Required properties: IG_FOLDER_ID, IG_FORWARDER (your Outlook email address).
 // Enable Advanced Gmail service. IG_TRASH_PROCESSED=true enables acknowledged cleanup.
-function collectIgStatements() {
+function collectIgStatements(options={}) {
  const lock=LockService.getScriptLock();if(!lock.tryLock(1000))return;
  try{
   const config=PropertiesService.getScriptProperties(),folderId=config.getProperty('IG_FOLDER_ID'),forwarder=config.getProperty('IG_FORWARDER');
   if(!folderId||!forwarder||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forwarder))throw new Error('Set IG_FOLDER_ID and IG_FORWARDER in Script Properties.');
-  const folder=DriveApp.getFolderById(folderId);
+  if(options.testArchive&&(config.getProperty('IG_TEST_MODE')!=='true'||config.getProperty('IG_TRASH_PROCESSED')!=='false'))throw Error('Retained-email verification requires the isolated test configuration and disabled cleanup.');
+  const root=DriveApp.getFolderById(folderId),folder=options.testArchive?igPrivateFolder(root,'Collector validation'):root;
+  const cursorKey=options.testArchive?'IG_TEST_COLLECT_CURSOR':'IG_COLLECT_CURSOR',offsetKey=options.testArchive?'IG_TEST_COLLECT_OFFSET':'IG_COLLECT_OFFSET';
   const cleanup=config.getProperty('IG_TRASH_PROCESSED')==='true',toTrash=[];
   const store=igReceiptFolder(folder),deadline=Date.now()+45000;
   // Migrate bounded legacy state without losing acknowledgements, including
@@ -16,8 +18,8 @@ function collectIgStatements() {
    if(!key.startsWith('done:')||migrated>=25||Date.now()>=deadline)continue;
    try{igWriteJson(store,key.slice(5)+'.json',readIgReceipt(value)||{version:0,legacyValue:value});config.deleteProperty(key);migrated++;}catch{migrationErrors++;}
   }
-  const query='from:('+forwarder+' OR no-reply.statements@email.ig.com) subject:"Your IG Statement" has:attachment filename:pdf';
-  let token=config.getProperty('IG_COLLECT_CURSOR')||null,offset=Number(config.getProperty('IG_COLLECT_OFFSET'))||0,count=0,scanned=0,errors=migrationErrors,finished=false;
+  const query=(options.testArchive?'in:anywhere ':'')+'from:('+forwarder+' OR no-reply.statements@email.ig.com) subject:"Your IG Statement" has:attachment filename:pdf';
+  let token=config.getProperty(cursorKey)||null,offset=Number(config.getProperty(offsetKey))||0,count=0,scanned=0,errors=migrationErrors,finished=false;
   try{
   do{
    const page=Gmail.Users.Messages.list('me',{q:query,maxResults:25,...(token?{pageToken:token}:{})});
@@ -70,8 +72,8 @@ function collectIgStatements() {
    if(!token){finished=true;break;}
   }while(scanned<50&&Date.now()<deadline);
   }catch{errors++;token=null;offset=0;}
-  if(finished||!token)config.deleteProperty('IG_COLLECT_CURSOR');else config.setProperty('IG_COLLECT_CURSOR',token);
-  if(offset)config.setProperty('IG_COLLECT_OFFSET',String(offset));else config.deleteProperty('IG_COLLECT_OFFSET');
+  if(finished||!token)config.deleteProperty(cursorKey);else config.setProperty(cursorKey,token);
+  if(offset)config.setProperty(offsetKey,String(offset));else config.deleteProperty(offsetKey);
   // Mutate only after pagination: removing results mid-page can skip messages.
   let trashed=0;
   for(const id of toTrash){if(Date.now()>=deadline)break;try{Gmail.Users.Messages.trash('me',id);trashed++;}catch{errors++;}}
@@ -81,9 +83,17 @@ function collectIgStatements() {
   console.log('IG collector errors requiring review: '+errors);
  }finally{lock.releaseLock();}
 }
+function verifyIgCollectorOnRetainedEmails(){
+ const config=PropertiesService.getScriptProperties();
+ if(config.getProperty('IG_TEST_MODE')!=='true'||config.getProperty('IG_TRASH_PROCESSED')!=='false')throw Error('Retained-email verification requires the isolated test configuration and disabled cleanup.');
+ collectIgStatements({testArchive:true});
+}
 function igReceiptFolder(folder){
- const matches=folder.getFoldersByName('.collector-receipts');
- if(!matches.hasNext())return folder.createFolder('.collector-receipts');
+ return igPrivateFolder(folder,'.collector-receipts');
+}
+function igPrivateFolder(folder,name){
+ const matches=folder.getFoldersByName(name);
+ if(!matches.hasNext())return folder.createFolder(name);
  const result=matches.next();if(matches.hasNext())throw Error('Ambiguous receipt folder.');return result;
 }
 function igReadJson(folder,name){

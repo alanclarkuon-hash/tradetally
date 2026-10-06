@@ -54,6 +54,14 @@ test('collection resumes bounded pages without letting reviewed receipts consume
  f.env.collectIgStatements();expect(f.get).toHaveBeenCalledTimes(50);expect(f.props.get('IG_COLLECT_CURSOR')).toBe('third');
  f.env.collectIgStatements();expect(f.get).toHaveBeenCalledTimes(75);expect(f.props.has('IG_COLLECT_CURSOR')).toBe(false);
 });
+
+test('retained-email validation is gated, reads Trash into a separate folder and never trashes mail',()=>{
+ const f=collectorFixture({cleanup:false});expect(()=>f.env.verifyIgCollectorOnRetainedEmails()).toThrow('isolated test');
+ f.props.set('IG_TEST_MODE','true');f.env.verifyIgCollectorOnRetainedEmails();
+ expect(f.env.Gmail.Users.Messages.list).toHaveBeenCalledWith('me',expect.objectContaining({q:expect.stringContaining('in:anywhere')}));
+ expect(f.folder.folders.get('Collector validation').files.has(pair.filename)).toBe(true);
+ expect(f.folder.files.has(pair.filename)).toBe(false);expect(f.trash).not.toHaveBeenCalled();
+});
 test('cleanup can be disabled without changing the import receipt',()=>{
  const f=collectorFixture({cleanup:false,receipt:JSON.stringify({version:2,files:[pair]}),processed:Object.values(pair)});f.env.collectIgStatements();expect(f.trash).not.toHaveBeenCalled();
 });

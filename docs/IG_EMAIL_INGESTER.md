@@ -18,6 +18,8 @@ Message receipts now live in the private Drive `.collector-receipts` folder. Leg
 
 Use a separate Apps Script project for testing, point it to the Test Drive folder, set `IG_TRASH_PROCESSED=false`, and run manually without installing its trigger. In its manifest, use only `gmail.readonly` and `drive` OAuth scopes; omit `script.scriptapp`. The manual collector runs with these scopes, while Trash and trigger installation are unavailable. Production retains its own project, folder and trigger until a separately approved collector rollout.
 
+For an attachment-path smoke test without sending new email, also set `IG_TEST_MODE=true` in that isolated project and run `verifyIgCollectorOnRetainedEmails`. It reads retained daily emails, including Trash, into a separate `Collector validation` child folder in Test. Use a separate temporary relay configuration and test ingestion subfolder to verify duplicate acknowledgement. It never restores or deletes emails. Do not enable this mode in production.
+
 ## TradeTally setup
 
 Mount only the dedicated ingestion folder into the app container, for example at `/app/ig-ingester`. Set private environment variables:
