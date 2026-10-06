@@ -44,7 +44,7 @@
           </div>
         </fieldset>
         <p class="text-xs text-gray-500 dark:text-gray-400">If money moved between IG accounts, include updated reports for both accounts. Up to 5 MB per file. Files are processed privately on your TradeTally server.</p>
-        <button type="submit" class="btn-secondary" :disabled="busy || !selected.length">{{ busy === 'preview' ? 'Checking statements…' : 'Preview import' }}</button>
+        <button type="submit" class="btn-secondary" :disabled="busy || !selected.length">{{ busy === 'preview' ? 'Checking statements…' : busy === 'apply' ? 'Backing up and importing…' : automaticCsv ? 'Reconcile and import CSV' : 'Preview import' }}</button>
       </form>
       <div v-if="preview" class="space-y-4 border-t border-gray-200 pt-5 dark:border-gray-700" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -70,10 +70,11 @@
 </template>
 
 <script setup>
-import {ref,reactive,onMounted} from 'vue'
+import {ref,reactive,computed,onMounted} from 'vue'
 import api from '@/services/api'
 const accounts=ref([]),selected=ref([]),loading=ref(true),busy=ref(''),error=ref(''),success=ref(''),preview=ref(null)
 const csvOnlyAccounts=ref([])
+const automaticCsv=computed(()=>selected.value.length>0&&selected.value.every(id=>csvOnlyAccounts.value.includes(id)))
 const fieldsFor=account=>csvOnlyAccounts.value.includes(account.id)?['transactions']:account.required
 const files=reactive(new Map()),evidenceFiles=new Map(),dailyFiles=ref(new Map()),pdfFields=['trading','ledger']
 const labels={transactions:'Transactions CSV',activity:'Past activity CSV',breakdown:'P&L Breakdown CSV',trading:'Trading / balance statement PDF',ledger:'Monthly ledger statement PDF'}
@@ -100,9 +101,11 @@ async function previewFiles(){
     if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
     form.append(`${id}:daily`,file)
   }
+  const autoApply=automaticCsv.value
   busy.value='preview'
   try{preview.value=(await api.post('/broker-sync/ig-files/preview',form,{timeout:180000})).data.data}
   catch(e){error.value=message(e)}finally{busy.value=''}
+  if(autoApply&&preview.value)await apply()
 }
 async function apply(){
   if(!preview.value||busy.value)return
