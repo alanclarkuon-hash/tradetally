@@ -24,6 +24,13 @@ test('apply requires a backup, applies once and consumes the preview token',asyn
   expect(backup.createFullSiteBackup.mock.invocationCallOrder[0]).toBeLessThan(importAccounts.mock.invocationCallOrder[1]);
   await expect(service.apply('user-c',p.token)).rejects.toThrow(/expired/);
 });
+
+test('CSV application rebuilds every corrected account from the earliest corrected date',async()=>{
+ const p=await service.preview('correction-owner',files());
+ importAccounts.mockResolvedValueOnce({accounts:[],reconciledStatementAccounts:[{identifier:'other-account',dates:['2025-09-02','2025-09-01']}]});
+ await service.apply('correction-owner',p.token);
+ expect(require('../../src/services/manualPortfolioMaintenance').rebuild).toHaveBeenCalledWith('correction-owner','ig',['synthetic','other-account'],'2025-09-01');
+});
 test('a missing backup prevents apply',async()=>{
   const p=await service.preview('user-d',files());backup.createFullSiteBackup.mockRejectedValueOnce(Error('Backup unavailable'));
   await expect(service.apply('user-d',p.token)).rejects.toThrow('Backup unavailable');expect(importAccounts).toHaveBeenCalledTimes(1);

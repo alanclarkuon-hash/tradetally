@@ -95,8 +95,10 @@ async function apply(userId,token) {
     await require('../backup.service').createFullSiteBackup(userId);
     const result=await importAccounts(userId,item.inputs,{dryRun:false});
     previews.delete(token);
-    const dates=item.inputs.flatMap(i=>(i.statementValues||[]).map(p=>p.date));
-    return {...result,portfolioHistory:await require('../manualPortfolioMaintenance').rebuild(userId,'ig',item.identifiers,dates.sort()[0]||null)};
+    const corrections=result.reconciledStatementAccounts||[];
+    const dates=[...item.inputs.flatMap(i=>(i.statementValues||[]).map(p=>p.date)),...corrections.flatMap(c=>c.dates)];
+    const identifiers=[...new Set([...item.identifiers,...corrections.map(c=>c.identifier)])];
+    return {...result,portfolioHistory:await require('../manualPortfolioMaintenance').rebuild(userId,'ig',identifiers,dates.sort()[0]||null)};
   } finally {active.delete(userId);}
 }
 module.exports={accounts,preview,apply,required};
