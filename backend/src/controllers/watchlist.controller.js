@@ -292,22 +292,7 @@ const watchlistController = {
           currentPrice = priceData.c;
 
           // Update or insert price monitoring data
-          await db.query(`
-            INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, volume, data_source)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (symbol) DO UPDATE SET
-              previous_price = price_monitoring.current_price,
-              current_price = $2,
-              price_change = $2 - price_monitoring.current_price,
-              percent_change = CASE
-                WHEN price_monitoring.current_price > 0
-                THEN (($2 - price_monitoring.current_price) / price_monitoring.current_price) * 100
-                ELSE 0
-              END,
-              volume = $6,
-              last_updated = CURRENT_TIMESTAMP,
-              data_source = $7
-          `, [priceCacheKey(symbolUpper,isCrypto ? 'crypto' : 'stock'), currentPrice, null, 0, 0, priceData.pc || 0, dataSource]);
+          await require('../services/marketQuoteCache').save(symbolUpper,isCrypto ? 'crypto' : 'stock',priceData,dataSource);
         }
       } catch (priceError) {
         logger.logWarn(`Could not fetch price for symbol ${symbolUpper}:`, priceError.message);
