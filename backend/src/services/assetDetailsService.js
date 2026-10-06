@@ -1,6 +1,7 @@
 const db = require('../config/database');
 const cache = require('../utils/cache');
 const {CRYPTO_TO_COINGECKO} = require('../utils/cryptoAssets');
+const {priceCacheKey} = require('../utils/priceCacheIdentity');
 
 // Explicit sources keep unrelated application data and broker credentials out.
 const SOURCES = [
@@ -41,7 +42,23 @@ function validateSymbol(value) {
   if(!/^[A-Z0-9.^=_/-]{1,30}$/.test(symbol)){const e=Error('Enter a valid asset symbol, including its exchange suffix if needed.');e.status=400;throw e;}
   return symbol;
 }
-async function readSource(userId,symbol,source,offset=0) {
+async function resolvePriceType(userId,symbol) {
+  // Owned instrument identities outrank legacy symbol-only stock profiles.
+  // This also identifies new coins that are absent from the static registry.
+  const result=await db.query(`SELECT bool_or(instrument_type='crypto') AS crypto,
+    bool_or(instrument_type='stock') AS stock FROM (
+      SELECT instrument_type FROM trades WHERE user_id=$1 AND symbol=$2
+      UNION ALL
+      SELECT p->>'instrumentType' FROM broker_portfolio_snapshots bs,
+        jsonb_array_elements(CASE WHEN jsonb_typeof(bs.positions)='array' THEN bs.positions ELSE '[]'::jsonb END) p
+        WHERE bs.user_id=$1 AND upper(p->>'symbol')=$2
+      UNION ALL
+      SELECT 'stock' FROM investment_holdings WHERE user_id=$1 AND symbol=$2
+    ) identities`,[userId,symbol]);
+  const identity=result.rows[0];
+  return identity?.crypto || (!identity?.stock && CRYPTO_TO_COINGECKO[symbol]) ? 'crypto' : 'stock';
+}
+async function readSource(userId,symbol,source,offset=0,priceType='stock') {
   const [table,title,owned,date]=source;
   if(table==='broker_portfolio_snapshots') {
     const rows=(await db.query('SELECT broker_type,account_identifier,positions,synced_at FROM broker_portfolio_snapshots WHERE user_id=$1',[userId])).rows;
@@ -67,8 +84,9 @@ async function readSource(userId,symbol,source,offset=0) {
     ]);
     return {key:table,title,count:count.rows[0].count,offset,records:rows.rows};
   }
+  const lookupSymbol=['price_monitoring','historical_prices'].includes(table) ? priceCacheKey(symbol,priceType) : symbol;
   let where=`symbol=$1${owned?' AND user_id=$2':''}`;
-  const params=owned?[symbol,userId]:[symbol];
+  const params=owned?[lookupSymbol,userId]:[lookupSymbol];
   if(table==='trades') {
     const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
     const snapshots=(await db.query("SELECT positions FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type='trading212'",[userId])).rows;
@@ -93,14 +111,16 @@ async function getDetails(userId,input,query={}) {
     const source=SOURCES.find(s=>s[0]===query.source);
     const offset=Number(query.offset||0);
     if(!source||!Number.isSafeInteger(offset)||offset<0){const e=Error('Invalid saved record page');e.status=400;throw e;}
-    return readSource(userId,symbol,source,offset);
+    const priceType=['price_monitoring','historical_prices'].includes(source[0]) ? await resolvePriceType(userId,symbol) : 'stock';
+    return readSource(userId,symbol,source,offset,priceType);
   }
-  const sections=await Promise.all(SOURCES.map(s=>readSource(userId,symbol,s)));
+  const priceType=await resolvePriceType(userId,symbol);
+  const sections=await Promise.all(SOURCES.map(s=>readSource(userId,symbol,s,0,priceType)));
   const profile=sections.find(s=>s.key==='symbol_categories').records[0];
   const providerReference=sections.find(s=>s.key==='asset_reference_classifications').records[0];
   const reference=require('./classificationOverrides').applyOverrides([symbol],new Map(providerReference?[[symbol,providerReference]]:[])).get(symbol);
   const trades=sections.find(s=>s.key==='trades').records;
-  const isCrypto=trades.some(t=>t.instrument_type==='crypto')||(!profile&&Boolean(CRYPTO_TO_COINGECKO[symbol]));
+  const isCrypto=priceType==='crypto';
   const crypto=await require('./cryptoCategoriesService').getCachedCategories(symbol);
   const fund=cache.get('yahoo_fund_labels',symbol);
   const yahoo=cache.get('yahoo_symbol_profile',symbol);
