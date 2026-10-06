@@ -387,41 +387,10 @@ async function persistTradeListQuote(symbol, quote, instrumentType='stock') {
   const currentPrice = Number(quote?.c);
   if (!symbol || !Number.isFinite(currentPrice) || currentPrice <= 0) return;
 
-  const previousClose = Number(quote?.pc) || 0;
-  const priceChange = Number.isFinite(Number(quote?.d))
-    ? Number(quote.d)
-    : (previousClose > 0 ? currentPrice - previousClose : 0);
-  const percentChange = Number.isFinite(Number(quote?.dp))
-    ? Number(quote.dp)
-    : (previousClose > 0 ? (priceChange / previousClose) * 100 : 0);
-
   try {
-    await db.query(`
-      INSERT INTO price_monitoring (symbol, current_price, previous_price, price_change, percent_change, high_of_day, low_of_day, open_price, data_source)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-      ON CONFLICT (symbol) DO UPDATE SET
-        previous_price = $3,
-        current_price = $2,
-        price_change = $4,
-        percent_change = $5,
-        high_of_day = COALESCE($6, price_monitoring.high_of_day),
-        low_of_day = COALESCE($7, price_monitoring.low_of_day),
-        open_price = COALESCE($8, price_monitoring.open_price),
-        last_updated = CURRENT_TIMESTAMP,
-        data_source = $9
-    `, [
-      priceCacheKey(symbol, instrumentType),
-      currentPrice,
-      previousClose,
-      priceChange,
-      percentChange,
-      Number.isFinite(Number(quote?.h)) ? Number(quote.h) : null,
-      Number.isFinite(Number(quote?.l)) ? Number(quote.l) : null,
-      Number.isFinite(Number(quote?.o)) ? Number(quote.o) : null,
-      instrumentType === 'crypto' ? 'coingecko' : finnhub.providerName || 'market_data'
-    ]);
+    await require('../services/marketQuoteCache').save(symbol,instrumentType,quote,instrumentType==='crypto' ? 'coingecko' : finnhub.providerName || 'market_data');
   } catch (error) {
-    console.warn('[TRADE-LIST] Failed to persist quote for', symbol, '-', error.message);
+    console.warn('[TRADE-LIST] Failed to persist quote for',symbol,'-',error.message);
   }
 }
 
@@ -494,7 +463,8 @@ async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD'
     const cached = await db.query(
       `SELECT current_price FROM price_monitoring
        WHERE symbol = $1 AND last_updated > NOW() - INTERVAL '2 minutes'
-         AND CASE WHEN $2='crypto' THEN data_source='coingecko' ELSE data_source IS DISTINCT FROM 'coingecko' END
+         AND CASE WHEN $2='crypto' THEN (data_source='coingecko' OR data_source ~ '^broker:[^:]+:crypto$')
+           ELSE data_source IS DISTINCT FROM 'coingecko' AND COALESCE(data_source !~ '^broker:[^:]+:crypto$',TRUE) END
        LIMIT 1`,
       [priceCacheKey(symbol,instrumentType),instrumentType]
     );

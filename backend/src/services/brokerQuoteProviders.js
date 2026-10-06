@@ -4,14 +4,23 @@ const etoro = require('./brokerSync/etoroService');
 const { field } = require('./brokerSync/etoroService');
 const { read, directory } = require('./brokerMarketData');
 const positionCache = new Map();
+const positionRequests = new Map();
 async function trading212Quote({ symbol, instrumentType, connection }) {
   if (!['stock','etf'].includes(instrumentType)) return null;
   let saved = positionCache.get(connection.id);
   if (!saved || saved.expires <= Date.now()) {
-    const positions = await require('./brokerSync/trading212Service').fetchPositions(connection, { background: true });
-    if (!positions) return null;
-    saved = { positions, asOf: new Date().toISOString(), expires: Date.now() + 30000 };
-    positionCache.set(connection.id, saved);
+    if (!positionRequests.has(connection.id)) {
+      const request=(async()=>{
+        const positions=await require('./brokerSync/trading212Service').fetchPositions(connection,{background:true});
+        if (!positions) return null;
+        const result={positions,asOf:new Date().toISOString(),expires:Date.now()+30000};
+        positionCache.set(connection.id,result);
+        return result;
+      })().finally(()=>positionRequests.delete(connection.id));
+      positionRequests.set(connection.id,request);
+    }
+    saved=await positionRequests.get(connection.id);
+    if (!saved) return null;
   }
   const old = (await db.query('SELECT positions FROM broker_portfolio_snapshots WHERE connection_id=$1', [connection.id])).rows[0]?.positions || [];
   const { currentSymbol } = require('./brokerSync/trading212Instruments');
