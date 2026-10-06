@@ -15,3 +15,9 @@ test('checksum failure leaves input in place and stages nothing',async()=>{
  await fs.writeFile(path.join(source,name),'%PDF changed');await fs.utimes(path.join(source,name),new Date(0),new Date(0));
  expect(await relay({source,target})).toMatchObject({copied:0,archived:0,errors:1});expect(await fs.readdir(source)).toContain(name);
 });
+
+test('collector failures are delivered as safe health metadata without blocking valid PDF delivery',async()=>{
+ await fs.writeFile(path.join(source,'.collector-status.json'),JSON.stringify({version:1,lastRun:new Date().toISOString(),errors:1,privateExtra:'must not propagate'}));
+ const result=await relay({source,target});expect(result.copied).toBe(1);expect(result.collector).toEqual({lastRun:expect.any(String),errors:1});
+ expect(await fs.readFile(path.join(target,'.relay-status.json'),'utf8')).not.toContain('privateExtra');
+});

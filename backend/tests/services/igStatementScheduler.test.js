@@ -12,3 +12,11 @@ test('a batch caps new processing and still runs automatic reconciliation',async
  const folder={list:jest.fn().mockResolvedValue(Array.from({length:25},(_,i)=>`${i}.pdf`)),read:jest.fn().mockResolvedValue({buffer:Buffer.from('PDF'),filename:'synthetic.pdf'}),acknowledge:jest.fn()};source.folderSource.mockReturnValue(folder);ingester.ingest.mockResolvedValue({status:'imported'});
  await scheduler.run();expect(ingester.ingest).toHaveBeenCalledTimes(20);expect(auto.run).toHaveBeenCalledTimes(1);
 });
+
+test('collector failures are visible and a later healthy check clears the warning',async()=>{
+ process.env.IG_INGEST_REQUIRE_RELAY='true';
+ const folder={list:jest.fn().mockResolvedValue([]),deliveryHealth:jest.fn().mockResolvedValue({lastRun:new Date().toISOString(),errors:0,collector:{lastRun:new Date().toISOString(),errors:1}})};source.folderSource.mockReturnValue(folder);
+ await scheduler.run();expect(scheduler.status().error).toContain('Gmail statement collection');
+ folder.deliveryHealth.mockResolvedValue({lastRun:new Date().toISOString(),errors:0,collector:{lastRun:new Date().toISOString(),errors:0}});
+ await scheduler.run();expect(scheduler.status().error).toBeNull();
+});
