@@ -1,35 +1,10 @@
-const axios = require('axios');
+const { read, directory } = require('./brokerMarketData');
 const db = require('../config/database');
 const BrokerConnection = require('../models/BrokerConnection');
 const etoro = require('./brokerSync/etoroService');
 const { field } = require('./brokerSync/etoroService');
 const DAY = 86400000;
 const day = t => new Date(t).toISOString().slice(0, 10);
-const queues = new Map(), directories = new Map(), cooldowns = new Map();
-
-// One public-history lane per broker, shared across users, instruments and pages.
-// Requests never contain private trade data. eToro reuses its credential-safe lane.
-async function read(broker, url, params) {
-  const pending = (queues.get(broker) || Promise.resolve()).catch(() => {}).then(async () => {
-    if (Date.now() < (cooldowns.get(broker) || 0)) throw Error('Broker history cooling down');
-    await new Promise(resolve => setTimeout(resolve, 2500));
-    try {
-      return (await axios.get(url, { params, timeout: 15000, maxRedirects: 0, maxContentLength: 8 * 1024 * 1024 })).data;
-    } catch (error) {
-      if (error.response?.status === 429) cooldowns.set(broker, Date.now() + Math.max(60, Number(error.response.headers?.['retry-after']) || 60) * 1000);
-      throw Error('Broker historical prices unavailable'); // Never propagate request objects.
-    }
-  });
-  queues.set(broker, pending);
-  return pending;
-}
-async function directory(key, fetch) {
-  const old = directories.get(key);
-  if (old && Date.now() < old.expires) return old.value;
-  const value = await fetch();
-  directories.set(key, { value, expires: Date.now() + DAY });
-  return value;
-}
 function candle(time, values) {
   const [open, high, low, close, volume] = values.map(Number);
   if (!Number.isFinite(time) || time % DAY !== 0 || ![open, high, low, close].every(v => Number.isFinite(v) && v > 0) || low>Math.min(open,close) || high<Math.max(open,close) || low>high) return null;
