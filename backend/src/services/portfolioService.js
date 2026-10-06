@@ -1562,14 +1562,15 @@ class PortfolioService {
     // portfolio totals are never prices; only dated instrument closes qualify.
     const rawKey = instrumentType === 'crypto' ? symbol.slice(7) + '-USD' : symbol;
     const rawSeries = (await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1', [rawKey])).rows[0]?.payload;
-    if (rawSeries?.currency === 'USD' && Array.isArray(rawSeries.prices)) {
+    if (rawSeries?.currency && Array.isArray(rawSeries.prices)) {
       const known = new Set(cachedCandles.map(c => c.time));
       const proxies = new Set(rawSeries.proxyDates || []);
-      const reusable = rawSeries.prices.filter(p => p.date >= startDate && p.date <= endDate && !proxies.has(p.date) && p.close > 0).map(p => {
+      const candidates = rawSeries.prices.filter(p => p.date >= startDate && p.date <= endDate && !proxies.has(p.date) && p.close > 0).map(p => {
         const ratio = instrumentType === 'crypto' ? 1 : (rawSeries.splits || []).filter(s => s.date > p.date).reduce((n,s) => n * s.ratio, 1);
         const close = p.close / ratio;
-        return { time: Date.parse(p.date)/1000, close, open: close, high: close, low: close, volume: 0 };
+        return { time: Date.parse(p.date)/1000, close, open: close, high: close, low: close, volume: 0,currency:rawSeries.currency };
       }).filter(c => Number.isFinite(c.close) && c.close > 0 && !known.has(c.time));
+      const reusable=await require('../utils/dailyPriceCurrency').toUsd(candidates);
       if (reusable.length) {
         await historicalPriceCache.insertCandles(symbol, reusable, 'reconstruction_cache');
         cachedCandles = [...cachedCandles, ...reusable].sort((a,b) => a.time-b.time);
@@ -1627,15 +1628,16 @@ class PortfolioService {
     const crypto = instrumentType === 'crypto';
     const ticker = crypto ? symbol.slice(7) : symbol;
     const merged = new Map(cachedCandles.map(c => [c.time, c]));
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true});
     const persist = async (candles, source) => {
-      const fresh = (candles || []).filter(c => !merged.has(c.time));
-      await historicalPriceCache.insertCandles(symbol, fresh, source);
+      const normalized=await require('../utils/dailyPriceCurrency').toUsd(candles,crypto||calendar==='US'?'USD':null);
+      const fresh = normalized.filter(c => !merged.has(c.time));
+      await historicalPriceCache.insertCandles(symbol, fresh, source,{currency:'USD'});
       for (const c of fresh) merged.set(c.time, c);
     };
-    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true});
     const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto, calendar);
     if (ranges().length) await require('./brokerHistoryProviders').fetch({
-      userId, symbol: ticker, instrumentType, ranges, onPrices: persist
+      userId, symbol: ticker, instrumentType, ranges, onPrices: (candles,broker)=>persist(candles,'broker:'+broker)
     });
     if (crypto) {
       for (const range of ranges()) {

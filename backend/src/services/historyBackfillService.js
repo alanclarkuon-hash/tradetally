@@ -63,6 +63,8 @@ async function progress(jobId, value) {
   await db.query("UPDATE job_queue SET result=$2, started_at=NOW() WHERE id=$1 AND status='processing'", [jobId, JSON.stringify(value)]);
 }
 async function process(job) {
+  const data=typeof job.data==='string'?JSON.parse(job.data):job.data;
+  if(data?.mode==='broker_refresh')return require('./priceCacheRefreshService').process(job,progress);
   let saved = typeof job.result === 'string' ? JSON.parse(job.result) : job.result;
   const tasks = saved?.tasks || await plan(job.user_id);
   const state = saved?.tasks ? saved : { tasks, processed: 0, complete: 0, gaps: [], stage: 'prices', total: tasks.length };
@@ -110,7 +112,7 @@ async function process(job) {
   } finally { clearInterval(timer); }
 }
 async function status(userId) {
-  const rows = (await db.query(`SELECT id,status,result,created_at,completed_at FROM job_queue
+  const rows = (await db.query(`SELECT id,status,result,data,created_at,completed_at FROM job_queue
     WHERE user_id=$1 AND type=$2 ORDER BY CASE WHEN status IN ('pending','processing') THEN 0 ELSE 1 END,created_at DESC LIMIT 2`, [userId, TYPE])).rows;
   return Promise.all(rows.map(async row => {
     const result = typeof row.result === 'string' ? JSON.parse(row.result) : row.result || {};
@@ -124,6 +126,9 @@ async function status(userId) {
     return { id: row.id, status: row.status, stage: result.stage || 'queued', processed: result.processed || 0,
       total: result.total || 0, complete: (result.complete || 0)+(gaps.length-remaining.length), currentSymbol: result.currentSymbol || null,
       calendarProcessed:result.calendarProcessed||0,calendarTotal:result.calendarTotal||0,
+      mode:result.mode||(typeof row.data==='string'?JSON.parse(row.data):row.data)?.mode||null,
+      quoteProcessed:result.quoteProcessed||0,quoteTotal:result.quoteTotal||0,
+      brokerRows:result.brokerRows||0,quotesRefreshed:result.quotesRefreshed||0,
       gaps: remaining, portfolioWarnings: result.portfolioWarnings || [], createdAt: row.created_at, completedAt: row.completed_at };
   }));
 }
