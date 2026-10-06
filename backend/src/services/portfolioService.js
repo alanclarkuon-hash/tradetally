@@ -3,6 +3,7 @@ const db = require('../config/database');
 const finnhub = require('../utils/finnhub');
 const alphaVantage = require('../utils/alphaVantage');
 const historicalPriceCache = require('../utils/historicalPriceCache');
+const historyProvider = require('./holdingsHistoryProvider');
 const HoldingsService = require('./holdingsService');
 const NotificationService = require('./notificationService');
 const { priceCacheKey, usablePriceRow } = require('../utils/priceCacheIdentity');
@@ -23,6 +24,13 @@ const inFlightPriceSymbols = new Set();
 // parallel. These endpoints all derive from the same position snapshot, so a
 // per-process single-flight latch prevents duplicate DB scans and quote work.
 const inFlightPortfolioComputations = new Map();
+const historyRefreshAfter = new Map();
+const incompleteHistory = new Set();
+const historySymbolLanes = new Map();
+const HISTORY_RETRY_MS = 15 * 60 * 1000;
+function historyKey(symbol, startDate, endDate, userId) {
+  return `history:${userId}:${symbol}:${startDate}:${endDate}`;
+}
 
 function coalescePortfolio(key, compute) {
   const existing = inFlightPortfolioComputations.get(key);
@@ -484,7 +492,8 @@ class PortfolioService {
       resolved_range,
       accounts,
       benchmark: options.benchmark ? normalizeSymbol(options.benchmark) : 'default',
-      period: String(options.period || DEFAULT_PERIOD).toUpperCase()
+      period: String(options.period || DEFAULT_PERIOD).toUpperCase(),
+      waitForHistory: options.waitForHistory === true
     })}`;
     return coalescePortfolio(key, () => this._getPerformance(userId, options));
   }
@@ -497,12 +506,25 @@ class PortfolioService {
     const { period, startDate, endDate } = explicit_range
       ? { period: options.period || 'custom', startDate: explicit_range.start_date, endDate: explicit_range.end_date }
       : getPeriodRange(options.period);
-    const components = await this._getPositionComponents(userId, accounts);
+    const components = (await this._getPositionComponents(userId, accounts))
+      .filter(c => !c.effectiveDate || c.effectiveDate <= endDate);
     const symbols = [...new Set(components.map(component => component.symbol))];
+    const cryptoSymbols = new Set(components.filter(c => c.instrumentType === 'crypto').map(c => c.symbol));
+    const historyStarts = new Map(symbols.map(symbol => {
+      const first = components.filter(c => c.symbol === symbol).map(c => c.effectiveDate || startDate).sort()[0];
+      return [symbol, first > startDate ? first : startDate];
+    }));
+    const trackedHistoryKey = symbol => {
+      const ticker = symbol.startsWith('crypto:') ? symbol.slice(7) : symbol;
+      return historyKey(symbol, symbol === benchmark ? startDate : (historyStarts.get(ticker) || startDate), endDate, userId);
+    };
+    const trackedHistorySymbols = [benchmark, ...symbols.map(s => priceCacheKey(s, cryptoSymbols.has(s) ? 'crypto' : 'stock'))];
+    const historyRequestedAt = Date.now();
 
     const [benchmarkCandles, priceSeriesMap] = await Promise.all([
-      this._getDailySeries(benchmark, startDate, endDate, userId),
-      this._getPriceSeriesMap(symbols, startDate, endDate, userId)
+      this._getDailySeries(benchmark, startDate, endDate, userId, { background: options.waitForHistory !== true }),
+      this._getPriceSeriesMap(symbols, startDate, endDate, userId, { background: options.waitForHistory !== true,
+        cryptoSymbols, historyStarts })
     ]);
 
     const canonicalDates = (benchmarkCandles.length > 0
@@ -613,6 +635,11 @@ class PortfolioService {
       startDate,
       endDate,
       benchmark,
+      historyUpdating: trackedHistorySymbols.some(symbol =>
+        inFlightPortfolioComputations.has(trackedHistoryKey(symbol)) ||
+        (historyRefreshAfter.get(trackedHistoryKey(symbol)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
+      historyMissingSymbols: symbols.filter(symbol => !(priceSeriesMap.get(symbol)?.length)),
+      historyIncomplete: trackedHistorySymbols.some(symbol => incompleteHistory.has(trackedHistoryKey(symbol))),
       metrics: {
         totalReturnPercent: round(totalReturnDecimal * 100),
         benchmarkReturnPercent: round(benchmarkReturnDecimal * 100),
@@ -656,7 +683,7 @@ class PortfolioService {
       });
     }
 
-    if (performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
+    if (!performance.historyUpdating && !performance.historyIncomplete && !performance.historyMissingSymbols?.length && performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
       activeConditions.push({
         category: 'drawdown',
         symbol: 'Portfolio',
@@ -758,8 +785,10 @@ class PortfolioService {
     for (const accountIdentifier of accountIdentifiers) {
       const performance = await this.getPerformance(userId, {
         accounts: accountIdentifier || undefined,
-        period: `${days}D_INTERNAL`
+        period: `${days}D_INTERNAL`,
+        waitForHistory: true
       });
+      if (performance.historyUpdating || performance.historyIncomplete) continue;
       const currentOverview = await this.getOverview(userId, {
         accounts: accountIdentifier || undefined
       });
@@ -835,7 +864,7 @@ class PortfolioService {
       }
     }
 
-    if (performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
+    if (!performance.historyUpdating && !performance.historyIncomplete && !performance.historyMissingSymbols?.length && performance.metrics.maxDrawdownPercent >= preferences.drawdownThresholdPercent) {
       const alertKey = `drawdown:${preferences.drawdownThresholdPercent}`;
       const message = `Portfolio drawdown reached ${performance.metrics.maxDrawdownPercent.toFixed(2)}% over the last 6 months.`;
       const created = await this._createPortfolioAlert(userId, alertKey, 'Portfolio', message, {
@@ -1324,7 +1353,7 @@ class PortfolioService {
 
     const symbols = [...new Set(positions.flatMap(position => [position.symbol, priceCacheKey(position.symbol, position.instrumentType)]))];
     const cacheResult = await db.query(
-      `SELECT symbol, current_price, last_updated, data_source
+      `SELECT symbol, current_price, last_updated, data_source, quote_session
        FROM price_monitoring
        WHERE symbol = ANY($1)`,
       [symbols]
@@ -1381,6 +1410,7 @@ class PortfolioService {
         ? (position.totalDividendsReceived / position.totalCostBasis) * 100
         : position.dividendYieldOnCost;
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
+      position.quoteSession = useBroker ? null : cached?.quote_session || null;
       position.priceStale = priceStale;
     }
 
@@ -1498,64 +1528,24 @@ class PortfolioService {
   }
 
   static async _getOpenTradeComponents(userId, accounts) {
-    const params = [userId];
-    const { clause } = buildAccountFilter('t.account_identifier', accounts, params, 2);
-    const result = await db.query(
-      `WITH trade_executions AS (
-         SELECT
-           t.symbol,
-           t.entry_time,
-           t.instrument_type,
-           t.contract_size,
-           t.point_value,
-           COALESCE(
-             (
-               SELECT SUM(
-                 CASE
-                   WHEN exec->>'entryPrice' IS NOT NULL OR exec->>'exitPrice' IS NOT NULL OR exec->>'entryTime' IS NOT NULL THEN
-                     CASE
-                       WHEN exec->>'exitPrice' IS NULL THEN
-                         CASE WHEN t.side = 'long' THEN (exec->>'quantity')::numeric ELSE -(exec->>'quantity')::numeric END
-                       ELSE 0
-                     END
-                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('buy', 'long') THEN (exec->>'quantity')::numeric
-                   WHEN COALESCE(exec->>'action', exec->>'side', '') IN ('sell', 'short') THEN -(exec->>'quantity')::numeric
-                   ELSE 0
-                 END
-               )
-               FROM jsonb_array_elements(COALESCE(t.executions, '[]'::jsonb)) AS exec
-               WHERE exec->>'quantity' IS NOT NULL
-             ),
-             t.quantity
-           ) AS net_position
-         FROM trades t
-         WHERE t.user_id = $1
-           AND t.exit_price IS NULL
-           AND t.side = 'long'
-           ${clause}
-       )
-       SELECT *
-       FROM trade_executions
-       WHERE net_position > 0`,
-      params
-    );
-
-    return result.rows.map(row => ({
-      symbol: row.symbol,
-      shares: parseFloat(row.net_position) || 0,
-      effectiveDate: this._normalizeDateValue(row.entry_time),
-      valueMultiplier: row.instrument_type === 'future'
-        ? (parseFloat(row.point_value) || 1)
-        : row.instrument_type === 'option'
-          ? (parseFloat(row.contract_size) || 100)
-          : 1
+    // Use the same authoritative broker snapshots as the displayed holdings.
+    // Superseded trade rows must not resurrect renamed or delisted positions.
+    const positions = await this._getTradePositions(userId, accounts);
+    return positions.filter(p => p.totalShares > 0).map(p => ({
+      symbol: p.symbol,
+      instrumentType: p.instrumentType || 'stock',
+      shares: p.totalShares,
+      effectiveDate: this._normalizeDateValue(p.openedAt),
+      valueMultiplier: p.instrumentType === 'future' ? (p.pointValue || 1)
+        : p.instrumentType === 'option' ? (p.contractSize || 100) : 1
     }));
   }
 
-  static async _getPriceSeriesMap(symbols, startDate, endDate, userId) {
+  static async _getPriceSeriesMap(symbols, startDate, endDate, userId, options) {
     const entries = await Promise.all(
       symbols.map(async symbol => {
-        const candles = await this._getDailySeries(symbol, startDate, endDate, userId);
+        const candles = await this._getDailySeries(symbol, options?.historyStarts?.get(symbol) || startDate, endDate, userId, { ...options,
+          instrumentType: options?.cryptoSymbols?.has(symbol) ? 'crypto' : 'stock' });
         return [symbol, candles];
       })
     );
@@ -1563,16 +1553,105 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId) {
-    const cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
-    if (cachedCandles.length > 0 && await historicalPriceCache.hasRange(symbol, startDate, endDate)) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false, instrumentType = 'stock' } = {}) {
+    // Separate coin prices from identically named equities (for example SUI).
+    symbol = priceCacheKey(symbol, instrumentType);
+    const key = historyKey(symbol, startDate, endDate, userId);
+    let cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
+    // Reuse already-downloaded split-aware USD series. Reconstructed/proxy
+    // portfolio totals are never prices; only dated instrument closes qualify.
+    const rawKey = instrumentType === 'crypto' ? symbol.slice(7) + '-USD' : symbol;
+    const rawSeries = (await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1', [rawKey])).rows[0]?.payload;
+    if (rawSeries?.currency === 'USD' && Array.isArray(rawSeries.prices)) {
+      const known = new Set(cachedCandles.map(c => c.time));
+      const proxies = new Set(rawSeries.proxyDates || []);
+      const reusable = rawSeries.prices.filter(p => p.date >= startDate && p.date <= endDate && !proxies.has(p.date) && p.close > 0).map(p => {
+        const ratio = instrumentType === 'crypto' ? 1 : (rawSeries.splits || []).filter(s => s.date > p.date).reduce((n,s) => n * s.ratio, 1);
+        const close = p.close / ratio;
+        return { time: Date.parse(p.date)/1000, close, open: close, high: close, low: close, volume: 0 };
+      }).filter(c => Number.isFinite(c.close) && c.close > 0 && !known.has(c.time));
+      if (reusable.length) {
+        await historicalPriceCache.insertCandles(symbol, reusable, 'reconstruction_cache');
+        cachedCandles = [...cachedCandles, ...reusable].sort((a,b) => a.time-b.time);
+      }
+    }
+    if (instrumentType === 'crypto') {
+      // Earlier coin monitoring stored unprefixed rows; accept only verified
+      // CoinGecko history, never a same-ticker stock quote.
+      const legacy = await db.query(`SELECT price_date, close FROM historical_prices
+        WHERE symbol=$1 AND data_source='coingecko' AND price_date BETWEEN $2 AND $3 AND is_final`, [symbol.slice(7), startDate, endDate]);
+      const known = new Set(cachedCandles.map(c => c.time));
+      const reusable = legacy.rows.map(r => ({time: Date.parse(r.price_date)/1000, close: Number(r.close), open: Number(r.close), high: Number(r.close), low: Number(r.close), volume:0})).filter(c => !known.has(c.time));
+      if (reusable.length) await historicalPriceCache.insertCandles(symbol, reusable, 'coingecko');
+      cachedCandles = [...cachedCandles, ...reusable].sort((a,b)=>a.time-b.time);
+    }
+    const calendar = instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(symbol);
+    // A candle count cannot distinguish real session gaps from market closures.
+    // Only require dates on which this instrument's exchange actually traded.
+    if (!historyProvider.missingRanges(cachedCandles, startDate, endDate, instrumentType === 'crypto', calendar).length) {
+      incompleteHistory.delete(key);
       return cachedCandles;
     }
 
-    if (alphaVantage.isConfigured()) {
+    incompleteHistory.add(key);
+    while (incompleteHistory.size > 256) incompleteHistory.delete(incompleteHistory.values().next().value);
+    if (background) {
+      if (!inFlightPortfolioComputations.has(key) && Date.now() >= (historyRefreshAfter.get(key) || 0)) {
+        // Missing provider history must never hold a page response open. Keep
+        // each exact range single-flight; failed/partial downloads cool down.
+        coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles, instrumentType))
+          .catch(() => cachedCandles)
+          .finally(() => {
+            historyRefreshAfter.set(key, Date.now() + HISTORY_RETRY_MS);
+            while (historyRefreshAfter.size > 256) historyRefreshAfter.delete(historyRefreshAfter.keys().next().value);
+          });
+      }
+      return cachedCandles;
+    }
+    return coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles, instrumentType));
+  }
+
+  static async _fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles = [], instrumentType = 'stock') {
+    const previous = historySymbolLanes.get(symbol) || Promise.resolve();
+    const request = previous.catch(() => {}).then(async () => {
+      const latest = await historicalPriceCache.getRange(symbol, startDate, endDate);
+      const known = new Map([...cachedCandles, ...latest].map(c => [c.time, c]));
+      return this._downloadDailySeries(symbol, startDate, endDate, userId, [...known.values()], instrumentType);
+    });
+    historySymbolLanes.set(symbol, request);
+    try { return await request; }
+    finally { if (historySymbolLanes.get(symbol) === request) historySymbolLanes.delete(symbol); }
+  }
+
+  static async _downloadDailySeries(symbol, startDate, endDate, userId, cachedCandles = [], instrumentType = 'stock') {
+    const crypto = instrumentType === 'crypto';
+    const ticker = crypto ? symbol.slice(7) : symbol;
+    const merged = new Map(cachedCandles.map(c => [c.time, c]));
+    const persist = async (candles, source) => {
+      const fresh = (candles || []).filter(c => !merged.has(c.time));
+      await historicalPriceCache.insertCandles(symbol, fresh, source);
+      for (const c of fresh) merged.set(c.time, c);
+    };
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true});
+    const ranges = () => historyProvider.missingRanges([...merged.values()], startDate, endDate, crypto, calendar);
+    if (ranges().length) await require('./brokerHistoryProviders').fetch({
+      userId, symbol: ticker, instrumentType, ranges, onPrices: persist
+    });
+    if (crypto) {
+      for (const range of ranges()) {
+        try { await persist(await historyProvider.crypto(ticker, range.from, range.to), 'coingecko'); }
+        catch { break; } // Shared client enforces cooldown and the persistent API budget.
+      }
+      return [...merged.values()].sort((a, b) => a.time - b.time);
+    }
+
+    // Alpha's compact endpoint has no date bounds; only use it on an empty
+    // cache. Range-capable providers fill partial caches without re-fetching them.
+    if (ranges().length && !merged.size && alphaVantage.isConfigured()) {
       try {
         const candles = await alphaVantage.getDailyData(symbol, 'compact');
-        return candles.filter(candle => {
+        await persist(candles, 'alphaVantage');
+        if (!ranges().length) return [...merged.values()].filter(candle => {
           const date = this._toDateString(candle.time);
           return date >= startDate && date <= endDate;
         });
@@ -1582,14 +1661,20 @@ class PortfolioService {
     }
 
     try {
-      const from = Math.floor(new Date(`${startDate}T00:00:00.000Z`).getTime() / 1000);
-      const to = Math.floor(new Date(`${endDate}T23:59:59.999Z`).getTime() / 1000);
-      const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
-      await historicalPriceCache.insertCandles(symbol, candles, finnhub.providerName || 'finnhub');
-      return candles;
+      for (const range of ranges()) {
+        const from = Date.parse(range.from) / 1000;
+        const to = Date.parse(range.to) / 1000 + 86399;
+        const candles = await finnhub.getStockCandles(symbol, 'D', from, to, userId);
+        await persist(candles, finnhub.providerName || 'finnhub');
+      }
     } catch (error) {
-      return [];
+      // Missing primary-provider coverage is filled through Yahoo below.
     }
+    for (const range of ranges()) {
+      try { await persist(await historyProvider.yahoo(ticker, range.from, range.to), 'yahoo'); }
+      catch { break; }
+    }
+    return [...merged.values()].filter(c => c.time >= Date.parse(startDate)/1000 && c.time < Date.parse(endDate)/1000+86400).sort((a,b) => a.time-b.time);
   }
 
   static _buildDateUnion(priceSeriesMap) {

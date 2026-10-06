@@ -535,7 +535,7 @@ class BackupService {
         await client.query(`SAVEPOINT ${usersSavepoint}`);
 
         try {
-          for (const user of tables.users) {
+          for await (const user of tables.users) {
             // Check if user already exists by ID or email
             const existingUser = await client.query(
               'SELECT id, email, username FROM users WHERE id = $1 OR email = $2',
@@ -684,7 +684,7 @@ class BackupService {
         // Get table data, handling both camelCase and snake_case formats
         const tableData = getTableData(tableDataKey, tableName);
 
-        if (!Array.isArray(tableData) || tableData.length === 0) {
+        if ((!Array.isArray(tableData) && typeof tableData?.[Symbol.asyncIterator] !== 'function') || tableData.length === 0) {
           return;
         }
 
@@ -708,7 +708,7 @@ class BackupService {
         await client.query(`SAVEPOINT ${tableSavepoint}`);
 
         try {
-          for (const row of tableData) {
+          for await (const row of tableData) {
             if (!row || typeof row !== 'object' || Array.isArray(row)) {
               results[resultKey].skipped++;
               tableResults[tableName].skipped++;
@@ -803,7 +803,7 @@ class BackupService {
         if (!validTradeCols) throw new Error('Required target table trades does not exist');
         const tzCache = new Map();
 
-        for (const trade of tables.trades) {
+        for await (const trade of tables.trades) {
           let tradeData = { ...trade };
           if (userIdMapping.has(tradeData.user_id)) {
             tradeData.user_id = userIdMapping.get(tradeData.user_id);
@@ -884,7 +884,7 @@ class BackupService {
         const validDiaryCols = await getValidColumns('diary_entries');
         if (!validDiaryCols) throw new Error('Required target table diary_entries does not exist');
 
-        for (const entry of diaryEntriesData) {
+        for await (const entry of diaryEntriesData) {
           const entryData = { ...entry };
           if (entryData.user_id && userIdMapping.has(entryData.user_id)) {
             entryData.user_id = userIdMapping.get(entryData.user_id);

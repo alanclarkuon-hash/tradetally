@@ -236,6 +236,15 @@ describe('Yahoo Finance quotes', () => {
   function quoteResponse(meta) {
     return { data: { chart: { error: null, result: [{ meta, timestamp: [], indicators: { quote: [{}] } }] } } };
   }
+  test('requests extended hours and preserves the identified post-market quote time',async()=>{
+    const now=Math.floor(Date.now()/1000);
+    const response=quoteResponse({regularMarketPrice:100,regularMarketTime:now-1000,previousClose:99,currency:'USD',currentTradingPeriod:{post:{start:now-100,end:now+100}}});
+    response.data.chart.result[0].timestamp=[now-30];
+    response.data.chart.result[0].indicators.quote[0].close=[101];
+    axios.get.mockResolvedValue(response);
+    expect(await yahooFinance.getQuote('MSFT')).toEqual(expect.objectContaining({c:101,t:now-30,session:'post'}));
+    expect(axios.get.mock.calls[0][1].params).toEqual({interval:'1m',range:'1d',includePrePost:true});
+  });
 
   test('shapes the quote like the Finnhub one the callers already consume', async () => {
     axios.get.mockResolvedValue(quoteResponse({

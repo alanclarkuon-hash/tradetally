@@ -13,4 +13,5 @@ const PARALLEL_JOB_TYPES = [
   'news_enrichment'
 ];
 
-module.exports = { PARALLEL_JOB_TYPES };
+const DEDICATED_JOB_TYPES = ['historical_price_backfill'];
+module.exports = { PARALLEL_JOB_TYPES, DEDICATED_JOB_TYPES };

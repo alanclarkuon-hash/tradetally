@@ -44,3 +44,19 @@ test('stock classification labels include stored industry',async()=>{
   const result=await getDetails('owner','EXAMPLE');
   expect(result.name).toBe('Example company');expect(result.labels).toContain('industry: Semiconductors');
 });
+test.each(['BTC','COTI','HYPE'])('saved crypto quote %s reads its current identity instead of the legacy stock key',async symbol=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:true,stock:false}]:sql.includes('count(*)')?[{count:1}]:[{symbol:'crypto:'+symbol,data_source:'broker:example:crypto'}]}));
+  const result=await getDetails('owner',symbol,{source:'price_monitoring'});
+  expect(result.records[0].symbol).toBe('crypto:'+symbol);
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM price_monitoring WHERE symbol=$1'),['crypto:'+symbol]);
+});
+test('future crypto symbols use owned instrument type for historical price pagination',async()=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:true,stock:false}]:sql.includes('count(*)')?[{count:26}]:[{symbol:'crypto:NEWCOIN'}]}));
+  await getDetails('owner','NEWCOIN',{source:'historical_prices',offset:25});
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM historical_prices WHERE symbol=$1'),['crypto:NEWCOIN',25]);
+});
+test('an explicitly owned stock with a crypto ticker retains its stock cache',async()=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:false,stock:true}]:sql.includes('count(*)')?[{count:1}]:[{symbol:'SUI'}]}));
+  await getDetails('owner','SUI',{source:'price_monitoring'});
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM price_monitoring WHERE symbol=$1'),['SUI']);
+});

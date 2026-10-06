@@ -126,11 +126,36 @@ class Trading212Service extends OAuthBrokerBase {
     return items;
   }
 
-  async fetchPositions(connection) {
+  async fetchPositions(connection, { background = false } = {}) {
+    if (background && (this.positionsPending || Date.now() < (this.positionsCooldown || 0))) return null;
+    this.positionsPending = (this.positionsPending || 0) + 1;
+    const work = (this.positionsQueue || Promise.resolve()).catch(() => {}).then(async () => {
+      const wait = Math.max(0, (this.lastPositionsAt || 0) + 5000 - Date.now(), (this.positionsCooldown || 0) - Date.now());
+      if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+      this.lastPositionsAt = Date.now();
+      try { return await this.readPositions(connection); }
+      catch (error) {
+        if (error.response?.status === 429) {
+          const retry = error.response.headers?.['retry-after'];
+          const delay = Number(retry) * 1000 || Date.parse(retry) - Date.now() || 60000;
+          this.positionsCooldown = Date.now() + Math.max(60000, delay);
+        }
+        throw Error('Trading 212 position prices unavailable');
+      }
+    }).finally(() => { this.positionsPending--; });
+    this.positionsQueue = work.catch(() => {});
+    return work;
+  }
+
+  async readPositions(connection) {
     const response = await axios.get(`${getApiBase(connection.brokerEnvironment || 'live')}/equity/positions`, {
       auth: { username: connection.trading212ApiKey, password: connection.trading212ApiSecret }, timeout: 15000
     });
     if (!Array.isArray(response.data)) throw new Error('Invalid Trading 212 positions response');
+    if (Number(response.headers?.['x-ratelimit-remaining']) === 0) {
+      const reset = Number(response.headers?.['x-ratelimit-reset']) * 1000;
+      this.positionsCooldown = Number.isFinite(reset) && reset > Date.now() ? reset : Date.now() + 60000;
+    }
     return response.data;
   }
 

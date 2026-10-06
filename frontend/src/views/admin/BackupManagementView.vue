@@ -441,6 +441,7 @@
                                 Upload a backup file to restore site data. This
                                 will add missing data without deleting existing
                                 records.
+                                JSON uploads up to {{ formatFileSize(restoreMaxBytes) }} are supported.
                             </p>
                             <div class="mt-4">
                                 <input
@@ -821,6 +822,7 @@ const selectedRestoreFile = ref(null);
 const showRestoreModal = ref(false);
 const overwriteUsers = ref(false);
 const clearExisting = ref(false);
+const restoreMaxBytes = ref(1024 * 1024 * 1024);
 
 const settings = ref({
     enabled: false,
@@ -837,10 +839,11 @@ async function loadData() {
         loading.value = true;
         errorMessage.value = "";
 
-        const [settingsRes, backupsRes, healthRes] = await Promise.all([
+        const [settingsRes, backupsRes, healthRes, limitsRes] = await Promise.all([
             api.get("/admin/backup/settings"),
             api.get("/admin/backup"),
             api.get("/health"),
+            api.get("/admin/backup/restore-limits"),
         ]);
 
         settings.value = {
@@ -849,6 +852,7 @@ async function loadData() {
             retentionDays: settingsRes.data.retention_days,
             lastBackup: settingsRes.data.last_backup,
         };
+        restoreMaxBytes.value = limitsRes.data.maxUploadBytes;
         backupWarnings.value = settingsRes.data.health?.warnings || [];
         storageWarnings.value =
             healthRes.data?.services?.storage?.warnings || [];
@@ -1020,6 +1024,11 @@ function cleanupOldBackups() {
 function handleRestoreFileSelect(event) {
     const file = event.target.files[0];
     if (file) {
+        if (file.size > restoreMaxBytes.value) {
+            errorMessage.value = `Backup exceeds the ${formatFileSize(restoreMaxBytes.value)} upload limit. It has not been uploaded.`;
+            event.target.value = "";
+            return;
+        }
         selectedRestoreFile.value = file;
         showRestoreModal.value = true;
     }
@@ -1045,6 +1054,7 @@ async function executeRestore() {
         formData.append("clearExisting", clearExisting.value);
 
         const response = await api.post("/admin/backup/restore", formData, {
+            timeout: 900000,
             headers: {
                 "Content-Type": "multipart/form-data",
             },

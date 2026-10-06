@@ -12,6 +12,7 @@ jest.mock('../../src/utils/logger', () => ({
 
 jest.mock('../../src/utils/finnhub', () => ({}));
 jest.mock('../../src/utils/priceFallbackManager', () => ({}));
+jest.mock('../../src/services/currentQuoteService', () => ({ getQuote: jest.fn() }));
 jest.mock('../../src/utils/historicalPriceCache', () => ({}));
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => ({ sendMail: jest.fn() }))
@@ -30,6 +31,7 @@ const { publish } = require('../../src/events/domainEvents');
 const finnhub = require('../../src/utils/finnhub');
 const priceFallbackManager = require('../../src/utils/priceFallbackManager');
 const priceMonitoringService = require('../../src/services/priceMonitoringService');
+const currentQuotes = require('../../src/services/currentQuoteService');
 
 describe('priceMonitoringService price alert webhook publication', () => {
   beforeEach(() => {
@@ -80,13 +82,9 @@ describe('priceMonitoringService price alert webhook publication', () => {
   });
 
   test('skips saturated Finnhub background quotes without recording symbol failure', async () => {
-    priceFallbackManager.getQuoteWithFallback.mockResolvedValue({
-      data: null,
-      source: 'none',
-      error: {
+    currentQuotes.getQuote.mockRejectedValue({
         code: 'FINNHUB_SCHEDULER_SKIPPED',
         message: 'provider capacity reserved for active requests'
-      }
     });
 
     await expect(priceMonitoringService.updateSymbolPrice('AAPL')).resolves.toBe('skipped');
@@ -96,15 +94,15 @@ describe('priceMonitoringService price alert webhook publication', () => {
   });
 
   test('explicit new crypto uses CoinGecko and a separate key even outside the static list',async()=>{
-    finnhub.getCryptoQuote=jest.fn().mockResolvedValue({c:0.5});
+    currentQuotes.getQuote.mockResolvedValue({c:0.5,source:'coingecko'});
     await expect(priceMonitoringService.updateSymbolPrice('FET','crypto')).resolves.toBe(true);
-    expect(finnhub.getCryptoQuote).toHaveBeenCalledWith('FET');
+    expect(currentQuotes.getQuote).toHaveBeenCalledWith('FET','crypto');
     expect(priceFallbackManager.getQuoteWithFallback).not.toHaveBeenCalled();
     expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO price_monitoring'),expect.arrayContaining(['crypto:FET','coingecko']));
   });
 
   test('unresolved crypto never falls back to an equity quote',async()=>{
-    finnhub.getCryptoQuote=jest.fn().mockRejectedValue(new Error('Unknown coin identity'));
+    currentQuotes.getQuote.mockRejectedValue(new Error('Unknown coin identity'));
     await expect(priceMonitoringService.updateSymbolPrice('NEWCOIN','crypto')).resolves.toBe(false);
     expect(priceFallbackManager.getQuoteWithFallback).not.toHaveBeenCalled();
     expect(db.query).not.toHaveBeenCalled();
@@ -113,7 +111,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
   test('explicit stock sharing a supported crypto ticker keeps its equity key and provider',async()=>{
     finnhub.isCryptoSymbol.mockReturnValue(true);
     finnhub.getCryptoQuote=jest.fn();
-    priceFallbackManager.getQuoteWithFallback.mockResolvedValue({data:{c:100},source:'finnhub'});
+    currentQuotes.getQuote.mockResolvedValue({c:100,source:'finnhub'});
     await expect(priceMonitoringService.updateSymbolPrice('SUI','stock')).resolves.toBe(true);
     expect(finnhub.getCryptoQuote).not.toHaveBeenCalled();
     expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO price_monitoring'),expect.arrayContaining(['SUI','finnhub']));
@@ -121,10 +119,27 @@ describe('priceMonitoringService price alert webhook publication', () => {
 
   test('scheduled monitoring retains trade instrument types instead of guessing from ticker',async()=>{
     db.query.mockResolvedValueOnce({rows:[{symbol:'FET',instrument_type:'crypto'},{symbol:'FET',instrument_type:'stock'}]});
+    db.query.mockResolvedValueOnce({rows:[]});
     const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
     await priceMonitoringService.monitorPrices();
     expect(update).toHaveBeenCalledWith('FET','crypto');
     expect(update).toHaveBeenCalledWith('FET','stock');
     update.mockRestore();
+  });
+  test('a slow cycle cannot overlap the next interval',async()=>{
+    let release;
+    db.query.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve})).mockResolvedValue({rows:[]});
+    const first=priceMonitoringService.monitorPrices();
+    await priceMonitoringService.monitorPrices();
+    expect(db.query).toHaveBeenCalledTimes(1);
+    release({rows:[]});await first;
+    expect(priceMonitoringService.cycleRunning).toBe(false);
+  });
+  test('failed symbols do not starve later independent broker holdings',async()=>{
+    db.query.mockResolvedValueOnce({rows:Array.from({length:6},(_,i)=>({symbol:'FAILED'+i,instrument_type:'stock'})).concat([{symbol:'WAGB.L',instrument_type:'stock'}])}).mockResolvedValue({rows:[]});
+    const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
+    await priceMonitoringService.monitorPrices();
+    expect(update).toHaveBeenCalledWith('WAGB.L','stock');
+    expect(update).toHaveBeenCalledTimes(7);update.mockRestore();
   });
 });

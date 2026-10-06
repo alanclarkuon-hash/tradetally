@@ -1950,6 +1950,8 @@ const analyticsController = {
   },
 
   async getChartData(req, res, next) {
+    const { fxUsdFromSnapshot: fxUsd, withUsdRateSnapshot } = require('../utils/tradeFx');
+    const chartQuery = (sql, params) => db.query(withUsdRateSnapshot(sql), params);
     try {
       // Include filter hash in cache key to handle different filter combinations
       const normalizedForCache = convertQueryToTradeFilters(req.query);
@@ -2042,7 +2044,7 @@ const analyticsController = {
 
         // Performance by Volume
         const performanceByVolumeQuery = `
-          WITH trade_volumes AS (
+          WITH trade_volumes AS MATERIALIZED (
             SELECT
               CASE
                 WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
@@ -2220,11 +2222,11 @@ const analyticsController = {
         `;
 
         const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByPositionSizeResult, perfByHoldTimeResult] = await Promise.all([
-          db.query(tradeDistributionQuery, params),
-          db.query(performanceByPriceQuery, params),
-          db.query(performanceByVolumeQuery, params),
-          db.query(performanceByPositionSizeQuery, params),
-          db.query(performanceByHoldTimeQuery, params)
+          chartQuery(tradeDistributionQuery, params),
+          chartQuery(performanceByPriceQuery, params),
+          chartQuery(performanceByVolumeQuery, params),
+          chartQuery(performanceByPositionSizeQuery, params),
+          chartQuery(performanceByHoldTimeQuery, params)
         ]);
 
         console.log('Chart data query results:', {
@@ -2374,7 +2376,7 @@ const analyticsController = {
           ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
         `;
 
-        const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
+        const dayOfWeekResult = await chartQuery(dayOfWeekQuery, dayOfWeekParams);
 
         // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
         // Skip weekends entirely since stock markets are closed
@@ -2413,7 +2415,7 @@ const analyticsController = {
           ORDER BY trade_date
         `;
 
-        const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
+        const dailyVolumeResult = await chartQuery(dailyVolumeQuery, params);
 
         const responseData = {
           tradeDistribution,

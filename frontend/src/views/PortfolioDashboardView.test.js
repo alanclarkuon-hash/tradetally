@@ -19,7 +19,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
   totals: { portfolioValue: 100, holdingsValue: 60, cashValue: 40, stablecoinValue: 0, pnl: 0, pnlPercent: 0 },
   coverage: { missingCash: 0, missingPrices: 0, missingPnl: 0, unclassified: 0 } }
-const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true } } })
+const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true, HistoryBackfillStatus: true } } })
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -81,7 +81,7 @@ describe('Portfolio summary cards', () => {
     expect(view.findAll('article')[1].text()).toContain('£60.00')
     expect(view.findAll('article')[0].text()).not.toContain('change')
     expect(view.findAll('article')[1].text()).not.toContain('since acquisition')
-    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25})
+    expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25,captureWarnings:[]})
     view.unmount()
   })
 
@@ -183,3 +183,45 @@ describe('Portfolio filter interactions', () => {
     view.unmount()
   })
 })
+
+
+describe('Delayed heatmap quotes',()=>{
+  it('shows identified quote sessions on large and tiny tiles alongside independent delay markers',async()=>{
+    const assets=[['PRE','pre',80],['POST','post',80],['NIGHT','overnight',.01],['UNKNOWN',null,80],['CRYPTO','continuous',80]]
+      .map(([symbol,quoteSession,value])=>({symbol,quoteSession,value,priceAsOf:new Date(Date.now()-960000).toISOString(),assetClass:'Stocks',sector:'Technology',industry:'Software'}));
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:assets}:{change:25}}));
+    const view=create();await flushPromises();
+    expect(view.findAll('.quote-session-marker').map(m=>m.attributes('title'))).toEqual(expect.arrayContaining(['Pre-market quote','Post-market quote','Overnight quote']));
+    expect(view.findAll('.quote-session-marker')).toHaveLength(3);
+    expect(view.findAll('.quote-delay-marker')).toHaveLength(5);
+    view.unmount();
+  });
+  it('marks quotes older than fifteen minutes, including tiny tiles, but not fresh or unknown dates',async()=>{
+    const now=Date.now();
+    const assets=[{symbol:'OLD',value:99,priceAsOf:new Date(now-960000).toISOString()},
+      {symbol:'TINY',value:0.01,priceAsOf:new Date(now-960000).toISOString()},
+      {symbol:'FRESH',value:80,priceAsOf:new Date(now-600000).toISOString()},
+      {symbol:'UNKNOWN',value:50,priceAsOf:null}].map(p=>({...p,assetClass:'Stocks',sector:'Technology',industry:'Software',pnlPercent:1}));
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:assets}:{change:25}}));
+    const view=create();await flushPromises();
+    const tiles=view.findAll('.holding-tile');
+    for(const symbol of ['OLD','TINY']){
+      const tile=tiles.find(t=>t.attributes('aria-label').startsWith(symbol+','));
+      expect(tile.find('sup.quote-delay-marker').text()).toBe('d');
+      expect(tile.attributes('aria-label')).toContain('quote more than 15 minutes old');
+    }
+    for(const symbol of ['FRESH','UNKNOWN'])expect(tiles.find(t=>t.attributes('aria-label').startsWith(symbol+',')).find('sup').exists()).toBe(false);
+    view.unmount();
+  });
+  it('updates age while the page stays open and clears its timer when unmounted',async()=>{
+    vi.useFakeTimers({toFake:['Date','setInterval','clearInterval']});
+    const now=Date.now();
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[{symbol:'BOUNDARY',value:50,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:new Date(now-900000).toISOString()}]}:{change:25}}));
+    const view=create();
+    try{
+      await flushPromises();expect(view.find('.quote-delay-marker').exists()).toBe(false);
+      vi.advanceTimersByTime(30000);await flushPromises();expect(view.find('.quote-delay-marker').text()).toBe('d');
+      view.unmount();expect(vi.getTimerCount()).toBe(0);
+    }finally{vi.useRealTimers()}
+  });
+});
