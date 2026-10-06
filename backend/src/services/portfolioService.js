@@ -1353,7 +1353,7 @@ class PortfolioService {
 
     const symbols = [...new Set(positions.flatMap(position => [position.symbol, priceCacheKey(position.symbol, position.instrumentType)]))];
     const cacheResult = await db.query(
-      `SELECT symbol, current_price, last_updated, data_source
+      `SELECT symbol, current_price, last_updated, data_source, quote_session
        FROM price_monitoring
        WHERE symbol = ANY($1)`,
       [symbols]
@@ -1410,6 +1410,7 @@ class PortfolioService {
         ? (position.totalDividendsReceived / position.totalCostBasis) * 100
         : position.dividendYieldOnCost;
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
+      position.quoteSession = useBroker ? null : cached?.quote_session || null;
       position.priceStale = priceStale;
     }
 
