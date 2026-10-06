@@ -31,10 +31,10 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
  try{
   if(buffer.length>5*1024*1024)daily.fail('unsupported_layout');
   const prior=(await db.query('SELECT status,reason,processed_at FROM ig_statement_ingestion WHERE user_id=$1 AND attachment_hash=$2',[userId,fingerprint])).rows[0];
-  if(prior&&['imported','duplicate'].includes(prior.status))return {status:'duplicate',hash:fingerprint};
+  if(prior&&['imported','duplicate'].includes(prior.status))return {status:'duplicate',hash:fingerprint,skipped:true};
   if(prior&&['review','rejected','conflict'].includes(prior.status)){
    if(!['backup_failed','fx_unavailable','changed_accounts'].includes(prior.reason)||Date.now()-Date.parse(prior.processed_at)<5*60000)
-    return {status:prior.status,hash:fingerprint,reason:prior.reason};
+    return {status:prior.status,hash:fingerprint,reason:prior.reason,skipped:true};
   }
   await db.query(`INSERT INTO ig_statement_ingestion(user_id,attachment_hash,status) VALUES($1,$2,'processing')
     ON CONFLICT(user_id,attachment_hash) DO UPDATE SET status='processing',reason=NULL`,[userId,fingerprint]);
