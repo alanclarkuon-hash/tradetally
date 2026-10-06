@@ -158,8 +158,8 @@ onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()}
 .period-picker summary{width:40px;height:40px;padding:0;position:relative}
 .date-filter-dot{@apply bg-primary-500; width:8px;height:8px;border-radius:50%}
 .date-filter-dot{@apply ring-2 ring-white dark:ring-gray-900;position:absolute;top:-2px;right:-2px}
-.period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
-.period-menu button{@apply text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 16px;font-size:14px}
+.period-menu{@apply bg-white dark:bg-gray-800 shadow-lg rounded-md max-h-60 overflow-auto ring-1 ring-black ring-opacity-5 focus:outline-none;position:absolute;right:0;top:44px;z-index:30;width:176px;padding:4px 0}
+.period-menu button{@apply text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 12px;font-size:14px}
 .period-menu button.active{@apply bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300}
 .period-menu button:focus-visible{@apply outline-none ring-2 ring-inset ring-primary-500}
 .value-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
