@@ -31,7 +31,8 @@ const defaults=[
   {id:'cash',title:'Cash & stablecoins'},
   {id:'allocation',title:'Capital at work',wide:true},
   {id:'history',title:'Portfolio Value',wide:true},
-  {id:'heatmap',title:'Inside your holdings',wide:true}
+  {id:'heatmap',title:'Inside your holdings',wide:true},
+  {id:'brokerSyncs',title:'Broker sync status',wide:true}
 ]
 const fresh=()=>defaults.map(card=>({...card,visible:true}))
 const layout=ref(fresh())

@@ -34,6 +34,7 @@
         <div class="allocation-legend"><span v-for="part in allocation" :key="part.name"><i :style="{background:part.color}"></i>{{ part.name }} <strong>{{ money(part.value) }}</strong><small>{{ part.percent.toFixed(1) }}%</small></span></div>
       </section></template>
     <template #history><PortfolioValueChart :history="history" :loading="historyLoading" :error="historyError" :currency="currency" /></template>
+    <template #brokerSyncs><BrokerSyncStatusCard /></template>
     <template #heatmap><section class="card-dense heatmap-section">
         <div class="section-line"><div><h2>Inside your holdings</h2><p class="subtitle">Asset Class → Sector → Industry</p><p v-if="data.heatmapDate" class="subtitle">Holdings owned on {{ new Date(data.heatmapDate+'T12:00:00Z').toLocaleDateString('en-GB') }}</p></div><div class="color-key"><span>Loss</span><i></i><span>Gain</span><span class="no-history">■ No history</span></div></div>
         <p v-if="data.coverage.classificationOverrideWarning" class="coverage" role="alert">{{ data.coverage.classificationOverrideWarning }}</p>
@@ -74,6 +75,7 @@ import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
 import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/portfolioTreemap'
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
+import BrokerSyncStatusCard from '@/components/dashboard/BrokerSyncStatusCard.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
 import QuoteSessionMarker from '@/components/common/QuoteSessionMarker.vue'
 import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
