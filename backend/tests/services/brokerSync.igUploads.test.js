@@ -2,6 +2,7 @@ jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/brokerSync/igPdf',()=>({text:jest.fn(),confirmation:jest.fn()}));
 jest.mock('../../src/services/brokerSync/igStatement',()=>({...jest.requireActual('../../src/services/brokerSync/igStatement'),prepare:jest.fn()}));
 jest.mock('../../src/services/brokerSync/igImport',()=>({importAccounts:jest.fn()}));
+jest.mock('../../src/services/brokerSync/igCsvReconciliation',()=>({reconcile:jest.fn()}));
 jest.mock('../../src/services/backup.service',()=>({createFullSiteBackup:jest.fn()}));
 jest.mock('../../src/services/manualPortfolioMaintenance',()=>({rebuild:jest.fn().mockResolvedValue({rebuilt:2,warnings:[]})}));
 const db=require('../../src/config/database'),pdf=require('../../src/services/brokerSync/igPdf'),{importAccounts}=require('../../src/services/brokerSync/igImport');
@@ -33,7 +34,15 @@ test('changed saved account state invalidates preview',async()=>{
 });
 test('a file for another account is rejected and incomplete reports never reach importer',async()=>{
   await expect(service.preview('user-f',[{...files()[0],fieldname:'87654321-1234-1234-1234-123456789abc:transactions'}])).rejects.toThrow(/selected account/);
-  await expect(service.preview('user-f',[files()[0]])).rejects.toThrow(/every requested report/);expect(importAccounts).not.toHaveBeenCalled();
+  await expect(service.preview('user-f',[files()[1]])).rejects.toThrow(/every requested report/);expect(importAccounts).not.toHaveBeenCalled();
+});
+
+test('CSV-only previews use saved evidence and never parse absent PDFs',async()=>{
+ const original=rows()[0].payload.igFileInput;
+ require('../../src/services/brokerSync/igCsvReconciliation').reconcile.mockResolvedValue({...original,transactions:'merged'});
+ await service.preview('csv-owner',[files()[0]]);
+ expect(require('../../src/services/brokerSync/igCsvReconciliation').reconcile).toHaveBeenCalledWith('csv-owner',original,'synthetic');
+ expect(pdf.text).not.toHaveBeenCalled();expect(importAccounts).toHaveBeenCalledWith('csv-owner',[expect.objectContaining({transactions:'merged'})],{dryRun:true});
 });
 test('multiple earlier execution PDFs are read privately alongside the required latest statements',async()=>{
   const extras=[1,2].map(n=>({fieldname:`${id}:execution`,size:10,buffer:Buffer.from(`earlier-${n}`)}));

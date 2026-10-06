@@ -4,6 +4,7 @@ jest.mock('../../src/config/database', () => ({
 }));
 
 jest.mock('archiver', () => jest.fn());
+jest.mock('../../src/utils/siteBackupJsonWriter',()=>({writeSiteBackupJson:jest.fn()}));
 
 jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
 jest.mock('../../src/services/optionStrategyGroupingService', () => ({
@@ -25,6 +26,8 @@ const path = require('path');
 const db = require('../../src/config/database');
 const fs = require('fs').promises;
 const backupService = require('../../src/services/backup.service');
+const siteWriter=require('../../src/utils/siteBackupJsonWriter');
+beforeEach(()=>siteWriter.writeSiteBackupJson.mockReset().mockResolvedValue({totalTables:0,totalRecords:0}));
 const contracts = require('../../../tests/fixtures/trading-calculation-contracts.json');
 
 function createRestoreClient(columnsByTable = {}, user_ids = []) {
@@ -136,8 +139,9 @@ describe('backup service hardening', () => {
     await backupService.createFullSiteBackup('user-1', 'manual');
 
     expect(fs.mkdir).toHaveBeenCalledWith(backupService.backupDir, { recursive: true });
-    expect(fs.writeFile).toHaveBeenCalledTimes(1);
-    expect(fs.mkdir.mock.invocationCallOrder[0]).toBeLessThan(fs.writeFile.mock.invocationCallOrder[0]);
+    expect(siteWriter.writeSiteBackupJson).toHaveBeenCalledTimes(1);
+    expect(fs.writeFile).not.toHaveBeenCalled();
+    expect(fs.mkdir.mock.invocationCallOrder[0]).toBeLessThan(siteWriter.writeSiteBackupJson.mock.invocationCallOrder[0]);
   });
 
   test('ignores a malicious backup table key before constructing SQL', async () => {
@@ -248,7 +252,7 @@ describe('full-site export snapshot and failure handling (#36)', () => {
     expect(client.release).toHaveBeenCalledTimes(1);
   });
   test('never writes a file or marks a failed export completed', async () => {
-    exportClient('trades');
+    siteWriter.writeSiteBackupJson.mockRejectedValueOnce(Error('Backup export failed while reading table "trades". No complete backup was created.'));
     await expect(backupService.createFullSiteBackup('synthetic-user')).rejects.toThrow('Backup export failed');
     expect(fs.writeFile).not.toHaveBeenCalled();
     expect(fs.stat).not.toHaveBeenCalled();
@@ -259,12 +263,10 @@ describe('full-site export snapshot and failure handling (#36)', () => {
     expect(parameters[5]).not.toContain('private-value');
   });
   test('marks completed only after the whole snapshot is committed and the file is saved', async () => {
-    const client = exportClient();
     db.query.mockResolvedValue({ rows: [{ status: 'completed' }] });
     const result = await backupService.createFullSiteBackup('synthetic-user');
     expect(result.success).toBe(true);
-    const commit = client.query.mock.calls.findIndex(([sql]) => sql === 'COMMIT');
-    expect(client.query.mock.invocationCallOrder[commit]).toBeLessThan(fs.writeFile.mock.invocationCallOrder[0]);
+    expect(siteWriter.writeSiteBackupJson.mock.invocationCallOrder[0]).toBeLessThan(fs.stat.mock.invocationCallOrder[0]);
     expect(fs.stat.mock.invocationCallOrder[0]).toBeLessThan(db.query.mock.invocationCallOrder[0]);
     expect(db.query.mock.calls[0][1][5]).toBe('completed');
   });
@@ -282,7 +284,7 @@ describe('full-site export snapshot and failure handling (#36)', () => {
     expect(client.release).toHaveBeenCalledTimes(1);
   });
   test('sanitizes connection failures and never writes a file', async () => {
-    db.connect.mockRejectedValue(Error('private connection details'));
+    siteWriter.writeSiteBackupJson.mockRejectedValueOnce(Error('Backup export failed. No complete backup was created.'));
     await expect(backupService.createFullSiteBackup('synthetic-user')).rejects.toThrow('Backup export failed.');
     expect(fs.writeFile).not.toHaveBeenCalled();
     expect(db.query.mock.calls[0][1][4]).toBe('failed');

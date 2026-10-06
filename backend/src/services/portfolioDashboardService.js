@@ -67,6 +67,12 @@ async function getDashboard(userId, query={}, historical=null) {
   if(!(fx.USD>0))throw Error('Display currency conversion is unavailable');
   const cashRows=await Promise.all(managed.map(async a=>{
     if(a.broker==='okx')return {name:a.account_name,amount:0,source:'Coins and stablecoins only'};
+    if(a.broker==='ig'){
+      const statement=(await db.query(`SELECT cash_usd,gbp_per_usd FROM portfolio_statement_values
+        WHERE user_id=$1 AND account_identifier=$2 ORDER BY value_date DESC LIMIT 1`,[userId,a.account_identifier])).rows[0];
+      if(statement&&Number.isFinite(Number(statement.cash_usd))&&Number(statement.gbp_per_usd)>0&&fx.GBP>0)return {name:a.account_name,
+        amount:Number(statement.cash_usd)*Number(statement.gbp_per_usd)*fx.GBP,source:'IG dated statement'};
+    }
     const flow=await Account.getCashflow(userId,a.id);
     const live=flow?.summary?.liveCashBalance;
     const amount=live?.amount ?? flow?.summary?.currentBalance;

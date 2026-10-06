@@ -5,7 +5,7 @@
         <div>
           <p class="text-xs font-semibold uppercase tracking-widest text-primary-600 dark:text-primary-400">IG · statement imports</p>
           <h2 id="ig-files-heading" class="mt-1 text-lg font-medium text-gray-900 dark:text-white">Update your IG accounts</h2>
-          <p class="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">Choose the accounts to update. Upload full-history CSV exports and both monthly PDFs, then review the balance checks.</p>
+          <p class="mt-1 max-w-2xl text-sm text-gray-600 dark:text-gray-400">Choose the accounts to update. Upload full reports, or reconcile a share account’s Transactions CSV using saved statements.</p>
         </div>
         <span class="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">File imports only</span>
       </div>
@@ -22,11 +22,15 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ account.kind === 'spread_bet' ? 'Spread betting' : 'Share dealing' }} · GBP</span>
             </label>
             <div v-if="selected.includes(account.id)" class="grid gap-4 border-t border-gray-200 p-4 dark:border-gray-700 sm:grid-cols-2">
-              <div v-for="field in account.required" :key="field">
+              <label v-if="account.csvReconciliation" class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 sm:col-span-2">
+                <input v-model="csvOnlyAccounts" type="checkbox" :value="account.id" @change="invalidate" /> Reconcile Transactions CSV using saved statements
+              </label>
+              <p v-if="csvOnlyAccounts.includes(account.id)" class="text-xs text-gray-500 sm:col-span-2">Full-history or incremental exports are accepted. Existing records are retained; balances must match the saved statements. New trades may need their execution PDFs.</p>
+              <div v-for="field in fieldsFor(account)" :key="field">
                 <label :for="`${account.id}-${field}`" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">{{ labels[field] }}</label>
                 <input :id="`${account.id}-${field}`" type="file" :accept="pdfFields.includes(field) ? '.pdf' : '.csv'" :required="!dailyOnly(account)" class="block w-full rounded-md border border-gray-200 text-sm text-gray-600 file:mr-3 file:border-0 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium dark:border-gray-700 dark:text-gray-300 dark:file:bg-gray-800 dark:file:text-gray-200" @change="choose(account.id,field,$event)" />
               </div>
-              <div v-if="account.kind === 'share_dealing'" class="sm:col-span-2">
+              <div v-if="account.kind === 'share_dealing' && !csvOnlyAccounts.includes(account.id)" class="sm:col-span-2">
                 <label :for="`${account.id}-execution`" class="mb-1 block text-sm font-medium text-gray-700 dark:text-gray-300">Earlier trade statements (optional)</label>
                 <input :id="`${account.id}-execution`" type="file" accept=".pdf" multiple class="block w-full text-sm text-gray-600 dark:text-gray-300" @change="chooseEvidence(account.id,$event)" />
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Add the trade-day PDFs if the latest balance statement does not show those purchases or sales. You can select several files.</p>
@@ -40,7 +44,7 @@
           </div>
         </fieldset>
         <p class="text-xs text-gray-500 dark:text-gray-400">If money moved between IG accounts, include updated reports for both accounts. Up to 5 MB per file. Files are processed privately on your TradeTally server.</p>
-        <button type="submit" class="btn-secondary" :disabled="busy || !selected.length">{{ busy === 'preview' ? 'Checking statements…' : 'Preview import' }}</button>
+        <button type="submit" class="btn-secondary" :disabled="busy || !selected.length">{{ busy === 'preview' ? 'Checking statements…' : busy === 'apply' ? 'Backing up and importing…' : automaticCsv ? 'Reconcile and import CSV' : 'Preview import' }}</button>
       </form>
       <div v-if="preview" class="space-y-4 border-t border-gray-200 pt-5 dark:border-gray-700" aria-live="polite">
         <div class="flex flex-wrap items-center justify-between gap-2">
@@ -66,9 +70,12 @@
 </template>
 
 <script setup>
-import {ref,reactive,onMounted} from 'vue'
+import {ref,reactive,computed,onMounted} from 'vue'
 import api from '@/services/api'
 const accounts=ref([]),selected=ref([]),loading=ref(true),busy=ref(''),error=ref(''),success=ref(''),preview=ref(null)
+const csvOnlyAccounts=ref([])
+const automaticCsv=computed(()=>selected.value.length>0&&selected.value.every(id=>csvOnlyAccounts.value.includes(id)))
+const fieldsFor=account=>csvOnlyAccounts.value.includes(account.id)?['transactions']:account.required
 const files=reactive(new Map()),evidenceFiles=new Map(),dailyFiles=ref(new Map()),pdfFields=['trading','ledger']
 const labels={transactions:'Transactions CSV',activity:'Past activity CSV',breakdown:'P&L Breakdown CSV',trading:'Trading / balance statement PDF',ledger:'Monthly ledger statement PDF'}
 const money=value=>new Intl.NumberFormat('en-GB',{style:'currency',currency:'GBP'}).format(value)
@@ -80,13 +87,13 @@ function chooseDaily(id,event){invalidate();dailyFiles.value.set(id,Array.from(e
 function dailyOnly(account){return account.kind==='spread_bet'&&(dailyFiles.value.get(account.id)||[]).length>0&&!account.required.some(field=>files.has(`${account.id}:${field}`))}
 async function previewFiles(){
   invalidate();const form=new FormData()
-  for(const account of accounts.value.filter(a=>selected.value.includes(a.id)))for(const field of dailyOnly(account)?[]:account.required){
+  for(const account of accounts.value.filter(a=>selected.value.includes(a.id)))for(const field of dailyOnly(account)?[]:fieldsFor(account)){
     const file=files.get(`${account.id}:${field}`)
     if(!file){error.value=`Please include ${labels[field]} for ${account.name}.`;return}
     if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
     form.append(`${account.id}:${field}`,file)
   }
-  for(const id of selected.value)for(const file of evidenceFiles.get(id)||[]) {
+  for(const id of selected.value.filter(id=>!csvOnlyAccounts.value.includes(id)))for(const file of evidenceFiles.get(id)||[]) {
     if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
     form.append(`${id}:execution`,file)
   }
@@ -94,9 +101,11 @@ async function previewFiles(){
     if(file.size>5*1024*1024){error.value='Each file must be 5 MB or smaller.';return}
     form.append(`${id}:daily`,file)
   }
+  const autoApply=automaticCsv.value
   busy.value='preview'
   try{preview.value=(await api.post('/broker-sync/ig-files/preview',form,{timeout:180000})).data.data}
   catch(e){error.value=message(e)}finally{busy.value=''}
+  if(autoApply&&preview.value)await apply()
 }
 async function apply(){
   if(!preview.value||busy.value)return

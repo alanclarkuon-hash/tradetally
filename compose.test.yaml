@@ -26,7 +26,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    env_file: .local/backup-secrets/test-server.env
+    env_file: ${TRADETALLY_TEST_ENV_FILE:?Use scripts/test-compose.ps1 or set the external test environment file}
     environment:
       DB_HOST: postgres
       DB_NAME: tradetally_test
