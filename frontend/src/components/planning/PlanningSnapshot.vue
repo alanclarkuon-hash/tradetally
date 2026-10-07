@@ -1,9 +1,14 @@
 <template>
   <section v-if="url" class="card p-5">
-    <h2 class="font-semibold text-lg">Chart evidence</h2>
+    <div class="flex flex-wrap items-center justify-between gap-3"><h2 class="font-semibold text-lg">Chart evidence</h2><span class="rounded-md bg-gray-700 px-3 py-1 text-xs text-gray-300">Planning snapshot</span></div>
     <template v-if="snapshot">
-      <button type="button" class="btn-secondary mt-3" @click="open=true">View snapshot</button>
-      <p class="text-sm text-gray-400 mt-2">Open the linked snapshot inside TradeTally. A private retained copy is not saved yet.</p>
+      <div class="mt-4 rounded-md border border-gray-700 bg-gray-950 p-2">
+        <p v-if="inlineState==='loading'" role="status" class="p-6 text-gray-300">Loading snapshot…</p>
+        <p v-if="inlineState==='error'" role="alert" class="p-6 text-amber-400">The snapshot could not be loaded. Check the link or open the original chart.</p>
+        <img v-if="inlineState!=='error'" :key="snapshot.imageUrl" :src="snapshot.imageUrl" :alt="'Planning snapshot for '+asset" referrerpolicy="no-referrer" class="w-full max-h-[32rem] object-contain" :class="{'hidden':inlineState==='loading'}" @load="inlineState='loaded'" @error="inlineState='error'">
+      </div>
+      <div class="flex flex-wrap gap-3 mt-3"><button type="button" class="btn-secondary" @click="open=true">Enlarge snapshot</button><button v-if="inlineState==='error'" type="button" class="btn-secondary" @click="retryInline">Retry snapshot</button></div>
+      <p class="text-sm text-gray-400 mt-2">Linked TradingView snapshot. A private retained copy is not saved yet.</p>
     </template>
     <p v-else class="text-sm text-gray-400 mt-3">Paste a TradingView snapshot link (tradingview.com/x/…) to view its image here. Live chart layouts and other links open on their original site.</p>
     <a v-if="safeSource" :href="safeSource" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" class="inline-block mt-3 text-primary-400 text-sm">Open original chart</a>
@@ -26,10 +31,11 @@ import {computed,ref,watch,nextTick} from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import {tradingViewSnapshot} from '@/utils/tradingViewSnapshot'
 const props=defineProps({url:{type:String,default:''},asset:{type:String,default:'Planned asset'}})
-const open=ref(false),state=ref('loading')
+const open=ref(false),state=ref('loading'),inlineState=ref('loading')
 const snapshot=computed(()=>tradingViewSnapshot(props.url))
 const safeSource=computed(()=>{try{const u=new URL(props.url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null}catch{return null}})
 watch(open,()=>{state.value='loading'})
-watch(()=>props.url,()=>{open.value=false;state.value='loading'})
+watch(()=>props.url,()=>{open.value=false;state.value='loading';inlineState.value='loading'})
+async function retryInline(){inlineState.value='error';await nextTick();inlineState.value='loading'}
 async function retry(){state.value='error';await nextTick();state.value='loading'}
 </script>
