@@ -1,0 +1,12 @@
+jest.mock('../../src/config/database',()=>({query:jest.fn(),withTransaction:jest.fn()}));
+jest.mock('../../src/middleware/auth',()=>({authenticate:(req,res,next)=>{if(req.headers['x-test-user']){req.user={id:req.headers['x-test-user']};next()}else res.sendStatus(401)}}));
+jest.mock('../../src/models/Playbook',()=>({findById:jest.fn()}));
+const express=require('express'),request=require('supertest'),db=require('../../src/config/database');
+const app=express();app.use(express.json());app.use('/plans',require('../../src/routes/tradePlanning.routes'));app.use((err,req,res,next)=>res.status(500).json({error:'internal'}));
+const id='00000000-0000-4000-8000-000000000001';
+beforeEach(()=>{jest.clearAllMocks();db.query.mockResolvedValue({rows:[]});db.withTransaction.mockImplementation(fn=>fn({query:db.query}));});
+test('requires authentication',async()=>{expect((await request(app).get('/plans')).status).toBe(401);expect(db.query).not.toHaveBeenCalled()});
+test('scopes reads to owner and does not reveal another user plan',async()=>{const r=await request(app).get(`/plans/${id}`).set('x-test-user','owner');expect(r.status).toBe(404);expect(db.query.mock.calls[0][1]).toEqual([id,'owner'])});
+test('rejects release without confirmation before touching the DB',async()=>{const r=await request(app).post(`/plans/${id}/commitments/${id}/release`).set('x-test-user','owner').send({reason:'cancelled'});expect(r.status).toBe(422);expect(db.query).not.toHaveBeenCalled()});
+test('stale edits do not overwrite current plan',async()=>{db.query.mockResolvedValueOnce({rows:[{id,user_id:'owner',status:'draft',version:2}]});const d={title:'Synthetic',symbol:'TEST',instrument:'stock',direction:'long',currency:'GBP',riskBudget:null,stopPrice:null,quantityStep:.01,entries:[{key:'a',label:'Entry',price:null,riskWeight:100}],exits:[]};const r=await request(app).put(`/plans/${id}`).set('x-test-user','owner').send({version:1,definition:d});expect(r.status).toBe(409);expect(db.query).toHaveBeenCalledTimes(1)});
+test('invalid plan IDs return safe client error',async()=>{const r=await request(app).get('/plans/not-a-uuid').set('x-test-user','owner');expect(r.status).toBe(400);expect(db.query).not.toHaveBeenCalled()});
