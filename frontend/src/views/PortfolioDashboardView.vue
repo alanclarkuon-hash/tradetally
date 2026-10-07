@@ -1,6 +1,6 @@
 <template>
   <div class="content-wrapper py-8 portfolio-page">
-    <nav class="flex gap-7 mb-7 border-b border-gray-200 dark:border-gray-700" aria-label="Dashboard tabs"><RouterLink to="/dashboard" class="pb-3 text-gray-500 dark:text-gray-400">Trading</RouterLink><RouterLink to="/dashboard/portfolio" class="pb-3 border-b-2 border-primary-500 text-primary-600 dark:text-primary-400" aria-current="page">Portfolio</RouterLink></nav>
+    <nav class="flex gap-7 mb-7 border-b border-gray-200 dark:border-gray-700" aria-label="Dashboard tabs"><RouterLink to="/dashboard" class="pb-3 text-gray-500 dark:text-gray-400">Trading</RouterLink><RouterLink to="/dashboard/portfolio" class="pb-3 border-b-2 border-primary-500 text-primary-600 dark:text-primary-400" aria-current="page">Portfolio</RouterLink><RouterLink to="/dashboard/planning" class="pb-3 text-gray-500 dark:text-gray-400">Planning</RouterLink></nav>
     <header class="portfolio-header">
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
