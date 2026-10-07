@@ -1,4 +1,4 @@
-const axios = require('axios');
+const {read} = require('../brokerMarketData');
 const {assetCode,category,decimal} = require('./krakenReconcile');
 const {dailyPrices} = require('./krakenArchivePrices');
 const ORIGIN='https://api.kraken.com';
@@ -6,7 +6,7 @@ const day=time=>new Date(Number(time)*1000).toISOString().slice(0,10);
 async function publicRead(path,params={}) {
   if(!['AssetPairs','OHLC','Ticker'].includes(path))throw Error('Unsupported Kraken public price endpoint');
   let response;
-  try {response=await axios.get(`${ORIGIN}/0/public/${path}`,{params,timeout:30000,maxRedirects:0,maxContentLength:8*1024*1024});}
+  try {response={data:await read('kraken',`${ORIGIN}/0/public/${path}`,params)};}
   catch {throw Error('Kraken public price data is unavailable; previous reports were preserved');}
   if(!Array.isArray(response.data?.error)||response.data.error.length||!response.data.result)
     throw Error('Kraken public price response is incomplete');
