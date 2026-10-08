@@ -1,7 +1,7 @@
 
-<template><div class="tactic-editor"><div class="flex flex-wrap gap-1 mb-2"><button v-for="name in modelValue||[]" :key="name" type="button" class="tactic-chip" :disabled="disabled" @click="remove(name)" :title="definition(name)">{{ name }} <span aria-hidden="true">×</span></button></div><select class="input" :disabled="disabled" :aria-label="label" @change="add($event)"><option value="">Select tag</option><option v-for="t in tags||[]" :key="t.id" :value="t.name">{{ t.name }}</option></select></div></template>
+<template><div class="tactic-editor"><div class="flex flex-wrap gap-1 mb-2"><button v-for="name in modelValue||[]" :key="name" type="button" class="tactic-chip" :disabled="disabled" @click="remove(name)" :title="definition(name)">{{ name }} <span v-if="!disabled" aria-hidden="true">×</span></button></div><select v-if="showPicker" class="input" :disabled="disabled" :aria-label="label" @change="add($event)"><option value="">Select tag</option><option v-for="t in tags||[]" :key="t.id" :value="t.name">{{ t.name }}</option></select></div></template>
 <script setup>
-const props=defineProps({modelValue:Array,tags:Array,disabled:Boolean,multiple:{type:Boolean,default:true},label:{type:String,default:"Add existing tag"}}),emit=defineEmits(['update:modelValue'])
+const props=defineProps({modelValue:Array,tags:Array,disabled:Boolean,showPicker:{type:Boolean,default:true},multiple:{type:Boolean,default:true},label:{type:String,default:"Add existing tag"}}),emit=defineEmits(['update:modelValue'])
 function definition(name){return props.tags?.find(t=>t.name===name)?.definition||name}
 function add(e){const name=e.target.value;if(name)emit('update:modelValue',props.multiple?[...new Set([...(props.modelValue||[]),name])]:[name]);e.target.value=''}
 function remove(name){emit('update:modelValue',(props.modelValue||[]).filter(n=>n!==name))}
