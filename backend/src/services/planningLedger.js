@@ -72,13 +72,13 @@ function ledger(plan,allocations,trades) {
   const valid=a.source_snapshot.provisional||(fill&&fill.fingerprint===a.source_snapshot.fingerprint&&fill.costsVerified===a.source_snapshot.costsVerified);
   if(!valid)unresolved++;
   return {...a,valid:!!valid,fill:a.source_snapshot,quantity:Number(a.quantity)};
- }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action==='entry'?-1:1));
+ }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action!==b.action?(a.action==='entry'?-1:1):String(a.id).localeCompare(String(b.id))));
  const queues=new Map();let entered=0,exited=0,cost=0,realised=0,entryCost=0,fees=0,overExit=false;
  const currencies=new Set(records.map(a=>a.fill.currency));
  for(const a of records){
   const f=a.fill,q=a.quantity,fee=f.costs*q/f.quantity;
   const accountKey=plan.definition.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
-  const key=accountKey+'|'+JSON.stringify(f.contract||null)+'|'+f.currency;
+  const key=accountKey+'|'+JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null)+'|'+f.currency;
   const queue=queues.get(key)||[];queues.set(key,queue);
   if(a.action==='entry'){
    entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*f.price*f.multiplier;fees+=fee;queue.push({q,price:f.price,multiplier:f.multiplier,feePerUnit:fee/q});

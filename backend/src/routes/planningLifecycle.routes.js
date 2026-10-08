@@ -307,9 +307,9 @@ async function assertEdits(c,p,d){
  const a=(await c.query('SELECT action,stage_key FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
  if(['completed','reviewed'].includes(p.status))fail('Reopen the review before editing a completed plan');
  if(a.length){
-  for(const k of ['symbol','instrument','direction','accountId','currency','options'])if(JSON.stringify(d[k])!==JSON.stringify(p.definition[k]))fail('Linked trades lock the asset, account, currency and contract');
+  for(const k of ['symbol','instrument','direction','accountId','currency','options'])if(!require('util').isDeepStrictEqual(d[k],p.definition[k]))fail('Linked trades lock the asset, account, currency and contract');
   if(d.stopPrice!==p.definition.stopPrice)fail('Use the SL change action and record a reason');
-  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key);const after=d[k]?.find(e=>e.key===row.stage_key);if(JSON.stringify(before)!==JSON.stringify(after))fail('Linked ladder rows are locked; correct their allocation first');}
+  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key);const after=d[k]?.find(e=>e.key===row.stage_key);if(!require('util').isDeepStrictEqual(before,after))fail('Linked ladder rows are locked; correct their allocation first');}
  }
 }
 module.exports=router;

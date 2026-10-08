@@ -5,7 +5,7 @@ const db=require(root+'/src/config/database'),express=require(root+'/node_module
 if(process.env.DB_NAME!=='tradetally_test')throw new Error('This check is restricted to the separate TEST database');
 const owner=crypto.randomUUID(),account=crypto.randomUUID(),pb=crypto.randomUUID(),planId=crypto.randomUUID(),tradeId=crypto.randomUUID();
 let server;
-const d={title:'Synthetic integration',symbol:'TEST_SYNTHETIC',assetName:'Synthetic',instrument:'stock',direction:'long',accountId:account,currency:'USD',playbookId:pb,riskBudget:100,stopPrice:90,quantityStep:1,pointSize:1,thesis:'Synthetic',chartUrl:'',runnerRule:'',runnerEstimatePrice:null,exceptionReason:'Synthetic evidence',preparation:[],entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Partial',price:110,percent:50},{key:'c',label:'Final',price:120,percent:50}],options:{}};
+const d={title:'Synthetic integration',symbol:'SYNTEST',assetName:'Synthetic',instrument:'stock',direction:'long',accountId:account,currency:'USD',playbookId:pb,riskBudget:100,stopPrice:90,quantityStep:1,pointSize:1,thesis:'Synthetic',chartUrl:'',runnerRule:'',runnerEstimatePrice:null,exceptionReason:'Synthetic evidence',preparation:[],entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Partial',price:110,percent:50},{key:'c',label:'Final',price:120,percent:50}],options:{}};
 const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-01T10:00:00Z',commission:2,fees:0},{id:'b',action:'sell',quantity:5,price:110,datetime:'2026-01-02T10:00:00Z',commission:1,fees:0},{id:'c',action:'sell',quantity:5,price:120,datetime:'2026-01-03T10:00:00Z',commission:1,fees:0}];
 (async()=>{
  try{
@@ -52,7 +52,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal((await optCall('/allocations','POST',{version:await optVersion(),tradeId:ot,sourceKey:oldSource[0].key,fingerprint:oldSource[0].fingerprint,stageKey:'a',action:'entry',quantity:2})).status,201,'option entry');
   const rollBody={version:await optVersion(),close:{tradeId:ot,sourceKey:oldSource[1].key,fingerprint:oldSource[1].fingerprint,quantity:2},open:{tradeId:nt,sourceKey:newSource[0].key,fingerprint:newSource[0].fingerprint,quantity:2},delta:60,reason:'Synthetic credit roll'};
   assert.equal((await optCall('/roll','POST',rollBody)).status,422,'risk-increasing roll rejected');
-  rollBody.delta=40;assert.equal((await optCall('/roll','POST',rollBody)).status,201,'atomic credit roll');
+  rollBody.delta=40;const creditResult=await optCall('/roll','POST',rollBody);assert.equal(creditResult.status,201,'atomic credit roll: '+creditResult.data.error);
   assert.equal((await optCall('/workflow','GET')).data.ledger.openQuantity,2,'roll retains exposure');
   assert.equal((await optCall('/allocations','POST',{version:await optVersion(),tradeId:nt,sourceKey:newSource[1].key,fingerprint:newSource[1].fingerprint,stageKey:'b',action:'exit',quantity:2})).status,201,'rolled contract final exit');
   const rolled=(await optCall('/workflow','GET')).data.ledger;assert.equal(rolled.realisedProfit,496);assert.equal(rolled.percentGain,124);assert.equal(rolled.economicallyClosed,true);
