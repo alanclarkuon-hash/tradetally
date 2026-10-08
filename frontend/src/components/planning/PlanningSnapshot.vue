@@ -8,7 +8,7 @@
         <img v-if="inlineState!=='error'" :key="snapshot.imageUrl" :src="snapshot.imageUrl" :alt="'Planning snapshot for '+asset" referrerpolicy="no-referrer" class="w-full max-h-[32rem] object-contain" :class="{'hidden':inlineState==='loading'}" @load="inlineState='loaded'" @error="inlineState='error'">
       </div>
       <div class="flex flex-wrap gap-3 mt-3"><button type="button" class="btn-secondary" @click="open=true">Enlarge snapshot</button><button v-if="inlineState==='error'" type="button" class="btn-secondary" @click="retryInline">Retry snapshot</button></div>
-      <p class="text-sm text-gray-400 mt-2">Linked TradingView snapshot. A private retained copy is not saved yet.</p>
+      <p class="text-sm text-gray-400 mt-2">{{ retainedUrl?'Retained private snapshot.':'Linked TradingView snapshot. A private retained copy is not saved yet.' }}</p>
     </template>
     <p v-else class="text-sm text-gray-400 mt-3">Paste a TradingView snapshot link (tradingview.com/x/…) to view its image here. Live chart layouts and other links open on their original site.</p>
     <a v-if="safeSource" :href="safeSource" target="_blank" rel="noopener noreferrer" referrerpolicy="no-referrer" class="inline-block mt-3 text-primary-400 text-sm">Open original chart</a>
@@ -30,9 +30,9 @@
 import {computed,ref,watch,nextTick} from 'vue'
 import BaseModal from '@/components/common/BaseModal.vue'
 import {tradingViewSnapshot} from '@/utils/tradingViewSnapshot'
-const props=defineProps({url:{type:String,default:''},asset:{type:String,default:'Planned asset'}})
+const props=defineProps({url:{type:String,default:''},asset:{type:String,default:'Planned asset'},retainedUrl:{type:String,default:''}})
 const open=ref(false),state=ref('loading'),inlineState=ref('loading')
-const snapshot=computed(()=>tradingViewSnapshot(props.url))
+const snapshot=computed(()=>{const s=tradingViewSnapshot(props.url);return s&&props.retainedUrl?{...s,imageUrl:props.retainedUrl}:s})
 const safeSource=computed(()=>{try{const u=new URL(props.url);return u.protocol==='https:'&&!u.username&&!u.password?u.href:null}catch{return null}})
 watch(open,()=>{state.value='loading'})
 watch(()=>props.url,()=>{open.value=false;state.value='loading';inlineState.value='loading'})
