@@ -12,7 +12,7 @@
     <span v-if="risk?.limit" class="absolute h-7 border-l-2 border-white -top-1" style="left:80%" aria-label="Risk limit"></span>
    </div>
    <div class="flex flex-wrap gap-5 text-sm"><span>Known risk {{ money(currentRisk,risk?.currency) }}</span><span>With all unlinked entries {{ money(projectedRisk,risk?.currency) }}</span><span>Limit {{ money(risk?.limit,risk?.currency) }}</span><span>{{ risk?.unknown||0 }} positions with unknown risk</span></div>
-   <p v-if="riskExceeded||projectedExceeded" class="text-amber-300">Risk limit exceeded{{ riskExceeded?'':' if remaining entries are taken' }}.</p>
+   <p v-if="riskExceeded||projectedExceeded" class="text-amber-700 dark:text-amber-300">Risk limit exceeded{{ riskExceeded?'':' if remaining entries are taken' }}.</p>
    <details><summary>Set portfolio limit and exposure level</summary><div class="grid sm:grid-cols-3 gap-3 mt-3"><label>Limit<input type="number" v-model.number="settings.portfolioLimit" class="input"></label><label>Currency<select v-model="settings.currency" class="input"><option>GBP</option><option>USD</option></select></label><label>Applied level<select v-model.number="settings.selectedLevel" class="input"><option v-for="v in [.05,.1,.2,.3]" :value="v" :key="v">{{ v }}%</option></select></label></div><label class="block mt-3">Reason<input v-model="settings.reason" class="input"></label><button class="btn-secondary mt-3" @click="saveSettings">Save risk settings</button></details>
   </section>
   <template v-if="screen==='Plan'||managing">
@@ -59,7 +59,7 @@
        <div><small>Realised % gain</small><strong>{{ percent(ledger.percentGain) }}</strong></div>
        <div><small>R:R</small><strong>{{ number(ledger.realisedR) }}</strong></div>
       </div>
-      <p v-if="ledger.unresolved" class="text-amber-300">Source fills changed. Correct their links before completing review.</p>
+      <p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Source fills changed. Correct their links before completing review.</p>
      </section>
     </aside>
    </div>
@@ -108,7 +108,7 @@
    </section>
    </template>
    <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p></section>
-   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in ledger.records||[]" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in ledger.records||[]" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
    <section v-if="managing" class="card p-5 management-timeline"><h2 class="font-semibold text-lg">Management timeline</h2><div v-for="(e,i) in workflow?.history||[]" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
   </template>
   <template v-if="screen==='Review'">
@@ -132,7 +132,7 @@
     </div>
     <aside class="space-y-5 min-w-0">
      <section class="card p-5"><h2>Whole-plan timeline</h2><div v-for="m in milestones" :key="m.label" class="risk-row"><span>{{ m.label }}</span><strong>{{ m.date }}</strong></div><div class="risk-row"><span>Final exit</span><strong>{{ finalExitDate }}</strong></div><div class="risk-row"><span>Stage</span><strong>{{ plan.status.replaceAll('_',' ') }}</strong></div></section>
-     <section class="card p-5 space-y-3"><h2>Review and reconciliation</h2><p v-if="workflow?.needsUpdate" class="text-amber-300">Review needs updating because source evidence changed.</p><p v-else>{{ ledger.economicallyClosed?'All linked exits reconciled.':'Reconcile all exits before completing review.' }}</p><p v-if="ledger.unresolved" class="text-amber-300">Correct changed source-fill links before completing review.</p></section>
+     <section class="card p-5 space-y-3"><h2>Review and reconciliation</h2><p v-if="workflow?.needsUpdate" class="text-amber-700 dark:text-amber-300">Review needs updating because source evidence changed.</p><p v-else>{{ ledger.economicallyClosed?'All linked exits reconciled.':'Reconcile all exits before completing review.' }}</p><p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Correct changed source-fill links before completing review.</p></section>
      <section class="card p-5 space-y-3"><h2>Linked analysis</h2><RouterLink to="/analysis/playbooks" class="text-primary-400 block">Playbook analysis</RouterLink><RouterLink to="/diary" class="text-primary-400 block">Journal</RouterLink></section>
     </aside>
    </div>
@@ -315,8 +315,9 @@ summary{cursor:pointer;font-size:13px;color:#9ca3af;min-height:28px}
 @media(max-width:850px){.detail-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.planning-workspace>.card,.detail-grid .card,.completion-summary .card{padding:16px}.workflow-tabs{gap:18px}.workflow-tabs button{font-size:14px}.position-metrics{gap:16px}.position-metrics strong,.result-metrics strong{font-size:21px}}
 
-:global(html:not(.dark)) .planning-workspace label{color:#374151}
-:global(html:not(.dark)) .planning-workspace .input,:global(html:not(.dark)) .planning-workspace .ladder-input{background:#fff;color:#111827;border-color:#d1d5db}
-:global(html:not(.dark)) .planning-workspace .card{border-color:#d1d5db}
-:global(html:not(.dark)) .planning-workspace th,:global(html:not(.dark)) .planning-workspace small,:global(html:not(.dark)) .planning-workspace summary{color:#4b5563}
+:global(html:not(.dark) .planning-workspace label){color:#374151}
+:global(html:not(.dark) .planning-workspace .input),:global(html:not(.dark) .planning-workspace .ladder-input){background:#fff;color:#111827;border-color:#d1d5db}
+:global(html:not(.dark) .planning-workspace .card){border-color:#d1d5db}
+:global(html:not(.dark) .planning-workspace th),:global(html:not(.dark) .planning-workspace small),:global(html:not(.dark) .planning-workspace summary){color:#4b5563}
+:global(html:not(.dark) .planning-workspace .position-metrics small),:global(html:not(.dark) .planning-workspace .result-metrics small){color:#4b5563}
 </style>
