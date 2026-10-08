@@ -1,0 +1,219 @@
+
+<template>
+ <div class="space-y-5" v-if="draft" :inert="busy" :aria-busy="busy">
+  <div class="flex gap-8 border-b border-gray-700 pb-4"><div v-for="m in milestones" :key="m.label"><small>{{ m.date }}</small><strong class="block">{{ m.label }}</strong></div></div>
+  <nav class="flex gap-2 flex-wrap" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="screen===s?'btn-primary':'btn-secondary'" @click="moveScreen(s)">{{ s }}</button></nav>
+  <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
+  <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
+   <div class="flex justify-between"><h2 class="font-semibold text-lg">Portfolio risk</h2><span>{{ risk?.unknown?'Incomplete coverage':'Recorded stop risk' }}</span></div>
+   <div class="relative h-4 rounded bg-gray-600">
+    <div class="h-full rounded" :class="riskExceeded?'bg-red-500':'bg-emerald-400'" :style="{width:barWidth(currentRisk)+'%'}"></div>
+    <div class="absolute h-4 top-0 bg-amber-400/50" :style="{left:barWidth(currentRisk)+'%',width:Math.max(0,barWidth(projectedRisk)-barWidth(currentRisk))+'%'}"></div>
+    <span v-if="risk?.limit" class="absolute h-7 border-l-2 border-white -top-1" style="left:80%" aria-label="Risk limit"></span>
+   </div>
+   <div class="flex flex-wrap gap-5 text-sm"><span>Known risk {{ money(currentRisk,risk?.currency) }}</span><span>With all unlinked entries {{ money(projectedRisk,risk?.currency) }}</span><span>Limit {{ money(risk?.limit,risk?.currency) }}</span><span>{{ risk?.unknown||0 }} positions with unknown risk</span></div>
+   <p v-if="riskExceeded||projectedExceeded" class="text-amber-300">Risk limit exceeded{{ riskExceeded?'':' if remaining entries are taken' }}.</p>
+   <details><summary>Set portfolio limit and exposure level</summary><div class="grid sm:grid-cols-3 gap-3 mt-3"><label>Limit<input type="number" v-model.number="settings.portfolioLimit" class="input"></label><label>Currency<select v-model="settings.currency" class="input"><option>GBP</option><option>USD</option></select></label><label>Applied level<select v-model.number="settings.selectedLevel" class="input"><option v-for="v in [.05,.1,.2,.3]" :value="v" :key="v">{{ v }}%</option></select></label></div><label class="block mt-3">Reason<input v-model="settings.reason" class="input"></label><button class="btn-secondary mt-3" @click="saveSettings">Save risk settings</button></details>
+  </section>
+  <template v-if="screen==='Plan'||managing">
+   <div class="grid lg:grid-cols-[minmax(0,1.6fr)_minmax(18rem,1fr)] gap-5">
+    <div class="space-y-5 min-w-0">
+     <PlanningSnapshot :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"/><button v-if="draft.chartUrl&&plan.id" class="btn-secondary" @click="retainChart">Retain chart snapshot</button>
+     <section v-if="!managing" class="card p-5 space-y-4">
+      <h2 class="font-semibold text-lg">Setup</h2><div class="grid sm:grid-cols-2 gap-4">
+       <label>Ticker<input v-model="draft.symbol" class="input" :disabled="hasLinks"></label><label>Asset name<input v-model="draft.assetName" class="input"></label>
+       <label>Title<input v-model="draft.title" class="input"></label>
+       <label>Instrument<select v-model="draft.instrument" class="input" :disabled="hasLinks"><option value="stock">Shares</option><option value="crypto">Crypto</option><option value="spread_bet">Spread betting</option><option value="option">Single-leg option</option></select></label>
+       <label>Direction<select v-model="draft.direction" class="input" :disabled="hasLinks"><option value="long">Long / bullish</option><option value="short">Short / bearish</option></select></label>
+       <label>Account<select v-model="draft.accountId" class="input" :disabled="hasLinks"><option :value="null">Unassigned</option><option v-for="a in accounts" :value="a.id" :key="a.id">{{ a.accountName }}</option></select></label>
+       <label>Playbook<select v-model="draft.playbookId" class="input" @change="offerTemplate"><option :value="null">Choose playbook</option><option v-for="p in playbooks" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
+       <label>Setup<input v-model="draft.setup" class="input"></label>
+       <label>Price / risk currency<select v-model="draft.currency" class="input" :disabled="hasLinks"><option>USD</option><option>GBP</option><option>EUR</option></select></label>
+      </div><label class="block">Thesis<textarea v-model="draft.thesis" class="input" rows="3"></textarea></label><label class="block">Snapshot link<input v-model="draft.chartUrl" type="url" class="input"></label>
+     </section>
+    </div>
+    <aside class="space-y-5 min-w-0">
+     <section v-if="!managing" class="card p-5 space-y-4"><h2 class="font-semibold text-lg">Preparation</h2><label v-for="p in draft.preparation" :key="p.key" class="flex gap-3"><input type="checkbox" v-model="p.done">{{ p.label }}</label><label class="block">Evidence exception reason<textarea v-model="draft.exceptionReason" class="input" rows="2"></textarea></label>
+      <details><summary>Define a tag</summary><div class="space-y-3 mt-3"><select v-model="newTag.kind" class="input"><option value="entry">Entry tactic</option><option value="exit">Exit tactic</option><option value="context">Market context</option></select><input v-model="newTag.name" class="input" placeholder="Tag name"><textarea v-model="newTag.definition" class="input" placeholder="Definition"></textarea><button class="btn-secondary" @click="createTag">Add tag</button></div></details>
+     </section>
+     <section class="card p-5 space-y-4">
+      <div class="flex justify-between"><h2 class="font-semibold text-lg">{{ managing?'Position':'Risk and sizing' }}</h2><button class="btn-secondary" @click="positionCurrency=flip(positionCurrency)">{{ symbol(positionCurrency) }}</button></div>
+      <template v-if="!managing">
+       <label class="block">Portfolio amount ({{ draft.currency }})<input v-model.number="draft.portfolioAmount" type="number" class="input" @input="applyPortfolioRisk"></label>
+       <label class="block">Portfolio risk %<input v-model.number="draft.portfolioRiskPercent" type="number" step="any" class="input" @input="applyPortfolioRisk"></label>
+       <label class="flex gap-3"><input v-model="draft.exposureSystem" type="checkbox">Use this plan in exposure recommendations</label><div class="text-right text-sm text-gray-400">Recommended level {{ recommendation?.level==null?'Unavailable':recommendation.level+'%' }}</div>
+       <label class="block">Risk amount ({{ draft.currency }})<input v-model.number="draft.riskBudget" type="number" step="any" class="input"></label>
+       <label class="block">SL invalidation level<input v-model.number="draft.stopPrice" :disabled="hasLinks" type="number" step="any" class="input"></label>
+       <label class="block">Quantity increment<input v-model.number="draft.quantityStep" type="number" step="any" class="input"></label>
+       <label v-if="draft.instrument==='spread_bet'">Price units per stake point<input v-model.number="draft.pointSize" type="number" step="any" class="input"></label>
+      </template>
+      <dl v-else class="grid grid-cols-2 gap-3"><dt>Units remaining</dt><dd>{{ number(ledger.openQuantity) }}</dd><dt>AVG price</dt><dd>{{ convertedMoney(ledger.averagePrice,ledger.currency,positionCurrency) }}</dd><dt>Position size</dt><dd>{{ convertedMoney(ledger.positionValue,ledger.currency,positionCurrency) }}</dd><dt>Capital risk</dt><dd>{{ convertedMoney(ledger.capitalRisk,ledger.currency,positionCurrency) }}</dd><dt>Total realised profit</dt><dd>{{ convertedMoney(ledger.realisedProfit,ledger.currency,positionCurrency) }}</dd><dt>Realised % gain</dt><dd>{{ number(ledger.percentGain) }}%</dd><dt>R:R</dt><dd>{{ number(ledger.realisedR) }}</dd></dl>
+      <p v-if="ledger.unresolved" class="text-amber-300">Source fills changed. Correct their links before completing review.</p>
+     </section>
+    </aside>
+   </div>
+   <section v-if="draft.instrument==='option'" class="card p-5">
+    <h2 class="font-semibold text-lg mb-4">Option contract and sizing</h2>
+    <div class="grid sm:grid-cols-3 gap-4">
+     <label>Contract<input v-model="draft.options.contract" :disabled="hasLinks" class="input"></label>
+     <label>Type<select v-model="draft.options.type" :disabled="hasLinks" class="input"><option>call</option><option>put</option></select></label>
+     <label>Expiry<input v-model="draft.options.expiry" :disabled="hasLinks" type="date" class="input"></label>
+     <label v-for="k in optionNumbers" :key="k">{{ optionLabels[k] }}<input v-model.number="draft.options[k]" :disabled="hasLinks" type="number" step="any" class="input"></label>
+    </div><p class="text-sm text-amber-300 mt-3">ATR/delta stop risk is an estimate. Underlying exit levels do not predict an option's premium.</p>
+   </section>
+   <template v-for="kind in ['entry','exit']" :key="kind"><section class="card p-5">
+    <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><button class="btn-secondary" @click="currencies[kind]=flip(currencies[kind])">{{ symbol(currencies[kind]) }}</button><button class="btn-secondary" @click="addRow(kind)">Add {{ kind }}</button></div></div>
+    <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" @change="changeStop($event,currencies[kind])"></label></div>
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
+     <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
+      <td><input v-model="e.label" class="ladder-input" :disabled="linked(kind,e.key)"></td>
+      <td><input :value="displayValue(e.price,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
+      <td><input v-if="kind==='entry'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"><input v-else v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"></td>
+      <td><input :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)" @change="e.units=Number($event.target.value)"></td>
+      <td>{{ convertedMoney(kind==='entry'?calculation?.stages[i]?.positionValue:exitProfit(e),draft.currency,currencies[kind]) }}</td>
+      <td v-if="kind==='exit'&&draft.instrument==='option'"><input v-model.number="e.premium" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"></td>
+      <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="!managing&&linked(kind,e.key)"/></td>
+      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="!managing&&linked(kind,e.key)"/><input v-if="kind==='entry'" v-model="e.tactic" class="input mt-2" :disabled="linked(kind,e.key)" placeholder="Trigger condition"></td>
+      <td v-if="managing"><input type="checkbox" :checked="linked(kind,e.key)||e.executed" :disabled="linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
+      <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="findFills(kind,e.key)">{{ linked(kind,e.key)?'View / add fills':'Find and link trade' }}</button></td>
+      <td><button class="text-red-400" :disabled="linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
+     </tr>
+     <tr v-if="kind==='exit'&&runnerPercent>0"><td>Runner</td><td><input :value="displayValue(draft.runnerEstimatePrice,currencies.exit)" type="number" step="any" class="ladder-input" @change="draft.runnerEstimatePrice=priceValue($event,currencies.exit)"></td><td>{{ runnerPercent }}%</td><td>{{ number((calculation?.plannedQuantity||0)*runnerPercent/100) }}</td><td colspan="4"><input v-model="draft.runnerRule" class="input" placeholder="Runner exit rule"></td><td v-if="managing"><input type="checkbox" :checked="linked('exit','runner')" @change="findFills('exit','runner')"></td><td v-if="managing"><button class="btn-secondary" @click="findFills('exit','runner')">Find and link trade</button></td></tr>
+     </tbody><tfoot>
+      <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(calculation?.plannedQuantity) }}</td><td>{{ convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>
+      <tr v-else><th>Total potential profit</th><td>{{ convertedMoney(calculation?.reward?.fixedTargetProfit,draft.currency,currencies.exit) }}</td><th>Total % gain</th><td>{{ number(potentialPercent) }}%</td><th>R:R</th><td>{{ number(calculation?.reward?.fixedTargetRR) }}</td></tr>
+      <tr v-if="kind==='exit'&&managing"><th>Total realised profit</th><td>{{ convertedMoney(ledger.realisedProfit,ledger.currency,currencies.exit) }}</td><th>Realised % gain</th><td>{{ number(ledger.percentGain) }}%</td><th>R:R</th><td>{{ number(ledger.realisedR) }}</td></tr>
+     </tfoot></table></div>
+    <p v-if="kind==='entry'&&managing" class="text-sm text-gray-400 mt-3">Executed ticks are confirmed by linking source fills. Unlinked rows remain planning estimates.</p>
+   </section>
+   <section v-if="managing&&draft.instrument==='option'&&kind==='entry'" class="card p-5 space-y-4">
+    <h2 class="font-semibold text-lg">Roll option</h2><button class="btn-secondary" @click="loadRollFills">Find roll trades</button>
+    <div v-if="rollFills.length" class="grid sm:grid-cols-2 gap-4">
+     <label>Closing fill<select v-model="roll.closeKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='exit')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ money(f.price,f.currency) }}</option></select></label>
+     <label>Opening fill<select v-model="roll.openKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='entry')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ money(f.price,f.currency) }}</option></select></label>
+     <label>Contracts closed<input v-model.number="roll.closeQuantity" type="number" class="input" min="1" step="1"></label><label>Contracts opened<input v-model.number="roll.openQuantity" type="number" class="input" min="1" step="1"></label>
+     <label>New share-equivalent delta<input v-model.number="roll.delta" type="number" step="any" class="input"></label><label>Reason<input v-model="roll.reason" class="input"></label>
+    </div><button v-if="rollFills.length" class="btn-primary" :disabled="busy" @click="recordRoll">Link credit roll</button>
+   </section>
+   </template>
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p></section>
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in ledger.records||[]" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Management timeline</h2><div v-for="(e,i) in workflow?.history||[]" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
+  </template>
+  <section v-if="screen==='Review'" class="card p-5 space-y-4"><h2 class="font-semibold text-lg">Plan result</h2><div class="flex flex-wrap gap-6"><span>{{ money(ledger.realisedProfit,ledger.currency) }}</span><span>{{ number(ledger.percentGain) }}% gain / loss</span><span>{{ number(ledger.realisedR) }} R</span></div><p v-if="workflow?.needsUpdate" class="text-amber-300">Review needs updating because source evidence changed.</p>
+   <table class="w-full"><thead><tr><th>Action</th><th>Planned tactic</th><th>Actual tactic used</th><th>Actual / assessment</th></tr></thead><tbody><tr v-for="k in ['entry','exit']" :key="k"><td>{{ k }}</td><td>{{ baselineTags(k) }}</td><td>{{ actualTags(k) }}</td><td><textarea v-model="review[k+'Assessment']" class="input" rows="3" placeholder="Describe deviations"></textarea></td></tr></tbody></table>
+   <div class="flex flex-wrap gap-3"><RouterLink v-for="id in [...new Set((ledger.records||[]).filter(a=>!a.fill.provisional).map(a=>a.trade_id))]" :key="id" :to="'/trades/'+id" class="text-primary-400">Trade / playbook review {{ workflow?.tradeReviews?.find(r=>r.trade_id===id)?'completed':'not completed' }}</RouterLink><RouterLink to="/analysis/playbooks" class="text-primary-400">Playbook analysis</RouterLink><RouterLink to="/diary" class="text-primary-400">Journal</RouterLink></div><label class="flex gap-3"><input v-model="review.processFollowed" type="checkbox">Process followed</label><label class="block">Review and lessons<textarea v-model="review.notes" class="input" rows="4"></textarea></label><p v-if="!ledger.economicallyClosed" class="text-amber-300">Reconcile all exits before completing review.</p><button class="btn-secondary" :disabled="busy" @click="saveReviewDraft">Save review draft</button><button class="btn-primary ml-3" :disabled="busy||!ledger.economicallyClosed" @click="saveReview">Complete review</button>
+  </section>
+  <section v-if="screen==='Close'" class="card p-5 space-y-4"><h2 class="font-semibold text-lg">Close reviewed plan</h2><p>{{ plan.status==='completed'?'Completed plan retained with its trade links and review.':'Close finishes the plan after its position has exited and review is complete.' }}</p><button v-if="plan.status!=='completed'" class="btn-primary" :disabled="plan.status!=='reviewed'||workflow?.needsUpdate||busy" @click="action('complete')">Close reviewed plan</button><button v-else class="btn-secondary" @click="reopenReview">Reopen review</button></section>
+  <div class="flex justify-between flex-wrap gap-3"><button class="btn-secondary" :disabled="busy||plan.status==='completed'" @click="save">Save changes</button><button v-if="screen==='Plan'" class="btn-primary" :disabled="busy" @click="continueToManage">Finalise plan · Ready</button><button v-if="managing" class="btn-primary" @click="moveScreen('Review')">Continue to Review</button><button v-if="screen==='Review'" class="btn-primary" @click="moveScreen('Close')">Continue to Close</button></div>
+  <div v-if="finder" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-5" role="dialog" aria-modal="true" aria-labelledby="fill-title"><section class="card p-6 max-w-5xl w-full max-h-[85vh] overflow-auto space-y-4"><div class="flex justify-between"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><button class="btn-secondary" @click="finder=null">Close</button></div><p v-if="!fills.length">No eligible source fills found for this asset.</p><div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[1fr_8rem_10rem] gap-3 items-center border-b border-gray-700 py-3"><span>{{ new Date(f.time).toLocaleString() }} · {{ number(f.available) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}</span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"><button class="btn-primary" :disabled="busy||!(f.allocate>0)" @click="linkFill(f)">Link fill</button></div><label class="flex gap-3"><input v-model="splitConfirmed" type="checkbox">Confirm splitting a fill already used by another plan.</label><p v-if="error" role="alert" class="text-red-400">{{ error }}</p></section></div>
+ </div>
+</template>
+
+<script setup>
+import {ref,computed,watch,onMounted,onBeforeUnmount} from 'vue'
+import api from '@/services/api'
+import PlanningSnapshot from './PlanningSnapshot.vue'
+import TagSelect from './PlanningTagSelect.vue'
+const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]}}),emit=defineEmits(['updated'])
+const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref('Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
+const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
+const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage')
+const currencies=ref({entry:'USD',exit:'USD'}),positionCurrency=ref('GBP'),tags=ref([]),fx=ref(null),settings=ref({portfolioLimit:null,currency:'GBP',selectedLevel:.3,reason:''})
+const retainedUrl=ref(''),recommendation=ref(null),rollFills=ref([]),roll=ref({closeKey:'',openKey:'',closeQuantity:1,openQuantity:1,delta:null,reason:''})
+const newTag=ref({kind:'entry',name:'',definition:''}),finder=ref(null),fills=ref([]),splitConfirmed=ref(false),review=ref({notes:'',entryAssessment:'',exitAssessment:'',processFollowed:false})
+const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
+let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
+const ledger=computed(()=>workflow.value?.ledger||{}),hasLinks=computed(()=>!!ledger.value.records?.length)
+const asset=computed(()=>draft.value?.assetName?draft.value.assetName+' ('+draft.value.symbol+')':draft.value?.symbol||'Plan')
+const library=computed(()=>Object.fromEntries(['entry','exit','context'].map(k=>[k,tags.value.filter(t=>t.kind===k)])))
+const milestones=computed(()=>[{label:'Planned',type:'ready'},{label:'Entry',type:'trade_linked'},{label:'Review',type:'reviewed'}].map(m=>({label:m.label,date:workflow.value?.history?.find(e=>e.event_type===m.type)?.created_at?new Date(workflow.value.history.find(e=>e.event_type===m.type).created_at).toLocaleDateString():'Pending'})))
+function symbol(c){return c==='GBP'?'£':c==='USD'?'$':c}
+const flip=c=>c==='USD'?'GBP':'USD'
+function money(v,c){if(v==null||v===''||!Number.isFinite(Number(v)))return 'Unavailable';return new Intl.NumberFormat(undefined,{style:'currency',currency:c||'USD'}).format(v)}
+const number=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:6})
+function rate(from,to){if(from===to)return 1;const rates={USD:1,...fx.value?.rates};return rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null}
+function convertedMoney(v,from,to){const r=rate(from,to);return v==null?'Unavailable':r?money(v*r,to):'FX unavailable'}
+function displayValue(v,to){const r=rate(draft.value.currency,to);return v!=null&&r?Number((v*r).toFixed(6)):''}
+function priceValue(e,from){if(e.target.value==='')return null;const r=rate(from,draft.value.currency);if(!r){error.value='Stored FX is unavailable';throw new Error('FX unavailable')}return Number(e.target.value)*r}
+function rows(k){return managing.value?managed.value[k]:draft.value[k==='entry'?'entries':'exits']}
+function linked(k,key){return ledger.value.records?.some(a=>a.action===k&&a.stage_key===key)}
+function rowUnits(k,e,i){return k==='entry'?calculation.value?.stages[i]?.quantity:(calculation.value?.plannedQuantity||0)*e.percent/100}
+const runnerPercent=computed(()=>Math.max(0,100-(draft.value?.exits||[]).reduce((s,e)=>s+Number(e.percent||0),0)))
+const potentialPercent=computed(()=>calculation.value?.plannedValue>0&&calculation.value?.reward?.fixedTargetProfit!=null?calculation.value.reward.fixedTargetProfit/calculation.value.plannedValue*100:null)
+function exitProfit(e){
+ const q=e.units??(calculation.value?.plannedQuantity||0)*e.percent/100,total=calculation.value?.plannedQuantity;if(!(total>0))return null
+ if(draft.value.instrument==='option')return e.premium>0&&draft.value.options.premium>0?q*(e.premium-draft.value.options.premium)*draft.value.options.multiplier:null
+ if(!(e.price>0))return null
+ const avg=calculation.value.stages.reduce((s,a)=>s+a.quantity*a.price,0)/total
+ return q*(draft.value.direction==='short'?avg-e.price:e.price-avg)*(draft.value.instrument==='spread_bet'?1/draft.value.pointSize:1)
+}
+const currentRisk=computed(()=>{const r=risk.value;if(!r)return null;const provisional=ledger.value.provisionalCount>0&&ledger.value.capitalRisk!=null&&!(r.positions||[]).some(p=>p.symbol===draft.value.symbol&&p.accountId===draft.value.accountId)?ledger.value.capitalRisk*(rate(ledger.value.currency,r.currency)||0):0;return r.knownRisk+provisional})
+const projectedRisk=computed(()=>{if(!risk.value||!calculation.value)return null;const r=rate(draft.value.currency,risk.value.currency);return r?currentRisk.value+calculation.value.stages.filter(s=>!linked('entry',s.key)&&!managed.value.entry.find(e=>e.key===s.key)?.executed&&!planCommitments.value.some(c=>c.stage_key===s.key)).reduce((sum,s)=>sum+(s.estimatedRisk||0)*r,0):null})
+const riskExceeded=computed(()=>risk.value?.limit&&currentRisk.value>risk.value.limit),projectedExceeded=computed(()=>risk.value?.limit&&projectedRisk.value>risk.value.limit)
+function barWidth(v){const scale=risk.value?.limit?risk.value.limit/0.8:Math.max(projectedRisk.value||0,1);return Math.min(100,Math.max(0,(v||0)/scale*100))}
+function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symbol.trim().toUpperCase();for(const k of ['riskBudget','stopPrice','runnerEstimatePrice','portfolioAmount','portfolioRiskPercent'])if(d[k]==='')d[k]=null;for(const e of [...d.entries,...d.exits])for(const k of ['price','units','premium'])if(e[k]==='')e[k]=null;for(const k of ['strike','premium','contractDelta','atr','expiry','asOf'])if(d.options[k]==='')d.options[k]=null;return d}
+function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
+function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
+
+function hydrateManagement(){
+ hydrating=true;
+ for(const kind of ['entry','exit'])managed.value[kind]=(draft.value?.[kind==='entry'?'entries':'exits']||[]).map(e=>{
+  const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
+  const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*(rate(a.fill.currency,draft.value.currency)||1),0)/q:null;
+  return {...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()}
+ });
+ queueMicrotask(()=>hydrating=false)
+}
+async function saveManagement(){
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??rowUnits(k,e,managed.value[k].indexOf(e)),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[]}]))]));
+ await api.put('/trade-plans/'+plan.value.id+'/management',{version:plan.value.version,management});
+ await reload()
+}
+async function loadChart(){try{const r=await api.get('/trade-plans/'+plan.value.id+'/chart',{responseType:'blob'});if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);retainedUrl.value=URL.createObjectURL(r.data)}catch{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);retainedUrl.value=''}}
+async function retainChart(){if(dirty&&!await save())return;try{await api.post('/trade-plans/'+plan.value.id+'/chart');await loadChart()}catch(e){fail(e)}}
+async function reload(){const r=await api.get('/trade-plans/'+plan.value.id);adopt(r.data.plan);emit('updated',r.data.plan);workflow.value=(await api.get('/trade-plans/'+plan.value.id+'/workflow')).data;hydrateManagement();const savedReview=workflow.value.review||workflow.value.reviewDraft;if(savedReview)review.value={notes:savedReview.notes,entryAssessment:savedReview.entryAssessment,exitAssessment:savedReview.exitAssessment,processFollowed:savedReview.processFollowed};risk.value=(await api.get('/trade-plans/risk')).data;await loadChart()}
+async function save(){clearTimeout(saveTimer);if(busy.value)return false;busy.value=true;error.value='';try{if(managing.value&&plan.value.id){await saveManagement();return true}const body={definition:clean(),version:plan.value.version};const r=plan.value.id?await api.put('/trade-plans/'+plan.value.id,body):await api.post('/trade-plans',body);adopt(r.data.plan);emit('updated',r.data.plan);return true}catch(e){fail(e);return false}finally{busy.value=false}}
+async function moveScreen(s){if(screen.value==='Review'&&!['reviewed','completed'].includes(plan.value.status)&&review.value.notes&&!await saveReviewDraft())return;if(dirty&&plan.value.id&&!await save())return;screen.value=s}
+async function releaseCommitment(c){
+ const reason=window.prompt('Why is this unfilled commitment being released?');
+ if(!reason||!window.confirm('Confirm that the order was never placed or has been cancelled and is no longer live.'))return;
+ await action('commitments/'+c.id+'/release',{externalOrderNotLive:true,reason})
+}
+async function action(name,body={}){if(busy.value)return;busy.value=true;error.value='';try{await api.post('/trade-plans/'+plan.value.id+'/'+name,{version:plan.value.version,...body});await reload()}catch(e){fail(e)}finally{busy.value=false}}
+async function continueToManage(){if(!await save())return;if(['draft','watching'].includes(plan.value.status))await action('status',{status:'ready'});if(!error.value)screen.value='Trade & Manage'}
+async function findFills(kind,key){if(dirty&&!await save())return;if(!plan.value.id){error.value='Save and finalise the plan before linking a trade';return}error.value='';finder.value={action:kind,stageKey:key};try{fills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills')).data.fills.filter(f=>f.action===kind).map(f=>({...f,allocate:f.available}))}catch(e){fail(e)}}
+async function linkFill(f){await action('allocations',{tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,stageKey:finder.value.stageKey,action:finder.value.action,quantity:f.allocate,splitConfirmed:splitConfirmed.value});if(!error.value)finder.value=null}
+async function unlink(a){const reason=window.prompt('Why are you correcting this link?');if(!reason)return;busy.value=true;try{await api.delete('/trade-plans/'+plan.value.id+'/allocations/'+a.id,{data:{version:plan.value.version,reason}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
+async function changeStop(e,c){let price;try{price=priceValue(e,c)}catch{return}if(hasLinks.value||managing.value){const reason=window.prompt('Why are you changing the SL invalidation level?');if(!reason){e.target.value=displayValue(draft.value.stopPrice,c);return}if(dirty&&!await save())return;await action('stop',{stopPrice:price,reason})}else draft.value.stopPrice=price}
+
+async function loadRollFills(){if(dirty&&!await save())return;try{rollFills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills')).data.fills.filter(f=>f.contract)}catch(e){fail(e)}}
+async function recordRoll(){
+ const select=(key,quantity)=>{const f=rollFills.value.find(f=>f.tradeId+'|'+f.key===key);if(!f)throw new Error('Choose both roll fills');return {tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity}}
+ try{await action('roll',{close:select(roll.value.closeKey,roll.value.closeQuantity),open:select(roll.value.openKey,roll.value.openQuantity),delta:roll.value.delta,reason:roll.value.reason});if(!error.value)rollFills.value=[]}catch(e){error.value=e.message}
+}
+
+async function saveReviewDraft(){
+ if(busy.value)return false;busy.value=true;error.value='';
+ try{await api.put('/trade-plans/'+plan.value.id+'/review-draft',{version:plan.value.version,...review.value});await reload();return true}catch(e){fail(e);return false}finally{busy.value=false}
+}
+async function saveReview(){await action('review',{...review.value});if(!error.value)screen.value='Close'}
+async function reopenReview(){const reason=window.prompt('Why reopen the review?');if(reason){await action('reopen-review',{reason});if(!error.value)screen.value='Review'}}
+async function saveSettings(){try{settings.value=(await api.put('/trade-plans/settings',settings.value)).data.settings;recommendation.value=(await api.get('/trade-plans/recommendation')).data;risk.value=(await api.get('/trade-plans/risk')).data}catch(e){fail(e)}}
+async function createTag(){try{const r=await api.post('/trade-plans/library',newTag.value);tags.value=tags.value.filter(t=>t.id!==r.data.tag.id).concat(r.data.tag);newTag.value={kind:'entry',name:'',definition:''}}catch(e){fail(e)}}
+function applyPortfolioRisk(){if(draft.value.portfolioAmount>0&&draft.value.portfolioRiskPercent>=0)draft.value.riskBudget=draft.value.portfolioAmount*draft.value.portfolioRiskPercent/100}
+function addRow(k){rows(k).push(k==='entry'?{key:crypto.randomUUID().replaceAll('-',''),label:'Entry '+(rows(k).length+1),price:null,riskWeight:0,units:null,tactic:'',marketContext:[],tactics:[]}:{key:crypto.randomUUID().replaceAll('-',''),label:'TP'+(rows(k).length+1),price:null,percent:0,units:null,premium:null,marketContext:[],tactics:[]})}
+function offerTemplate(){const t=props.playbooks.find(p=>p.id===draft.value.playbookId)?.planningTemplate;if(!t||hasLinks.value||!window.confirm('Apply this playbook template and replace unlinked rows?'))return;draft.value.entries=t.entries.map(e=>({...e,price:null,units:null,tactic:e.tactic||'',marketContext:[],tactics:[]}));draft.value.exits=t.exits.map(e=>({...e,price:null,units:null,marketContext:[],tactics:[]}));draft.value.runnerRule=t.runnerRule||''}
+function baselineTags(k){return (workflow.value?.baseline?.[k==='entry'?'entries':'exits']||[]).flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
+function actualTags(k){return managed.value[k].flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
+watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
+watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
+function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
+watch([draft,managed],()=>{if(hydrating)return;dirty=true;clearTimeout(saveTimer);if(plan.value.id&&!planCommitments.value.length&&!['reviewed','completed','cancelled'].includes(plan.value.status))saveTimer=setTimeout(save,900);clearTimeout(previewTimer);const seq=++sequence;previewTimer=setTimeout(async()=>{try{const r=await api.post('/trade-plans/calculate',{definition:previewDefinition()});if(seq===sequence)calculation.value=r.data.calculation}catch(e){fail(e)}},350)},{deep:true})
+function leaving(e){if(dirty){e.preventDefault();e.returnValue=''}}
+onMounted(async()=>{adopt(props.plan);window.addEventListener('beforeunload',leaving);try{const r=await api.get('/trade-plans/library');tags.value=r.data.tags||[];fx.value=r.data.fx;settings.value={...settings.value,...r.data.settings};recommendation.value=(await api.get('/trade-plans/recommendation')).data;if(plan.value.id)await reload()}catch(e){fail(e)}})
+onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);clearTimeout(saveTimer);clearTimeout(previewTimer);window.removeEventListener('beforeunload',leaving)})
+</script>
+<style scoped>
+th{text-align:left;font-weight:500;color:#9ca3af;white-space:nowrap}td,th{padding:14px 12px;border-bottom:1px solid #374151;vertical-align:top}small{color:#9ca3af}.ladder-input{width:120px;height:42px;border-radius:7px;border:1px solid #4b5563;background:#111827;padding:8px 12px;color:inherit}input[type=checkbox]{width:18px;height:18px;accent-color:#f97316}button:disabled,input:disabled{opacity:.6}summary{cursor:pointer}
+</style>

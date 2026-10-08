@@ -1,0 +1,18 @@
+
+const {sourceFills,verifyAllocation,ledger}=require('../../src/services/planningLedger');
+const trade=()=>({id:'t',account_identifier:'synthetic',side:'long',symbol:'TEST',instrument_type:'stock',original_currency:'USD',commission:4,fees:0,executions:[
+ {id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-01T10:00:00Z',commission:2,fees:0},
+ {id:'b',action:'sell',quantity:5,price:110,datetime:'2026-01-02T10:00:00Z',commission:1,fees:0},
+ {id:'c',action:'sell',quantity:5,price:120,datetime:'2026-01-03T10:00:00Z',commission:1,fees:0}
+]});
+const plan=()=>({definition:{symbol:'TEST',instrument:'stock',direction:'long',currency:'USD',accountId:'account',stopPrice:90,entries:[{key:'a'}],exits:[{key:'b'},{key:'c'}]},baseline:{riskBudget:100,currency:'USD'}});
+const allocations=t=>sourceFills(t).map((f,i)=>({id:String(i),trade_id:t.id,source_key:f.key,stage_key:f.action==='entry'?'a':i===1?'b':'c',action:f.action,quantity:f.quantity,source_snapshot:f}));
+test('FIFO result allocates source costs once through partial exits and holds original R',()=>{const t=trade(),p=plan();let r=ledger(p,allocations(t).slice(0,2),[t]);expect(r.realisedProfit).toBe(48);expect(r.openQuantity).toBe(5);expect(r.positionValue).toBe(500);expect(r.averagePrice).toBe(100);expect(r.capitalRisk).toBe(50);expect(r.economicallyClosed).toBe(false);r=ledger(p,allocations(t),[t]);expect(r.realisedProfit).toBe(146);expect(r.percentGain).toBeCloseTo(14.6);expect(r.realisedR).toBe(1.46);expect(r.economicallyClosed).toBe(true)});
+test('split quantity cannot exceed remaining source fill',()=>{const t=trade(),f=sourceFills(t)[0];expect(()=>verifyAllocation(plan(),f,6,5,'entry','a',t)).toThrow(/exceeds/);expect(()=>verifyAllocation(plan(),f,5,5,'entry','a',t)).not.toThrow()});
+test('source correction retains stored evidence but prevents review eligibility',()=>{const t=trade(),a=allocations(t);t.executions[0].price=101;const r=ledger(plan(),a,[t]);expect(r.unresolved).toBe(1);expect(r.realisedProfit).toBeNull();expect(r.economicallyClosed).toBe(false)});
+test('source identity survives reordering and ambiguous id-less duplicates are excluded',()=>{const t=trade(),a=allocations(t);t.executions.reverse();expect(ledger(plan(),a,[t]).unresolved).toBe(0);delete t.executions[0].id;t.executions.push({...t.executions[0]});expect(sourceFills(t)).toHaveLength(2)});
+test('exits cannot consume future entries or a different contract',()=>{const t=trade();t.executions[1].datetime='2025-12-31T00:00:00Z';expect(ledger(plan(),allocations(t),[t]).overExit).toBe(true)});
+test('converted import monetary fields stay USD despite source currency',()=>{const t=trade();t.original_currency='GBP';t.original_entry_price_currency=80;expect(sourceFills(t)[0].currency).toBe('USD')});
+test('incomplete aggregate costs block verified profit instead of ignoring costs',()=>{const t=trade();t.commission=8;const r=ledger(plan(),allocations(t),[t]);expect(r.costsUnresolved).toBe(3);expect(r.realisedProfit).toBeNull();expect(r.economicallyClosed).toBe(false)});
+test('manual ticks are provisional and never qualify for completed review',()=>{const p=plan();p.management={entry:{a:{executed:true,units:2,price:100,time:'2026-01-01T00:00:00Z'}}};const r=ledger(p,[],[]);expect(r.openQuantity).toBe(2);expect(r.provisionalCount).toBe(1);expect(r.coverageComplete).toBe(false)});
+test('missing currency is unknown instead of silently assumed USD',()=>{const t=trade();delete t.original_currency;expect(ledger(plan(),allocations(t),[t]).realisedProfit).toBeNull()});
