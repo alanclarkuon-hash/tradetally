@@ -14,7 +14,7 @@
       <section v-if="cancelPending" class="rounded-md border border-amber-500/40 bg-amber-500/10 p-4" aria-label="Confirm plan cancellation"><p>Cancel this plan? It will leave All active, but its details and history will stay saved. You can find it under Cancelled and reopen it as a Draft.</p><div class="flex gap-3 mt-3"><button class="btn-secondary" :disabled="saving" @click="cancelPending=false">Keep plan</button><button class="btn-secondary text-red-400" :disabled="saving" @click="setStatus('cancelled')">Confirm cancellation</button></div></section>
       <p v-if="selected.status==='cancelled'" class="text-gray-600 dark:text-gray-400">This plan is retained with its history. Reopen as Draft to review and edit it; this does not mark it Ready or reserve capacity.</p>
       <p v-if="locked" class="text-amber-700 dark:text-amber-400">An entry is committed. Resolve its external order before editing this plan.</p>
-      <PlanningWorkspace :plan="selected" :accounts="accounts" :playbooks="playbooks" :commitments="commitments" @updated="workspaceUpdated"/>
+      <PlanningWorkspace :plan="selected" :accounts="accounts" :playbooks="playbooks" :commitments="commitments" :portfolio-capital="portfolioCapital" :portfolio-loading="portfolioLoading" @updated="workspaceUpdated"/>
       <details v-if="history.length" class="card p-5"><summary class="cursor-pointer">Plan history</summary><div v-for="(e,i) in history" :key="i" class="py-2 border-b border-gray-700">{{ e.event_type.replaceAll('_',' ') }} · {{ new Date(e.created_at).toLocaleString() }}</div></details>
     </template>
     <p v-else class="card p-5">Plan details are concealed while monetary privacy is enabled. Use the eye control to reveal and edit them.</p>
@@ -34,6 +34,10 @@ const {hideAmounts}=useDashboardPrivacy(),router=useRouter(),route=useRoute(),ac
 const {selectedAccount,selectedAccountLabel}=useGlobalAccountFilter()
 const entryFeedback=ref(null),committing=ref(false),commitError=ref(''),commitMessage=ref(''),cancelPending=ref(false),releaseReason=ref(''),releaseConfirmed=ref(false),pendingTemplate=ref(null),plans=ref([]),commitments=ref([]),playbooks=ref([]),selected=ref(null),form=ref(null),calculation=ref(null),history=ref([]),error=ref(''),loading=ref(false),saving=ref(false),saveState=ref(''),dirty=ref(false),stageFilter=ref('active'),draftFilter=ref('all'),percentStop=ref(true),chosenStage=ref('stage1'),riskReason=ref(''),checks=ref({trigger:false,context:false,protection:false,data:false})
 const checkLabels={trigger:'Trigger and chart conditions confirmed',context:"Today's journal context and position review completed",protection:'Existing position protection checked',data:'Balance, quote, stop and broker quantity constraints checked'}
+const portfolioCapital=ref(null),portfolioLoading=ref(false)
+let capitalRequest=0
+async function loadCapital(){const id=++capitalRequest;portfolioCapital.value=null;portfolioLoading.value=false;const selection=accountSelection(selectedAccount.value)?.filter(a=>a!=='__unsorted__')??null;if(selection?.length===0)return;portfolioLoading.value=true;try{const r=await api.get('/investments/portfolio/dashboard',{params:{currency:'GBP',accounts:selection?.join(',')||''},timeout:180000});const amount=r.data?.totals?.portfolioValue;if(id===capitalRequest&&typeof amount==='number'&&Number.isFinite(amount)&&amount>0)portfolioCapital.value={amount,currency:'GBP',label:selectedAccountLabel.value,incomplete:!!(r.data.coverage?.missingCash||r.data.coverage?.missingPrices)}}catch{if(id===capitalRequest)portfolioCapital.value=null}finally{if(id===capitalRequest)portfolioLoading.value=false}}
+watch(()=>selectedAccount.value,loadCapital,{deep:true})
 const accounts=computed(()=>accountStore.accounts.filter(a=>!a.isArchived))
 let timer=null,hydrating=false,previewSequence=0
 const label=d=>d.assetName?`${d.assetName} (${d.symbol})`:d.symbol
@@ -89,7 +93,7 @@ async function release(c){if(!releaseConfirmed.value||!releaseReason.value.trim(
 watch(form,()=>{if(hydrating||!selected.value||locked.value)return;dirty.value=true;saveState.value=selected.value.id?'Edits pending':'New draft · save to enable autosave';clearTimeout(timer);if(selected.value.id)timer=setTimeout(save,900)},{deep:true})
 watch(()=>form.value?.instrument,v=>{if(v==='option'&&!hydrating)form.value.quantityStep=1})
 function leaving(e){if(dirty.value){e.preventDefault();e.returnValue=''}}
-onMounted(async()=>{window.addEventListener('beforeunload',leaving);try{await Promise.all([load(),accountStore.fetchAccounts(),api.get('/playbooks').then(r=>playbooks.value=r.data.playbooks)]);if(route.params.id){const p=plans.value.find(p=>p.id===route.params.id);if(p)await openPlan(p);else error.value='Plan not found'}}catch(e){failure(e)}})
+onMounted(async()=>{window.addEventListener('beforeunload',leaving);try{await Promise.all([load(),accountStore.fetchAccounts(),api.get('/playbooks').then(r=>playbooks.value=r.data.playbooks)]);await loadCapital();if(route.params.id){const p=plans.value.find(p=>p.id===route.params.id);if(p)await openPlan(p);else error.value='Plan not found'}}catch(e){failure(e)}})
 onBeforeUnmount(()=>{clearTimeout(timer);window.removeEventListener('beforeunload',leaving)})
 </script>
 <style scoped>th{text-align:left;color:#9ca3af;font-weight:500;white-space:nowrap}td,th{padding:12px 10px;border-bottom:1px solid #374151}td:first-child,th:first-child{padding-left:0}small{color:#9ca3af}input[type=checkbox]{accent-color:#f97316;width:18px;min-width:18px;height:18px}fieldset:disabled{opacity:.65}</style>
