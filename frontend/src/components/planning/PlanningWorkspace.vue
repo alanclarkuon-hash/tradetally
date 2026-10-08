@@ -168,6 +168,7 @@ const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrM
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
 const ledger=computed(()=>workflow.value?.ledger||{}),hasLinks=computed(()=>!!ledger.value.records?.length)
 const asset=computed(()=>draft.value?.assetName?draft.value.assetName+' ('+draft.value.symbol+')':draft.value?.symbol||'Plan')
+function applyPlaybookSetup(){const book=props.playbooks.find(p=>p.id===draft.value?.playbookId);if(book)draft.value.setup=book.requiredSetup||''}
 const setupTags=computed(()=>{const book=props.playbooks.find(p=>p.id===draft.value?.playbookId);return book?.requiredSetup?[{id:book.id,name:book.requiredSetup,definition:book.requiredSetup}]:[]})
 function materializeRunner(d){if(d.runnerMode==='row')return;const percent=Math.max(0,100-d.exits.reduce((s,e)=>s+Number(e.percent||0),0));if(percent>0&&!d.exits.some(e=>e.key==='runner'))d.exits.push({key:'runner',label:'Runner',price:d.runnerEstimatePrice??null,percent,units:null,premium:null,marketContext:[],tactics:[]});d.runnerMode='row'}
 function syncPortfolioPercent(){draft.value.portfolioRiskPercent=draft.value.portfolioAmount>0&&draft.value.riskBudget!=null?draft.value.riskBudget/draft.value.portfolioAmount*100:null}
@@ -210,7 +211,7 @@ const riskExceeded=computed(()=>risk.value?.limit&&currentRisk.value>risk.value.
 function barWidth(v){const scale=risk.value?.limit?risk.value.limit/0.8:Math.max(projectedRisk.value||0,1);return Math.min(100,Math.max(0,(v||0)/scale*100))}
 function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symbol.trim().toUpperCase();for(const k of ['riskBudget','stopPrice','runnerEstimatePrice','portfolioAmount','portfolioRiskPercent'])if(d[k]==='')d[k]=null;for(const e of [...d.entries,...d.exits])for(const k of ['price','units','premium'])if(e[k]==='')e[k]=null;for(const k of ['strike','premium','contractDelta','atr','expiry','asOf'])if(d.options[k]==='')d.options[k]=null;return d}
 function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
-function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
+function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';applyPlaybookSetup();draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
 
 function hydrateManagement(){
  hydrating=true;
@@ -260,10 +261,11 @@ async function createTag(){try{const r=await api.post('/trade-plans/library',new
 function applyPortfolioRisk(){if(draft.value.portfolioAmount>0&&typeof draft.value.portfolioRiskPercent==='number'&&draft.value.portfolioRiskPercent>0)draft.value.riskBudget=draft.value.portfolioAmount*draft.value.portfolioRiskPercent/100}
 function addRunner(){rows('exit').push({key:'runner',label:'Runner',price:null,percent:0,units:null,premium:null,marketContext:[],tactics:[]})}
 function addRow(k){rows(k).push(k==='entry'?{key:crypto.randomUUID().replaceAll('-',''),label:'Entry '+(rows(k).length+1),price:null,riskWeight:0,units:null,tactic:'',marketContext:[],tactics:[]}:{key:crypto.randomUUID().replaceAll('-',''),label:'TP'+(rows(k).length+1),price:null,percent:0,units:null,premium:null,marketContext:[],tactics:[]})}
-function offerTemplate(){const t=props.playbooks.find(p=>p.id===draft.value.playbookId)?.planningTemplate;if(!t||hasLinks.value||!window.confirm('Apply this playbook template and replace unlinked rows?'))return;draft.value.entries=t.entries.map(e=>({...e,price:null,units:null,tactic:e.tactic||'',marketContext:[],tactics:[]}));draft.value.exits=t.exits.map(e=>({...e,price:null,units:null,marketContext:[],tactics:[]}));draft.value.runnerRule=t.runnerRule||'';draft.value.runnerMode='legacy';materializeRunner(draft.value)}
+function offerTemplate(){applyPlaybookSetup();const t=props.playbooks.find(p=>p.id===draft.value.playbookId)?.planningTemplate;if(!t||hasLinks.value||!window.confirm('Apply this playbook template and replace unlinked rows?'))return;draft.value.entries=t.entries.map(e=>({...e,price:null,units:null,tactic:e.tactic||'',marketContext:[],tactics:[]}));draft.value.exits=t.exits.map(e=>({...e,price:null,units:null,marketContext:[],tactics:[]}));draft.value.runnerRule=t.runnerRule||'';draft.value.runnerMode='legacy';materializeRunner(draft.value)}
 function baselineTags(k){return (workflow.value?.baseline?.[k==='entry'?'entries':'exits']||[]).flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
 function actualTags(k){return managed.value[k].flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
 watch([()=>props.portfolioCapital,()=>draft.value?.currency,fx],applySelectedCapital,{deep:true})
+watch(()=>props.playbooks,()=>{if(!draft.value)return;hydrating=true;applyPlaybookSetup();queueMicrotask(()=>hydrating=false)},{deep:true})
 watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
 watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
 function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
