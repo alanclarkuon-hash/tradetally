@@ -16,13 +16,14 @@
    <details><summary>Set portfolio limit and exposure level</summary><div class="grid sm:grid-cols-3 gap-3 mt-3"><label>Limit<input type="number" v-model.number="settings.portfolioLimit" class="input"></label><label>Currency<select v-model="settings.currency" class="input"><option>GBP</option><option>USD</option></select></label><label>Applied level<select v-model.number="settings.selectedLevel" class="input"><option v-for="v in [.05,.1,.2,.3]" :value="v" :key="v">{{ v }}%</option></select></label></div><label class="block mt-3">Reason<input v-model="settings.reason" class="input"></label><button class="btn-secondary mt-3" @click="saveSettings">Save risk settings</button></details>
   </section>
   <template v-if="screen==='Plan'||managing">
+   <div class="detail-grid">
+    <div class="space-y-5 min-w-0">
    <div v-if="managing" class="management-top-grid">
    <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p><button class="btn-primary mt-4" @click="moveScreen('Review')">Continue to Review</button></section>
-   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in (ledger.records||[]).filter(a=>!a.fill?.provisional)" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
-   <section v-if="managing&&ledger.provisionalCount" class="card p-5"><h2>Provisional executions · not linked</h2><p>Ticked entries and exits use your entered values until you select a broker trade.</p><div v-for="a in (ledger.records||[]).filter(a=>a.fill?.provisional)" :key="a.id" class="py-3 border-b border-gray-700">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }} · Provisional</div></section><section v-if="managing" class="card p-5 management-timeline"><h2 class="font-semibold text-lg">Management timeline</h2><div v-for="(e,i) in workflow?.history||[]" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
+   <section v-if="managing" class="card p-5"><div class="history-card-heading"><h2>Linked trades</h2><button v-if="linkedTrades.length>3" class="btn-secondary" :aria-expanded="linkedTradesExpanded" @click="linkedTradesExpanded=!linkedTradesExpanded">{{ linkedTradesExpanded?'Show fewer':'Show all ('+linkedTrades.length+')' }}</button></div><p v-if="!linkedTrades.length">No trades linked.</p><div v-for="a in visibleLinkedTrades" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
+   <section v-if="managing&&ledger.provisionalCount" class="card p-5"><h2>Provisional executions · not linked</h2><p>Ticked entries and exits use your entered values until you select a broker trade.</p><div v-for="a in (ledger.records||[]).filter(a=>a.fill?.provisional)" :key="a.id" class="py-3 border-b border-gray-700">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }} · Provisional</div></section><section v-if="managing" class="card p-5 management-timeline"><div class="history-card-heading"><h2>Management timeline</h2><button v-if="managementEvents.length>3" class="btn-secondary" :aria-expanded="timelineExpanded" @click="timelineExpanded=!timelineExpanded">{{ timelineExpanded?'Show fewer':'Show all ('+managementEvents.length+')' }}</button></div><p v-if="!managementEvents.length">No trading or management events yet.</p><div v-for="(e,i) in visibleManagementEvents" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
    </div>
-   <div class="detail-grid" :class="{'management-position':managing}">
-    <div class="space-y-5 min-w-0">
+
      <PlanningSnapshot v-if="!managing" :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><button v-if="draft.chartUrl&&plan.id&&!retainedUrl" class="btn-secondary" @click="retainChart">Retain chart snapshot</button></PlanningSnapshot>
      <section v-if="!managing" class="card p-5 space-y-4">
       <h2 class="font-semibold text-lg">Setup and entry tactics</h2><div class="setup-summary"><strong>{{ asset }}</strong><label>Setup<TagSelect :model-value="draft.setup?[draft.setup]:[]" :tags="setupTags" :multiple="false" :disabled="true" :show-picker="false" label="Playbook setup"/><small v-if="!setupTags.length">Define a Setup in the selected playbook.</small></label><p>{{ draft.thesis }}</p></div><details :open="!plan.id"><summary>Edit plan details</summary><div class="grid sm:grid-cols-2 gap-4 mt-4">
@@ -169,6 +170,13 @@ const retainedUrl=ref(''),recommendation=ref(null),rollFills=ref([]),roll=ref({c
 const newTag=ref({kind:'entry',name:'',definition:''}),finder=ref(null),fills=ref([]),splitConfirmed=ref(false),review=ref({notes:'',entryAssessment:'',exitAssessment:'',processFollowed:false})
 const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
+const linkedTradesExpanded=ref(false),timelineExpanded=ref(false)
+const managementTypes=new Set(['trade_linked','trade_unlinked','management_updated','stop_changed','option_rolled','entry_committed','commitment_released'])
+const newest=(a,b)=>Date.parse(b.created_at||b.fill?.time||'')-Date.parse(a.created_at||a.fill?.time||'')
+const managementEvents=computed(()=>(workflow.value?.history||[]).filter(e=>managementTypes.has(e.event_type)).sort(newest))
+const linkedTrades=computed(()=>(ledger.value.records||[]).filter(a=>!a.fill?.provisional).slice().sort(newest))
+const visibleManagementEvents=computed(()=>timelineExpanded.value?managementEvents.value:managementEvents.value.slice(0,3))
+const visibleLinkedTrades=computed(()=>linkedTradesExpanded.value?linkedTrades.value:linkedTrades.value.slice(0,3))
 const ledger=computed(()=>workflow.value?.ledger||{}),hasLinks=computed(()=>!!ledger.value.records?.some(a=>!a.fill?.provisional))
 const instrumentLabel=computed(()=>({stock:'Shares',crypto:'Crypto',spread_bet:'Spread betting',option:'Single-leg option'}[draft.value?.instrument]||draft.value?.instrument))
 const asset=computed(()=>draft.value?.assetName?draft.value.assetName+' ('+draft.value.symbol+')':draft.value?.symbol||'Plan')
@@ -289,10 +297,10 @@ onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value)
 .planning-workspace{container-type:inline-size;container-name:planning;min-width:0;display:flex;flex-direction:column;gap:18px;font-size:15px;line-height:1.5}
 .planning-workspace>.card,.detail-grid .card,.completion-summary .card{border-radius:10px;padding:22px;border:1px solid #374151;box-shadow:none}
 .journey{display:flex;justify-content:space-between;gap:12px;padding:20px}
-.management-top-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
-.management-top-grid .management-timeline{grid-column:1/-1}
-.management-position{display:block!important}
-@media(max-width:760px){.management-top-grid{grid-template-columns:1fr}}
+.management-top-grid{display:grid;gap:18px}
+.history-card-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
+.history-card-heading h2{margin-bottom:0}
+.management-timeline>div.history-card-heading{border:0;padding:0;margin-left:0}
 .journey>div{border-left:2px solid #fb923c;padding-left:9px;flex:1;font-size:12px}
 .journey strong{font-size:14px;font-weight:600;margin-top:2px}
 .workflow-tabs{display:flex;flex-wrap:wrap;gap:27px;border-bottom:1px solid #374151}
