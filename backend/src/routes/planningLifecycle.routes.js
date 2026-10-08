@@ -196,7 +196,7 @@ router.delete('/:id/allocations/:allocationId',run(async(req,res)=>{
 }));
 
 router.put('/:id/management',run(async(req,res)=>{
- const row=Joi.object({executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
+ const row=Joi.object({percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
@@ -309,7 +309,7 @@ async function assertEdits(c,p,d){
  if(a.length){
   for(const k of ['symbol','instrument','direction','accountId','currency','options'])if(!require('util').isDeepStrictEqual(d[k],p.definition[k]))fail('Linked trades lock the asset, account, currency and contract');
   if(d.stopPrice!==p.definition.stopPrice)fail('Use the SL change action and record a reason');
-  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key);const after=d[k]?.find(e=>e.key===row.stage_key);if(!require('util').isDeepStrictEqual(before,after))fail('Linked ladder rows are locked; correct their allocation first');}
+  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key)||(row.action==='exit'&&row.stage_key==='runner'&&p.definition.runnerMode==='legacy'?{key:'runner',label:'Runner',price:p.definition.runnerEstimatePrice,percent:100-p.definition.exits.reduce((s,e)=>s+e.percent,0),units:null,premium:null,marketContext:[],tactics:[]}:undefined);const after=d[k]?.find(e=>e.key===row.stage_key);if(!require('util').isDeepStrictEqual(before,after))fail('Linked ladder rows are locked; correct their allocation first');}
  }
 }
 module.exports=router;

@@ -20,14 +20,14 @@
     <div class="space-y-5 min-w-0">
      <PlanningSnapshot :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><button v-if="draft.chartUrl&&plan.id&&!retainedUrl" class="btn-secondary" @click="retainChart">Retain chart snapshot</button></PlanningSnapshot>
      <section v-if="!managing" class="card p-5 space-y-4">
-      <h2 class="font-semibold text-lg">Setup and entry tactics</h2><div class="setup-summary"><strong>{{ asset }}</strong><span>{{ draft.setup||'Setup not selected' }}</span><p>{{ draft.thesis }}</p></div><details :open="!plan.id"><summary>Edit plan details</summary><div class="grid sm:grid-cols-2 gap-4 mt-4">
+      <h2 class="font-semibold text-lg">Setup and entry tactics</h2><div class="setup-summary"><strong>{{ asset }}</strong><label>Setup<TagSelect :model-value="draft.setup?[draft.setup]:[]" :tags="setupTags" :multiple="false" label="Select playbook setup" @update:model-value="draft.setup=$event[0]||''"/><small v-if="!setupTags.length">Define a Setup in the selected playbook.</small></label><p>{{ draft.thesis }}</p></div><details :open="!plan.id"><summary>Edit plan details</summary><div class="grid sm:grid-cols-2 gap-4 mt-4">
        <label>Ticker<input v-model="draft.symbol" class="input" :disabled="hasLinks"></label><label>Asset name<input v-model="draft.assetName" class="input"></label>
        <label>Title<input v-model="draft.title" class="input"></label>
        <label>Instrument<select v-model="draft.instrument" class="input" :disabled="hasLinks"><option value="stock">Shares</option><option value="crypto">Crypto</option><option value="spread_bet">Spread betting</option><option value="option">Single-leg option</option></select></label>
        <label>Direction<select v-model="draft.direction" class="input" :disabled="hasLinks"><option value="long">Long / bullish</option><option value="short">Short / bearish</option></select></label>
        <label>Account<select v-model="draft.accountId" class="input" :disabled="hasLinks"><option :value="null">Unassigned</option><option v-for="a in accounts" :value="a.id" :key="a.id">{{ a.accountName }}</option></select></label>
        <label>Playbook<select v-model="draft.playbookId" class="input" @change="offerTemplate"><option :value="null">Choose playbook</option><option v-for="p in playbooks" :key="p.id" :value="p.id">{{ p.name }}</option></select></label>
-       <label>Setup<input v-model="draft.setup" class="input"></label>
+
        <label>Price / risk currency<select v-model="draft.currency" class="input" :disabled="hasLinks"><option>USD</option><option>GBP</option><option>EUR</option></select></label>
       </div><label class="block">Thesis<textarea v-model="draft.thesis" class="input" rows="3"></textarea></label><label class="block mt-4">Snapshot link<input v-model="draft.chartUrl" type="url" class="input"></label></details>
      </section>
@@ -39,10 +39,10 @@
      <section class="card p-5 space-y-4">
       <div class="flex justify-between"><h2 class="font-semibold text-lg">{{ managing?'Position':'Risk and sizing' }}</h2><button class="btn-secondary currency-toggle" :aria-label="'Showing '+positionCurrency+'; switch currency'" @click="positionCurrency=flip(positionCurrency)">{{ symbol(positionCurrency) }}</button></div>
       <template v-if="!managing">
-       <label class="block">Portfolio amount ({{ positionCurrency }})<input :value="displayValue(draft.portfolioAmount,positionCurrency)" aria-label="Portfolio amount" type="number" step="any" class="input" @change="draft.portfolioAmount=priceValue($event,positionCurrency);applyPortfolioRisk()"></label>
-       <label class="block">Portfolio risk %<input v-model.number="draft.portfolioRiskPercent" type="number" step="any" class="input" @input="applyPortfolioRisk"></label>
+       <label class="block">Portfolio amount ({{ positionCurrency }})<input :value="displayValue(draft.portfolioAmount,positionCurrency)" aria-label="Portfolio amount" type="number" step="any" class="input" readonly></label><small>{{ portfolioLoading?'Loading selected-account value…':portfolioCapital?portfolioCapital.label+(portfolioCapital.incomplete?' · Incomplete valuation':''):'Selected-account value unavailable · saved capital shown' }}</small>
+       <label class="block">Portfolio risk %<input aria-label="Portfolio risk percent" v-model.number="draft.portfolioRiskPercent" type="number" step="any" class="input" @input="applyPortfolioRisk"></label>
        <label class="flex gap-3"><input v-model="draft.exposureSystem" type="checkbox">Use this plan in exposure recommendations</label><div class="text-right text-sm text-gray-400">Recommended level {{ recommendation?.level==null?'Unavailable':recommendation.level+'%' }}</div>
-       <label class="block">Risk amount ({{ positionCurrency }})<input :value="displayValue(draft.riskBudget,positionCurrency)" aria-label="Risk amount" type="number" step="any" class="input" @change="draft.riskBudget=priceValue($event,positionCurrency)"></label>
+       <label class="block">Risk amount ({{ positionCurrency }})<input :value="displayValue(draft.riskBudget,positionCurrency)" aria-label="Risk amount" type="number" step="any" class="input" @change="draft.riskBudget=priceValue($event,positionCurrency);syncPortfolioPercent()"></label>
 
        <details><summary>Broker quantity constraints</summary><label class="block mt-3">Quantity increment<input v-model.number="draft.quantityStep" type="number" step="any" class="input"></label></details>
        <label v-if="draft.instrument==='spread_bet'">Price units per stake point<input v-model.number="draft.pointSize" type="number" step="any" class="input"></label>
@@ -73,7 +73,7 @@
     </div><p class="text-sm text-amber-300 mt-3">ATR/delta stop risk is an estimate. Underlying exit levels do not predict an option's premium.</p>
    </section>
    <template v-for="kind in ['entry','exit']" :key="kind"><section class="card p-5">
-    <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><button class="btn-secondary currency-toggle" :aria-label="'Showing '+currencies[kind]+'; switch currency'" @click="currencies[kind]=flip(currencies[kind])">{{ symbol(currencies[kind]) }}</button><button class="btn-secondary" @click="addRow(kind)">Add {{ kind }}</button></div></div>
+    <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><button class="btn-secondary currency-toggle" :aria-label="'Showing '+currencies[kind]+'; switch currency'" @click="currencies[kind]=flip(currencies[kind])">{{ symbol(currencies[kind]) }}</button><button class="btn-secondary" @click="addRow(kind)">Add {{ kind }}</button><button v-if="kind==='exit'&&!rows(kind).some(e=>e.key==='runner')" class="btn-secondary" @click="addRunner">Add runner</button></div></div>
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" @change="changeStop($event,currencies[kind])"></label></div>
     <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
@@ -84,12 +84,12 @@
       <td>{{ convertedMoney(kind==='entry'?calculation?.stages[i]?.positionValue:exitProfit(e),draft.currency,currencies[kind]) }}</td>
       <td v-if="kind==='exit'&&draft.instrument==='option'"><input v-model.number="e.premium" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"></td>
       <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="!managing&&linked(kind,e.key)"/></td>
-      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="!managing&&linked(kind,e.key)"/><details v-if="kind==='entry'" class="trigger-details"><summary>Trigger condition</summary><textarea v-model="e.tactic" class="input" :disabled="linked(kind,e.key)" aria-label="Entry trigger condition" rows="2"></textarea></details></td>
+      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="!managing&&linked(kind,e.key)"/><details v-if="kind==='exit'&&e.key==='runner'" class="trigger-details"><summary>Runner exit rule</summary><textarea v-model="draft.runnerRule" class="input" aria-label="Runner exit rule" rows="2"></textarea></details><details v-if="kind==='entry'" class="trigger-details"><summary>Trigger condition</summary><textarea v-model="e.tactic" class="input" :disabled="linked(kind,e.key)" aria-label="Entry trigger condition" rows="2"></textarea></details></td>
       <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
       <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="findFills(kind,e.key)">{{ linked(kind,e.key)?'View / add fills':'Find and link trade' }}</button></td>
       <td><button class="text-red-400" :disabled="linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
      </tr>
-     <tr v-if="kind==='exit'&&runnerPercent>0"><td>Runner</td><td><input aria-label="Runner price level" :value="displayValue(draft.runnerEstimatePrice,currencies.exit)" type="number" step="any" class="ladder-input" @change="draft.runnerEstimatePrice=priceValue($event,currencies.exit)"></td><td>{{ runnerPercent }}%</td><td>{{ number((calculation?.plannedQuantity||0)*runnerPercent/100) }}</td><td>{{ convertedMoney(exitProfit({price:draft.runnerEstimatePrice,percent:runnerPercent}),draft.currency,currencies.exit) }}</td><td v-if="draft.instrument==='option'">—</td><td>—</td><td><details><summary>Runner exit rule</summary><textarea v-model="draft.runnerRule" class="input" aria-label="Runner exit rule" rows="2"></textarea></details></td><td v-if="managing"><input type="checkbox" :checked="linked('exit','runner')" @change="findFills('exit','runner')"></td><td v-if="managing"><button class="btn-secondary" @click="findFills('exit','runner')">Find and link trade</button></td><td></td></tr>
+
      </tbody><tfoot>
       <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(calculation?.plannedQuantity) }}</td><td>{{ convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>
       <tr v-else><th>Total potential profit</th><td>{{ convertedMoney(calculation?.reward?.fixedTargetProfit,draft.currency,currencies.exit) }}</td><th>Total % gain</th><td>{{ number(potentialPercent) }}%</td><th>R:R</th><td>{{ number(calculation?.reward?.fixedTargetRR) }}</td></tr>
@@ -157,7 +157,7 @@ import {ref,computed,watch,onMounted,onBeforeUnmount} from 'vue'
 import api from '@/services/api'
 import PlanningSnapshot from './PlanningSnapshot.vue'
 import TagSelect from './PlanningTagSelect.vue'
-const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]}}),emit=defineEmits(['updated'])
+const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]},portfolioCapital:{type:Object,default:null},portfolioLoading:Boolean}),emit=defineEmits(['updated'])
 const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref('Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage')
@@ -168,6 +168,10 @@ const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrM
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
 const ledger=computed(()=>workflow.value?.ledger||{}),hasLinks=computed(()=>!!ledger.value.records?.length)
 const asset=computed(()=>draft.value?.assetName?draft.value.assetName+' ('+draft.value.symbol+')':draft.value?.symbol||'Plan')
+const setupTags=computed(()=>{const book=props.playbooks.find(p=>p.id===draft.value?.playbookId);return book?.requiredSetup?[{id:book.id,name:book.requiredSetup,definition:book.requiredSetup}]:[]})
+function materializeRunner(d){if(d.runnerMode==='row')return;const percent=Math.max(0,100-d.exits.reduce((s,e)=>s+Number(e.percent||0),0));if(percent>0&&!d.exits.some(e=>e.key==='runner'))d.exits.push({key:'runner',label:'Runner',price:d.runnerEstimatePrice??null,percent,units:null,premium:null,marketContext:[],tactics:[]});d.runnerMode='row'}
+function syncPortfolioPercent(){draft.value.portfolioRiskPercent=draft.value.portfolioAmount>0&&draft.value.riskBudget!=null?draft.value.riskBudget/draft.value.portfolioAmount*100:null}
+function applySelectedCapital(){if(!draft.value||!props.portfolioCapital||!fx.value)return;const r=rate(props.portfolioCapital.currency,draft.value.currency);if(!r)return;hydrating=true;draft.value.portfolioAmount=props.portfolioCapital.amount*r;syncPortfolioPercent();queueMicrotask(()=>hydrating=false)}
 const library=computed(()=>Object.fromEntries(['entry','exit','context'].map(k=>[k,tags.value.filter(t=>t.kind===k)])))
 const milestones=computed(()=>[{label:'Planned',type:'ready'},{label:'Entry',type:'trade_linked'},{label:'Review',type:'reviewed'}].map(m=>{
  const events=(workflow.value?.history||[]).filter(e=>e.event_type===m.type&&(m.type!=='trade_linked'||e.snapshot?.action==='entry')).map(e=>m.type==='trade_linked'?e.snapshot?.source?.time||e.created_at:e.created_at).sort();
@@ -206,7 +210,7 @@ const riskExceeded=computed(()=>risk.value?.limit&&currentRisk.value>risk.value.
 function barWidth(v){const scale=risk.value?.limit?risk.value.limit/0.8:Math.max(projectedRisk.value||0,1);return Math.min(100,Math.max(0,(v||0)/scale*100))}
 function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symbol.trim().toUpperCase();for(const k of ['riskBudget','stopPrice','runnerEstimatePrice','portfolioAmount','portfolioRiskPercent'])if(d[k]==='')d[k]=null;for(const e of [...d.entries,...d.exits])for(const k of ['price','units','premium'])if(e[k]==='')e[k]=null;for(const k of ['strike','premium','contractDelta','atr','expiry','asOf'])if(d.options[k]==='')d.options[k]=null;return d}
 function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
-function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
+function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
 
 function hydrateManagement(){
  hydrating=true;
@@ -218,7 +222,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 async function saveManagement(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??rowUnits(k,e,managed.value[k].indexOf(e)),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[]}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??rowUnits(k,e,managed.value[k].indexOf(e)),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
  await api.put('/trade-plans/'+plan.value.id+'/management',{version:plan.value.version,management});
  await reload()
 }
@@ -253,11 +257,13 @@ async function saveReview(){await action('review',{...review.value});if(!error.v
 async function reopenReview(){const reason=window.prompt('Why reopen the review?');if(reason){await action('reopen-review',{reason});if(!error.value)screen.value='Review'}}
 async function saveSettings(){try{settings.value=(await api.put('/trade-plans/settings',settings.value)).data.settings;recommendation.value=(await api.get('/trade-plans/recommendation')).data;risk.value=(await api.get('/trade-plans/risk')).data}catch(e){fail(e)}}
 async function createTag(){try{const r=await api.post('/trade-plans/library',newTag.value);tags.value=tags.value.filter(t=>t.id!==r.data.tag.id).concat(r.data.tag);newTag.value={kind:'entry',name:'',definition:''}}catch(e){fail(e)}}
-function applyPortfolioRisk(){if(draft.value.portfolioAmount>0&&draft.value.portfolioRiskPercent>=0)draft.value.riskBudget=draft.value.portfolioAmount*draft.value.portfolioRiskPercent/100}
+function applyPortfolioRisk(){if(draft.value.portfolioAmount>0&&typeof draft.value.portfolioRiskPercent==='number'&&draft.value.portfolioRiskPercent>0)draft.value.riskBudget=draft.value.portfolioAmount*draft.value.portfolioRiskPercent/100}
+function addRunner(){rows('exit').push({key:'runner',label:'Runner',price:null,percent:0,units:null,premium:null,marketContext:[],tactics:[]})}
 function addRow(k){rows(k).push(k==='entry'?{key:crypto.randomUUID().replaceAll('-',''),label:'Entry '+(rows(k).length+1),price:null,riskWeight:0,units:null,tactic:'',marketContext:[],tactics:[]}:{key:crypto.randomUUID().replaceAll('-',''),label:'TP'+(rows(k).length+1),price:null,percent:0,units:null,premium:null,marketContext:[],tactics:[]})}
-function offerTemplate(){const t=props.playbooks.find(p=>p.id===draft.value.playbookId)?.planningTemplate;if(!t||hasLinks.value||!window.confirm('Apply this playbook template and replace unlinked rows?'))return;draft.value.entries=t.entries.map(e=>({...e,price:null,units:null,tactic:e.tactic||'',marketContext:[],tactics:[]}));draft.value.exits=t.exits.map(e=>({...e,price:null,units:null,marketContext:[],tactics:[]}));draft.value.runnerRule=t.runnerRule||''}
+function offerTemplate(){const t=props.playbooks.find(p=>p.id===draft.value.playbookId)?.planningTemplate;if(!t||hasLinks.value||!window.confirm('Apply this playbook template and replace unlinked rows?'))return;draft.value.entries=t.entries.map(e=>({...e,price:null,units:null,tactic:e.tactic||'',marketContext:[],tactics:[]}));draft.value.exits=t.exits.map(e=>({...e,price:null,units:null,marketContext:[],tactics:[]}));draft.value.runnerRule=t.runnerRule||'';draft.value.runnerMode='legacy';materializeRunner(draft.value)}
 function baselineTags(k){return (workflow.value?.baseline?.[k==='entry'?'entries':'exits']||[]).flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
 function actualTags(k){return managed.value[k].flatMap(e=>e.tactics||[e.tactic]).filter(Boolean).join(', ')}
+watch([()=>props.portfolioCapital,()=>draft.value?.currency,fx],applySelectedCapital,{deep:true})
 watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
 watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
 function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
