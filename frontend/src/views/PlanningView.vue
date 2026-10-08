@@ -93,7 +93,7 @@ async function release(c){if(!releaseConfirmed.value||!releaseReason.value.trim(
 watch(form,()=>{if(hydrating||!selected.value||locked.value)return;dirty.value=true;saveState.value=selected.value.id?'Edits pending':'New draft · save to enable autosave';clearTimeout(timer);if(selected.value.id)timer=setTimeout(save,900)},{deep:true})
 watch(()=>form.value?.instrument,v=>{if(v==='option'&&!hydrating)form.value.quantityStep=1})
 function leaving(e){if(dirty.value){e.preventDefault();e.returnValue=''}}
-onMounted(async()=>{window.addEventListener('beforeunload',leaving);try{await Promise.all([load(),accountStore.fetchAccounts(),api.get('/playbooks').then(r=>playbooks.value=r.data.playbooks)]);await loadCapital();if(route.params.id){const p=plans.value.find(p=>p.id===route.params.id);if(p)await openPlan(p);else error.value='Plan not found'}}catch(e){failure(e)}})
+onMounted(async()=>{window.addEventListener('beforeunload',leaving);try{await Promise.all([load(),accountStore.fetchAccounts(),api.get('/playbooks').then(r=>playbooks.value=r.data.playbooks)]);loadCapital();if(route.params.id){const p=plans.value.find(p=>p.id===route.params.id);if(p)await openPlan(p);else error.value='Plan not found'}}catch(e){failure(e)}})
 onBeforeUnmount(()=>{clearTimeout(timer);window.removeEventListener('beforeunload',leaving)})
 </script>
 <style scoped>th{text-align:left;color:#9ca3af;font-weight:500;white-space:nowrap}td,th{padding:12px 10px;border-bottom:1px solid #374151}td:first-child,th:first-child{padding-left:0}small{color:#9ca3af}input[type=checkbox]{accent-color:#f97316;width:18px;min-width:18px;height:18px}fieldset:disabled{opacity:.65}</style>
