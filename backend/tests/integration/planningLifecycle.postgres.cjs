@@ -29,7 +29,13 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal((await link(1,'b')).status,201,'partial exit');
   assert.equal((await call('/workflow')).data.ledger.openQuantity,5,'remaining position');
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic review',processFollowed:true})).status,422,'open review blocked');
+  assert.equal((await call('/review-draft','PUT',{version:await version(),notes:'Synthetic unfinished review',entryAssessment:'Synthetic entry',exitAssessment:'Synthetic exit',processFollowed:true})).status,200,'review draft persistence');
+  assert.equal((await call('/workflow')).data.reviewDraft.notes,'Synthetic unfinished review');
   assert.equal((await link(2,'c')).status,201,'final exit');
+  const calendarResponse=await fetch(base.slice(0,base.lastIndexOf('/'))+'/calendar?year=2026');
+  const calendar=await calendarResponse.json();assert.equal(calendarResponse.status,200,'calendar activity');
+  assert(calendar.events.some(e=>e.plan_id===planId&&e.event_type==='trade_linked'&&e.action==='entry'&&e.created_at.startsWith('2026-01-01')),'calendar uses actual execution date');
+
   const w=(await call('/workflow')).data;assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic completed review',entryAssessment:'Synthetic',exitAssessment:'Synthetic',processFollowed:true})).status,200,'review persistence');
   assert.equal((await call('/complete','POST',{version:await version()})).status,200,'plan completion');

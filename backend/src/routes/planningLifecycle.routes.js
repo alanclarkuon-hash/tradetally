@@ -41,7 +41,7 @@ router.get('/library',run(async(req,res)=>{
 
 router.get('/calendar',run(async(req,res)=>{
  const year=Number(req.query.year);if(!Number.isInteger(year)||year<2000||year>2200)fail('Choose a valid calendar year');
- const events=(await db.query("SELECT e.plan_id,e.event_type,e.created_at,p.status,p.definition->>'symbol' AS symbol,p.definition->>'title' AS title FROM trade_plan_events e JOIN trade_plans p ON p.id=e.plan_id WHERE e.user_id=$1 AND e.created_at>=$2::date AND e.created_at<$3::date AND e.event_type IN ('ready','trade_linked','reviewed','completed','stop_changed','option_rolled') ORDER BY e.created_at",[req.user.id,year+'-01-01',(year+1)+'-01-01'])).rows;
+ const events=(await db.query("WITH activity AS (SELECT e.plan_id,e.event_type,e.snapshot->>'action' AS action,CASE WHEN e.event_type='trade_linked' THEN COALESCE((e.snapshot->'source'->>'time')::timestamptz,e.created_at) ELSE e.created_at END AS occurred_at,p.status,p.definition->>'symbol' AS symbol,p.definition->>'title' AS title FROM trade_plan_events e JOIN trade_plans p ON p.id=e.plan_id WHERE e.user_id=$1 AND e.event_type IN ('ready','trade_linked','reviewed','completed','stop_changed','option_rolled')) SELECT *,occurred_at AS created_at FROM activity WHERE occurred_at>=$2::date AND occurred_at<$3::date ORDER BY occurred_at",[req.user.id,year+'-01-01',(year+1)+'-01-01'])).rows;
  res.json({events});
 }));
 router.get('/recommendation',run(async(req,res)=>{
