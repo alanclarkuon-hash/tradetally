@@ -2,13 +2,13 @@ import {mount,flushPromises} from '@vue/test-utils'
 import {describe,it,expect,vi,beforeEach} from 'vitest'
 import {ref} from 'vue'
 import PlanningView from './PlanningView.vue'
-const {get,post,put,selectedAccount}=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),put:vi.fn(),selectedAccount:{value:null}}))
+const {get,post,put,selectedAccount,routeParams}=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),put:vi.fn(),selectedAccount:{value:null},routeParams:{}}))
 vi.mock('@/services/api',()=>({default:{get,post,put}}))
 vi.mock('@/stores/accounts',()=>({useAccountsStore:()=>({accounts:[],fetchAccounts:vi.fn().mockResolvedValue([])})}))
 vi.mock('@/composables/useGlobalAccountFilter',()=>({useGlobalAccountFilter:()=>({selectedAccount,selectedAccountLabel:ref('All accounts')})}))
-vi.mock('vue-router',()=>({useRouter:()=>({replace:vi.fn().mockResolvedValue()}),useRoute:()=>({params:{}})}))
+vi.mock('vue-router',()=>({useRouter:()=>({replace:vi.fn().mockResolvedValue()}),useRoute:()=>({params:routeParams})}))
 const factory=()=>mount(PlanningView,{global:{stubs:{RouterLink:{template:'<a><slot/></a>'},MoneyPrivacyToggle:true,PlanningWorkspace:{template:"<div>Planning workflow workspace</div>"}}}})
-beforeEach(()=>{vi.clearAllMocks();selectedAccount.value=null;get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[],commitments:[]}:{playbooks:[]}}))})
+beforeEach(()=>{vi.clearAllMocks();delete routeParams.id;selectedAccount.value=null;get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[],commitments:[]}:{playbooks:[]}}))})
 describe('Planning first slice',()=>{
  it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).toContain('not verified');expect(w.text()).toContain('No committed entries');expect(w.text()).toContain('Ready reserves no capacity');w.unmount()})
  it('new drafts include a definition for the persistent workflow workspace',async()=>{const w=factory();await flushPromises();await w.findAll('button').find(b=>b.text()==='New plan').trigger('click');expect(w.text()).toContain('Planning workflow workspace');expect(post).not.toHaveBeenCalled();w.unmount()})
@@ -27,3 +27,5 @@ it('Unassigned view remains available with selected global accounts',async()=>{l
 
 it('requests latest selected-account capital without historical date filters',async()=>{selectedAccount.value=['synthetic-account','__unsorted__'];const w=factory();await flushPromises();expect(get).toHaveBeenCalledWith('/investments/portfolio/dashboard',{params:{currency:'GBP',accounts:'synthetic-account'},timeout:180000});w.unmount()});
 it('does not substitute all accounts when no accounts are selected',async()=>{selectedAccount.value=[];const w=factory();await flushPromises();expect(get.mock.calls.some(([url])=>url==='/investments/portfolio/dashboard')).toBe(false);w.unmount()});
+
+it('opens a direct plan while the independent capital valuation is still loading',async()=>{loadExample('ready');routeParams.id='example-plan';const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url==='/investments/portfolio/dashboard'?new Promise(()=>{}):original(url,...args));const w=factory();await flushPromises();expect(w.text()).toContain('Planning workflow workspace');w.unmount()});

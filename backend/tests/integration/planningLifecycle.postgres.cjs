@@ -5,7 +5,7 @@ const db=require(root+'/src/config/database'),express=require(root+'/node_module
 if(process.env.DB_NAME!=='tradetally_test')throw new Error('This check is restricted to the separate TEST database');
 const owner=crypto.randomUUID(),account=crypto.randomUUID(),pb=crypto.randomUUID(),planId=crypto.randomUUID(),tradeId=crypto.randomUUID();
 let server;
-const d={title:'Synthetic integration',symbol:'SYNTEST',assetName:'Synthetic',instrument:'stock',direction:'long',accountId:account,currency:'USD',playbookId:pb,riskBudget:100,stopPrice:90,quantityStep:1,pointSize:1,thesis:'Synthetic',chartUrl:'',runnerRule:'',runnerEstimatePrice:null,exceptionReason:'Synthetic evidence',preparation:[],entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Partial',price:110,percent:50},{key:'c',label:'Final',price:120,percent:50}],options:{}};
+const d={title:'Synthetic integration',symbol:'SYNTEST',assetName:'Synthetic',instrument:'stock',direction:'long',accountId:account,currency:'USD',playbookId:pb,riskBudget:100,stopPrice:90,quantityStep:1,pointSize:1,thesis:'Synthetic',chartUrl:'',runnerMode:'row',runnerRule:'Trail',runnerEstimatePrice:null,exceptionReason:'Synthetic evidence',preparation:[],entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Partial',price:110,percent:50},{key:'runner',label:'Runner',price:120,percent:50}],options:{}};
 const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-01T10:00:00Z',commission:2,fees:0},{id:'b',action:'sell',quantity:5,price:110,datetime:'2026-01-02T10:00:00Z',commission:1,fees:0},{id:'c',action:'sell',quantity:5,price:120,datetime:'2026-01-03T10:00:00Z',commission:1,fees:0}];
 (async()=>{
  try{
@@ -31,12 +31,12 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic review',processFollowed:true})).status,422,'open review blocked');
   assert.equal((await call('/review-draft','PUT',{version:await version(),notes:'Synthetic unfinished review',entryAssessment:'Synthetic entry',exitAssessment:'Synthetic exit',processFollowed:true})).status,200,'review draft persistence');
   assert.equal((await call('/workflow')).data.reviewDraft.notes,'Synthetic unfinished review');
-  assert.equal((await link(2,'c')).status,201,'final exit');
+  assert.equal((await link(2,'runner')).status,201,'final exit');
   const calendarResponse=await fetch(base.slice(0,base.lastIndexOf('/'))+'/calendar?year=2026');
   const calendar=await calendarResponse.json();assert.equal(calendarResponse.status,200,'calendar activity');
   assert(calendar.events.some(e=>e.plan_id===planId&&e.event_type==='trade_linked'&&e.action==='entry'&&e.created_at.startsWith('2026-01-01')),'calendar uses actual execution date');
 
-  const w=(await call('/workflow')).data;assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
+  const w=(await call('/workflow')).data;assert(w.ledger.records.some(r=>r.stage_key==='runner'&&r.action==='exit'),'runner source fill retained');assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic completed review',entryAssessment:'Synthetic',exitAssessment:'Synthetic',processFollowed:true})).status,200,'review persistence');
   assert.equal((await call('/complete','POST',{version:await version()})).status,200,'plan completion');
   executions[0].price=101;await db.query('UPDATE trades SET executions=$1::jsonb WHERE id=$2',[JSON.stringify(executions),tradeId]);
