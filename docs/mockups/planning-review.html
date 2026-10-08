@@ -397,7 +397,7 @@ function calendarJourney(){
  for(const screen of ['detail','trade','review','close']){
  const host=document.querySelector('#'+screen);host.querySelector('[data-calendar-journey]')?.remove();
  const card=document.createElement('div');card.className='card calendar-journey';card.dataset.calendarJourney=screen;
- card.innerHTML='<h2>Calendar journey</h2><div class="timeline"><span>5 Oct<br><b>Planned</b></span><span>'+ (firstFill?safe(firstFill.fill.time):entryDone?'Provisional':'Pending')+'<br><b>Entry</b></span><span>'+ (exampleReviewed?'Completed':currentScreen==='review'?'In progress':'Pending')+'<br><b>Review</b></span></div>';
+ card.innerHTML='<div class="timeline"><span>5 Oct<br><b>Planned</b></span><span>'+ (firstFill?safe(firstFill.fill.time):entryDone?'Provisional':'Pending')+'<br><b>Entry</b></span><span>'+ (exampleReviewed?'Completed':currentScreen==='review'?'In progress':'Pending')+'<br><b>Review</b></span></div>';
  host.prepend(card);
  }
 }
