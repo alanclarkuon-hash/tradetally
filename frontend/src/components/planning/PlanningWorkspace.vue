@@ -39,12 +39,12 @@
      <section class="card p-5 space-y-4">
       <div class="flex justify-between"><h2 class="font-semibold text-lg">{{ managing?'Position':'Risk and sizing' }}</h2><button class="btn-secondary currency-toggle" :aria-label="'Showing '+positionCurrency+'; switch currency'" @click="positionCurrency=flip(positionCurrency)">{{ symbol(positionCurrency) }}</button></div>
       <template v-if="!managing">
-       <label class="block">Portfolio amount ({{ positionCurrency }})<input :value="displayValue(draft.portfolioAmount,positionCurrency)" aria-label="Portfolio amount" type="number" step="any" class="input" readonly></label><small>{{ portfolioLoading?'Loading selected-account value…':portfolioCapital?portfolioCapital.label+(portfolioCapital.incomplete?' · Incomplete valuation':''):'Selected-account value unavailable · saved capital shown' }}</small>
+       <label class="block">Portfolio amount ({{ positionCurrency }})<input :value="displayValue(draft.portfolioAmount,positionCurrency,2)" aria-label="Portfolio amount" type="number" step="any" class="input" readonly></label><small>{{ portfolioLoading?'Loading selected-account value…':portfolioCapital?portfolioCapital.label+(portfolioCapital.incomplete?' · Incomplete valuation':''):'Selected-account value unavailable · saved capital shown' }}</small>
        <label class="block">Portfolio risk %<input aria-label="Portfolio risk percent" v-model.number="draft.portfolioRiskPercent" type="number" step="any" class="input" @input="applyPortfolioRisk"></label>
        <label class="flex gap-3"><input v-model="draft.exposureSystem" type="checkbox">Use this plan in exposure recommendations</label><div class="text-right text-sm text-gray-400">Recommended level {{ recommendation?.level==null?'Unavailable':recommendation.level+'%' }}</div>
        <label class="block">Risk amount ({{ positionCurrency }})<input :value="displayValue(draft.riskBudget,positionCurrency)" aria-label="Risk amount" type="number" step="any" class="input" @change="draft.riskBudget=priceValue($event,positionCurrency);syncPortfolioPercent()"></label>
 
-       <details><summary>Broker quantity constraints</summary><label class="block mt-3">Quantity increment<input v-model.number="draft.quantityStep" type="number" step="any" class="input"></label></details>
+       <details><summary>Quantity increment</summary><label class="block mt-3">Quantity increment<input v-model.number="draft.quantityStep" type="number" step="any" class="input"></label></details>
        <label v-if="draft.instrument==='spread_bet'">Price units per stake point<input v-model.number="draft.pointSize" type="number" step="any" class="input"></label>
       </template>
       <div v-else class="position-metrics"><div class="position-overview">
@@ -190,7 +190,7 @@ const number=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toL
 const percent=v=>v==null?'Unavailable':number(v)+'%'
 function rate(from,to){if(from===to)return 1;const rates={USD:1,...fx.value?.rates};return rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null}
 function convertedMoney(v,from,to){const r=rate(from,to);if(v===0)return money(0,to);return v==null?'Unavailable':r?money(v*r,to):'FX unavailable'}
-function displayValue(v,to){const r=rate(draft.value.currency,to);return v!=null&&r?Number((v*r).toFixed(6)):''}
+function displayValue(v,to,decimals){const r=rate(draft.value.currency,to);if(v==null||!r)return '';return decimals==null?Number((v*r).toFixed(6)):(v*r).toFixed(decimals)}
 function priceValue(e,from){if(e.target.value==='')return null;const r=rate(from,draft.value.currency);if(!r){error.value='Stored FX is unavailable';throw new Error('FX unavailable')}return Number(e.target.value)*r}
 function rows(k){return managing.value?managed.value[k]:draft.value[k==='entry'?'entries':'exits']}
 function linked(k,key){return ledger.value.records?.some(a=>a.action===k&&a.stage_key===key)}
