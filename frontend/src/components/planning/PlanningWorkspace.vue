@@ -1,7 +1,7 @@
 
 <template>
  <div class="planning-workspace" v-if="draft" :inert="busy" :aria-busy="busy">
-  <div class="journey" aria-label="Plan milestones"><div v-for="m in milestones" :key="m.label"><small>{{ m.date }}</small><strong class="block">{{ m.label }}</strong></div></div>
+  <div class="journey card p-5" aria-label="Plan milestones"><div v-for="m in milestones" :key="m.label"><small>{{ m.date }}</small><strong class="block">{{ m.label }}</strong></div></div>
   <nav class="workflow-tabs" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="{active:screen===s}" :aria-current="screen===s?'step':undefined" @click="moveScreen(s)">{{ s }}</button></nav>
   <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
   <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
@@ -16,9 +16,14 @@
    <details><summary>Set portfolio limit and exposure level</summary><div class="grid sm:grid-cols-3 gap-3 mt-3"><label>Limit<input type="number" v-model.number="settings.portfolioLimit" class="input"></label><label>Currency<select v-model="settings.currency" class="input"><option>GBP</option><option>USD</option></select></label><label>Applied level<select v-model.number="settings.selectedLevel" class="input"><option v-for="v in [.05,.1,.2,.3]" :value="v" :key="v">{{ v }}%</option></select></label></div><label class="block mt-3">Reason<input v-model="settings.reason" class="input"></label><button class="btn-secondary mt-3" @click="saveSettings">Save risk settings</button></details>
   </section>
   <template v-if="screen==='Plan'||managing">
-   <div class="detail-grid">
+   <div v-if="managing" class="management-top-grid">
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p><button class="btn-primary mt-4" @click="moveScreen('Review')">Continue to Review</button></section>
+   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in (ledger.records||[]).filter(a=>!a.fill?.provisional)" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
+   <section v-if="managing&&ledger.provisionalCount" class="card p-5"><h2>Provisional executions · not linked</h2><p>Ticked entries and exits use your entered values until you select a broker trade.</p><div v-for="a in (ledger.records||[]).filter(a=>a.fill?.provisional)" :key="a.id" class="py-3 border-b border-gray-700">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }} · Provisional</div></section><section v-if="managing" class="card p-5 management-timeline"><h2 class="font-semibold text-lg">Management timeline</h2><div v-for="(e,i) in workflow?.history||[]" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
+   </div>
+   <div class="detail-grid" :class="{'management-position':managing}">
     <div class="space-y-5 min-w-0">
-     <PlanningSnapshot :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><button v-if="draft.chartUrl&&plan.id&&!retainedUrl" class="btn-secondary" @click="retainChart">Retain chart snapshot</button></PlanningSnapshot>
+     <PlanningSnapshot v-if="!managing" :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><button v-if="draft.chartUrl&&plan.id&&!retainedUrl" class="btn-secondary" @click="retainChart">Retain chart snapshot</button></PlanningSnapshot>
      <section v-if="!managing" class="card p-5 space-y-4">
       <h2 class="font-semibold text-lg">Setup and entry tactics</h2><div class="setup-summary"><strong>{{ asset }}</strong><label>Setup<TagSelect :model-value="draft.setup?[draft.setup]:[]" :tags="setupTags" :multiple="false" :disabled="true" :show-picker="false" label="Playbook setup"/><small v-if="!setupTags.length">Define a Setup in the selected playbook.</small></label><p>{{ draft.thesis }}</p></div><details :open="!plan.id"><summary>Edit plan details</summary><div class="grid sm:grid-cols-2 gap-4 mt-4">
        <label>Ticker<input v-model="draft.symbol" class="input" :disabled="hasLinks"></label><label>Asset name<input v-model="draft.assetName" class="input"></label>
@@ -107,9 +112,7 @@
     </div><button v-if="rollFills.length" class="btn-primary" :disabled="busy" @click="recordRoll">Link credit roll</button>
    </section>
    </template>
-   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p></section>
-   <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Linked trades</h2><div v-for="a in (ledger.records||[]).filter(a=>!a.fill?.provisional)" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
-   <section v-if="managing&&ledger.provisionalCount" class="card p-5"><h2>Provisional executions · not linked</h2><p>Ticked entries and exits use your entered values until you select a broker trade.</p><div v-for="a in (ledger.records||[]).filter(a=>a.fill?.provisional)" :key="a.id" class="py-3 border-b border-gray-700">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }} · Provisional</div></section><section v-if="managing" class="card p-5 management-timeline"><h2 class="font-semibold text-lg">Management timeline</h2><div v-for="(e,i) in workflow?.history||[]" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.event_type.replaceAll('_',' ') }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.event_type==='stop_changed'">{{ money(e.snapshot.previous,e.snapshot.currency) }} to {{ money(e.snapshot.next,e.snapshot.currency) }} · {{ e.snapshot.reason }}</p><p v-else-if="e.snapshot.reason">{{ e.snapshot.reason }}</p></div></section>
+
   </template>
   <template v-if="screen==='Review'">
    <section class="card p-5" aria-label="Plan result">
@@ -147,7 +150,7 @@
    </section>
    <section class="card p-5 space-y-4"><h2>Completed plans and reviews</h2><p>Open the original plan, its management history and the saved review here, or find it in All plans and the calendar.</p><div class="flex flex-wrap gap-3"><button class="btn-secondary" @click="moveScreen('Plan')">View original plan</button><button class="btn-secondary" @click="moveScreen('Trade & Manage')">View entries, management and exits</button><button class="btn-secondary" @click="moveScreen('Review')">View saved review</button></div></section>
   </div>
-  <div class="flex justify-between flex-wrap gap-3"><button class="btn-secondary" :disabled="busy||plan.status==='completed'" @click="save">Save changes</button><button v-if="screen==='Plan'" class="btn-primary" :disabled="busy" @click="continueToManage">{{ plan.status==='ready'?'Continue to Trade & Manage':'Finalise plan · Ready' }}</button><button v-if="managing" class="btn-primary" @click="moveScreen('Review')">Continue to Review</button><button v-if="screen==='Review'" class="btn-primary" @click="moveScreen('Close')">Continue to Close</button></div>
+  <div class="flex justify-between flex-wrap gap-3"><button class="btn-secondary" :disabled="busy||plan.status==='completed'" @click="save">Save changes</button><button v-if="screen==='Plan'" class="btn-primary" :disabled="busy" @click="continueToManage">{{ plan.status==='ready'?'Continue to Trade & Manage':'Finalise plan · Ready' }}</button><button v-if="screen==='Review'" class="btn-primary" @click="moveScreen('Close')">Continue to Close</button></div>
   <div v-if="finder" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-5" role="dialog" aria-modal="true" aria-labelledby="fill-title"><section class="card p-6 max-w-5xl w-full max-h-[85vh] overflow-auto space-y-4"><div class="flex justify-between"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><button class="btn-secondary" @click="finder=null">Close</button></div><p class="text-sm text-gray-400">{{ asset }} · {{ instrumentLabel }} · {{ accounts.find(a=>a.id===draft.accountId)?.accountName||'Unassigned' }} · {{ draft.direction==='short'?'Short / bearish':'Long / bullish' }}</p><p v-if="!fills.length">No matching {{ finder.action }} fills with available quantity for this asset, instrument and account.</p><div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[1fr_8rem_10rem] gap-3 items-center border-b border-gray-700 py-3"><span>{{ new Date(f.time).toLocaleString() }} · {{ number(f.available) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}</span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"><button class="btn-primary" :disabled="busy||!(f.allocate>0)" @click="linkFill(f)">Link fill</button></div><label class="flex gap-3"><input v-model="splitConfirmed" type="checkbox">Confirm splitting a fill already used by another plan.</label><p v-if="error" role="alert" class="text-red-400">{{ error }}</p></section></div>
  </div>
 </template>
@@ -214,6 +217,7 @@ function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symb
 function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
 function adopt(p){hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';applyPlaybookSetup();draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
 
+let managementSnapshot=''
 function hydrateManagement(){
  hydrating=true;
  for(const kind of ['entry','exit'])managed.value[kind]=(draft.value?.[kind==='entry'?'entries':'exits']||[]).map(e=>{
@@ -221,10 +225,16 @@ function hydrateManagement(){
   const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*(rate(a.fill.currency,draft.value.currency)||1),0)/q:null;
   return {...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()}
  });
+ managementSnapshot=JSON.stringify(managementPayload());
  queueMicrotask(()=>hydrating=false)
 }
-async function saveManagement(){
+function managementPayload(){
  const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??rowUnits(k,e,managed.value[k].indexOf(e)),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
+ return management
+}
+async function saveManagement(){
+ const management=managementPayload();
+ if(JSON.stringify(management)===managementSnapshot)return;
  await api.put('/trade-plans/'+plan.value.id+'/management',{version:plan.value.version,management});
  await reload()
 }
@@ -278,7 +288,11 @@ onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value)
 <style scoped>
 .planning-workspace{container-type:inline-size;container-name:planning;min-width:0;display:flex;flex-direction:column;gap:18px;font-size:15px;line-height:1.5}
 .planning-workspace>.card,.detail-grid .card,.completion-summary .card{border-radius:10px;padding:22px;border:1px solid #374151;box-shadow:none}
-.journey{display:flex;justify-content:space-between;gap:12px;padding:10px 0}
+.journey{display:flex;justify-content:space-between;gap:12px;padding:20px}
+.management-top-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px}
+.management-top-grid .management-timeline{grid-column:1/-1}
+.management-position{display:block!important}
+@media(max-width:760px){.management-top-grid{grid-template-columns:1fr}}
 .journey>div{border-left:2px solid #fb923c;padding-left:9px;flex:1;font-size:12px}
 .journey strong{font-size:14px;font-weight:600;margin-top:2px}
 .workflow-tabs{display:flex;flex-wrap:wrap;gap:27px;border-bottom:1px solid #374151}
