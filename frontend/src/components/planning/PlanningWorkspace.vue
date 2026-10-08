@@ -234,7 +234,7 @@ function managementPayload(){
 }
 async function saveManagement(){
  const management=managementPayload();
- if(JSON.stringify(management)===managementSnapshot)return;
+ if(JSON.stringify(management)===managementSnapshot){dirty=false;return;}
  await api.put('/trade-plans/'+plan.value.id+'/management',{version:plan.value.version,management});
  await reload()
 }
