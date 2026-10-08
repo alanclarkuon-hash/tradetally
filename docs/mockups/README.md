@@ -15,3 +15,5 @@ Latest review additions: current stop/protection, account/combined capacity scen
 Risk display now uses a top bar on Trade & Manage: current combined risk, all-remaining-entry projection, a marked limit and current/projected breach or missing-coverage feedback. The previous Entry capacity scenario form is removed. Projection is visible before ticking executions and does not reserve exposure. All risk amounts are synthetic.
 
 SL invalidation is now edited inline with a required reason and dated old/new management event. The separate protection form is removed. Mockup events are in-memory; database-backed persistence is an application requirement, not provided by this HTML file.
+
+Plan sizing includes editable synthetic portfolio amount and manually selected progressive risk percentage, initially GBP 100,000 and 0.3% (GBP 300 plan risk). These are demonstration defaults, not account data. Amount/percentage/cash edits update suggested sizing; display currency does not change the underlying budget. Performance recommendations never set the level automatically.
