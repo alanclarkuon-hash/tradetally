@@ -27,7 +27,7 @@
      <PlanningSnapshot v-if="!managing" :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><button v-if="draft.chartUrl&&plan.id&&!retainedUrl" class="btn-secondary" @click="retainChart">Retain chart snapshot</button></PlanningSnapshot>
      <section v-if="!managing" class="card p-5 space-y-4">
       <h2 class="font-semibold text-lg">Setup and entry tactics</h2><div class="setup-summary"><strong>{{ asset }}</strong><label>Setup<TagSelect :model-value="draft.setup?[draft.setup]:[]" :tags="setupTags" :multiple="false" :disabled="true" :show-picker="false" label="Playbook setup"/><small v-if="!setupTags.length">Define a Setup in the selected playbook.</small></label><p>{{ draft.thesis }}</p></div><details :open="!plan.id"><summary>Edit plan details</summary><div class="grid sm:grid-cols-2 gap-4 mt-4">
-       <label>Ticker<input v-model="draft.symbol" class="input" :disabled="hasLinks"></label><label>Asset name<input v-model="draft.assetName" class="input"></label>
+       <div><label for="planning-ticker">Ticker</label><SymbolAutocomplete id="planning-ticker" :model-value="draft.symbol" :disabled="hasLinks" input-class="w-full" placeholder="Search ticker or enter a new one" @update:model-value="changeTicker" @select="selectAsset"/><small v-if="!hasLinks">Select a match, or enter a new ticker and asset name manually.</small></div><label>Asset name<input v-model="draft.assetName" aria-label="Asset name" class="input"></label>
        <label>Title<input v-model="draft.title" class="input"></label>
        <label>Instrument<select v-model="draft.instrument" class="input" :disabled="hasLinks"><option value="stock">Shares</option><option value="crypto">Crypto</option><option value="spread_bet">Spread betting</option><option value="option">Single-leg option</option></select></label>
        <label>Direction<select v-model="draft.direction" class="input" :disabled="hasLinks"><option value="long">Long / bullish</option><option value="short">Short / bearish</option></select></label>
@@ -158,6 +158,7 @@
 
 <script setup>
 import {describeManagementEvent} from './managementTimeline'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import {ref,computed,watch,onMounted,onBeforeUnmount} from 'vue'
 import api from '@/services/api'
 import PlanningSnapshot from './PlanningSnapshot.vue'
@@ -181,6 +182,8 @@ const visibleLinkedTrades=computed(()=>linkedTradesExpanded.value?linkedTrades.v
 const ledger=computed(()=>workflow.value?.ledger||{}),hasLinks=computed(()=>!!ledger.value.records?.some(a=>!a.fill?.provisional))
 const instrumentLabel=computed(()=>({stock:'Shares',crypto:'Crypto',spread_bet:'Spread betting',option:'Single-leg option'}[draft.value?.instrument]||draft.value?.instrument))
 const asset=computed(()=>draft.value?.assetName?draft.value.assetName+' ('+draft.value.symbol+')':draft.value?.symbol||'Plan')
+function changeTicker(value){if(hasLinks.value)return;const symbol=String(value||'').trim().toUpperCase();if(symbol!==draft.value.symbol)draft.value.assetName='';draft.value.symbol=symbol}
+function selectAsset(item){if(hasLinks.value)return;draft.value.symbol=item.symbol;draft.value.assetName=item.company_name||''}
 function applyPlaybookSetup(){const book=props.playbooks.find(p=>p.id===draft.value?.playbookId);if(book)draft.value.setup=book.requiredSetup||''}
 const setupTags=computed(()=>{const book=props.playbooks.find(p=>p.id===draft.value?.playbookId);return book?.requiredSetup?[{id:book.id,name:book.requiredSetup,definition:book.requiredSetup}]:[]})
 function materializeRunner(d){if(d.runnerMode==='row')return;const percent=Math.max(0,100-d.exits.reduce((s,e)=>s+Number(e.percent||0),0));if(percent>0&&!d.exits.some(e=>e.key==='runner'))d.exits.push({key:'runner',label:'Runner',price:d.runnerEstimatePrice??null,percent,units:null,premium:null,marketContext:[],tactics:[]});d.runnerMode='row'}
