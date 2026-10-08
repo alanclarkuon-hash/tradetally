@@ -9,3 +9,5 @@ All accounts, prices, quantities and fills are synthetic. The dated indicative F
 Keep private requirements, user strategies, statements, credentials, screenshots and financial records outside the repository, including ignored files. Only synthetic source and generic notes belong here.
 
 Treat this file as the versioned design source. Changes to a local review copy should be reviewed for private data, copied here and committed so the source remains recoverable. Local review copies are not automatically synchronized.
+
+Latest review additions: current stop/protection, account/combined capacity scenarios and commitments, partial/batch source-fill allocation with fees, baseline/revision history, editable option contract and contract-delta inputs, market-context comparison on Review, and net-credit same-or-fewer rolls with fee/specification/risk comparisons. Example risk ceilings and balances are synthetic scenario data, not application defaults. Financial calculations remain a walkthrough requiring real broker and historical FX integration.
