@@ -140,7 +140,14 @@ router.get('/:id/chart',run(async(req,res)=>{
 router.get('/:id/fills',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
- const trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2)) ORDER BY entry_time DESC LIMIT 250',[req.user.id,p.definition.symbol])).rows;
+ const roll=req.query.purpose==='roll';if(req.query.purpose&&(!roll||p.definition.instrument!=='option'))fail('Choose a valid trade finder purpose');
+ const account=(await db.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,req.user.id])).rows[0];
+ if(!account?.account_identifier)return res.json({fills:[]});
+ const d=p.definition,o=d.options||{},exactOption=d.instrument==='option'&&!roll;
+ const trades=(await db.query(`SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2))
+ AND account_identifier=$3 AND COALESCE(instrument_type,'stock')=$4 AND side=$5
+ AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
+ ORDER BY entry_time DESC LIMIT 250`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
  const used=(await db.query('SELECT trade_id,source_key,SUM(quantity) AS quantity FROM trade_plan_allocations WHERE user_id=$1 GROUP BY trade_id,source_key',[req.user.id])).rows;
  res.json({fills:trades.flatMap(t=>sourceFills(t).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity-Number(used.find(a=>a.trade_id===t.id&&a.source_key===f.key)?.quantity||0)}))).filter(f=>f.available>1e-8)});
 }));

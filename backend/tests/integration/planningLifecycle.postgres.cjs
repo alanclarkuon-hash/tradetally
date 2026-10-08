@@ -20,6 +20,11 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   const base='http://127.0.0.1:'+server.address().port+'/plans/'+planId;
   async function call(path,method='GET',body){const r=await fetch(base+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}}
   async function version(){return (await db.query('SELECT version FROM trade_plans WHERE id=$1',[planId])).rows[0].version}
+  for(const [instrument,scope,side] of [['cfd','synthetic','long'],['stock','other-synthetic','long'],['stock','synthetic','short']]){
+   await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,entry_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier) VALUES($1,$2,$3,'2026-01-01','2026-01-01T10:00:00Z',100,10,$4,0,0,$5,'USD',$6)",[crypto.randomUUID(),owner,d.symbol,side,instrument,scope]);
+  }
+  const candidates=(await call('/fills')).data.fills;
+  assert(candidates.length===3&&candidates.every(f=>f.tradeId===tradeId),'finder excludes mismatched CFD, account and direction');
   const t=(await db.query('SELECT * FROM trades WHERE id=$1',[tradeId])).rows[0],fills=require(root+'/src/services/planningLedger').sourceFills(t);
   async function link(index,stage){const f=fills[index];return call('/allocations','POST',{version:await version(),tradeId,sourceKey:f.key,fingerprint:f.fingerprint,stageKey:stage,action:f.action,quantity:f.quantity})}
   assert.equal((await link(0,'a')).status,201,'entry allocation');
@@ -55,6 +60,10 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   const optVersion=async()=>(await db.query('SELECT version FROM trade_plans WHERE id=$1',[op])).rows[0].version;
   const oldSource=require(root+'/src/services/planningLedger').sourceFills((await db.query('SELECT * FROM trades WHERE id=$1',[ot])).rows[0]);
   const newSource=require(root+'/src/services/planningLedger').sourceFills((await db.query('SELECT * FROM trades WHERE id=$1',[nt])).rows[0]);
+  const exactCandidates=(await optCall('/fills','GET')).data.fills;
+  assert(exactCandidates.length===2&&exactCandidates.every(f=>f.tradeId===ot),'ordinary option finder scopes exact contract');
+  const rollCandidates=(await optCall('/fills?purpose=roll','GET')).data.fills;
+  assert(rollCandidates.some(f=>f.tradeId===nt)&&rollCandidates.some(f=>f.tradeId===ot),'roll finder permits both contracts within the same account');
   assert.equal((await optCall('/allocations','POST',{version:await optVersion(),tradeId:ot,sourceKey:oldSource[0].key,fingerprint:oldSource[0].fingerprint,stageKey:'a',action:'entry',quantity:2})).status,201,'option entry');
   const rollBody={version:await optVersion(),close:{tradeId:ot,sourceKey:oldSource[1].key,fingerprint:oldSource[1].fingerprint,quantity:2},open:{tradeId:nt,sourceKey:newSource[0].key,fingerprint:newSource[0].fingerprint,quantity:2},delta:60,reason:'Synthetic credit roll'};
   assert.equal((await optCall('/roll','POST',rollBody)).status,422,'risk-increasing roll rejected');
