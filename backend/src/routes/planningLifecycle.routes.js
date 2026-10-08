@@ -1,6 +1,7 @@
 
 const express=require('express');
 const Joi=require('joi');
+const {isDeepStrictEqual}=require('node:util');
 const db=require('../config/database');
 const {fail,calculate}=require('../services/tradePlanning');
 const {sourceFills,verifyAllocation,ledger}=require('../services/planningLedger');
@@ -216,6 +217,8 @@ router.put('/:id/management',run(async(req,res)=>{
   }
   const allocated=(await c.query('SELECT action,stage_key FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
   for(const a of allocated){const r=m[a.action]?.[a.stage_key];if(r)r.executed=true;}
+  const canonical=value=>Object.fromEntries(['entry','exit'].map(kind=>[kind,Object.fromEntries(Object.entries(value?.[kind]||{}).map(([key,r])=>[key,{...r,time:new Date(r.time).toISOString(),tactics:r.tactics||[],marketContext:r.marketContext||[]}]))]));
+  if(isDeepStrictEqual(canonical(m),canonical(p.management)))return;
   const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');
   const hasExecuted=Object.values(m.entry).some(r=>r.executed);
   const baseline=p.baseline||(hasExecuted?{...p.definition,recordedAt:new Date().toISOString(),source:'user_reported'}:null);
