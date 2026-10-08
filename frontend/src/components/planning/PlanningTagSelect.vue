@@ -12,6 +12,6 @@ function remove(name){emit('update:modelValue',(props.modelValue||[]).filter(n=>
 .tactic-chip{background:#334155;border:1px solid #475569;border-radius:6px;padding:3px 7px;color:#f3f4f6;font-size:12px;min-height:28px}
 select.input{height:42px;border:1px solid #4b5563;background:#111827;border-radius:6px;padding:8px 10px;font-size:13px}
 .tactic-chip:focus-visible,select:focus-visible{outline:2px solid #fb923c;outline-offset:3px}
-:global(html:not(.dark)) .tactic-chip{background:#f1f5f9;border-color:#cbd5e1;color:#334155}
-:global(html:not(.dark)) select.input{background:#fff;border-color:#d1d5db;color:#111827}
+:global(html:not(.dark) .tactic-chip){background:#f1f5f9;border-color:#cbd5e1;color:#334155}
+:global(html:not(.dark) .tactic-editor select.input){background:#fff;border-color:#d1d5db;color:#111827}
 </style>
