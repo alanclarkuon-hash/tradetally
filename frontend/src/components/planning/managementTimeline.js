@@ -2,7 +2,7 @@ const names={units:'Quantity',price:'Price level',percent:'Exit percentage',prem
 const quantity=value=>value==null?'—':Number(value).toLocaleString('en-GB',{maximumFractionDigits:6})
 const money=(value,currency)=>value==null?'—':new Intl.NumberFormat('en-GB',{style:'currency',currency:currency||'USD',maximumFractionDigits:2}).format(value)
 const same=(a,b)=>JSON.stringify(a??null)===JSON.stringify(b??null)
-const value=(field,v,currency)=>['price','premium'].includes(field)?money(v,currency):Array.isArray(v)?v.join(', ')||'None':quantity(v)+(field==='percent'?'%':'')
+const value=(field,v,currency)=>field==='units'&&v==null?'Calculated':['price','premium'].includes(field)?money(v,currency):Array.isArray(v)?v.join(', ')||'None':quantity(v)+(field==='percent'?'%':'')
 export function describeManagementEvent(event,definition={}){
  const s=event.snapshot||{},currency=s.currency||definition.currency||'USD'
  const rowName=(kind,key)=>(definition[kind==='entry'?'entries':'exits']||[]).find(r=>r.key===key)?.label||key
