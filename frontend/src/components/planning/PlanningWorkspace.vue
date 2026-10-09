@@ -314,7 +314,7 @@ onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value)
 h2{font-size:18px;font-weight:600;margin:0 0 16px;line-height:1.4}
 .planning-workspace label{font-size:13px;color:#d1d5db}
 .planning-workspace label .input{margin-top:6px}
-.planning-workspace .input{border-radius:6px;border:1px solid #4b5563;background:#111827;padding:10px;color:#f3f4f6;font-size:14px;min-height:42px;box-shadow:none}
+.planning-workspace .input{border-radius:6px;border:1px solid #4b5563;background-color:#111827;padding:10px;color:#f3f4f6;font-size:14px;min-height:42px;box-shadow:none}
 .planning-workspace button{min-height:42px}
 .planning-workspace button.text-red-400{font-size:12px}
 .currency-toggle{min-width:42px;font-size:18px;color:#fb923c;padding:6px 12px}
@@ -353,7 +353,7 @@ summary{cursor:pointer;font-size:13px;color:#9ca3af;min-height:28px}
 :global(html:not(.dark) .planning-workspace .journey-stage){color:#475569}
 :global(html:not(.dark) .planning-workspace .journey-stage.current){color:#9a3412;border-color:#ea580c}
 :global(html:not(.dark) .planning-workspace label){color:#374151}
-:global(html:not(.dark) .planning-workspace .input),:global(html:not(.dark) .planning-workspace .ladder-input){background:#fff;color:#111827;border-color:#d1d5db}
+:global(html:not(.dark) .planning-workspace .input),:global(html:not(.dark) .planning-workspace .ladder-input){background-color:#fff;color:#111827;border-color:#d1d5db}
 :global(html:not(.dark) .planning-workspace .card){border-color:#d1d5db}
 :global(html:not(.dark) .planning-workspace th),:global(html:not(.dark) .planning-workspace small),:global(html:not(.dark) .planning-workspace summary){color:#4b5563}
 :global(html:not(.dark) .planning-workspace .position-metrics small),:global(html:not(.dark) .planning-workspace .result-metrics small){color:#4b5563}
