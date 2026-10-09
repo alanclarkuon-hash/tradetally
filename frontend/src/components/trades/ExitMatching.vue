@@ -3,8 +3,6 @@
     <div class="card-body">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">Correct matched exits</h3>
       <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">Detach an incorrectly matched sell here, then open the correct trade and link that sell. Its execution and fees are retained.</p>
-      <label class="block mt-4 text-sm font-medium text-gray-700 dark:text-gray-300" for="exit-correction-reason">Reason for correction</label>
-      <input id="exit-correction-reason" v-model="reason" maxlength="1000" class="mt-1 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white px-3 py-2" placeholder="Why does this sell belong to a different trade?" />
       <p v-if="error" role="alert" class="mt-3 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
       <div v-if="state.exits.length" class="mt-4 overflow-x-auto">
         <table class="min-w-full text-sm">
@@ -28,16 +26,15 @@ import api from '@/services/api'
 import {useCurrencyFormatter} from '@/composables/useCurrencyFormatter'
 const props=defineProps({trade:{type:Object,required:true}})
 const emit=defineEmits(['changed'])
-const state=ref({supported:false,exits:[],available:[],history:[]}),reason=ref(''),error=ref(''),busy=ref(false)
+const state=ref({supported:false,exits:[],available:[],history:[]}),error=ref(''),busy=ref(false)
 const date=v=>new Date(v).toLocaleString('en-GB')
 const {formatCurrency}=useCurrencyFormatter()
 const money=v=>formatCurrency(v,{currency:props.trade.original_currency||'GBP'})
 async function load(){try{state.value=(await api.get(`/trades/${props.trade.id}/exit-matching`)).data}catch(e){error.value=e.response?.data?.error||'Unable to load exit corrections'}}
 watch(()=>props.trade.id,()=>{state.value.supported=false;load()},{immediate:true})
 async function submit(action){
- if(!reason.value.trim()){error.value='Enter a reason for the correction';return}
  busy.value=true;error.value=''
- try{await api.post(`/trades/${props.trade.id}/exit-matching`,{...action,version:state.value.version,reason:reason.value});reason.value='';await load();emit('changed')}
+ try{await api.post(`/trades/${props.trade.id}/exit-matching`,{...action,version:state.value.version});await load();emit('changed')}
  catch(e){error.value=e.response?.data?.error||'Unable to correct the exit'}finally{busy.value=false}
 }
 </script>

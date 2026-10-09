@@ -32,9 +32,13 @@ async function owned(client,user,id) {
  if(!supported(row))fail('Exit correction is currently supported for Trading 212 share executions',400);
  return row;
 }
-async function unlocked(client,user,id) {
- const used=await client.query('SELECT 1 FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 LIMIT 1',[user,id]);
- if(used.rows.length)fail('Unlink this trade from its plan before correcting its executions');
+async function unlockedExit(client,user,row,execution) {
+ const {sourceFills}=require('./planningLedger');
+ const fill=sourceFills({...row,executions:[execution]}).find(f=>f.action==='exit');
+ if(!fill)fail('Unable to identify this closing execution safely');
+ const used=await client.query(`SELECT 1 FROM trade_plan_allocations
+  WHERE user_id=$1 AND trade_id=$2 AND source_key=$3 AND action='exit' LIMIT 1`,[user,row.id,fill.key]);
+ if(used.rows.length)fail('Unlink this sell from its plan exit before detaching it. The buy can stay linked.');
 }
 async function save(client,row,fills,timezone) {
  validatePosition(row,fills);
@@ -50,12 +54,8 @@ async function save(client,row,fills,timezone) {
 function checkVersion(row, expected) {
  if(expected!==version(row))fail('Executions changed; refresh the trade and try again');
 }
-function reasonText(reason) {
- if(typeof reason!=='string'||!reason.trim()||reason.trim().length>1000)fail('Enter a reason for the correction (up to 1000 characters)',400);
- return reason.trim();
-}
 async function correct(user,targetId,request) {
- const reason=reasonText(request.reason);
+ const reason='Incorrectly matched exit';
  const result=await db.withTransaction(async client=>{
   // Shares the sync lock and serialises edits on the same connection.
   const meta=(await client.query('SELECT broker_connection_id FROM trades WHERE id=$1 AND user_id=$2',[targetId,user])).rows[0];
@@ -63,13 +63,13 @@ async function correct(user,targetId,request) {
   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[meta.broker_connection_id||user]);
   const target=await owned(client,user,targetId);
   checkVersion(target,request.version);
-  await unlocked(client,user,target.id);
   const timezone=(await client.query('SELECT timezone FROM users WHERE id=$1',[user])).rows[0].timezone;
   let record, from=null;
   if(request.operation==='detach') {
    const fills=list(target), index=request.index;
    if(!Number.isInteger(index)||fills[index]?.action!=='sell')fail('Choose a closing sell execution',400);
    const execution=fills[index];
+   await unlockedExit(client,user,target,execution);
    const existing=(await client.query(`SELECT * FROM detached_trade_exits WHERE user_id=$1 AND assigned_trade_id=$2 FOR UPDATE`,[user,target.id])).rows;
    record=existing.find(r=>executionSignature(r.execution)===executionSignature(execution));
    if(record) await client.query('UPDATE detached_trade_exits SET assigned_trade_id=NULL,reason=$2,updated_at=NOW() WHERE id=$1',[record.id,reason]);
