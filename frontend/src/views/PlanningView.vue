@@ -6,7 +6,7 @@
     <p v-if="error" class="rounded-md bg-red-500/10 p-4 text-red-400" role="alert">{{ error }}</p>
     <div v-if="!selected" class="card p-5"><div class="flex justify-between flex-wrap gap-4"><h2 class="font-semibold">Outstanding entry commitments · all accounts</h2><span class="text-sm text-gray-600 dark:text-gray-400">Display filters do not change this scope</span></div><p v-if="!commitments.length" class="text-gray-600 dark:text-gray-400 mt-3">No committed entries.</p><div v-for="[currency,total] in commitmentTotals" :key="currency" class="mt-2">{{ money(total,currency) }} reserved in {{ currency }}</div><p class="text-sm text-amber-700 dark:text-amber-400 mt-3">Open-position risk and available capacity: not yet integrated. These totals are reservations only.</p></div>
     <template v-if="!selected">
-      <div class="flex flex-wrap gap-3"><label>Stage<select v-model="stageFilter" class="input"><option value="active">All active</option><option value="all">All plans</option><option value="ready">Ready</option><option value="watching">Watching</option><option value="draft">Draft</option><option value="entered">Entered</option><option value="reviewed">Reviewed</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label><label>Drafts<select v-model="draftFilter" class="input"><option value="all">Account filter from navigation</option><option value="unassigned">Unassigned plans</option></select></label><div class="text-sm text-gray-600 dark:text-gray-400 self-end pb-2">All active dates · {{ selectedAccountLabel }}</div></div>
+      <div class="flex flex-wrap gap-3"><label>Stage<select v-model="stageFilter" class="input"><option value="active">All active</option><option value="all">All plans</option><option value="ready">Ready</option><option value="watching">Watching</option><option value="draft">Draft</option><option value="entered">Entered</option><option value="under_review">Under review</option><option value="reviewed">Reviewed</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select></label><label>Drafts<select v-model="draftFilter" class="input"><option value="all">Account filter from navigation</option><option value="unassigned">Unassigned plans</option></select></label><div class="text-sm text-gray-600 dark:text-gray-400 self-end pb-2">All active dates · {{ selectedAccountLabel }}</div></div>
       <div class="card p-5 overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Asset / playbook</th><th>Stage</th><th>Account</th><th>Planned risk budget</th><th>Next action</th></tr></thead><tbody><tr v-for="p in visiblePlans" :key="p.id"><td><button class="text-primary-400 font-semibold text-left" @click="openPlan(p)">{{ label(p.definition) }}</button><div>{{ p.definition.title }}</div><div class="text-gray-600 dark:text-gray-400">{{ playbookName(p.definition.playbookId) }}</div></td><td>{{ statusLabel(p.status) }}</td><td>{{ accountName(p.definition.accountId) }}</td><td>{{ money(p.definition.riskBudget,p.definition.currency) }}</td><td><button class="btn-secondary" @click="openPlan(p)">Open plan</button></td></tr></tbody></table><p v-if="!visiblePlans.length" class="text-gray-600 dark:text-gray-400 mt-4">No plans match the selection.</p><p v-if="loading" class="mt-4">Loading plans…</p></div>
     </template>
     <template v-else-if="!hideAmounts">
@@ -21,6 +21,7 @@
   </div>
 </template>
 <script setup>
+import {planStatusLabel as statusLabel} from '@/components/planning/planningStages'
 import {ref,computed,onMounted,watch,onBeforeUnmount,nextTick} from 'vue'
 import {useRouter,useRoute} from 'vue-router'
 import api from '@/services/api'
@@ -44,7 +45,6 @@ const label=d=>d.assetName?`${d.assetName} (${d.symbol})`:d.symbol
 const assetLabel=computed(()=>form.value?label(form.value):'Planning')
 const accountName=id=>accounts.value.find(a=>a.id===id)?.accountName||'Unassigned'
 const playbookName=id=>playbooks.value.find(p=>p.id===id)?.name||'No playbook'
-const statusLabel=s=>({draft:'Draft',watching:'Watching',ready:'Ready',cancelled:'Cancelled'}[s]||s)
 function money(v,c){if(hideAmounts.value)return MONEY_MASK;if(v==null||v==='')return 'Unavailable';try{return new Intl.NumberFormat(undefined,{style:'currency',currency:c}).format(Number(v))}catch{return `${number(v)} ${c}`}}
 function number(v){return v==null?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:6})}
 const stage=i=>calculation.value?.stages[i]
