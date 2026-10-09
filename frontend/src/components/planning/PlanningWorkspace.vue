@@ -86,7 +86,7 @@
       <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="linked(kind,e.key)"></td>
       <td><input :aria-label="kind+' '+(i+1)+' price level'" :value="displayValue(e.price,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
       <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"></td>
-      <td><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)" @change="e.units=Number($event.target.value)"></td>
+      <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" @click="resetUnits(kind,e)">Reset</button></div></td>
       <td>{{ convertedMoney(kind==='entry'?calculation?.stages[i]?.positionValue:exitProfit(e),draft.currency,currencies[kind]) }}</td>
       <td v-if="kind==='exit'&&draft.instrument==='option'"><input v-model.number="e.premium" type="number" step="any" class="ladder-input" :disabled="linked(kind,e.key)"></td>
       <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="!managing&&linked(kind,e.key)"/></td>
@@ -210,6 +210,8 @@ function priceValue(e,from){if(e.target.value==='')return null;const r=rate(from
 function rows(k){return managing.value?managed.value[k]:draft.value[k==='entry'?'entries':'exits']}
 function linked(k,key){return ledger.value.records?.some(a=>!a.fill?.provisional&&a.action===k&&a.stage_key===key)}
 function rowUnits(k,e,i){return k==='entry'?calculation.value?.stages[i]?.quantity:(calculation.value?.plannedQuantity||0)*e.percent/100}
+function changeUnits(kind,e,event){if(linked(kind,e.key))return;const value=event.target.value.trim();e.units=value===''?null:Number(value)}
+function resetUnits(kind,e){if(!linked(kind,e.key))e.units=null}
 const runnerPercent=computed(()=>Math.max(0,100-(draft.value?.exits||[]).reduce((s,e)=>s+Number(e.percent||0),0)))
 const potentialPercent=computed(()=>calculation.value?.plannedValue>0&&calculation.value?.reward?.fixedTargetProfit!=null?calculation.value.reward.fixedTargetProfit/calculation.value.plannedValue*100:null)
 function exitProfit(e){
@@ -239,7 +241,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??rowUnits(k,e,managed.value[k].indexOf(e)),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
  return management
 }
 async function saveManagement(){
@@ -325,6 +327,7 @@ tbody tr:last-child td{border-bottom:0}
 tfoot{border-top:1px solid #4b5563}
 tfoot th,tfoot td{font-size:14px;white-space:nowrap}
 small{color:#9ca3af}
+.units-control{display:flex;align-items:center;gap:6px}
 .ladder-input{width:120px;min-width:120px;max-width:120px;height:42px;border-radius:8px;border:1px solid #4b5563;background:#111827;padding:8px 10px;color:inherit;font:inherit;font-size:14px;appearance:textfield}
 input::-webkit-inner-spin-button,input::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 input[type=checkbox]{width:18px;height:18px;flex-shrink:0;accent-color:#f97316;margin-top:2px}
