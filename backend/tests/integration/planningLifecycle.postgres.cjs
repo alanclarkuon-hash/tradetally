@@ -20,6 +20,13 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   const base='http://127.0.0.1:'+server.address().port+'/plans/'+planId;
   async function call(path,method='GET',body){const r=await fetch(base+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}}
   async function version(){return (await db.query('SELECT version FROM trade_plans WHERE id=$1',[planId])).rows[0].version}
+  const automaticRow={executed:false,units:null,price:100,time:'2026-01-01T10:00:00Z'};
+  assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:automaticRow},exit:{}}})).status,200,'automatic unexecuted sizing is accepted');
+  assert.equal((await db.query('SELECT management FROM trade_plans WHERE id=$1',[planId])).rows[0].management.entry.a.units,null,'automatic sizing persists instead of a zero override');
+  const automaticVersion=await version();
+  assert.equal((await call('/management','PUT',{version:automaticVersion,management:{entry:{a:automaticRow},exit:{}}})).status,200);
+  assert.equal(await version(),automaticVersion,'unchanged automatic sizing creates no update');
+
   for(const [instrument,scope,side] of [['cfd','synthetic','long'],['stock','other-synthetic','long'],['stock','synthetic','short']]){
    await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,entry_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier) VALUES($1,$2,$3,'2026-01-01','2026-01-01T10:00:00Z',100,10,$4,0,0,$5,'USD',$6)",[crypto.randomUUID(),owner,d.symbol,side,instrument,scope]);
   }
