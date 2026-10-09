@@ -25,10 +25,19 @@ const sync=()=>reconcile.reconcileSnapshot({id:connection,userId:user},raw,origi
  const before=await service.state(user,source);
  await assert.rejects(()=>service.state(crypto.randomUUID(),source),e=>e.status===404);
  const request={operation:'detach',index:1,version:before.version,reason:'Synthetic wrong lot'};
+ const plan=crypto.randomUUID();
+ await db.query("INSERT INTO trade_plans(id,user_id,definition) VALUES($1,$2,'{}')",[plan,user]);
+ await db.query("INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot) VALUES($1,$2,$3,'synthetic','entry','entry',1,'{}')",[user,plan,source]);
+ await assert.rejects(()=>service.correct(user,source,request),/Unlink/);
+ await db.query('DELETE FROM trade_plans WHERE id=$1',[plan]);
  const record=await service.correct(user,source,request);
  const reopened=await read(source);assert.equal(reopened.exit_time,null);assert.equal(reopened.pnl,null);assert.equal(Number(reopened.fees),1);
  await assert.rejects(()=>service.correct(user,source,request),e=>e.status===409);
  assert.equal((await service.state(user,target)).available.length,1);
+ await db.query("UPDATE trades SET account_identifier='different-synthetic' WHERE id=$1",[target]);
+ assert.equal((await service.state(user,target)).available.length,0,'finder excludes another account');
+ await assert.rejects(async()=>service.correct(user,target,{operation:'attach',exitId:record.exitId,version:service.version(await read(target)),reason:'Synthetic account mismatch'}),/does not match/);
+ await db.query("UPDATE trades SET account_identifier='synthetic' WHERE id=$1",[target]);
  await sync();assert.equal((await read(source)).exit_time,null,'sync preserves detached exit');
  const targetVersion=service.version(await read(target));
  // Test invalid quantity with another synthetic target snapshot; failure must roll back.
@@ -54,4 +63,4 @@ const sync=()=>reconcile.reconcileSnapshot({id:connection,userId:user},raw,origi
  await sync();assert.equal(Number((await read(source)).pnl),17);assert.equal((await read(target)).exit_time,null);
  console.log('PASS: TEST owner boundaries, detach/reopen, fees/quantity conservation, invalid exit rollback, concurrent single relink, reconciliation preservation, changed-evidence protection and correction reversal');
 }catch(e){console.error('FAIL: synthetic exit matching integration:',e.message);process.exitCode=1}
-finally{await db.query('DELETE FROM trade_exit_matching_history WHERE user_id=$1',[user]);await db.query('DELETE FROM detached_trade_exits WHERE user_id=$1',[user]);await db.query('DELETE FROM users WHERE id=$1',[user]);await db.pool.end()}})();
+finally{await db.query('DELETE FROM trade_plans WHERE user_id=$1',[user]);await db.query('DELETE FROM trade_exit_matching_history WHERE user_id=$1',[user]);await db.query('DELETE FROM detached_trade_exits WHERE user_id=$1',[user]);await db.query('DELETE FROM users WHERE id=$1',[user]);await db.pool.end()}})();
