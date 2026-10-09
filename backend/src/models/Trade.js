@@ -1266,6 +1266,14 @@ class Trade {
     // First get the current trade data for calculations
     const currentTrade = await this.findById(id, userId);
 
+    if (currentTrade?.matching_baseline && updates.executions) {
+      const {list,executionSignature}=require('../services/exitMatching');
+      const signature=fills=>fills.map(executionSignature).join('|');
+      if(signature(updates.executions)!==signature(list(currentTrade))) {
+        throw Object.assign(new Error('Use exit correction to change executions on a manually matched trade'), {status:409});
+      }
+    }
+
     // Auto-set point value and underlying asset for futures trades if not provided
     const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
     if (instrumentType === 'future') {
