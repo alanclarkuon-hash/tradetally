@@ -1,7 +1,7 @@
 
 <template>
  <div class="planning-workspace" v-if="draft" :inert="busy" :aria-busy="busy">
-  <div class="journey card p-5" aria-label="Plan milestones"><div v-for="m in milestones" :key="m.label"><small>{{ m.date }}</small><strong class="block">{{ m.label }}</strong></div></div>
+  <div class="journey card p-5" aria-label="Plan stages"><div v-for="m in milestones" :key="m.key" class="journey-stage" :class="{current:m.current}" :aria-current="m.current?'step':undefined"><small><time v-if="m.timestamp" :datetime="m.timestamp">{{ m.date }}</time><span v-else>{{ m.date }}</span></small><strong class="block">{{ m.label }}<span v-if="m.current" class="current-stage-dot" aria-label="Current stage"></span></strong></div></div>
   <nav class="workflow-tabs" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="{active:screen===s}" :aria-current="screen===s?'step':undefined" @click="moveScreen(s)">{{ s }}</button></nav>
   <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
   <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
@@ -135,7 +135,7 @@
      <section class="card p-5 space-y-4"><h2>Playbook assessment</h2><label class="flex gap-3"><input v-model="review.processFollowed" type="checkbox">Process followed</label><label class="block">Lessons · repeat / change<textarea v-model="review.notes" class="input" rows="4"></textarea></label><div class="flex gap-3 flex-wrap"><button class="btn-secondary" :disabled="busy" @click="saveReviewDraft">Save review draft</button><button class="btn-primary" :disabled="busy||!ledger.economicallyClosed" @click="saveReview">Complete review</button></div></section>
     </div>
     <aside class="space-y-5 min-w-0">
-     <section class="card p-5"><h2>Whole-plan timeline</h2><div v-for="m in milestones" :key="m.label" class="risk-row"><span>{{ m.label }}</span><strong>{{ m.date }}</strong></div><div class="risk-row"><span>Final exit</span><strong>{{ finalExitDate }}</strong></div><div class="risk-row"><span>Stage</span><strong>{{ plan.status.replaceAll('_',' ') }}</strong></div></section>
+     <section class="card p-5"><h2>Whole-plan timeline</h2><div v-for="m in milestones" :key="m.label" class="risk-row"><span>{{ m.label }}</span><strong>{{ m.date }}</strong></div><div class="risk-row"><span>Final exit</span><strong>{{ finalExitDate }}</strong></div><div class="risk-row"><span>Stage</span><strong>{{ planStatusLabel(plan.status) }}</strong></div></section>
      <section class="card p-5 space-y-3"><h2>Review and reconciliation</h2><p v-if="workflow?.needsUpdate" class="text-amber-700 dark:text-amber-300">Review needs updating because source evidence changed.</p><p v-else>{{ ledger.economicallyClosed?'All linked exits reconciled.':'Reconcile all exits before completing review.' }}</p><p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Correct changed source-fill links before completing review.</p></section>
      <section class="card p-5 space-y-3"><h2>Linked analysis</h2><RouterLink to="/analysis/playbooks" class="text-primary-400 block">Playbook analysis</RouterLink><RouterLink to="/diary" class="text-primary-400 block">Journal</RouterLink></section>
     </aside>
@@ -157,6 +157,7 @@
 </template>
 
 <script setup>
+import {planMilestones,planStatusLabel} from './planningStages'
 import {describeManagementEvent} from './managementTimeline'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import {ref,computed,watch,onMounted,onBeforeUnmount} from 'vue'
@@ -190,10 +191,7 @@ function materializeRunner(d){if(d.runnerMode==='row')return;const percent=Math.
 function syncPortfolioPercent(){draft.value.portfolioRiskPercent=draft.value.portfolioAmount>0&&draft.value.riskBudget!=null?draft.value.riskBudget/draft.value.portfolioAmount*100:null}
 function applySelectedCapital(){if(!draft.value||!props.portfolioCapital||!fx.value)return;const r=rate(props.portfolioCapital.currency,draft.value.currency);if(!r)return;hydrating=true;draft.value.portfolioAmount=props.portfolioCapital.amount*r;syncPortfolioPercent();queueMicrotask(()=>hydrating=false)}
 const library=computed(()=>Object.fromEntries(['entry','exit','context'].map(k=>[k,tags.value.filter(t=>t.kind===k)])))
-const milestones=computed(()=>[{label:'Planned',type:'ready'},{label:'Entry',type:'trade_linked'},{label:'Review',type:'reviewed'}].map(m=>{
- const events=(workflow.value?.history||[]).filter(e=>e.event_type===m.type&&(m.type!=='trade_linked'||e.snapshot?.action==='entry')).map(e=>m.type==='trade_linked'?e.snapshot?.source?.time||e.created_at:e.created_at).sort();
- return {label:m.label,date:events.length?new Date(events[0]).toLocaleDateString():'Pending'};
-}))
+const milestones=computed(()=>planMilestones(plan.value,workflow.value?.history||[],ledger.value))
 
 const finalExitDate=computed(()=>{
  const dates=(ledger.value.records||[]).filter(r=>r.action==='exit'&&r.valid).map(r=>r.fill?.time).filter(Boolean).sort();
@@ -300,12 +298,14 @@ onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value)
 <style scoped>
 .planning-workspace{container-type:inline-size;container-name:planning;min-width:0;display:flex;flex-direction:column;gap:18px;font-size:15px;line-height:1.5}
 .planning-workspace>.card,.detail-grid .card,.completion-summary .card{border-radius:10px;padding:22px;border:1px solid #374151;box-shadow:none}
-.journey{display:flex;justify-content:space-between;gap:12px;padding:20px}
+.journey{display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:12px;padding:20px}
 .management-top-grid{display:grid;gap:18px}
 .history-card-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px}
 .history-card-heading h2{margin-bottom:0}
 .management-timeline>div.history-card-heading{border:0;padding:0;margin-left:0}
-.journey>div{border-left:2px solid #fb923c;padding-left:9px;flex:1;font-size:12px}
+.journey-stage{border-left:2px solid #64748b;padding:9px 10px;border-radius:0 6px 6px 0;font-size:12px;color:#94a3b8}
+.journey-stage.current{border-color:#fb923c;background:#fb923c1a;color:#fb923c}
+.current-stage-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;margin-left:7px;vertical-align:middle}
 .journey strong{font-size:14px;font-weight:600;margin-top:2px}
 .workflow-tabs{display:flex;flex-wrap:wrap;gap:27px;border-bottom:1px solid #374151}
 .workflow-tabs button{border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;padding:10px 0;min-height:44px;color:#9ca3af;font-weight:500}
@@ -350,6 +350,8 @@ summary{cursor:pointer;font-size:13px;color:#9ca3af;min-height:28px}
 @media(max-width:850px){.detail-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.planning-workspace>.card,.detail-grid .card,.completion-summary .card{padding:16px}.workflow-tabs{gap:18px}.workflow-tabs button{font-size:14px}.position-metrics{gap:16px}.position-metrics strong,.result-metrics strong{font-size:21px}}
 
+:global(html:not(.dark) .planning-workspace .journey-stage){color:#475569}
+:global(html:not(.dark) .planning-workspace .journey-stage.current){color:#9a3412;border-color:#ea580c}
 :global(html:not(.dark) .planning-workspace label){color:#374151}
 :global(html:not(.dark) .planning-workspace .input),:global(html:not(.dark) .planning-workspace .ladder-input){background:#fff;color:#111827;border-color:#d1d5db}
 :global(html:not(.dark) .planning-workspace .card){border-color:#d1d5db}
