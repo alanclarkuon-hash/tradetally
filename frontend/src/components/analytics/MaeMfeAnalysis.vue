@@ -1,5 +1,5 @@
 <template>
-  <div class="card">
+  <div class="card"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <div class="card-body">
       <div class="flex items-center justify-between mb-6">
         <div>
@@ -164,11 +164,12 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { Chart } from '@/lib/chartSetup'
 import api from '@/services/api'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   filters: { type: Object, default: () => ({}) }
@@ -219,7 +220,7 @@ const perfectExitReferencePlugin = {
 }
 
 // ---- formatting ----
-const { formatCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency()
 
 function formatPoints(val) {
   if (val == null) return '—'

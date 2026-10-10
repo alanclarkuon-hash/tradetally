@@ -63,8 +63,8 @@ describe('useGlobalAccountFilter', () => {
         return Promise.resolve({
           data: {
             data: [
-              { accountIdentifier: 'A-1111', accountName: 'Primary Account', isPrimary: true },
-              { accountIdentifier: 'B-2222', accountName: 'Swing Account', isPrimary: false }
+              { accountIdentifier: 'A-1111', accountName: 'Primary Account', currency:'GBP', isPrimary: true },
+              { accountIdentifier: 'B-2222', accountName: 'Swing Account', currency:'USD', isPrimary: false }
             ]
           }
         })
@@ -77,9 +77,9 @@ describe('useGlobalAccountFilter', () => {
     await filter.fetchAccounts()
 
     expect(filter.accounts.value).toEqual([
-      { value: 'A-1111', label: 'Primary Account', secondaryLabel: '****1111', isPrimary: true },
-      { value: 'B-2222', label: 'Swing Account', secondaryLabel: '****2222', isPrimary: false },
-      { value: 'Z-9999', label: '****9999', secondaryLabel: null, isPrimary: false }
+      { value: 'A-1111', label: 'Primary Account', secondaryLabel: '****1111', currency:'GBP', isPrimary: true },
+      { value: 'B-2222', label: 'Swing Account', secondaryLabel: '****2222', currency:'USD', isPrimary: false },
+      { value: 'Z-9999', label: '****9999', secondaryLabel: null, currency:null, isPrimary: false }
     ])
   })
 

@@ -1,4 +1,5 @@
 <template>
+<CurrencyCard v-slot="{formatCurrency,formatSignedCurrency}">
   <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg">
     <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="text-lg font-medium text-gray-900 dark:text-white">Trade Summary</h3>
@@ -316,9 +317,11 @@
       </div>
     </div>
   </div>
+</CurrencyCard>
 </template>
 
 <script setup>
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import { ref, computed, nextTick, watch } from 'vue'
 import { formatTradeDate } from '@/utils/date'
 import { formatPercent as formatPercentBase } from '@/utils/formatters'

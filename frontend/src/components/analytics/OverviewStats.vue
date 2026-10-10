@@ -1,6 +1,7 @@
 <template>
+
   <!-- Overview Stats -->
-  <div class="card overflow-hidden">
+  <div class="card overflow-hidden"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <dl class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 divide-y divide-gray-100 dark:divide-gray-800 lg:divide-y-0 lg:divide-x lg:divide-gray-200 lg:dark:divide-gray-700">
       <!-- Total P&L -->
       <div class="px-4 py-3.5">
@@ -91,18 +92,20 @@
       </div>
     </div>
   </div>
+
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { ref } from 'vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 defineProps({
   overview: { type: Object, default: () => ({}) },
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const { formatCurrency } = useCurrencyFormatter()
+const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency()
 
 // Local display-only toggle: flip the R card between Average R and Total R.
 const rMultipleFlipped = ref(false)

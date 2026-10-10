@@ -1,5 +1,5 @@
 <template>
-  <div class="card-dense h-full">
+  <div class="card-dense h-full"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="heading-card">Momentum</h3>
       <span class="text-xs text-gray-500 dark:text-gray-400">
@@ -125,8 +125,9 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { computed, ref } from 'vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   dailyPnL: {
@@ -139,7 +140,7 @@ const props = defineProps({
   }
 })
 
-const { formatSignedCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency()
 
 const scope = ref('day') // 'day' | 'trade'
 

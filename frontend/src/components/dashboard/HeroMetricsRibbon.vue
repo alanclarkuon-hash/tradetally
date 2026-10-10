@@ -24,6 +24,7 @@
             <span class="text-label whitespace-nowrap">{{ rMode ? 'Net R' : 'Net P&L' }}</span>
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{{ rangeLabel }}</span>
+              <CurrencyToggle v-model="cardCurrency" :currencies="choices" />
               <!-- $ / R toggle: lets the ribbon be shared without dollar values -->
               <div class="inline-flex shrink-0 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium" role="group" aria-label="Display values in dollars or R-multiples">
                 <button
@@ -32,7 +33,7 @@
                   :class="!rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
                   :aria-pressed="!rMode"
                   @click="emit('update:rMode', false)"
-                >$</button>
+                >{{ currencySymbol }}</button>
                 <button
                   type="button"
                   class="px-2 py-0.5 transition-colors"
@@ -168,7 +169,8 @@
 <script setup>
 import { computed } from 'vue'
 import MiniBarChart from '@/components/common/MiniBarChart.vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useCardCurrency } from '@/composables/useCardCurrency'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
 
 const props = defineProps({
   analytics: {
@@ -190,7 +192,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:rMode'])
 
-const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
+const { currency:cardCurrency, choices, currencySymbol, formatCurrency, formatSignedCurrency } = useCardCurrency(computed(()=>props.analytics?.display_currency))
 
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {

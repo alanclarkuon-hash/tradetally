@@ -1,5 +1,5 @@
 <template>
-  <div class="card-dense h-full">
+  <div class="card-dense h-full"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="heading-card">Recent Trades</h3>
       <router-link
@@ -87,10 +87,11 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import StockLogo from '@/components/common/StockLogo.vue'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiArrowRight } from '@mdi/js'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { formatTradeDate } from '@/utils/date'
 
 const props = defineProps({
@@ -98,7 +99,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false }
 })
 
-const { formatSignedCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency()
 
 function sideClass(side) {
   const s = String(side || '').toLowerCase()
