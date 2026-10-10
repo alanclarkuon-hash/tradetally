@@ -995,6 +995,7 @@
             </div>
           </div>
 
+          <ExitMatching v-if="authStore.user?.id === trade.user_id && trade.broker === 'trading212' && trade.instrument_type === 'stock'" :trade="trade" @changed="loadTrade" />
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <div class="card-body">
@@ -1679,6 +1680,7 @@ import { useAuthStore } from '@/stores/auth'
 import StockLogo from '@/components/common/StockLogo.vue'
 import { useSymbolMetadata } from '@/composables/useSymbolMetadata'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
+import ExitMatching from '@/components/trades/ExitMatching.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'

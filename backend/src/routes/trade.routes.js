@@ -910,6 +910,8 @@ router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeContro
  *         description: Trade not found
  */
 router.post('/:id/fills', flexibleAuth, requireApiScope('trades:write'), validate(schemas.addFill), tradeController.addFill);
+router.use('/:id/exit-matching', require('./exitMatching.routes'));
+
 router.post('/:id/split', authenticate, tradeController.splitTrade);
 router.post('/:id/attachments', authenticate, upload.single('file'), tradeController.uploadAttachment);
 router.delete('/:id/attachments/:attachmentId', authenticate, tradeController.deleteAttachment);

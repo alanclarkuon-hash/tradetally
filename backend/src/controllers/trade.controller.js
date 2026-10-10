@@ -1207,6 +1207,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
+      if (trade.matching_baseline) return res.status(409).json({error:'Use exit correction on this manually matched trade before splitting'});
       // Parse executions if stored as string
       let executions = trade.executions;
       if (typeof executions === 'string') {
