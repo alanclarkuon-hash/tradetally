@@ -1,5 +1,5 @@
 export const planningStages = [
- {key:'draft',label:'Draft'}, {key:'ready',label:'Ready'},
+ {key:'draft',label:'Draft'},
  {key:'watching',label:'Watching'}, {key:'entered',label:'Entered'},
  {key:'under_review',label:'Under review'}, {key:'reviewed',label:'Reviewed'},
  {key:'completed',label:'Completed'}, {key:'cancelled',label:'Cancelled'}

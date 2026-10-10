@@ -4,7 +4,7 @@
 import {ref,watch} from 'vue'
 import api from '@/services/api'
 const props=defineProps({year:Number}),events=ref([]),error=ref('')
-const labels={ready:'Planned',trade_linked:'Entry / exit',reviewed:'Reviewed',completed:'Closed',stop_changed:'Stop changed',option_rolled:'Rolled'}
+const labels={ready:'Finalised',finalised:'Finalised',watching:'Watching',trade_linked:'Entry / exit',reviewed:'Reviewed',completed:'Closed',stop_changed:'Stop changed',option_rolled:'Rolled'}
 let sequence=0
 watch(()=>props.year,async year=>{const n=++sequence;try{const r=await api.get('/trade-plans/calendar',{params:{year}});if(n===sequence){events.value=r.data.events||[];error.value=''}}catch{if(n===sequence)error.value='Plan activity could not load. Trading performance remains available.'}},{immediate:true})
 </script>

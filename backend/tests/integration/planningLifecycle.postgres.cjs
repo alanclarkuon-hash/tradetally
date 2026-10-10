@@ -13,13 +13,19 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   await db.query("INSERT INTO user_accounts(id,user_id,account_name,account_identifier,initial_balance_date,currency) VALUES($1,$2,'Synthetic','synthetic',CURRENT_DATE,'USD')",[account,owner]);
   await db.query("INSERT INTO playbooks(id,user_id,name) VALUES($1,$2,'Synthetic')",[pb,owner]);
   const normalized=require(root+'/src/services/tradePlanning').normalize(d);
-  await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,definition) VALUES($1,$2,$3,'ready',$4::jsonb)",[planId,owner,pb,JSON.stringify(normalized)]);
+  await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,finalised,definition) VALUES($1,$2,$3,'draft',false,$4::jsonb)",[planId,owner,pb,JSON.stringify(normalized)]);
   await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,exit_time,entry_price,exit_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier,executions) VALUES($1,$2,$3,'2026-01-01','2026-01-01T10:00:00Z','2026-01-03T10:00:00Z',100,115,10,'long',4,0,'stock','USD','synthetic',$4::jsonb)",[tradeId,owner,d.symbol,JSON.stringify(executions)]);
-  const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:owner};next()});app.use('/plans',require(root+'/src/routes/planningLifecycle.routes'));app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
+  const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:owner};next()});const auth=require(root+'/src/middleware/auth'),originalAuthenticate=auth.authenticate;auth.authenticate=(req,res,next)=>next();app.use('/plans',require(root+'/src/routes/tradePlanning.routes'));auth.authenticate=originalAuthenticate;app.use((e,req,res,next)=>res.status(500).json({error:e.message}));
   server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
   const base='http://127.0.0.1:'+server.address().port+'/plans/'+planId;
   async function call(path,method='GET',body){const r=await fetch(base+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}}
   async function version(){return (await db.query('SELECT version FROM trade_plans WHERE id=$1',[planId])).rows[0].version}
+  assert.equal((await call('/finalisation','POST',{version:await version(),finalised:true})).status,200,'finalisation validates and persists');
+  assert.equal((await db.query('SELECT status,finalised FROM trade_plans WHERE id=$1',[planId])).rows[0].status,'draft','finalisation does not move the lifecycle stage');
+  assert.equal((await call('/finalisation','POST',{version:await version(),finalised:false})).status,200,'finalisation can be removed');
+  assert.equal((await call('/finalisation','POST',{version:await version(),finalised:true})).status,200);
+  assert.equal((await call('/status','POST',{version:await version(),status:'watching'})).status,200,'Draft moves directly to Watching');
+  assert.equal((await db.query('SELECT finalised FROM trade_plans WHERE id=$1',[planId])).rows[0].finalised,true,'Watching retains preparation evidence');
   const automaticRow={executed:false,units:null,price:100,time:'2026-01-01T10:00:00Z'};
   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:automaticRow},exit:{}}})).status,200,'automatic unexecuted sizing is accepted');
   assert.equal((await db.query('SELECT management FROM trade_plans WHERE id=$1',[planId])).rows[0].management.entry.a.units,null,'automatic sizing persists instead of a zero override');
@@ -56,7 +62,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
 
   const op=crypto.randomUUID(),ot=crypto.randomUUID(),nt=crypto.randomUUID();
   const od={...d,instrument:'option',entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Final',price:110,percent:100}],quantityStep:1,options:{contract:'SYNTH_OLD',type:'call',strike:100,expiry:'2026-12-18',premium:2,multiplier:100,contractDelta:50,atr:1,atrMultiplier:2}};
-  await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,definition) VALUES($1,$2,$3,'ready',$4::jsonb)",[op,owner,pb,JSON.stringify(require(root+'/src/services/tradePlanning').normalize(od))]);
+  await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,finalised,definition) VALUES($1,$2,$3,'watching',true,$4::jsonb)",[op,owner,pb,JSON.stringify(require(root+'/src/services/tradePlanning').normalize(od))]);
   const oldFills=[{id:'oa',action:'buy',quantity:2,price:2,datetime:'2026-01-01T10:00:00Z',commission:1,fees:0},{id:'ob',action:'sell',quantity:2,price:4,datetime:'2026-01-02T10:00:00Z',commission:1,fees:0}];
   const newFills=[{id:'na',action:'buy',quantity:2,price:3,datetime:'2026-01-02T10:01:00Z',commission:1,fees:0},{id:'nb',action:'sell',quantity:2,price:3.5,datetime:'2026-01-03T10:00:00Z',commission:1,fees:0}];
   for(const [id,symbol,strike,expiry,execs] of [[ot,'SYNTH_OLD',100,'2026-12-18',oldFills],[nt,'SYNTH_NEW',110,'2027-01-15',newFills]]){
