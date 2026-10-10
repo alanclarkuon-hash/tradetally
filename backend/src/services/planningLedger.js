@@ -59,10 +59,12 @@ function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade) {
 function ledger(plan,allocations,trades) {
  const byId=new Map(trades.map(t=>[t.id,t]));let unresolved=0;
  const provisional=[];
+ const conversion=plan.provisionalConversion;
+ const convert=conversion&&Number.isFinite(conversion.rate)&&conversion.rate>0&&conversion.currency;
  for(const action of ['entry','exit'])for(const [key,row] of Object.entries(plan.management?.[action]||{})){
   if(row.executed&&!allocations.some(a=>a.action===action&&a.stage_key===key)&&positive(row.units)&&positive(row.price)){
    provisional.push({id:'provisional:'+action+':'+key,trade_id:'provisional',source_key:key,stage_key:key,action,quantity:row.units,
-    source_snapshot:{action,quantity:row.units,price:row.price,time:row.time,currency:plan.definition.currency,
+    source_snapshot:{action,quantity:row.units,price:convert?row.price*conversion.rate:row.price,time:row.time,currency:convert?conversion.currency:plan.definition.currency,...(convert?{originalPrice:row.price,originalCurrency:plan.definition.currency,fxRate:conversion.rate}:{}),
     multiplier:plan.definition.instrument==='option'?plan.definition.options.multiplier:plan.definition.instrument==='spread_bet'?1/plan.definition.pointSize:1,
     costs:0,tradeSide:plan.definition.instrument==='option'?'long':plan.definition.direction,instrument:plan.definition.instrument,contract:null,provisional:true}});
   }
@@ -106,6 +108,6 @@ function ledger(plan,allocations,trades) {
   realisedProfit:complete?realised:null,percentGain:complete&&entryCost>0?realised/entryCost*100:null,
   originalRisk:plan.baseline?.originalRisk??plan.baseline?.riskBudget??null,originalRiskCurrency:plan.baseline?.originalRiskCurrency??plan.baseline?.currency??null,
   realisedR:complete&&(plan.baseline?.originalRiskCurrency||plan.baseline?.currency)===currency&&(plan.baseline?.originalRisk||plan.baseline?.riskBudget)>0?realised/(plan.baseline.originalRisk||plan.baseline.riskBudget):null,
-  capitalRisk,costsUnresolved,provisionalCount:provisional.length,economicallyClosed:complete&&!provisional.length&&Math.abs(openQuantity)<1e-8,coverageComplete:complete&&!provisional.length,entryCost,entryFees:fees};
+  capitalRisk,costsUnresolved,provisionalCount:provisional.length,fxEstimated:!!(convert&&provisional.length),economicallyClosed:complete&&!provisional.length&&Math.abs(openQuantity)<1e-8,coverageComplete:complete&&!provisional.length,entryCost,entryFees:fees};
 }
 module.exports={sourceFills,verifyAllocation,ledger};
