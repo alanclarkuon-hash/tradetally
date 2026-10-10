@@ -88,7 +88,7 @@
               </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <CurrencyCard v-slot="{formatCurrency}"><component
+                  <CurrencyCard preference-key="calendarview-1" v-slot="{formatCurrency}"><component
                     :is="showRValue ? 'div' : 'button'"
                     :type="showRValue ? undefined : 'button'"
                     data-testid="calendar-pnl-card"
@@ -113,7 +113,7 @@
                     </span>
                   </component></CurrencyCard>
                   <div class="card card-mobile-safe min-w-[210px] bg-gray-100 dark:bg-gray-800/60">
-                    <CurrencyCard v-slot="{formatCurrency}"><div class="card-body">
+                    <CurrencyCard preference-key="calendarview-2" v-slot="{formatCurrency}"><div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Avg Initial Risk
                       </dt>
@@ -128,7 +128,7 @@
                     </div></CurrencyCard>
                   </div>
                   <div class="card card-mobile-safe min-w-[210px] bg-primary-100/60 dark:bg-primary-900/25">
-                    <CurrencyCard v-slot="{formatCurrency}"><div class="card-body">
+                    <CurrencyCard preference-key="calendarview-3" v-slot="{formatCurrency}"><div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>

@@ -23,6 +23,7 @@ const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
 const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true } } })
 
 beforeEach(() => {
+  localStorage.clear()
   setActivePinia(createPinia())
   useAuthStore().user={settings:{display_currency:'GBP'}}
   localStorage.removeItem('dashboardTimeRange')

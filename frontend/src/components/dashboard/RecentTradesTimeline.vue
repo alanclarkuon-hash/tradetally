@@ -99,7 +99,7 @@ const props = defineProps({
   loading: { type: Boolean, default: false }
 })
 
-const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency(undefined,undefined,'recenttradestimeline-1')
 
 function sideClass(side) {
   const s = String(side || '').toLowerCase()

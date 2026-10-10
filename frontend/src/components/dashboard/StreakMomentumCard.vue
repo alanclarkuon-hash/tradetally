@@ -140,7 +140,7 @@ const props = defineProps({
   }
 })
 
-const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatSignedCurrency } = useCardCurrency(undefined,undefined,'streakmomentumcard-1')
 
 const scope = ref('day') // 'day' | 'trade'
 

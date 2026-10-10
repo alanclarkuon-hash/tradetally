@@ -24,7 +24,7 @@
 
     <!-- Total P/L Summary for Filtered Results (moved to top) -->
     <div v-if="tradesStore.trades.length > 0" class="mb-6">
-      <CurrencyCard :source-currency="tradesStore.tradesCurrency" trade-rows v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+      <CurrencyCard preference-key="tradelistview-1" :source-currency="tradesStore.tradesCurrency" trade-rows v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="bg-white dark:bg-gray-800 shadow rounded-lg p-4">
         <!-- Mobile Layout: Stack vertically -->
         <div class="block sm:hidden space-y-4">
           <div class="flex items-start justify-between">
@@ -470,7 +470,7 @@
           <div :style="{width: tableScrollWidth, height: '1px'}"></div>
         </div>
         <!-- Main table wrapper -->
-        <CurrencyCard :source-currency="tradesStore.tradesCurrency" trade-rows v-slot="{formatTradeCurrency,formatTradeSignedCurrency}"><div ref="bottomScroll" class="overflow-x-auto relative" @scroll="syncTopScroll">
+        <CurrencyCard preference-key="tradelistview-2" :source-currency="tradesStore.tradesCurrency" trade-rows v-slot="{formatTradeCurrency,formatTradeSignedCurrency}"><div ref="bottomScroll" class="overflow-x-auto relative" @scroll="syncTopScroll">
           <table class="trade-list-table w-full divide-y divide-gray-300 dark:divide-gray-700" :style="tableLayoutStyle">
           <!-- Widths live on the colgroup so a drag on one header moves that
                column only, the way a spreadsheet behaves. -->

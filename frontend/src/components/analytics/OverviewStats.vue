@@ -105,7 +105,7 @@ defineProps({
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency()
+const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency(undefined,undefined,'overviewstats-1')
 
 // Local display-only toggle: flip the R card between Average R and Total R.
 const rMultipleFlipped = ref(false)

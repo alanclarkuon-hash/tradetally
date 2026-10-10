@@ -176,7 +176,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:rMode'])
 
-const { currency:cardCurrency, choices, currencySymbol, formatCurrency, formatSignedCurrency } = useCardCurrency(computed(()=>props.analytics?.display_currency))
+const { currency:cardCurrency, choices, currencySymbol, formatCurrency, formatSignedCurrency } = useCardCurrency(computed(()=>props.analytics?.display_currency),undefined,'hero-metrics')
 
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {

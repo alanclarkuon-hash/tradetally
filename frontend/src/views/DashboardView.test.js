@@ -152,6 +152,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
   let pinia
 
   beforeEach(() => {
+  localStorage.clear()
     // One pinia shared by the mounted view and the test's useXStore() calls.
     pinia = createPinia()
     setActivePinia(pinia)

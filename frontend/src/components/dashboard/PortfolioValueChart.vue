@@ -22,7 +22,7 @@ import {useMonetaryPrivacy,MONEY_MASK} from '@/composables/useDashboardPrivacy'
 const {hideAmounts}=useMonetaryPrivacy()
 import {dateNumber,valueChartPoints,fundingAdjustedHistory} from '@/utils/portfolioValueChart'
 const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:null}})
-const {currency:cardCurrency,choices,formatCurrency:money,formatSignedCurrency:signedMoney,rates}=useCardCurrency(toRef(props,'currency'))
+const {currency:cardCurrency,choices,formatCurrency:money,formatSignedCurrency:signedMoney,rates}=useCardCurrency(toRef(props,'currency'),undefined,'portfolio-history')
 const includeFunding=ref(true)
 const adjusted=computed(()=>fundingAdjustedHistory(props.history))
 const displayedChange=computed(()=>includeFunding.value ? props.history?.change : adjusted.value.change)

@@ -81,5 +81,5 @@ defineProps({
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const {currency:cardCurrency,choices,formatCurrency} = useCardCurrency()
+const {currency:cardCurrency,choices,formatCurrency} = useCardCurrency(undefined,undefined,'strategyperformancetable-1')
 </script>

@@ -1087,7 +1087,7 @@
               </div>
               <div v-else class="flex-card-container">
                 <div class="card card-mobile-safe flex-1">
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-1" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Total P&L
                     </dt>
@@ -1156,7 +1156,7 @@
                   @keydown.enter.prevent="navigateToAnalytics('drawdown')"
                   @keydown.space.prevent="navigateToAnalytics('drawdown')"
                 >
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-2" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Max Drawdown
                     </dt>
@@ -1191,7 +1191,7 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('avgWin')"
                   @keydown.space.prevent="navigateToTradesFiltered('avgWin')"
                 >
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-3" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
@@ -1210,7 +1210,7 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('avgLoss')"
                   @keydown.space.prevent="navigateToTradesFiltered('avgLoss')"
                 >
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-4" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
                     </dt>
@@ -1229,7 +1229,7 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('best')"
                   @keydown.space.prevent="navigateToTradesFiltered('best')"
                 >
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-5" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
@@ -1248,7 +1248,7 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('worst')"
                   @keydown.space.prevent="navigateToTradesFiltered('worst')"
                 >
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-6" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Worst Trade
                     </dt>
@@ -1349,7 +1349,7 @@
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- Performance by Symbol -->
                 <div class="card">
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-7" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Performance by Symbol
                     </h3>
@@ -1404,7 +1404,7 @@
 
                 <!-- Best and Worst Trades -->
                 <div class="card">
-                  <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-8" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Top Trades
                     </h3>
@@ -1478,7 +1478,7 @@
             <!-- Additional Stats -->
             <template v-if="element.id === 'additional-stats'">
               <div class="card">
-                <CurrencyCard :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+                <CurrencyCard preference-key="dashboardview-9" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                   <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                     Additional Statistics
                   </h3>
@@ -1709,7 +1709,7 @@ const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const { hideAmounts } = useDashboardPrivacy()
 const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter({ privacy: hideAmounts })
-const positionCard=useCardCurrency()
+const positionCard=useCardCurrency(undefined,undefined,'dashboardview-1')
 const positionCardCurrency=positionCard.currency,positionChoices=positionCard.choices
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()

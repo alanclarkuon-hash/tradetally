@@ -189,7 +189,7 @@ const props = defineProps({
 
 defineEmits(['navigate'])
 
-const {currency:cardCurrency,choices, formatCurrency, formatSignedCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatCurrency, formatSignedCurrency } = useCardCurrency(undefined,undefined,'winlosspulse-1')
 
 const winning = computed(() => parseInt(props.summary.winningTrades) || 0)
 const losing = computed(() => parseInt(props.summary.losingTrades) || 0)
