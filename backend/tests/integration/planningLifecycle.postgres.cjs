@@ -77,6 +77,18 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   const w=(await call('/workflow')).data;assert(w.ledger.records.some(r=>r.stage_key==='runner'&&r.action==='exit'),'runner source fill retained');assert.equal(w.ledger.records.find(r=>r.action==='entry').positionValue,1000,'linked entry cost');assert.equal(w.ledger.records.find(r=>r.stage_key==='b').realisedProfit,48,'partial exit net profit');assert.equal(w.ledger.records.find(r=>r.stage_key==='runner').realisedProfit,98,'runner net profit');assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic completed review',entryAssessment:'Synthetic',exitAssessment:'Synthetic',processFollowed:true})).status,200,'review persistence');
   assert.equal((await call('/complete','POST',{version:await version()})).status,200,'plan completion');
+  // Add stored broker FX to previously linked native evidence; existing keys and snapshots remain intact.
+  await db.query("UPDATE trade_plan_allocations SET source_snapshot=source_snapshot-'transactionFx' WHERE plan_id=$1",[planId]);
+  const fxRates=[1.25,1.1,1.5];executions.forEach((e,i)=>{e.account_currency='GBP';e.broker_fx_rate=fxRates[i]});
+  await db.query('UPDATE trades SET executions=$1::jsonb WHERE id=$2',[JSON.stringify(executions),tradeId]);
+  const brokerFx=(await call('/workflow')).data;
+  const expectedGbp=550/1.1+600/1.5-1000/1.25-2/1.25-1/1.1-1/1.5;
+  assert.equal(brokerFx.ledger.unresolved,0,'legacy links accept matching stored broker FX');
+  assert.equal(brokerFx.ledger.records.find(r=>r.action==='entry').accountPositionValue,800,'entry cost uses broker rate');
+  assert(Math.abs(brokerFx.ledger.accountRealisedProfit-expectedGbp)<1e-8,'exit profit uses entry and exit rates separately');
+  assert.equal(brokerFx.needsUpdate,true,'completed review notices newly enriched FX evidence');
+  assert((await db.query('SELECT source_snapshot FROM trade_plan_allocations WHERE plan_id=$1',[planId])).rows.every(r=>!Object.hasOwn(r.source_snapshot,'transactionFx')||r.source_snapshot.transactionFx===null),'legacy snapshots are not rewritten');
+  console.log('PASS: TEST existing-link broker FX enrichment, entry cost, different-rate net profit and review evidence');
   executions[0].price=101;await db.query('UPDATE trades SET executions=$1::jsonb WHERE id=$2',[JSON.stringify(executions),tradeId]);
   assert.equal((await call('/workflow')).data.needsUpdate,true,'correction requires review update');
 
