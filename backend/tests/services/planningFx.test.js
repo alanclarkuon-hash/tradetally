@@ -1,0 +1,7 @@
+jest.mock('../../src/utils/currencyConverter',()=>({getRateMap:jest.fn(),getForexRate:jest.fn()}));
+jest.mock('../../src/config/database',()=>({query:jest.fn()}));
+let converter,db;
+beforeEach(()=>{jest.resetModules();converter=require('../../src/utils/currencyConverter');db=require('../../src/config/database');jest.clearAllMocks()});
+test('gets a current GBP quote and reuses it across concurrent workspaces',async()=>{converter.getRateMap.mockResolvedValue({GBP:.8,EUR:.9});converter.getForexRate.mockResolvedValue(.81);const {latestPlanningFx}=require('../../src/services/planningFx');const [a,b]=await Promise.all([latestPlanningFx(),latestPlanningFx()]);expect(a.rates.GBP).toBe(.81);expect(a).toBe(b);expect(converter.getForexRate).toHaveBeenCalledTimes(1);await latestPlanningFx();expect(converter.getForexRate).toHaveBeenCalledTimes(1)});
+test('keeps available map when live pair provider fails',async()=>{converter.getRateMap.mockResolvedValue({GBP:.8});converter.getForexRate.mockRejectedValue(Error('Unavailable'));const {latestPlanningFx}=require('../../src/services/planningFx');expect((await latestPlanningFx()).rates.GBP).toBe(.8)});
+test('offline provider falls back to stored rates without inventing a quote',async()=>{converter.getRateMap.mockRejectedValue(Error('Unavailable'));db.query.mockResolvedValue({rows:[{rates:{GBP:.8},rate_date:'2026-10-09'}]});const {latestPlanningFx}=require('../../src/services/planningFx');expect(await latestPlanningFx()).toMatchObject({source:'stored_fallback',rates:{GBP:.8},rate_date:'2026-10-09'})});
