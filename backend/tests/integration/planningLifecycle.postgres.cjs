@@ -74,7 +74,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   const calendar=await calendarResponse.json();assert.equal(calendarResponse.status,200,'calendar activity');
   assert(calendar.events.some(e=>e.plan_id===planId&&e.event_type==='trade_linked'&&e.action==='entry'&&e.created_at.startsWith('2026-01-01')),'calendar uses actual execution date');
 
-  const w=(await call('/workflow')).data;assert(w.ledger.records.some(r=>r.stage_key==='runner'&&r.action==='exit'),'runner source fill retained');assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
+  const w=(await call('/workflow')).data;assert(w.ledger.records.some(r=>r.stage_key==='runner'&&r.action==='exit'),'runner source fill retained');assert.equal(w.ledger.records.find(r=>r.action==='entry').positionValue,1000,'linked entry cost');assert.equal(w.ledger.records.find(r=>r.stage_key==='b').realisedProfit,48,'partial exit net profit');assert.equal(w.ledger.records.find(r=>r.stage_key==='runner').realisedProfit,98,'runner net profit');assert.equal(w.ledger.realisedProfit,146);assert.equal(w.ledger.realisedR,1.46);assert(w.history.some(e=>e.event_type==='stop_changed'&&e.snapshot.reason==='Synthetic stop test'));
   assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic completed review',entryAssessment:'Synthetic',exitAssessment:'Synthetic',processFollowed:true})).status,200,'review persistence');
   assert.equal((await call('/complete','POST',{version:await version()})).status,200,'plan completion');
   executions[0].price=101;await db.query('UPDATE trades SET executions=$1::jsonb WHERE id=$2',[JSON.stringify(executions),tradeId]);
@@ -105,7 +105,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal(await unlinkVersion(),beforeBatch+1,'batch increments version once');
   const grouped=(await fetch(unlinkBase+'/workflow').then(r=>r.json())).ledger;
   assert.equal(grouped.openQuantity,1.5,'combined entry quantity');
-  assert.equal(grouped.averagePrice,100,'weighted entry price');
+  assert.equal(grouped.averagePrice,100,'weighted entry price');assert.equal(grouped.records.reduce((sum,r)=>sum+r.positionValue,0),150,'grouped entry cost');
   const available=await fetch(unlinkBase+'/fills').then(r=>r.json());
   assert.equal(available.fills.some(f=>unlinkTrades.slice(0,2).includes(f.tradeId)),false,'fully and partially allocated fills are hidden');
   assert.equal((await linkRow(0,'a')).status,409,'used fill cannot be linked again');
