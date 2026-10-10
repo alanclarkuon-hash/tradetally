@@ -157,11 +157,17 @@ router.get('/:id/fills',run(async(req,res)=>{
  res.json({fills:trades.flatMap(t=>sourceFills(t).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity-Number(used.find(a=>a.trade_id===t.id&&a.source_key===f.key)?.quantity||0)}))).filter(f=>f.available>1e-8)});
 }));
 router.post('/:id/allocations',run(async(req,res)=>{
- const schema=Joi.object({version:Joi.number().integer().required(),tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),quantity:Joi.number().positive().required(),splitConfirmed:Joi.boolean().default(false)}).validate(req.body);
- if(schema.error)fail('Provide a valid fill allocation');const b=schema.value;
+ const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
+ const single=fillSchema.keys({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),splitConfirmed:Joi.boolean().default(false)});
+ const batch=Joi.object({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),splitConfirmed:Joi.boolean().default(false),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
+ const schema=(req.body.fills?batch:single).validate(req.body);
+ if(schema.error)fail('Provide a valid fill allocation');const body=schema.value;
  await db.withTransaction(async c=>{
   const p=await lock(c,req);
   if(!p.finalised||['cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
+  if(body.fills&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
+  for(const selected of body.fills||[body]){
+  const b={...body,...selected};
   const t=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!t)fail('Trade not found',404);
   const f=sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
   const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 AND source_key=$3',[req.user.id,t.id,f.key])).rows;
@@ -175,7 +181,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(current.unresolved)fail('Resolve changed source fills before adding allocations',409);
   const candidate={id:'pending',trade_id:t.id,source_key:f.key,stage_key:b.stageKey,action:b.action,quantity:b.quantity,source_snapshot:f};
   const existing=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
-  if(existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
+  if(!body.fills&&existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
   const tradeIds=[...new Set([...existing.map(a=>a.trade_id),t.id])];
   const allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
   if(ledger(p,[...existing,candidate],allTrades).overExit)fail('Exit exceeds linked entries in this account/contract or precedes them',409);
@@ -191,10 +197,12 @@ router.post('/:id/allocations',run(async(req,res)=>{
    }
    baseline={...(baseline||p.definition),recordedAt:baseline?.recordedAt||new Date().toISOString(),originalRisk:(baseline?.riskBudget||p.definition.riskBudget)*rate,originalRiskCurrency:f.currency,fxRate:rate,fxDate:rateDate};
   }
-  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(baseline),p.id]);
+  p.baseline=baseline;
   // Reconcile an unfilled reservation when its actual entry is allocated.
   if(b.action==='entry')await c.query("UPDATE trade_plan_commitments SET status='released',released_at=NOW(),release_reason='Reconciled with linked source fill' WHERE plan_id=$1 AND stage_key=$2 AND status='reserved'",[p.id,b.stageKey]);
   await record(c,p,'trade_linked',{tradeId:t.id,sourceKey:f.key,stageKey:b.stageKey,action:b.action,quantity:b.quantity,source:f});
+  }
+  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(p.baseline),p.id]);
  });
  res.status(201).json({success:true});
 }));
