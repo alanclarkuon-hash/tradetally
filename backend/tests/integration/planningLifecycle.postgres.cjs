@@ -94,10 +94,21 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal((await db.query('SELECT count(*)::int AS n FROM trades WHERE id=ANY($1::uuid[])',[unlinkTrades])).rows[0].n,3,'broker trades retained');
   const linkRow=async(i,stage)=>unlinkCall('/allocations','POST',{version:await unlinkVersion(),tradeId:unlinkTrades[i],sourceKey:unlinkSource[i].key,fingerprint:unlinkSource[i].fingerprint,stageKey:stage,action:unlinkSource[i].action,quantity:1});
   assert.equal((await linkRow(0,'a')).status,201,'row can be relinked');assert.equal((await linkRow(1,'a')).status,409,'cannot add another distinct trade to the linked row');
+  await unlinkCall('/row-allocations','DELETE',{version:await unlinkVersion(),stageKey:'a',action:'entry'});
+  const selected=unlinkSource.slice(0,2).map((f,i)=>({tradeId:unlinkTrades[i],sourceKey:f.key,fingerprint:f.fingerprint,quantity:1}));
+  const beforeBatch=await unlinkVersion();
+  assert.equal((await unlinkCall('/allocations','POST',{version:beforeBatch,stageKey:'a',action:'entry',fills:[selected[0],{...selected[1],quantity:2}]})).status,400,'invalid second fill rejects batch');
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,0,'failed batch leaves no partial links');
+  assert.equal(await unlinkVersion(),beforeBatch,'failed batch retains version');
+  assert.equal((await unlinkCall('/allocations','POST',{version:beforeBatch,stageKey:'a',action:'entry',fills:selected})).status,201,'multiple broker slices link as one row');
+  assert.equal(await unlinkVersion(),beforeBatch+1,'batch increments version once');
+  const grouped=(await fetch(unlinkBase+'/workflow').then(r=>r.json())).ledger;
+  assert.equal(grouped.openQuantity,2,'combined entry quantity');
+  assert.equal(grouped.averagePrice,100,'weighted entry price');
   assert.equal((await linkRow(2,'b')).status,201,'exit linked');
   assert.equal((await unlinkCall('/row-allocations','DELETE',{version:await unlinkVersion(),stageKey:'b',action:'exit'})).status,200,'exit row unlinks separately');
-  assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,1,'entry link retained when exit is removed');
-  console.log('PASS: TEST atomic row unlink, source trades retained, relink, duplicate-row guard and exit unlink');
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,2,'entry links retained when exit is removed');
+  console.log('PASS: TEST atomic row unlink, source trades retained, relink, atomic multi-selection, duplicate-row guard and exit unlink');
 
   const op=crypto.randomUUID(),ot=crypto.randomUUID(),nt=crypto.randomUUID();
   const od={...d,instrument:'option',entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Final',price:110,percent:100}],quantityStep:1,options:{contract:'SYNTH_OLD',type:'call',strike:100,expiry:'2026-12-18',premium:2,multiplier:100,contractDelta:50,atr:1,atrMultiplier:2}};
