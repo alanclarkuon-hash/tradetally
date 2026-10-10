@@ -5,6 +5,7 @@
       <div><h1 class="heading-page">Portfolio</h1><p class="subtitle">Combined holdings, cash and portfolio performance</p></div>
       <div class="controls">
         <MoneyPrivacyToggle />
+        <CurrencyToggle v-if="error" v-model="currency" :currencies="currencyChoices" />
         <details ref="periodPicker" class="period-picker">
           <summary aria-label="Date range filter" :title="periodLabel">
             <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 4h18M6 8h12M10 12h4M11 16h2" /></svg>
@@ -60,6 +61,8 @@
 
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {cardCurrencies} from '@/utils/cardCurrency'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
@@ -80,7 +83,10 @@ const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
 const dateFilter=useDashboardDateFilterStore(),authStore=useAuthStore()
-const selected=computed(()=>portfolioSelection(selectedAccount.value)),currency=computed(()=>authStore.user?.settings?.display_currency||'USD'),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
+const requestCurrency=ref(null)
+const currencyChoices=computed(()=>cardCurrencies(authStore.user?.settings?.display_currency,accounts.value,selectedAccount.value))
+watch(()=>authStore.user?.settings?.display_currency,()=>requestCurrency.value=null)
+const selected=computed(()=>portfolioSelection(selectedAccount.value)),currency=computed({get:()=>requestCurrency.value||authStore.user?.settings?.display_currency||'USD',set:value=>requestCurrency.value=value}),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const dateField=field=>computed({get:()=>dateFilter.selection[field],set:value=>dateFilter.selection[field]=value})
 const period=dateField('timeRange'),start=dateField('startDate'),end=dateField('endDate')
 const today=formatLocalDate(profileCalendarDate(new Date(),authStore.user?.timezone||'UTC'))

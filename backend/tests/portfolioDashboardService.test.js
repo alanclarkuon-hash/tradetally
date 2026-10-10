@@ -107,3 +107,11 @@ test.each([['GBP',1,0.8,80],['USD',1.25,1,100]])('IG statement cash preserves na
  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM user_accounts')?[{id:'one',account_identifier:'demo',broker:'ig',currency:'GBP'}]:sql.includes('FROM portfolio_statement_values')?[{cash_usd:100,gbp_per_usd:0.8}]:[]}));
  const result=await getDashboard('owner',{currency});expect(result.totals.cashValue).toBe(expected);expect(Account.getCashflow).not.toHaveBeenCalled();
 });
+
+test('EUR dashboard converts native USD holdings to EUR',async()=>{
+ Portfolio.getPositions.mockResolvedValue([position]);getRatesToDisplay.mockResolvedValue({USD:.9});
+ db.query.mockResolvedValue({rows:[]});
+ const result=await getDashboard('synthetic',{currency:'EUR'});
+ expect(result.currency).toBe('EUR');expect(result.totals.stablecoinValue).toBe(90);
+ expect(getRatesToDisplay).toHaveBeenCalledWith(['USD'],'EUR');
+});

@@ -127,17 +127,18 @@ async function captureToday(userId,query={}) {
 
 // All selected accounts must be present on a day. Missing observations are
 // explicit gaps unless the manual-import overlay supplies labelled estimates.
-function combineValues(rows,accounts,currency) {
+function combineValues(rows,accounts,currency,fx=new Map()) {
+  const rateFor=r=>currency==='USD'?1:currency==='GBP'?Number(r.gbp_per_usd):fundingFx(fx,day(r.value_date),'USD',currency).rate;
   const dates=[...new Set(rows.map(r=>day(r.value_date)))].sort();
   const index=new Map(rows.map(r=>[`${day(r.value_date)}:${r.account_identifier}`,r]));
   return dates.map(date=>{
     const active=accounts.filter(a=>!a.initial_balance_date||day(a.initial_balance_date)<=date);
     const values=active.map(a=>index.get(`${date}:${a.account_identifier}`));
-    const missing=values.filter(r=>!r || r.holdings_usd==null || r.cash_usd==null || r.stablecoins_usd==null || (currency==='GBP'&&!(Number(r.gbp_per_usd)>0))).length;
+    const missing=values.filter(r=>!r || r.holdings_usd==null || r.cash_usd==null || r.stablecoins_usd==null || !(rateFor(r)>0)).length;
     if(missing||!active.length)return {date,value:null,missingAccounts:missing,stalePrices:0};
     let total=0,holdings=0,cash=0,stablecoins=0,stalePrices=0;
     for(const r of values) {
-      const rate=currency==='USD'?1:Number(r.gbp_per_usd);
+      const rate=rateFor(r);
       holdings+=Number(r.holdings_usd)*rate;cash+=Number(r.cash_usd)*rate;stablecoins+=Number(r.stablecoins_usd)*rate;
       stalePrices+=Number(r.stale_prices||0);
     }
@@ -154,8 +155,8 @@ function combineValues(rows,accounts,currency) {
 }
 
 async function getHistory(userId,query={}) {
-  const range=parseReportDateRange(query),currency=query.currency||'GBP';
-  if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
+  const range=parseReportDateRange(query),currency=String(query.currency||'GBP').toUpperCase();
+  if(!/^[A-Z]{3}$/.test(currency)){const e=Error('Choose a valid currency code');e.status=400;throw e;}
   const accounts=await accountsFor(userId,query);
   const identifiers=accounts.map(a=>a.account_identifier);
   let rows=(await db.query(`SELECT * FROM (
@@ -175,7 +176,7 @@ async function getHistory(userId,query={}) {
     ) history WHERE user_id=$1 AND account_identifier=ANY($2) ORDER BY value_date`,
   [userId,identifiers])).rows;
   const pairs=(await db.query('SELECT * FROM broker_transfer_matches WHERE user_id=$1',[userId])).rows;
-  const fxRows=(await db.query("SELECT rate_date,base_code,rates FROM fx_daily_rates WHERE base_code IN ('USD','GBP')")).rows;
+  const fxRows=(await db.query("SELECT rate_date,base_code,rates FROM fx_daily_rates WHERE base_code IN ('USD','GBP',$1)",[currency])).rows;
   const igRates=new Map(fxRows.filter(r=>r.base_code==='USD'&&Number(r.rates.GBP)>0).map(r=>[day(r.rate_date),Number(r.rates.GBP)]));
   for(const r of fxRows.filter(r=>r.base_code==='GBP'&&Number(r.rates.USD)>0))if(!igRates.has(day(r.rate_date)))igRates.set(day(r.rate_date),1/Number(r.rates.USD));
   // Ignore legacy IG page captures: these reused imported cash with no live
@@ -207,7 +208,7 @@ async function getHistory(userId,query={}) {
   const cryptoEvents=require('./portfolioCryptoFunding').cryptoFundingEvents(snapshots,accounts,pairs,
     new Map(marketRows.map(r=>[r.symbol,r.payload])),(date,base,quote)=>fundingFx(fx,date,base,quote),currency,range);
   events.push(...cryptoEvents);
-  const series=combineValues(rows,accounts,currency);
+  const series=combineValues(rows,accounts,currency,fx);
   const valid=series.filter(p=>p.value!=null);
   return {currency,range,series,events:events.sort((a,b)=>a.date.localeCompare(b.date)),accountCount:accounts.length,
     coverage:{firstValueDate:valid[0]?.date||null,lastValueDate:valid.at(-1)?.date||null,recordedDays:valid.length,
@@ -217,7 +218,7 @@ async function getHistory(userId,query={}) {
       statementEstimatedDays:valid.filter(p=>p.statementEstimatedAccounts>0).length,
       igCarryForwardDays:valid.filter(p=>p.igCarryForwardAccounts>0).length,
       manualCarryForwardDays:valid.filter(p=>p.manualCarryForwardAccounts>0).length,
-      accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||Number(r.gbp_per_usd)>0));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
+      accounts:accounts.map(a=>{const own=rows.filter(r=>r.account_identifier===a.account_identifier);const complete=own.filter(r=>r.holdings_usd!=null&&(currency==='USD'||(currency==='GBP'?Number(r.gbp_per_usd)>0:fundingFx(fx,day(r.value_date),'USD',currency).rate>0)));return {name:a.account_name,days:complete.length,firstDate:complete[0]?day(complete[0].value_date):null,lastDate:complete.at(-1)?day(complete.at(-1).value_date):null,issues:[...new Set(own.flatMap(r=>r.issues||[]))]};}),
       partialDays:series.filter(p=>p.value==null).length,missingEventFx:events.filter(e=>e.amount==null).length,
       unavailableAccounts,cryptoTransfersIncluded:true,cryptoTransferCount:cryptoEvents.length,missingCryptoTransferPrices:cryptoEvents.filter(e=>e.amount==null).length},
     change:valid.length>=2?money(valid.at(-1).value-valid[0].value):null};
