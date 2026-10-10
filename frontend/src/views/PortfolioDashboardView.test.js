@@ -218,3 +218,23 @@ describe('Delayed heatmap quotes',()=>{
     }finally{vi.useRealTimers()}
   });
 });
+
+it('loads EUR settings currency and offers EUR, GBP and USD card buttons',async()=>{
+ useAuthStore().user.settings.display_currency='EUR';
+ const view=create();await flushPromises();
+ expect(mock.get.mock.calls.find(([url])=>url.endsWith('/dashboard'))[1].params.currency).toBe('EUR');
+ expect(view.find('article').text()).toContain('€100.00');
+ const button=view.find('button.currency-toggle');expect(button.text()).toBe('€');
+ await button.trigger('click');expect(button.text()).toBe('£');view.unmount();
+});
+it('keeps a recovery currency button available when portfolio loading fails',async()=>{
+ useAuthStore().user.settings.display_currency='EUR';
+ mock.get.mockImplementation(async(url,options)=>{
+ if(url.endsWith('/display-fx'))return {data:{rates:{USD:1,GBP:.8,EUR:.9}}};
+ if(url.endsWith('/dashboard')&&options.params.currency==='EUR')throw Error('Conversion unavailable');
+ return {data:url.endsWith('/dashboard')?dashboard:{change:0}};
+ });
+ const view=create();await flushPromises();expect(view.find('[role="alert"]').exists()).toBe(true);
+ await view.find('button.currency-toggle').trigger('click');await flushPromises();
+ expect(view.find('article').exists()).toBe(true);expect(useAuthStore().user.settings.display_currency).toBe('EUR');view.unmount();
+});
