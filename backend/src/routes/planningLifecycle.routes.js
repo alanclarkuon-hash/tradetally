@@ -56,7 +56,7 @@ router.get('/recommendation',run(async(req,res)=>{
   const result=await evidence(db,p);
   const time=result.records.filter(a=>a.action==='exit').at(-1)?.fill.time||p.updated_at.toISOString();
   const afterCheckpoint=!config||new Date(time)>=new Date(config.updated_at);
-  return {time,r:result.realisedR,afterCheckpoint,eligible:p.status==='completed'&&result.economicallyClosed&&p.review?.evidenceDigest===digest(result)};
+  return {time,r:p.definition.currency===result.accountCurrency&&p.definition.currency!==result.currency?result.accountRealisedR:result.realisedR,afterCheckpoint,eligible:p.status==='completed'&&result.economicallyClosed&&p.review?.evidenceDigest===digest(result)};
  }));
  res.json(require('../services/planningExposure').recommend(config?.settings?.selectedLevel,events.filter(e=>e.afterCheckpoint)));
 }));
@@ -188,14 +188,16 @@ router.post('/:id/allocations',run(async(req,res)=>{
   await c.query('INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',[p.user_id,p.id,t.id,f.key,b.stageKey,b.action,b.quantity,JSON.stringify(f)]);
   let baseline=p.baseline;
   if(!baseline||baseline.originalRisk==null){
-   let rate=1,rateDate=null;
+   let rate=1,rateDate=null,fxSource='same_currency';
    if((baseline?.currency||p.definition.currency)!==f.currency){
+    if(f.transactionFx?.accountCurrency===(baseline?.currency||p.definition.currency)&&f.transactionFx.rate>0){rate=f.transactionFx.rate;rateDate=f.time.slice(0,10);fxSource='broker_execution';}else{
     const fx=(await c.query("SELECT rates,rate_date FROM fx_daily_rates WHERE base_code='USD' AND rate_date<=$1::date ORDER BY rate_date DESC LIMIT 1",[f.time.slice(0,10)])).rows[0];
     const from=(baseline?.currency||p.definition.currency)==='USD'?1:Number(fx?.rates?.[baseline?.currency||p.definition.currency]),to=f.currency==='USD'?1:Number(fx?.rates?.[f.currency]);
     if(!(from>0&&to>0))fail('Stored transaction-date FX is missing; refresh FX before linking this trade');
-    rate=to/from;rateDate=fx.rate_date;
+    rate=to/from;rateDate=fx.rate_date;fxSource='stored_daily';
+    }
    }
-   baseline={...(baseline||p.definition),recordedAt:baseline?.recordedAt||new Date().toISOString(),originalRisk:(baseline?.riskBudget||p.definition.riskBudget)*rate,originalRiskCurrency:f.currency,fxRate:rate,fxDate:rateDate};
+   baseline={...(baseline||p.definition),recordedAt:baseline?.recordedAt||new Date().toISOString(),originalRisk:(baseline?.riskBudget||p.definition.riskBudget)*rate,originalRiskCurrency:f.currency,fxRate:rate,fxDate:rateDate,fxSource};
   }
   p.baseline=baseline;
   // Reconcile an unfilled reservation when its actual entry is allocated.

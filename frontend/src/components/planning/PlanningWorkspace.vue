@@ -54,13 +54,13 @@
        <div><small>Linked entries</small><strong>{{ (ledger.records||[]).filter(r=>r.action==='entry'&&r.valid&&!r.fill?.provisional).length }}</strong></div>
        <div><small>Original plan risk</small><strong>{{ convertedMoney(workflow?.baseline?.riskBudget??draft.riskBudget,draft.currency,positionCurrency) }}</strong></div>
        <div><small>Position stage</small><strong class="stage-value">{{ ledger.economicallyClosed?'Has exited':ledger.openQuantity>0?'In trade':'Awaiting entry' }}</strong></div></div>
-       <div><small>Total position size</small><strong>{{ convertedMoney(ledger.positionValue,ledger.currency,positionCurrency) }}</strong></div>
+       <div><small>Total position size</small><strong>{{ ledgerMoney('positionValue',positionCurrency) }}</strong></div>
        <div><small>Current risk to stop</small><strong>{{ convertedMoney(ledger.capitalRisk,ledger.currency,positionCurrency) }}</strong></div>
        <div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
-       <div><small>AVG price</small><strong>{{ convertedMoney(ledger.averagePrice,ledger.currency,positionCurrency) }}</strong></div>
-       <div><small>Total realised profit</small><strong>{{ convertedMoney(ledger.realisedProfit,ledger.currency,positionCurrency) }}</strong></div>
-       <div><small>Realised % gain</small><strong>{{ percent(ledger.percentGain) }}</strong></div>
-       <div><small>R:R</small><strong>{{ number(ledger.realisedR) }}</strong></div>
+       <div><small>AVG price</small><strong>{{ ledgerMoney('averagePrice',positionCurrency) }}</strong></div>
+       <div><small>Total realised profit</small><strong>{{ ledgerMoney('realisedProfit',positionCurrency) }}</strong></div>
+       <div><small>Realised % gain</small><strong>{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
+       <div><small>R:R</small><strong>{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
       </div>
       <p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Source fills changed. Correct their links before completing review.</p>
      </section>
@@ -81,7 +81,7 @@
     <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
       <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
-      <td><input :aria-label="kind+' '+(i+1)+' price level'" :value="displayValue(e.price,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
+      <td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
       <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
       <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
       <td>{{ rowMoney(kind,e,i) }}</td>
@@ -95,7 +95,7 @@
      </tbody><tfoot>
       <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(managing?rows('entry').reduce((sum,e,i)=>sum+Number(e.units??rowUnits('entry',e,i)??0),0):calculation?.plannedQuantity) }}</td><td>{{ managing?rowTotalMoney('entry'):convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>
       <tr v-else><th>Total potential profit</th><td>{{ convertedMoney(calculation?.reward?.fixedTargetProfit,draft.currency,currencies.exit) }}</td><th>Total % gain</th><td>{{ number(potentialPercent) }}%</td><th>R:R</th><td>{{ number(calculation?.reward?.fixedTargetRR) }}</td></tr>
-      <tr v-if="kind==='exit'&&managing"><th>Total realised profit</th><td>{{ convertedMoney(ledger.realisedProfit,ledger.currency,currencies.exit) }}</td><th>Realised % gain</th><td>{{ percent(ledger.percentGain) }}</td><th>R:R</th><td>{{ number(ledger.realisedR) }}</td></tr>
+      <tr v-if="kind==='exit'&&managing"><th>Total realised profit</th><td>{{ ledgerMoney('realisedProfit',currencies.exit) }}</td><th>Realised % gain</th><td>{{ percent(ledgerMetric('percentGain',currencies.exit)) }}</td><th>R:R</th><td>{{ number(ledgerMetric('realisedR',currencies.exit)) }}</td></tr>
      </tfoot></table></div>
     <p v-if="kind==='entry'&&managing" class="text-sm text-gray-400 mt-3">Provisional: ticked rows use entered quantities and levels until fills are linked.<span v-if="ledger.fxEstimated"> Amounts use the latest available exchange rate until linked.</span></p>
    </section>
@@ -113,10 +113,10 @@
   <template v-if="screen==='Review'">
    <section class="card p-5" aria-label="Plan result">
     <div class="result-metrics">
-     <div><small>Realised result</small><strong>{{ money(ledger.realisedProfit,ledger.currency) }}</strong></div>
+     <div><small>Realised result</small><strong>{{ ledgerMoney('realisedProfit',draft.currency) }}</strong></div>
      <div><small>Initial plan risk budget</small><strong>{{ money(workflow?.baseline?.riskBudget??draft.riskBudget,draft.currency) }}</strong></div>
-     <div><small>Plan result</small><strong>{{ ledger.realisedR==null?'Unavailable':number(ledger.realisedR)+' R' }}</strong></div>
-     <div><small>% gain/loss</small><strong>{{ percent(ledger.percentGain) }}</strong></div>
+     <div><small>Plan result</small><strong>{{ ledgerMetric('realisedR',draft.currency)==null?'Unavailable':number(ledgerMetric('realisedR',draft.currency))+' R' }}</strong></div>
+     <div><small>% gain/loss</small><strong>{{ percent(ledgerMetric('percentGain',draft.currency)) }}</strong></div>
      <div><small>Evidence</small><strong class="evidence-value">{{ ledger.unresolved?'Needs reconciliation':ledger.economicallyClosed?'Reconciled exits':'Awaiting exits' }}</strong></div>
     </div>
    </section>
@@ -218,12 +218,27 @@ function changeUnits(kind,e,event){if(linked(kind,e.key))return;const value=even
 function resetUnits(kind,e){if(!linked(kind,e.key))e.units=null}
 const runnerPercent=computed(()=>Math.max(0,100-(draft.value?.exits||[]).reduce((s,e)=>s+Number(e.percent||0),0)))
 const potentialPercent=computed(()=>calculation.value?.plannedValue>0&&calculation.value?.reward?.fixedTargetProfit!=null?calculation.value.reward.fixedTargetProfit/calculation.value.plannedValue*100:null)
+function fillRate(fill,to){if(fill.currency===to)return 1;if(fill.provisional)return rate(fill.currency,to);const fx=fill.transactionFx;return fx?.accountCurrency===to&&fx.rate>0?1/fx.rate:null}
+function rowPrice(kind,e,to){
+ const records=managing.value?(ledger.value.records||[]).filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional):[];
+ if(!records.length)return displayValue(e.price,to);
+ const q=records.reduce((sum,a)=>sum+a.quantity,0);
+ if(!(q>0)||records.some(a=>!a.valid||!fillRate(a.fill,to)))return '';
+ return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
+}
+function ledgerMetric(metric,to){
+ if(to===ledger.value.currency||!hasLinks.value)return ledger.value[metric];
+ if(to===ledger.value.accountCurrency)return ledger.value['account'+metric[0].toUpperCase()+metric.slice(1)];
+ return null;
+}
+function ledgerMoney(metric,to){if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
 function rowAmount(kind,e,i){
  const records=managing.value?(ledger.value.records||[]).filter(a=>a.action===kind&&a.stage_key===e.key):[];
  if(records.length){
   if(records.some(a=>!a.valid))return null;
-  const values=records.map(a=>({value:kind==='entry'?a.positionValue:a.realisedProfit,currency:a.fill.currency}));
-  if(values.some(a=>a.value==null))return null;
+  const target=currencies.value[kind];
+  const values=records.map(a=>({value:target===a.fill.currency?(kind==='entry'?a.positionValue:a.realisedProfit):target===a.accountCurrency?(kind==='entry'?a.accountPositionValue:a.accountRealisedProfit):null,currency:target}));
+  if(values.some(a=>a.value==null))return records.some(a=>!a.fill.provisional&&!fillRate(a.fill,target))?NaN:null;
   if(values.some(a=>!rate(a.currency,currencies.value[kind])))return NaN;
   return values.reduce((sum,a)=>sum+a.value*rate(a.currency,currencies.value[kind]),0);
  }
@@ -234,8 +249,8 @@ function rowAmount(kind,e,i){
  }else value=exitProfit(e);
  const r=rate(draft.value.currency,currencies.value[kind]);return value==null?null:r?value*r:NaN;
 }
-function rowMoney(kind,e,i){const value=rowAmount(kind,e,i);return Number.isNaN(value)?'FX unavailable':money(value,currencies.value[kind])}
-function rowTotalMoney(kind){const values=rows(kind).map((e,i)=>rowAmount(kind,e,i));return values.some(v=>Number.isNaN(v))?'FX unavailable':values.some(v=>v==null)?'Unavailable':money(values.reduce((sum,v)=>sum+v,0),currencies.value[kind])}
+function rowMoney(kind,e,i){const value=rowAmount(kind,e,i);return Number.isNaN(value)?'Broker FX unavailable':money(value,currencies.value[kind])}
+function rowTotalMoney(kind){const values=rows(kind).map((e,i)=>rowAmount(kind,e,i));return values.some(v=>Number.isNaN(v))?'Broker FX unavailable':values.some(v=>v==null)?'Unavailable':money(values.reduce((sum,v)=>sum+v,0),currencies.value[kind])}
 function exitProfit(e){
  const q=e.units??(calculation.value?.plannedQuantity||0)*e.percent/100;
  if(!(q>=0))return null;
@@ -268,8 +283,8 @@ function hydrateManagement(){
  hydrating=true;
  for(const kind of ['entry','exit'])managed.value[kind]=(draft.value?.[kind==='entry'?'entries':'exits']||[]).map(e=>{
   const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
-  const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>rate(a.fill.currency,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*rate(a.fill.currency,draft.value.currency),0)/q:null;
-  return {...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()}
+  const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>fillRate(a.fill,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,draft.value.currency),0)/q:null;
+  return {...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price:price??m.price??e.price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()}
  });
  managementSnapshot=JSON.stringify(managementPayload());
  queueMicrotask(()=>hydrating=false)

@@ -30,7 +30,10 @@ function sourceFills(trade) {
   if(!Number.isFinite(snapshot.costs)||snapshot.costs<0)return null;
   const fingerprint=crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
   const id=e.execution_id||e.executionId||e.fill_id||e.id;
-  return {...snapshot,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
+  const accountCurrency=e.account_currency||e.accountCurrency;
+  const rawRate=e.broker_fx_rate??e.brokerFxRate;
+  const transactionFx=typeof accountCurrency==='string'&&/^[A-Z]{3}$/.test(accountCurrency)?{accountCurrency,rate:accountCurrency===currency?1:positive(rawRate)?Number(rawRate):null}:null;
+  return {...snapshot,transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
  }).filter(Boolean);
  const totalCosts=fills.reduce((sum,f)=>sum+f.costs,0);
  const aggregateKnown=trade.commission!=null||trade.fees!=null;
@@ -66,48 +69,67 @@ function ledger(plan,allocations,trades) {
    provisional.push({id:'provisional:'+action+':'+key,trade_id:'provisional',source_key:key,stage_key:key,action,quantity:row.units,
     source_snapshot:{action,quantity:row.units,price:convert?row.price*conversion.rate:row.price,time:row.time,currency:convert?conversion.currency:plan.definition.currency,...(convert?{originalPrice:row.price,originalCurrency:plan.definition.currency,fxRate:conversion.rate}:{}),
     multiplier:plan.definition.instrument==='option'?plan.definition.options.multiplier:plan.definition.instrument==='spread_bet'?1/plan.definition.pointSize:1,
-    costs:0,tradeSide:plan.definition.instrument==='option'?'long':plan.definition.direction,instrument:plan.definition.instrument,contract:null,provisional:true}});
+    costs:0,tradeSide:plan.definition.instrument==='option'?'long':plan.definition.direction,instrument:plan.definition.instrument,contract:null,transactionFx:{accountCurrency:plan.definition.currency,rate:convert?conversion.rate:1},provisional:true}});
   }
  }
  const records=[...allocations,...provisional].map(a=>{
   const fill=sourceFills(byId.get(a.trade_id)||{}).find(f=>f.key===a.source_key);
-  const valid=a.source_snapshot.provisional||(fill&&fill.fingerprint===a.source_snapshot.fingerprint&&fill.costsVerified===a.source_snapshot.costsVerified);
+  const stored=a.source_snapshot;
+  const fxMatches=!Object.hasOwn(stored,'transactionFx')||JSON.stringify(stored.transactionFx)===JSON.stringify(fill?.transactionFx);
+  const valid=stored.provisional||(fill&&fill.fingerprint===stored.fingerprint&&fill.costsVerified===stored.costsVerified&&fxMatches);
+  const snapshot=valid&&fill&&!Object.hasOwn(stored,'transactionFx')?{...stored,transactionFx:fill.transactionFx}:stored;
   if(!valid)unresolved++;
-  return {...a,valid:!!valid,fill:a.source_snapshot,quantity:Number(a.quantity)};
+  return {...a,valid:!!valid,fill:snapshot,quantity:Number(a.quantity)};
  }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action!==b.action?(a.action==='entry'?-1:1):String(a.id).localeCompare(String(b.id))));
  const queues=new Map();let entered=0,exited=0,cost=0,realised=0,entryCost=0,fees=0,overExit=false;
  const currencies=new Set(records.map(a=>a.fill.currency));
+ const accountCurrencies=new Set(records.map(a=>a.fill.transactionFx?.accountCurrency||a.fill.currency));
+ const accountCurrency=accountCurrencies.size===1?[...accountCurrencies][0]:null;
+ let accountCost=0,accountRealised=0,accountEntryCost=0,accountFxMissing=0;
  for(const a of records){
   const f=a.fill,q=a.quantity,fee=f.costs*q/f.quantity;
+  const recordAccountCurrency=f.transactionFx?.accountCurrency||f.currency;
+  const accountRate=f.transactionFx?f.transactionFx.rate:1;
+  if(!accountCurrency||recordAccountCurrency!==accountCurrency||!(accountRate>0))accountFxMissing++;
+  const accountPrice=accountRate>0?f.price*f.multiplier/accountRate:null,accountFee=accountRate>0?fee/accountRate:null;
+  a.accountCurrency=recordAccountCurrency;
   const accountKey=plan.definition.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
   const key=accountKey+'|'+JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null)+'|'+f.currency;
   const queue=queues.get(key)||[];queues.set(key,queue);
   if(a.action==='entry'){
    a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*f.price*f.multiplier:null;
-   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*f.price*f.multiplier;fees+=fee;queue.push({q,price:f.price,multiplier:f.multiplier,feePerUnit:fee/q});
+   a.accountPositionValue=a.valid&&accountPrice!=null&&f.instrument!=='spread_bet'?q*accountPrice:null;
+   if(!a.stage_key.startsWith('roll_')&&accountPrice!=null)accountEntryCost+=q*accountPrice;
+   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*f.price*f.multiplier;fees+=fee;queue.push({q,price:f.price,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
   }else{
-   exited+=q;let remaining=q;let gross=0,entryFees=0;
+   exited+=q;let remaining=q;let gross=0,entryFees=0,accountGross=0,accountEntryFees=0,accountExitValid=accountPrice!=null&&accountFee!=null;
    while(remaining>1e-8&&queue.length){
     const first=queue[0],matched=Math.min(first.q,remaining);
     gross+=matched*(f.tradeSide==='short'?first.price-f.price:f.price-first.price)*first.multiplier;
+    if(first.accountPrice==null||first.accountFeePerUnit==null||first.accountCurrency!==recordAccountCurrency)accountExitValid=false;
+    else if(accountPrice!=null){accountGross+=matched*(f.tradeSide==='short'?first.accountPrice-accountPrice:accountPrice-first.accountPrice);accountEntryFees+=matched*first.accountFeePerUnit;}
     entryFees+=matched*first.feePerUnit;remaining-=matched;first.q-=matched;if(first.q<=1e-8)queue.shift();
    }
    if(remaining>1e-8)overExit=true;
    a.realisedProfit=gross-entryFees-fee;
+   a.accountRealisedProfit=accountExitValid&&remaining<=1e-8?accountGross-accountEntryFees-accountFee:null;
+   if(a.accountRealisedProfit!=null)accountRealised+=a.accountRealisedProfit;
    realised+=a.realisedProfit;
   }
  }
- for(const queue of queues.values())for(const lot of queue)cost+=lot.q*lot.price*lot.multiplier;
+ for(const queue of queues.values())for(const lot of queue){cost+=lot.q*lot.price*lot.multiplier;if(lot.accountPrice!=null)accountCost+=lot.q*lot.accountPrice;}
  const openQuantity=entered-exited;
  const currency=currencies.size===1?[...currencies][0]:null;
  const costsUnresolved=records.filter(a=>a.fill.costsVerified===false).length;
  const complete=records.length>0&&!unresolved&&!overExit&&!costsUnresolved&&currencies.size===1&&!!currency;
- for(const a of records)if(a.action==='exit'&&!complete)a.realisedProfit=null;
+ const accountComplete=complete&&!!accountCurrency&&!accountFxMissing;
+ for(const a of records)if(a.action==='exit'){if(!complete)a.realisedProfit=null;if(!complete)a.accountRealisedProfit=null;}
+ const accountRisk=plan.baseline?.currency===accountCurrency?plan.baseline.riskBudget:plan.baseline?.originalRiskCurrency===accountCurrency?plan.baseline.originalRisk:null;
  const avg=openQuantity>1e-8?cost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null;
  const stop=Number(plan.definition.stopPrice)*(plan.stopConversion||1);
  const capitalRisk=complete&&(plan.definition.currency===currency||plan.stopConversion)&&['stock','crypto'].includes(plan.definition.instrument)&&stop>0
   ? [...queues.values()].flat().reduce((s,l)=>s+l.q*Math.max(0,plan.definition.direction==='short'?stop-l.price:l.price-stop)*l.multiplier,0):null;
- return {records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
+ return {accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
   realisedProfit:complete?realised:null,percentGain:complete&&entryCost>0?realised/entryCost*100:null,
   originalRisk:plan.baseline?.originalRisk??plan.baseline?.riskBudget??null,originalRiskCurrency:plan.baseline?.originalRiskCurrency??plan.baseline?.currency??null,
   realisedR:complete&&(plan.baseline?.originalRiskCurrency||plan.baseline?.currency)===currency&&(plan.baseline?.originalRisk||plan.baseline?.riskBudget)>0?realised/(plan.baseline.originalRisk||plan.baseline.riskBudget):null,
