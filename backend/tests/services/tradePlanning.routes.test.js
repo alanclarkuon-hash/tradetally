@@ -1,3 +1,4 @@
+jest.mock('../../src/services/planningFx',()=>({latestPlanningFx:jest.fn().mockResolvedValue(null)}));
 jest.mock('../../src/config/database',()=>({query:jest.fn(),withTransaction:jest.fn()}));
 jest.mock('../../src/middleware/auth',()=>({authenticate:(req,res,next)=>{if(req.headers['x-test-user']){req.user={id:req.headers['x-test-user']};next()}else res.sendStatus(401)}}));
 jest.mock('../../src/models/Playbook',()=>({findById:jest.fn()}));
