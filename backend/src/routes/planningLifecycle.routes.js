@@ -154,12 +154,12 @@ router.get('/:id/fills',run(async(req,res)=>{
  AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
  ORDER BY entry_time DESC LIMIT 250`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
  const used=(await db.query('SELECT trade_id,source_key,SUM(quantity) AS quantity FROM trade_plan_allocations WHERE user_id=$1 GROUP BY trade_id,source_key',[req.user.id])).rows;
- res.json({fills:trades.flatMap(t=>sourceFills(t).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity-Number(used.find(a=>a.trade_id===t.id&&a.source_key===f.key)?.quantity||0)}))).filter(f=>f.available>1e-8)});
+ res.json({fills:trades.flatMap(t=>sourceFills(t).filter(f=>!used.some(a=>a.trade_id===t.id&&a.source_key===f.key)).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity}))).filter(f=>f.available>1e-8)});
 }));
 router.post('/:id/allocations',run(async(req,res)=>{
  const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
- const single=fillSchema.keys({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),splitConfirmed:Joi.boolean().default(false)});
- const batch=Joi.object({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),splitConfirmed:Joi.boolean().default(false),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
+ const single=fillSchema.keys({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required()});
+ const batch=Joi.object({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
  const schema=(req.body.fills?batch:single).validate(req.body);
  if(schema.error)fail('Provide a valid fill allocation');const body=schema.value;
  await db.withTransaction(async c=>{
@@ -172,7 +172,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   const f=sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
   const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 AND source_key=$3',[req.user.id,t.id,f.key])).rows;
   if(allocations.some(a=>a.plan_id===p.id&&a.stage_key===b.stageKey))fail('This fill is already linked to that row',409);
-  if(allocations.some(a=>a.plan_id!==p.id)&&!b.splitConfirmed)fail('Confirm splitting this source fill between plans',409);
+  if(allocations.length)fail('This fill is already linked to a plan. Unlink it before linking again.',409);
   const used=allocations.reduce((s,a)=>s+Number(a.quantity),0);
   verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t);
   const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,p.user_id])).rows[0];
