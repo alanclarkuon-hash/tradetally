@@ -57,7 +57,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   try{
    const fxDefinition={...normalized,currency:'GBP',stopPrice:72,riskBudget:80,entries:[{...normalized.entries[0],price:80},{key:'extra',label:'Extra',price:88,riskWeight:0,units:2,tactic:'Condition',marketContext:[],tactics:[]}]};
    await db.query('UPDATE trade_plans SET definition=$1::jsonb WHERE id=$2',[JSON.stringify(fxDefinition),planId]);
-   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{...beforeFx.management.entry,extra:{executed:true,units:2,price:88,time:'2026-01-02T00:00:00Z'}},exit:{}}})).status,200,'mixed-currency provisional entry');
+   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{...beforeFx.management.entry,a:{...beforeFx.management.entry.a,units:10,price:80},extra:{executed:true,units:2,price:88,time:'2026-01-02T00:00:00Z'}},exit:{}}})).status,200,'mixed-currency provisional entry');
    const fxWorkflow=(await call('/workflow')).data;
    assert.equal(fxWorkflow.ledger.currency,'USD');assert.equal(fxWorkflow.ledger.positionValue,1220);assert.equal(fxWorkflow.ledger.capitalRisk,140);assert.equal(fxWorkflow.ledger.fxEstimated,true);assert.equal(fxWorkflow.ledger.coverageComplete,false);
    assert.equal((await db.query('SELECT management FROM trade_plans WHERE id=$1',[planId])).rows[0].management.entry.extra.price,88,'original provisional GBP price retained');
