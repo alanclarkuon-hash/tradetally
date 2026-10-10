@@ -97,7 +97,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   await unlinkCall('/row-allocations','DELETE',{version:await unlinkVersion(),stageKey:'a',action:'entry'});
   const selected=unlinkSource.slice(0,2).map((f,i)=>({tradeId:unlinkTrades[i],sourceKey:f.key,fingerprint:f.fingerprint,quantity:1}));
   const beforeBatch=await unlinkVersion();
-  assert.equal((await unlinkCall('/allocations','POST',{version:beforeBatch,stageKey:'a',action:'entry',fills:[selected[0],{...selected[1],quantity:2}]})).status,400,'invalid second fill rejects batch');
+  assert.equal((await unlinkCall('/allocations','POST',{version:beforeBatch,stageKey:'a',action:'entry',fills:[selected[0],{...selected[1],quantity:2}]})).status,409,'invalid second fill rejects batch');
   assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,0,'failed batch leaves no partial links');
   assert.equal(await unlinkVersion(),beforeBatch,'failed batch retains version');
   assert.equal((await unlinkCall('/allocations','POST',{version:beforeBatch,stageKey:'a',action:'entry',fills:selected})).status,201,'multiple broker slices link as one row');
