@@ -143,6 +143,7 @@ export function useGlobalAccountFilter() {
           secondaryLabel: managedAccount?.accountName && managedAccount.accountName !== identifier
             ? redactedIdentifier
             : null,
+          currency: managedAccount?.currency || null,
           isPrimary: Boolean(managedAccount?.isPrimary)
         }
       })

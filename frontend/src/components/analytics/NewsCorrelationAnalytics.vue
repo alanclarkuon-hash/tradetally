@@ -24,7 +24,7 @@
     </div>
 
     <!-- Error State -->
-    <div v-else-if="error" class="card">
+    <div v-else-if="error" class="card"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
       <div class="card-body text-center py-8">
         <MdiIcon :icon="alertIcon" :size="48" class="mx-auto text-red-500 mb-4" />
         <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-2">Unable to Load Analytics</h3>
@@ -409,15 +409,16 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { ref, onMounted } from 'vue'
 import { format } from 'date-fns'
 import { formatTradeDate } from '@/utils/date'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
 
-const { formatCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency(undefined,undefined,'newscorrelationanalytics-1')
 
 // Icons
 const refreshIcon = mdiRefresh

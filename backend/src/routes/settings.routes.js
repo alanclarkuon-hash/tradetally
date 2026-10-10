@@ -26,6 +26,9 @@ const upload = multer({
   }
 });
 
+router.get('/display-fx', authenticate, async (req, res, next) => {
+  try { res.json(await require('../services/planningFx').latestPlanningFx() || {rates: {USD: 1}}); } catch (error) { next(error); }
+});
 router.get('/', authenticate, settingsController.getSettings);
 router.put('/', authenticate, validate(schemas.updateSettings), settingsController.updateSettings);
 router.get('/fx-rates', requireAdmin, async (req, res, next) => {

@@ -90,6 +90,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
       accounts: ref([]),
       loading: ref(false),
       initialize: vi.fn(),
+      fetchAccounts: vi.fn(),
       refresh: vi.fn(),
       setAccount: vi.fn()
     })
@@ -151,6 +152,7 @@ describe('DashboardView loading and advanced filter wiring', () => {
   let pinia
 
   beforeEach(() => {
+  localStorage.clear()
     // One pinia shared by the mounted view and the test's useXStore() calls.
     pinia = createPinia()
     setActivePinia(pinia)

@@ -67,7 +67,7 @@ test('cashflow markers do not increase recorded values and internal matched tran
   expect(selected.events.map(e=>e.type)).toEqual(['deposit','transfer']);
 });
 test('date and currency validation apply before history reads',async()=>{
-  await expect(getHistory('owner',{currency:'EUR'})).rejects.toThrow('GBP or USD');
+  await expect(getHistory('owner',{currency:'invalid'})).rejects.toThrow('valid currency code');
   await expect(getHistory('owner',{start_date:'invalid',end_date:'2026-01-01'})).rejects.toThrow('valid');
   expect(db.query).not.toHaveBeenCalled();
 });
@@ -149,3 +149,9 @@ test('funding uses same-day or prior rates within seven days, never future rates
  expect(fundingFx(fx,'2026-10-01','USD','GBP').rate).toBeNull();
  expect(fundingFx(new Map([['2026-10-02:USD:GBP',.8]]),'2026-10-10','USD','GBP').rate).toBeNull();
 });
+
+ test('EUR history uses dated USD/EUR rates rather than recorded GBP rates',()=>{
+ const fx=new Map([['2026-01-01:USD:EUR',.9]]);
+ expect(combineValues([row('one','2026-01-01',100,20)], [accounts[0]],'EUR',fx)[0].value).toBe(108);
+ expect(combineValues([row('one','2026-01-01',100,20)], [accounts[0]],'EUR')[0].value).toBeNull();
+ });

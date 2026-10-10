@@ -1,3 +1,4 @@
+import {useAuthStore} from '@/stores/auth'
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PortfolioDashboardView from './PortfolioDashboardView.vue'
@@ -22,18 +23,21 @@ const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
 const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true } } })
 
 beforeEach(() => {
+  localStorage.clear()
   setActivePinia(createPinia())
+  useAuthStore().user={settings:{display_currency:'GBP'}}
   localStorage.removeItem('dashboardTimeRange')
   localStorage.removeItem('dashboardCustomStartDate')
   localStorage.removeItem('dashboardCustomEndDate')
   localStorage.removeItem('portfolioDashboardLayout')
   vi.clearAllMocks()
   mock.selection.value=null
-  mock.accounts.value=[{value:'one',label:'First account'},{value:'two',label:'Second account'}]
+  mock.accounts.value=[{value:'one',label:'First account',currency:'GBP'},{value:'two',label:'Second account',currency:'USD'}]
   mock.change = 25
   mock.fail = false
   mock.post.mockResolvedValue({ data: {} })
   mock.get.mockImplementation(async url => {
+    if (url.endsWith('/display-fx')) return {data:{rates:{USD:1,GBP:.8,EUR:.9}}}
     if (url.endsWith('/dashboard')) return { data: dashboard }
     if (mock.fail) throw Error('History unavailable')
     return { data: { change: mock.change } }
@@ -90,9 +94,9 @@ describe('Portfolio summary cards', () => {
     await flushPromises()
     await view.find('[data-period="30d"]').trigger('click')
     await flushPromises()
-    await view.find('#portfolio-currency').setValue('USD')
+    useAuthStore().user.settings.display_currency='USD'
     await flushPromises()
-    expect(view.find('article').text()).toContain('US$100.00')
+    expect(view.find('article').text()).toContain('$100.00')
     const params = mock.get.mock.calls.filter(([url]) => url.endsWith('/value-history')).at(-1)[1].params
     expect(params.currency).toBe('USD')
     expect(params.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -163,7 +167,7 @@ describe('Portfolio filter interactions', () => {
     expect(mock.get).not.toHaveBeenCalled()
     expect(mock.post).not.toHaveBeenCalled()
     await view.find('.refresh').trigger('click');await flushPromises()
-    await view.find('#portfolio-currency').setValue('USD');await flushPromises()
+    useAuthStore().user.settings.display_currency='USD';await flushPromises()
     expect(mock.get).not.toHaveBeenCalled()
     mock.selection.value='one';await flushPromises()
     expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/dashboard')).at(-1)[1].params.accounts).toBe('one')
@@ -214,4 +218,24 @@ describe('Delayed heatmap quotes',()=>{
       view.unmount();expect(vi.getTimerCount()).toBe(0);
     }finally{vi.useRealTimers()}
   });
+});
+
+it('loads EUR settings currency and offers EUR, GBP and USD card buttons',async()=>{
+ useAuthStore().user.settings.display_currency='EUR';
+ const view=create();await flushPromises();
+ expect(mock.get.mock.calls.find(([url])=>url.endsWith('/dashboard'))[1].params.currency).toBe('EUR');
+ expect(view.find('article').text()).toContain('€100.00');
+ const button=view.find('button.currency-toggle');expect(button.text()).toBe('€');
+ await button.trigger('click');expect(button.text()).toBe('£');view.unmount();
+});
+it('keeps a recovery currency button available when portfolio loading fails',async()=>{
+ useAuthStore().user.settings.display_currency='EUR';
+ mock.get.mockImplementation(async(url,options)=>{
+ if(url.endsWith('/display-fx'))return {data:{rates:{USD:1,GBP:.8,EUR:.9}}};
+ if(url.endsWith('/dashboard')&&options.params.currency==='EUR')throw Error('Conversion unavailable');
+ return {data:url.endsWith('/dashboard')?dashboard:{change:0}};
+ });
+ const view=create();await flushPromises();expect(view.find('[role="alert"]').exists()).toBe(true);
+ await view.find('button.currency-toggle').trigger('click');await flushPromises();
+ expect(view.find('article').exists()).toBe(true);expect(useAuthStore().user.settings.display_currency).toBe('EUR');view.unmount();
 });

@@ -5,13 +5,13 @@
   <nav class="workflow-tabs" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="{active:screen===s}" :aria-current="screen===s?'step':undefined" @click="moveScreen(s)">{{ s }}</button></nav>
   <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
   <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
-   <div class="flex justify-between"><h2 class="font-semibold text-lg">Portfolio risk</h2><span>{{ risk?.unknown?'Incomplete coverage':'Recorded stop risk' }}</span></div>
+   <div class="flex justify-between"><h2 class="font-semibold text-lg">Portfolio risk</h2><CurrencyToggle v-model="riskCurrency" :currencies="currencyChoices" /><span>{{ risk?.unknown?'Incomplete coverage':'Recorded stop risk' }}</span></div>
    <div class="relative h-4 rounded bg-gray-600">
     <div class="h-full rounded" :class="riskExceeded?'bg-red-500':'bg-emerald-400'" :style="{width:barWidth(currentRisk)+'%'}"></div>
     <div class="absolute h-4 top-0 bg-amber-400/50" :style="{left:barWidth(currentRisk)+'%',width:Math.max(0,barWidth(projectedRisk)-barWidth(currentRisk))+'%'}"></div>
     <span v-if="risk?.limit" class="absolute h-7 border-l-2 border-white -top-1" style="left:80%" aria-label="Risk limit"></span>
    </div>
-   <div class="flex flex-wrap gap-5 text-sm"><span>Known risk {{ money(currentRisk,risk?.currency) }}</span><span>With all unlinked entries {{ money(projectedRisk,risk?.currency) }}</span><span>Limit {{ money(risk?.limit,risk?.currency) }}</span><span>{{ risk?.unknown||0 }} positions with unknown risk</span></div>
+   <div class="flex flex-wrap gap-5 text-sm"><span>Known risk {{ convertedMoney(currentRisk,risk?.currency,riskCurrency) }}</span><span>With all unlinked entries {{ convertedMoney(projectedRisk,risk?.currency,riskCurrency) }}</span><span>Limit {{ convertedMoney(risk?.limit,risk?.currency,riskCurrency) }}</span><span>{{ risk?.unknown||0 }} positions with unknown risk</span></div>
    <p v-if="riskExceeded||projectedExceeded" class="text-amber-700 dark:text-amber-300">Risk limit exceeded{{ riskExceeded?'':' if remaining entries are taken' }}.</p>
    <details><summary>Set portfolio limit and exposure level</summary><div class="grid sm:grid-cols-3 gap-3 mt-3"><label>Limit<input type="number" v-model.number="settings.portfolioLimit" class="input"></label><label>Currency<select v-model="settings.currency" class="input"><option>GBP</option><option>USD</option></select></label><label>Applied level<select v-model.number="settings.selectedLevel" class="input"><option v-for="v in [.05,.1,.2,.3]" :value="v" :key="v">{{ v }}%</option></select></label></div><label class="block mt-3">Reason<input v-model="settings.reason" class="input"></label><button class="btn-secondary mt-3" @click="saveSettings">Save risk settings</button></details>
   </section>
@@ -20,7 +20,7 @@
     <div class="space-y-5 min-w-0">
    <div v-if="managing" class="management-top-grid">
    <section v-if="managing" class="card p-5"><h2 class="font-semibold text-lg">Final exit</h2><p class="mt-2">{{ ledger.economicallyClosed?'Position has exited':'Link remaining exits to finish the position.' }}</p><button class="btn-primary mt-4" @click="moveScreen('Review')">Continue to Review</button></section>
-   <section v-if="managing" class="card p-5"><div class="history-card-heading"><h2>Linked trades</h2><button v-if="linkedTrades.length>3" class="btn-secondary" :aria-expanded="linkedTradesExpanded" @click="linkedTradesExpanded=!linkedTradesExpanded">{{ linkedTradesExpanded?'Show fewer':'Show all ('+linkedTrades.length+')' }}</button></div><p v-if="!linkedTrades.length">No trades linked.</p><div v-for="a in visibleLinkedTrades" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
+   <section v-if="managing" class="card p-5"><div class="history-card-heading"><h2>Linked trades</h2><CurrencyToggle v-model="linkedCurrency" :currencies="currencyChoices" /><button v-if="linkedTrades.length>3" class="btn-secondary" :aria-expanded="linkedTradesExpanded" @click="linkedTradesExpanded=!linkedTradesExpanded">{{ linkedTradesExpanded?'Show fewer':'Show all ('+linkedTrades.length+')' }}</button></div><p v-if="!linkedTrades.length">No trades linked.</p><div v-for="a in visibleLinkedTrades" :key="a.id" class="flex gap-4 flex-wrap border-b border-gray-700 py-3"><RouterLink :to="'/trades/'+a.trade_id" class="text-primary-400">{{ a.action }} · {{ number(a.quantity) }} @ {{ executionMoney(a.fill,linkedCurrency) }}</RouterLink><span v-if="!a.valid" class="text-amber-700 dark:text-amber-300">Needs reconciliation</span><button class="text-red-400" @click="unlink(a)">Correct link</button></div></section>
    <section v-if="managing&&ledger.provisionalCount" class="card p-5"><h2>Provisional executions · not linked</h2><p>Ticked entries and exits use your entered values until you select a broker trade.</p><div v-for="a in (ledger.records||[]).filter(a=>a.fill?.provisional)" :key="a.id" class="py-3 border-b border-gray-700">{{ a.action }} · {{ number(a.quantity) }} @ {{ money(a.fill.price,a.fill.currency) }} · Provisional</div></section><section v-if="managing" class="card p-5 management-timeline"><div class="history-card-heading"><h2>Management timeline</h2><button v-if="managementEvents.length>3" class="btn-secondary" :aria-expanded="timelineExpanded" @click="timelineExpanded=!timelineExpanded">{{ timelineExpanded?'Show fewer':'Show all ('+managementEvents.length+')' }}</button></div><p v-if="!managementEvents.length">No trading or management events yet.</p><div v-for="(e,i) in visibleManagementEvents" :key="i" class="py-3 border-b border-gray-700"><strong>{{ e.title }}</strong> · {{ new Date(e.created_at).toLocaleString() }}<p v-if="e.detail">{{ e.detail }}</p></div></section>
    </div>
      <PlanningSnapshot v-if="!managing" :url="draft.chartUrl" :asset="asset" :retained-url="retainedUrl"><p v-if="chartWarning" class="text-sm text-amber-700 dark:text-amber-300 mt-3" role="status">{{ chartWarning }}</p></PlanningSnapshot>
@@ -41,7 +41,7 @@
       <details v-if="!preparationLocked"><summary>Define a tag</summary><div class="space-y-3 mt-3"><select v-model="newTag.kind" class="input"><option value="entry">Entry tactic</option><option value="exit">Exit tactic</option><option value="context">Market context</option></select><input v-model="newTag.name" class="input" placeholder="Tag name"><textarea v-model="newTag.definition" class="input" placeholder="Definition"></textarea><button class="btn-secondary" @click="createTag">Add tag</button></div></details>
      </section>
      <section class="card p-5 space-y-4">
-      <div class="flex justify-between"><h2 class="font-semibold text-lg">{{ managing?'Position':'Risk and sizing' }}</h2><button class="btn-secondary currency-toggle" :aria-label="'Showing '+positionCurrency+'; switch currency'" @click="positionCurrency=flip(positionCurrency)">{{ symbol(positionCurrency) }}</button></div>
+      <div class="flex justify-between"><h2 class="font-semibold text-lg">{{ managing?'Position':'Risk and sizing' }}</h2><CurrencyToggle v-model="positionCurrency" :currencies="currencyChoices" /></div>
       <template v-if="!managing">
        <label class="block">Portfolio amount ({{ positionCurrency }})<input :value="displayValue(draft.portfolioAmount,positionCurrency,2)" aria-label="Portfolio amount" type="number" step="any" class="input" readonly></label><small>{{ portfolioLoading?'Loading selected-account value…':portfolioCapital?portfolioCapital.label+(portfolioCapital.incomplete?' · Incomplete valuation':''):'Selected-account value unavailable · saved capital shown' }}</small>
        <label class="block">Portfolio risk %<input aria-label="Portfolio risk percent" v-model.number="draft.portfolioRiskPercent" :disabled="preparationLocked" type="number" step="any" class="input" @input="applyPortfolioRisk"></label>
@@ -67,25 +67,25 @@
     </aside>
    </div>
    <section v-if="draft.instrument==='option'" class="card p-5">
-    <h2 class="font-semibold text-lg mb-4">Option contract and sizing</h2>
+    <div class="flex justify-between mb-4"><h2 class="font-semibold text-lg">Option contract and sizing</h2><CurrencyToggle v-model="optionCurrency" :currencies="currencyChoices" /></div>
     <div class="grid sm:grid-cols-3 gap-4">
      <label>Contract<input v-model="draft.options.contract" :disabled="hasLinks||!!plan.finalised" class="input"></label>
      <label>Type<select v-model="draft.options.type" :disabled="hasLinks||!!plan.finalised" class="input"><option>call</option><option>put</option></select></label>
      <label>Expiry<input v-model="draft.options.expiry" :disabled="hasLinks||!!plan.finalised" type="date" class="input"></label>
-     <label v-for="k in optionNumbers" :key="k">{{ optionLabels[k] }}<input v-model.number="draft.options[k]" :disabled="hasLinks||!!plan.finalised" type="number" step="any" class="input"></label>
+     <label v-for="k in optionNumbers" :key="k">{{ optionLabels[k] }}{{ optionMoneyKeys.includes(k)?' ('+symbol(optionCurrency)+')':'' }}<input :value="optionMoneyKeys.includes(k)?displayValue(draft.options[k],optionCurrency):draft.options[k]" @change="draft.options[k]=optionMoneyKeys.includes(k)?priceValue($event,optionCurrency):Number($event.target.value)" :disabled="hasLinks||!!plan.finalised" type="number" step="any" class="input"></label>
     </div><p class="text-sm text-amber-300 mt-3">ATR/delta stop risk is an estimate. Underlying exit levels do not predict an option's premium.</p>
    </section>
    <template v-for="kind in ['entry','exit']" :key="kind"><section class="card p-5">
-    <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><button class="btn-secondary currency-toggle" :aria-label="'Showing '+currencies[kind]+'; switch currency'" @click="currencies[kind]=flip(currencies[kind])">{{ symbol(currencies[kind]) }}</button><button class="btn-secondary" :disabled="preparationLocked" @click="addRow(kind)">Add {{ kind }}</button><button v-if="kind==='exit'&&!rows(kind).some(e=>e.key==='runner')" class="btn-secondary" :disabled="preparationLocked" @click="addRunner">Add runner</button></div></div>
+    <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><CurrencyToggle v-model="currencies[kind]" :currencies="currencyChoices" /><button class="btn-secondary" :disabled="preparationLocked" @click="addRow(kind)">Add {{ kind }}</button><button v-if="kind==='exit'&&!rows(kind).some(e=>e.key==='runner')" class="btn-secondary" :disabled="preparationLocked" @click="addRunner">Add runner</button></div></div>
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked" @change="changeStop($event,currencies[kind])"></label></div>
-    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
+    <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target ({{ symbol(currencies[kind]) }})</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
       <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
       <td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
       <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
       <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
       <td>{{ rowMoney(kind,e,i) }}</td>
-      <td v-if="kind==='exit'&&draft.instrument==='option'"><input v-model.number="e.premium" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
+      <td v-if="kind==='exit'&&draft.instrument==='option'"><input :value="displayValue(e.premium,currencies[kind])" @change="e.premium=priceValue($event,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
       <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/></td>
       <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/><details v-if="kind==='entry'" class="trigger-details"><summary>Trigger condition</summary><textarea v-model="e.tactic" class="input" :disabled="preparationLocked||linked(kind,e.key)" aria-label="Entry trigger condition" rows="2"></textarea></details></td>
       <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
@@ -100,10 +100,10 @@
     <p v-if="kind==='entry'&&managing" class="text-sm text-gray-400 mt-3">Provisional: ticked rows use entered quantities and levels until fills are linked.<span v-if="ledger.fxEstimated"> Amounts use the latest available exchange rate until linked.</span></p>
    </section>
    <section v-if="managing&&draft.instrument==='option'&&kind==='entry'" class="card p-5 space-y-4">
-    <h2 class="font-semibold text-lg">Roll option</h2><button class="btn-secondary" @click="loadRollFills">Find roll trades</button>
+    <div class="flex justify-between"><h2 class="font-semibold text-lg">Roll option</h2><CurrencyToggle v-model="rollCurrency" :currencies="currencyChoices" /></div><button class="btn-secondary" @click="loadRollFills">Find roll trades</button>
     <div v-if="rollFills.length" class="grid sm:grid-cols-2 gap-4">
-     <label>Closing fill<select v-model="roll.closeKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='exit')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ money(f.price,f.currency) }}</option></select></label>
-     <label>Opening fill<select v-model="roll.openKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='entry')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ money(f.price,f.currency) }}</option></select></label>
+     <label>Closing fill<select v-model="roll.closeKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='exit')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ executionMoney(f,rollCurrency) }}</option></select></label>
+     <label>Opening fill<select v-model="roll.openKey" class="input"><option value="">Select</option><option v-for="f in rollFills.filter(f=>f.action==='entry')" :key="f.tradeId+f.key" :value="f.tradeId+'|'+f.key">{{ f.contract?.symbol }} {{ f.contract?.strike }} {{ f.contract?.expiry }} @ {{ executionMoney(f,rollCurrency) }}</option></select></label>
      <label>Contracts closed<input v-model.number="roll.closeQuantity" type="number" class="input" min="1" step="1"></label><label>Contracts opened<input v-model.number="roll.openQuantity" type="number" class="input" min="1" step="1"></label>
      <label>New share-equivalent delta<input v-model.number="roll.delta" type="number" step="any" class="input"></label><label>Reason<input v-model="roll.reason" class="input"></label>
     </div><button v-if="rollFills.length" class="btn-primary" :disabled="busy" @click="recordRoll">Link credit roll</button>
@@ -112,11 +112,11 @@
   </template>
   <template v-if="screen==='Review'">
    <section class="card p-5" aria-label="Plan result">
-    <div class="result-metrics">
-     <div><small>Realised result</small><strong>{{ ledgerMoney('realisedProfit',draft.currency) }}</strong></div>
-     <div><small>Initial plan risk budget</small><strong>{{ money(workflow?.baseline?.riskBudget??draft.riskBudget,draft.currency) }}</strong></div>
-     <div><small>Plan result</small><strong>{{ ledgerMetric('realisedR',draft.currency)==null?'Unavailable':number(ledgerMetric('realisedR',draft.currency))+' R' }}</strong></div>
-     <div><small>% gain/loss</small><strong>{{ percent(ledgerMetric('percentGain',draft.currency)) }}</strong></div>
+    <div class="flex justify-end mb-3"><CurrencyToggle v-model="reviewCurrency" :currencies="currencyChoices" /></div><div class="result-metrics">
+     <div><small>Realised result</small><strong>{{ ledgerMoney('realisedProfit',reviewCurrency) }}</strong></div>
+     <div><small>Initial plan risk budget</small><strong>{{ convertedMoney(workflow?.baseline?.riskBudget??draft.riskBudget,draft.currency,reviewCurrency) }}</strong></div>
+     <div><small>Plan result</small><strong>{{ ledgerMetric('realisedR',reviewCurrency)==null?'Unavailable':number(ledgerMetric('realisedR',reviewCurrency))+' R' }}</strong></div>
+     <div><small>% gain/loss</small><strong>{{ percent(ledgerMetric('percentGain',reviewCurrency)) }}</strong></div>
      <div><small>Evidence</small><strong class="evidence-value">{{ ledger.unresolved?'Needs reconciliation':ledger.economicallyClosed?'Reconciled exits':'Awaiting exits' }}</strong></div>
     </div>
    </section>
@@ -168,15 +168,29 @@ import {describeManagementEvent} from './managementTimeline'
 import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 import {ref,computed,watch,onMounted,onBeforeUnmount} from 'vue'
 import api from '@/services/api'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
+import {CURRENCY_OPTIONS} from '@/composables/useCurrencyFormatter'
 import PlanningSnapshot from './PlanningSnapshot.vue'
 import TagSelect from './PlanningTagSelect.vue'
 const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]},portfolioCapital:{type:Object,default:null},portfolioLoading:Boolean}),emit=defineEmits(['updated'])
 const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage'),preparationLocked=computed(()=>!!plan.value.finalised&&!managing.value)
-const currencies=ref({entry:'USD',exit:'USD'}),positionCurrency=ref('GBP'),tags=ref([]),fx=ref(null),settings=ref({portfolioLimit:null,currency:'GBP',selectedLevel:.3,reason:''})
+const planAccountCurrencies=computed(()=>{const currency=props.accounts.find(a=>a.id===draft.value?.accountId)?.currency;return currency?[currency]:[]})
+const {currency:positionCurrency,choices:currencyChoices,displayCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-position')
+const {currency:entryCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-entries')
+const {currency:exitCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-exits')
+const currencies=ref({entry:entryCurrency,exit:exitCurrency})
+const {currency:riskCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-risk')
+const {currency:reviewCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-review')
+const {currency:optionCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-option')
+const {currency:rollCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-roll')
+const {currency:linkedCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-linked')
+const tags=ref([]),fx=ref(null),settings=ref({portfolioLimit:null,currency:'GBP',selectedLevel:.3,reason:''})
 const chartWarning=ref(''),retainedUrl=ref(''),recommendation=ref(null),rollFills=ref([]),roll=ref({closeKey:'',openKey:'',closeQuantity:1,openQuantity:1,delta:null,reason:''})
 const newTag=ref({kind:'entry',name:'',definition:''}),finder=ref(null),fills=ref([]),review=ref({notes:'',entryAssessment:'',exitAssessment:'',processFollowed:false})
+const optionMoneyKeys=['strike','premium','atr']
 const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
 const linkedTradesExpanded=ref(false),timelineExpanded=ref(false)
@@ -202,8 +216,7 @@ const finalExitDate=computed(()=>{
  const dates=(ledger.value.records||[]).filter(r=>r.action==='exit'&&r.valid).map(r=>r.fill?.time).filter(Boolean).sort();
  return ledger.value.economicallyClosed&&dates.length?new Date(dates.at(-1)).toLocaleDateString():'Pending';
 })
-function symbol(c){return c==='GBP'?'£':c==='USD'?'$':c}
-const flip=c=>c==='USD'?'GBP':'USD'
+function symbol(c){return CURRENCY_OPTIONS.find(v=>v.code===c)?.symbol||c}
 function money(v,c){if(v==null||v===''||!Number.isFinite(Number(v)))return 'Unavailable';return new Intl.NumberFormat(undefined,{style:'currency',currency:c||'USD'}).format(v)}
 const number=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:6})
 const percent=v=>v==null?'Unavailable':number(v)+'%'
@@ -218,7 +231,8 @@ function changeUnits(kind,e,event){if(linked(kind,e.key))return;const value=even
 function resetUnits(kind,e){if(!linked(kind,e.key))e.units=null}
 const runnerPercent=computed(()=>Math.max(0,100-(draft.value?.exits||[]).reduce((s,e)=>s+Number(e.percent||0),0)))
 const potentialPercent=computed(()=>calculation.value?.plannedValue>0&&calculation.value?.reward?.fixedTargetProfit!=null?calculation.value.reward.fixedTargetProfit/calculation.value.plannedValue*100:null)
-function fillRate(fill,to){if(fill.currency===to)return 1;if(fill.provisional)return rate(fill.currency,to);const fx=fill.transactionFx;return fx?.accountCurrency===to&&fx.rate>0?1/fx.rate:null}
+function fillRate(fill,to){if(fill.currency===to)return 1;if(fill.provisional)return rate(fill.currency,to);const fx=fill.transactionFx;return fx?.accountCurrency&&fx.rate>0?(rate(fx.accountCurrency,to)?rate(fx.accountCurrency,to)/fx.rate:null):null}
+function executionMoney(fill,to){const r=fillRate(fill,to);return r?money(fill.price*r,to):'Broker FX unavailable'}
 function rowPrice(kind,e,to){
  const records=managing.value?(ledger.value.records||[]).filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional):[];
  if(!records.length)return displayValue(e.price,to);
@@ -227,9 +241,11 @@ function rowPrice(kind,e,to){
  return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
 }
 function ledgerMetric(metric,to){
- if(to===ledger.value.currency||!hasLinks.value)return ledger.value[metric];
- if(to===ledger.value.accountCurrency)return ledger.value['account'+metric[0].toUpperCase()+metric.slice(1)];
- return null;
+ if(!hasLinks.value||!ledger.value.accountCurrency&&to===ledger.value.currency)return ledger.value[metric];
+ const accountValue=ledger.value['account'+metric[0].toUpperCase()+metric.slice(1)];
+ if(to===ledger.value.accountCurrency)return accountValue;
+ const r=rate(ledger.value.accountCurrency,to);
+ return accountValue!=null&&r?(['percentGain','realisedR'].includes(metric)?accountValue:accountValue*r):null;
 }
 function ledgerMoney(metric,to){if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
 function rowAmount(kind,e,i){
@@ -237,7 +253,7 @@ function rowAmount(kind,e,i){
  if(records.length){
   if(records.some(a=>!a.valid))return null;
   const target=currencies.value[kind];
-  const values=records.map(a=>({value:target===a.fill.currency?(kind==='entry'?a.positionValue:a.realisedProfit):target===a.accountCurrency?(kind==='entry'?a.accountPositionValue:a.accountRealisedProfit):null,currency:target}));
+  const values=records.map(a=>({value:a.accountCurrency?(kind==='entry'?a.accountPositionValue:a.accountRealisedProfit):target===a.fill.currency?(kind==='entry'?a.positionValue:a.realisedProfit):null,currency:a.accountCurrency||a.fill.currency}));
   if(values.some(a=>a.value==null))return records.some(a=>!a.fill.provisional&&!fillRate(a.fill,target))?NaN:null;
   if(values.some(a=>!rate(a.currency,currencies.value[kind])))return NaN;
   return values.reduce((sum,a)=>sum+a.value*rate(a.currency,currencies.value[kind]),0);

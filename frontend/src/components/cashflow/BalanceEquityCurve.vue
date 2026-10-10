@@ -8,7 +8,7 @@
             Daily balances from linked Plaid accounts for the selected period
           </p>
         </div>
-        <div class="flex flex-wrap items-center gap-1">
+        <div class="flex flex-wrap items-center gap-1"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="mr-2" />
           <button
             v-for="option in rangeOptions"
             :key="option.days"
@@ -23,6 +23,7 @@
         </div>
       </div>
 
+      <p v-if="coverage.missingFx" class="text-sm text-amber-600 dark:text-amber-400 mb-3" role="status">Some balances lack currency or exchange-rate evidence; those days are unavailable.</p>
       <p v-if="loading && !initialLoading" class="text-xs text-primary-600 mb-2" role="status">Updating...</p>
       <div v-if="initialLoading" class="flex justify-center py-10">
         <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
@@ -42,6 +43,8 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { Chart } from '@/lib/chartSetup'
@@ -59,6 +62,8 @@ const rangeOptions = [
 
 const selectedDays = ref(90)
 const series = ref([])
+const sourceCurrency=ref('USD'),coverage=ref({sourceCurrencies:[],missingFx:0})
+const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency(sourceCurrency,computed(()=>coverage.value.sourceCurrencies),'balance-history')
 const accounts = ref([])
 const has_history_accounts = ref(false)
 const loading = ref(false)
@@ -97,6 +102,7 @@ async function loadHistory() {
       ? resolveDatePreset(selectedDays.value)
       : { days: selectedDays.value }
     const data = await plaidFundingStore.fetchBalanceHistory(params)
+    sourceCurrency.value=data.currency||'USD';coverage.value=data.coverage||{sourceCurrencies:[],missingFx:0}
     series.value = data.series || []
     accounts.value = data.accounts || []
     if (accounts.value.length > 0) has_history_accounts.value = true
@@ -158,10 +164,7 @@ function createChart() {
         legend: { display: false },
         tooltip: {
           callbacks: {
-            label: context => new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD'
-            }).format(context.parsed.y)
+            label: context => formatCurrency(context.parsed.y)
           }
         }
       },
@@ -177,11 +180,7 @@ function createChart() {
         y: {
           ticks: {
             color: textColor,
-            callback: value => new Intl.NumberFormat('en-US', {
-              style: 'currency',
-              currency: 'USD',
-              notation: 'compact'
-            }).format(value)
+            callback: value => formatCurrency(value,{compact:true})
           },
           grid: { color: gridColor }
         }
@@ -190,7 +189,7 @@ function createChart() {
   })
 }
 
-watch(filledSeries, async () => {
+watch([filledSeries,cardCurrency,rates], async () => {
   await nextTick()
   createChart()
 })

@@ -1,8 +1,10 @@
 <template>
-  <canvas ref="canvas" />
+  <CurrencyToggle v-model="cardCurrency" :currencies="choices" class="self-end mb-2" /><canvas ref="canvas" />
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 // Command-center equity curve for the dashboard's equity-and-calendar section.
 // Owns its full Chart.js lifecycle (create/update/destroy) so the parent view
 // doesn't have to manage a canvas ref or a createCharts()/setTimeout flow.
@@ -24,6 +26,7 @@ const props = defineProps({
   }
 })
 
+const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency(undefined,undefined,'equitycurvechart-1')
 const emit = defineEmits(['select-date'])
 
 const canvas = ref(null)
@@ -88,7 +91,7 @@ function renderChart() {
             padding: 8,
             displayColors: false,
             callbacks: {
-              label: ctx => hideAmounts.value ? MONEY_MASK : `${props.currencySymbol}${Number(ctx.parsed.y).toLocaleString()}`
+              label: ctx => hideAmounts.value ? MONEY_MASK : formatCurrency(Number(ctx.parsed.y))
             }
           }
         },
@@ -98,7 +101,7 @@ function renderChart() {
             grid: { color: 'rgba(156, 163, 175, 0.08)' },
             ticks: {
               font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
-              callback: v => hideAmounts.value ? MONEY_MASK : props.currencySymbol + Number(v).toLocaleString()
+              callback: v => hideAmounts.value ? MONEY_MASK : formatCurrency(Number(v))
             }
           },
           x: {
@@ -118,7 +121,7 @@ function renderChart() {
 }
 
 onMounted(renderChart)
-watch(() => [props.dailyPnL, props.currencySymbol, hideAmounts.value], renderChart)
+watch(() => [props.dailyPnL, props.currencySymbol,cardCurrency.value,rates.value, hideAmounts.value], renderChart)
 onBeforeUnmount(() => {
   if (chartInstance) {
     chartInstance.destroy()

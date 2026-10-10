@@ -1,8 +1,14 @@
-import {describe,it,expect,vi} from 'vitest'
+import {createPinia,setActivePinia} from 'pinia'
+import {useAuthStore} from '@/stores/auth'
+import {describe,it,expect,vi,beforeEach} from 'vitest'
 import {mount,flushPromises} from '@vue/test-utils'
 const captured=vi.hoisted(()=>[])
 vi.mock('@/lib/chartSetup',()=>({Chart:class {constructor(canvas,config){captured.push(config)}destroy(){}}}))
 import PortfolioValueChart from './PortfolioValueChart.vue'
+vi.mock('@/services/api',()=>({default:{get:vi.fn().mockResolvedValue({data:{rates:{USD:1,GBP:.8}}})}}))
+vi.mock('@/composables/useGlobalAccountFilter',async()=>{const {ref}=await import('vue');return {useGlobalAccountFilter:()=>({accounts:ref([{value:'gbp',currency:'GBP'},{value:'usd',currency:'USD'}]),selectedAccount:ref(null),fetchAccounts:vi.fn()})}})
+beforeEach(()=>{
+  localStorage.clear();setActivePinia(createPinia());useAuthStore().user={settings:{display_currency:'GBP'}}})
 
 describe('portfolio value chart',()=>{
   it('plots only the combined line even when older responses contain individual account histories',async()=>{
@@ -33,7 +39,7 @@ describe('portfolio value chart',()=>{
     await wrapper.setProps({history:{...history,series:[{...history.series[0],estimatedAccounts:1}],coverage:{...history.coverage,estimatedDays:1}}});await flushPromises()
     expect(captured.at(-1).options.plugins.tooltip.callbacks.label({raw:captured.at(-1).data.datasets[0].data[0],dataset:{}})).toContain('Estimate: missing historical prices valued at zero')
     await wrapper.setProps({currency:'USD'});await flushPromises()
-    expect(captured.at(-1).options.scales.value.ticks.callback(120)).toContain('$')
+    expect(captured.at(-1).options.scales.value.ticks.callback(120)).toContain('£')
     await wrapper.setProps({history:{...history,range:{start_date:'2026-09-26',end_date:'2026-10-03'}}});await flushPromises()
     expect(captured.at(-1).options.scales.x.min).toBe(Date.parse('2026-09-26T00:00:00Z'))
     expect(captured.at(-1).options.scales.x.max).toBe(Date.parse('2026-10-03T23:59:59.999Z'))
@@ -64,11 +70,11 @@ describe('Portfolio change selector', () => {
     expect(captured.at(-1).data.datasets[0].label).toBe('Overall gains')
     expect(captured.at(-1).data.datasets[0].data.map(point=>point.y)).toEqual([0,50])
     expect(view.find('canvas').attributes('aria-label')).toContain('Overall portfolio gains')
-    await view.setProps({currency:'USD'});await flushPromises()
-    expect(view.find('.history-change').text()).toContain('+US$50.00')
+    useAuthStore().user.settings.display_currency='USD';await view.setProps({currency:'USD'});await flushPromises()
+    expect(view.find('.history-change').text()).toContain('+$50.00')
     await view.find('input[type=checkbox]').setValue(true);await flushPromises()
     expect(captured.at(-1).data.datasets[0].data.map(point=>point.y)).toEqual([100,300])
-    expect(view.find('.history-change').text()).toContain('+US$200.00');view.unmount()
+    expect(view.find('.history-change').text()).toContain('+$200.00');view.unmount()
   })
   it('shows unavailable when funding FX is missing rather than overstating gains',async()=>{
     const view=mount(PortfolioValueChart,{props:{history:{...history,events:[{date:'2026-01-02',type:'deposit',amount:null,nativeAmount:100,nativeCurrency:'USD'}]}}})
