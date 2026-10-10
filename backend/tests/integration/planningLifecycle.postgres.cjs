@@ -80,6 +80,25 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   executions[0].price=101;await db.query('UPDATE trades SET executions=$1::jsonb WHERE id=$2',[JSON.stringify(executions),tradeId]);
   assert.equal((await call('/workflow')).data.needsUpdate,true,'correction requires review update');
 
+  // Legacy multiple-trade row links are removed atomically; source trades stay intact.
+  const unlinkPlan=crypto.randomUUID(),unlinkTrades=[crypto.randomUUID(),crypto.randomUUID(),crypto.randomUUID()];
+  await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,finalised,definition,baseline,management) VALUES($1,$2,$3,'entered',true,$4::jsonb,$4::jsonb,$5::jsonb)",[unlinkPlan,owner,pb,JSON.stringify(normalized),JSON.stringify({entry:{a:{executed:true,units:2,price:100,time:'2026-01-01T10:00:00Z'}}})]);
+  const unlinkSource=[];
+  for(let i=0;i<3;i++){const exec={id:'synthetic-'+i,action:i===2?'sell':'buy',quantity:1,price:i===2?110:100,datetime:i===2?'2026-01-02T10:00:00Z':'2026-01-01T10:00:00Z',commission:0,fees:0};await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,entry_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier,executions) VALUES($1,$2,$3,'2026-01-01','2026-01-01T10:00:00Z',100,1,'long',0,0,'stock','USD','synthetic',$4::jsonb)",[unlinkTrades[i],owner,d.symbol,JSON.stringify([exec])]);const t=(await db.query('SELECT * FROM trades WHERE id=$1',[unlinkTrades[i]])).rows[0];unlinkSource.push(require(root+'/src/services/planningLedger').sourceFills(t)[0]);if(i<2)await db.query("INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot) VALUES($1,$2,$3,$4,'a','entry',1,$5::jsonb)",[owner,unlinkPlan,unlinkTrades[i],unlinkSource[i].key,JSON.stringify(unlinkSource[i])]);}
+  const unlinkBase=base.slice(0,base.lastIndexOf('/'))+'/'+unlinkPlan;
+  const unlinkVersion=async()=>(await db.query('SELECT version FROM trade_plans WHERE id=$1',[unlinkPlan])).rows[0].version;
+  async function unlinkCall(path,method,body){const r=await fetch(unlinkBase+path,{method,headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()}}
+  assert.equal((await unlinkCall('/row-allocations','DELETE',{version:await unlinkVersion(),stageKey:'a',action:'entry'})).status,200);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,0,'all legacy links on one row removed');
+  const unlinked=(await db.query('SELECT status,management,baseline FROM trade_plans WHERE id=$1',[unlinkPlan])).rows[0];assert.equal(unlinked.status,'watching');assert.equal(unlinked.management.entry.a.executed,false);assert.equal(unlinked.baseline,null);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM trades WHERE id=ANY($1::uuid[])',[unlinkTrades])).rows[0].n,3,'broker trades retained');
+  const linkRow=async(i,stage)=>unlinkCall('/allocations','POST',{version:await unlinkVersion(),tradeId:unlinkTrades[i],sourceKey:unlinkSource[i].key,fingerprint:unlinkSource[i].fingerprint,stageKey:stage,action:unlinkSource[i].action,quantity:1});
+  assert.equal((await linkRow(0,'a')).status,201,'row can be relinked');assert.equal((await linkRow(1,'a')).status,409,'cannot add another distinct trade to the linked row');
+  assert.equal((await linkRow(2,'b')).status,201,'exit linked');
+  assert.equal((await unlinkCall('/row-allocations','DELETE',{version:await unlinkVersion(),stageKey:'b',action:'exit'})).status,200,'exit row unlinks separately');
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM trade_plan_allocations WHERE plan_id=$1',[unlinkPlan])).rows[0].n,1,'entry link retained when exit is removed');
+  console.log('PASS: TEST atomic row unlink, source trades retained, relink, duplicate-row guard and exit unlink');
+
   const op=crypto.randomUUID(),ot=crypto.randomUUID(),nt=crypto.randomUUID();
   const od={...d,instrument:'option',entries:[{key:'a',label:'Entry',price:100,riskWeight:100,tactic:'Condition'}],exits:[{key:'b',label:'Final',price:110,percent:100}],quantityStep:1,options:{contract:'SYNTH_OLD',type:'call',strike:100,expiry:'2026-12-18',premium:2,multiplier:100,contractDelta:50,atr:1,atrMultiplier:2}};
   await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,finalised,definition) VALUES($1,$2,$3,'watching',true,$4::jsonb)",[op,owner,pb,JSON.stringify(require(root+'/src/services/tradePlanning').normalize(od))]);
