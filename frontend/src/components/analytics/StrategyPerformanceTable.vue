@@ -1,6 +1,6 @@
 <template>
   <div v-if="stats.length > 0" id="strategies" class="card">
-    <div class="card-body">
+    <div class="card-body"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right mb-3" />
       <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Strategy/Setup Performance</h3>
       <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -71,7 +71,8 @@
 </template>
 
 <script setup>
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { formatNumber, winRateInclBE, winRateExclBE } from '@/utils/analyticsFormatters'
 
 defineProps({
@@ -80,5 +81,5 @@ defineProps({
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const { formatCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices,formatCurrency} = useCardCurrency()
 </script>

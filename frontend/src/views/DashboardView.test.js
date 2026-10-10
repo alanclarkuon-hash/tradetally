@@ -90,6 +90,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
       accounts: ref([]),
       loading: ref(false),
       initialize: vi.fn(),
+      fetchAccounts: vi.fn(),
       refresh: vi.fn(),
       setAccount: vi.fn()
     })

@@ -69,16 +69,17 @@ vi.mock('@/stores/trades', () => ({ useTradesStore: () => tradesStoreMock }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({}) }))
 vi.mock('@/stores/uiPreferences', () => ({ useUiPreferencesStore: () => ({ notifyChanged }) }))
 vi.mock('@/composables/useGlobalAccountFilter', () => ({
-  useGlobalAccountFilter: () => ({ selectedAccount: { value: null } })
+  useGlobalAccountFilter: () => ({ selectedAccount: { value: null },accounts:{value:[{value:'account',currency:'USD'}]},fetchAccounts:vi.fn() })
 }))
 vi.mock('@/composables/useUserTimezone', () => ({
   useUserTimezone: () => ({ formatTime: (value) => value, userTimezone: 'UTC' })
 }))
 vi.mock('@/composables/useCurrencyFormatter', () => ({
+  CURRENCY_OPTIONS:[{code:'USD',symbol:'$'}],
   useCurrencyFormatter: () => ({
     formatCurrency: (value) => String(value ?? 0),
     formatSignedCurrency: (value) => String(value ?? 0),
-    currencySymbol: '$'
+    symbolFor:()=> '$',currencySymbol: '$'
   })
 }))
 vi.mock('@/composables/useNotification', () => ({

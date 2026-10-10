@@ -1,5 +1,5 @@
 <template>
-  <div class="card-dense h-full flex flex-col">
+  <div class="card-dense h-full flex flex-col"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <div class="px-4 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
       <h3 class="heading-card">Win Rate</h3>
       <span class="text-xs text-gray-500 dark:text-gray-400 text-mono-num">
@@ -176,8 +176,9 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { computed } from 'vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   summary: {
@@ -188,7 +189,7 @@ const props = defineProps({
 
 defineEmits(['navigate'])
 
-const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatCurrency, formatSignedCurrency } = useCardCurrency()
 
 const winning = computed(() => parseInt(props.summary.winningTrades) || 0)
 const losing = computed(() => parseInt(props.summary.losingTrades) || 0)

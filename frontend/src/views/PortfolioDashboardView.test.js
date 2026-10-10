@@ -1,3 +1,4 @@
+import {useAuthStore} from '@/stores/auth'
 import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PortfolioDashboardView from './PortfolioDashboardView.vue'
@@ -23,17 +24,19 @@ const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLi
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  useAuthStore().user={settings:{display_currency:'GBP'}}
   localStorage.removeItem('dashboardTimeRange')
   localStorage.removeItem('dashboardCustomStartDate')
   localStorage.removeItem('dashboardCustomEndDate')
   localStorage.removeItem('portfolioDashboardLayout')
   vi.clearAllMocks()
   mock.selection.value=null
-  mock.accounts.value=[{value:'one',label:'First account'},{value:'two',label:'Second account'}]
+  mock.accounts.value=[{value:'one',label:'First account',currency:'GBP'},{value:'two',label:'Second account',currency:'USD'}]
   mock.change = 25
   mock.fail = false
   mock.post.mockResolvedValue({ data: {} })
   mock.get.mockImplementation(async url => {
+    if (url.endsWith('/display-fx')) return {data:{rates:{USD:1,GBP:.8,EUR:.9}}}
     if (url.endsWith('/dashboard')) return { data: dashboard }
     if (mock.fail) throw Error('History unavailable')
     return { data: { change: mock.change } }
@@ -90,9 +93,9 @@ describe('Portfolio summary cards', () => {
     await flushPromises()
     await view.find('[data-period="30d"]').trigger('click')
     await flushPromises()
-    await view.find('#portfolio-currency').setValue('USD')
+    useAuthStore().user.settings.display_currency='USD'
     await flushPromises()
-    expect(view.find('article').text()).toContain('US$100.00')
+    expect(view.find('article').text()).toContain('$100.00')
     const params = mock.get.mock.calls.filter(([url]) => url.endsWith('/value-history')).at(-1)[1].params
     expect(params.currency).toBe('USD')
     expect(params.start_date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
@@ -163,7 +166,7 @@ describe('Portfolio filter interactions', () => {
     expect(mock.get).not.toHaveBeenCalled()
     expect(mock.post).not.toHaveBeenCalled()
     await view.find('.refresh').trigger('click');await flushPromises()
-    await view.find('#portfolio-currency').setValue('USD');await flushPromises()
+    useAuthStore().user.settings.display_currency='USD';await flushPromises()
     expect(mock.get).not.toHaveBeenCalled()
     mock.selection.value='one';await flushPromises()
     expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/dashboard')).at(-1)[1].params.accounts).toBe('one')
