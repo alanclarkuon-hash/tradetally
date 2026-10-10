@@ -8,8 +8,8 @@
 import { toRef } from 'vue'
 import CurrencyToggle from './CurrencyToggle.vue'
 import { useCardCurrency } from '@/composables/useCardCurrency'
-const props = defineProps({ sourceCurrency: String, accountCurrencies: Array, tradeRows: Boolean })
-const {currency,choices,convert,formatCurrency,formatSignedCurrency}=useCardCurrency(toRef(props,'sourceCurrency'),toRef(props,'accountCurrencies'))
+const props = defineProps({ preferenceKey: String, sourceCurrency: String, accountCurrencies: Array, tradeRows: Boolean })
+const {currency,choices,convert,formatCurrency,formatSignedCurrency}=useCardCurrency(toRef(props,'sourceCurrency'),toRef(props,'accountCurrencies'),props.preferenceKey)
 function tradeOptions(trade, options) { return props.tradeRows ? {...options, currency: trade?.effective_currency || trade?.display_currency || props.sourceCurrency} : trade || {} }
 const formatTradeCurrency=(value,trade,options)=>formatCurrency(value,tradeOptions(trade,options))
 const formatTradeSignedCurrency=(value,trade,options)=>formatSignedCurrency(value,tradeOptions(trade,options))

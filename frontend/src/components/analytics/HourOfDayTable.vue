@@ -82,7 +82,7 @@ defineProps({
   calculationMethod: { type: String, default: 'Average' }
 })
 
-const {currency:cardCurrency,choices,formatCurrency} = useCardCurrency()
+const {currency:cardCurrency,choices,formatCurrency} = useCardCurrency(undefined,undefined,'hourofdaytable-1')
 const { use12Hour } = useUserTimezone()
 
 function formatHour(hour) {

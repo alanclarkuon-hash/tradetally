@@ -220,7 +220,7 @@ const perfectExitReferencePlugin = {
 }
 
 // ---- formatting ----
-const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency(undefined,undefined,'maemfeanalysis-1')
 
 function formatPoints(val) {
   if (val == null) return '—'

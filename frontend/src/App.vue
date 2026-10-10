@@ -171,6 +171,7 @@ import { computed, onMounted, onUnmounted, watch, ref } from 'vue'
 const isTestEnvironment = window.__APP_CONFIG__?.APP_ENVIRONMENT === 'test'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import {observeCardCurrencyDefault} from '@/composables/useCardCurrencyPreference'
 import { useVersionStore } from '@/stores/version'
 import { usePriceAlertNotifications } from '@/composables/usePriceAlertNotifications'
 import { useNotification } from '@/composables/useNotification'
@@ -201,6 +202,7 @@ const lastRateLimitNotification = ref(0)
 
 const route = useRoute()
 const authStore = useAuthStore()
+observeCardCurrencyDefault(authStore)
 const versionStore = useVersionStore()
 const uiPreferencesStore = useUiPreferencesStore()
 const { isBillingEnabled } = useRegistrationMode()

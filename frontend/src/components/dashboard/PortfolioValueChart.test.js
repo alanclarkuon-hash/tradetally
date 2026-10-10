@@ -7,7 +7,8 @@ vi.mock('@/lib/chartSetup',()=>({Chart:class {constructor(canvas,config){capture
 import PortfolioValueChart from './PortfolioValueChart.vue'
 vi.mock('@/services/api',()=>({default:{get:vi.fn().mockResolvedValue({data:{rates:{USD:1,GBP:.8}}})}}))
 vi.mock('@/composables/useGlobalAccountFilter',async()=>{const {ref}=await import('vue');return {useGlobalAccountFilter:()=>({accounts:ref([{value:'gbp',currency:'GBP'},{value:'usd',currency:'USD'}]),selectedAccount:ref(null),fetchAccounts:vi.fn()})}})
-beforeEach(()=>{setActivePinia(createPinia());useAuthStore().user={settings:{display_currency:'GBP'}}})
+beforeEach(()=>{
+  localStorage.clear();setActivePinia(createPinia());useAuthStore().user={settings:{display_currency:'GBP'}}})
 
 describe('portfolio value chart',()=>{
   it('plots only the combined line even when older responses contain individual account histories',async()=>{

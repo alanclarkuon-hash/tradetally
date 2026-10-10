@@ -4,6 +4,7 @@ import { useGlobalAccountFilter } from './useGlobalAccountFilter'
 import { useCurrencyFormatter } from './useCurrencyFormatter'
 import { cardCurrencies, convertAmount } from '@/utils/cardCurrency'
 import api from '@/services/api'
+import {useCardCurrencyPreference} from './useCardCurrencyPreference'
 import {useMonetaryPrivacy, MONEY_MASK} from './useDashboardPrivacy'
 const rates = ref({}), loadedAt = ref(0)
 let pending
@@ -16,16 +17,18 @@ export async function loadCardRates() {
   }).catch(() => { /* Missing conversion is explicitly shown as unavailable. */ }).finally(() => pending = null)
   return pending
 }
-export function useCardCurrency(sourceCurrency, accountCurrencies) {
+export function useCardCurrency(sourceCurrency, accountCurrencies, preferenceKey) {
   const auth = useAuthStore()
   const { accounts, selectedAccount, fetchAccounts } = useGlobalAccountFilter()
   const formatter = useCurrencyFormatter()
   const {hideAmounts} = useMonetaryPrivacy()
   const displayCurrency = computed(() => String(auth.user?.settings?.display_currency || 'USD').toUpperCase())
   const choices = computed(() => [...new Set([...cardCurrencies(displayCurrency.value, accounts.value, selectedAccount.value), ...(unref(accountCurrencies) || []).filter(Boolean).map(c=>String(c).toUpperCase())])])
-  const currency = ref(displayCurrency.value)
-  watch(displayCurrency, value => currency.value = value)
-  watch(choices, value => { if (!value.includes(currency.value)) currency.value = displayCurrency.value })
+  const currency = preferenceKey ? useCardCurrencyPreference(auth, preferenceKey, choices) : ref(displayCurrency.value)
+  if (!preferenceKey) {
+    watch(displayCurrency, value => currency.value = value)
+    watch(choices, value => { if (!value.includes(currency.value)) currency.value = displayCurrency.value })
+  }
   onMounted(() => { loadCardRates(); if (!accounts.value.length) fetchAccounts() })
   const convert = (value, from = unref(sourceCurrency) || displayCurrency.value, to = currency.value) => convertAmount(value, from, to, rates.value)
   function formatCurrency(value, options = {}) {

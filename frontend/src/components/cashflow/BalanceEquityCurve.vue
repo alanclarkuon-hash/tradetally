@@ -63,7 +63,7 @@ const rangeOptions = [
 const selectedDays = ref(90)
 const series = ref([])
 const sourceCurrency=ref('USD'),coverage=ref({sourceCurrencies:[],missingFx:0})
-const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency(sourceCurrency,computed(()=>coverage.value.sourceCurrencies))
+const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency(sourceCurrency,computed(()=>coverage.value.sourceCurrencies),'balance-history')
 const accounts = ref([])
 const has_history_accounts = ref(false)
 const loading = ref(false)

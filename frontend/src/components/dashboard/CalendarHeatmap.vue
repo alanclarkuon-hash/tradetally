@@ -100,7 +100,7 @@ const props = defineProps({
 })
 
 const router = useRouter()
-const {currency:cardCurrency,choices, formatSignedCurrency, formatCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatSignedCurrency, formatCurrency } = useCardCurrency(undefined,undefined,'calendarheatmap-1')
 
 // Build a YYYY-MM-DD -> {pnl, count} index from props.dailyPnL.
 const dayIndex = computed(() => {

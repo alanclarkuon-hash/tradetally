@@ -26,7 +26,7 @@ const props = defineProps({
   }
 })
 
-const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency()
+const {currency:cardCurrency,choices,formatCurrency,rates}=useCardCurrency(undefined,undefined,'equitycurvechart-1')
 const emit = defineEmits(['select-date'])
 
 const canvas = ref(null)

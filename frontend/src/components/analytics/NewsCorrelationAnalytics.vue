@@ -418,7 +418,7 @@ import MdiIcon from '@/components/MdiIcon.vue'
 import { mdiRefresh, mdiAlertCircle, mdiLock, mdiLightbulb, mdiChartLine, mdiClose } from '@mdi/js'
 import api from '@/services/api'
 
-const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency()
+const {currency:cardCurrency,choices, formatCurrency } = useCardCurrency(undefined,undefined,'newscorrelationanalytics-1')
 
 // Icons
 const refreshIcon = mdiRefresh

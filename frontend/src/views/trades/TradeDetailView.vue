@@ -96,7 +96,7 @@
         v-if="allocationEnabled && tradeAllocations.length > 0"
         class="card"
       >
-        <CurrencyCard :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+        <CurrencyCard preference-key="tradedetailview-1" :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocation</h2>
@@ -269,7 +269,7 @@
         <!-- Main Details -->
         <div class="lg:col-span-2 space-y-6">
           <div class="card">
-            <CurrencyCard :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-2" :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Details</h3>
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
@@ -998,7 +998,7 @@
           <ExitMatching v-if="authStore.user?.id === trade.user_id && trade.broker === 'trading212' && trade.instrument_type === 'stock'" :trade="trade" @changed="loadTrade" />
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
-            <CurrencyCard :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Executions ({{ processedExecutions.length }})
@@ -1513,7 +1513,7 @@
         <!-- Performance Summary -->
         <div class="space-y-6">
           <div class="card">
-            <CurrencyCard :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-4" :source-currency="getTradeCurrency()" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>

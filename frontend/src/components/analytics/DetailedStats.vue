@@ -74,7 +74,7 @@
     </div>
 
     <!-- Top Symbols -->
-    <CurrencyCard v-slot="{formatCurrency}"><div class="card xl:col-span-1">
+    <CurrencyCard preference-key="detailedstats-1" v-slot="{formatCurrency}"><div class="card xl:col-span-1">
       <div class="card-body">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Performing Symbols</h3>
         <div v-if="symbolStats.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
@@ -160,7 +160,7 @@ const props = defineProps({
 
 defineEmits(['navigate-symbol'])
 
-const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency()
+const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency(undefined,undefined,'detailedstats-1')
 
 const POSITIVE_CLASS = 'text-green-600'
 const NEGATIVE_CLASS = 'text-red-600'
