@@ -42,7 +42,7 @@ router.get('/library',run(async(req,res)=>{
 
 router.get('/calendar',run(async(req,res)=>{
  const year=Number(req.query.year);if(!Number.isInteger(year)||year<2000||year>2200)fail('Choose a valid calendar year');
- const events=(await db.query("WITH activity AS (SELECT e.plan_id,e.event_type,e.snapshot->>'action' AS action,CASE WHEN e.event_type='trade_linked' THEN COALESCE((e.snapshot->'source'->>'time')::timestamptz,e.created_at) ELSE e.created_at END AS occurred_at,p.status,p.definition->>'symbol' AS symbol,p.definition->>'title' AS title FROM trade_plan_events e JOIN trade_plans p ON p.id=e.plan_id WHERE e.user_id=$1 AND e.event_type IN ('ready','trade_linked','reviewed','completed','stop_changed','option_rolled')) SELECT *,occurred_at AS created_at FROM activity WHERE occurred_at>=$2::date AND occurred_at<$3::date ORDER BY occurred_at",[req.user.id,year+'-01-01',(year+1)+'-01-01'])).rows;
+ const events=(await db.query("WITH activity AS (SELECT e.plan_id,e.event_type,e.snapshot->>'action' AS action,CASE WHEN e.event_type='trade_linked' THEN COALESCE((e.snapshot->'source'->>'time')::timestamptz,e.created_at) ELSE e.created_at END AS occurred_at,p.status,p.definition->>'symbol' AS symbol,p.definition->>'title' AS title FROM trade_plan_events e JOIN trade_plans p ON p.id=e.plan_id WHERE e.user_id=$1 AND e.event_type IN ('ready','finalised','watching','trade_linked','reviewed','completed','stop_changed','option_rolled')) SELECT *,occurred_at AS created_at FROM activity WHERE occurred_at>=$2::date AND occurred_at<$3::date ORDER BY occurred_at",[req.user.id,year+'-01-01',(year+1)+'-01-01'])).rows;
  res.json({events});
 }));
 router.get('/recommendation',run(async(req,res)=>{
@@ -157,7 +157,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
  if(schema.error)fail('Provide a valid fill allocation');const b=schema.value;
  await db.withTransaction(async c=>{
   const p=await lock(c,req);
-  if(['draft','watching','cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
+  if(!p.finalised||['cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
   const t=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!t)fail('Trade not found',404);
   const f=sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
   const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 AND source_key=$3',[req.user.id,t.id,f.key])).rows;
@@ -208,7 +208,7 @@ router.put('/:id/management',run(async(req,res)=>{
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
-  const p=await lock(c,req);if(['draft','watching','cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
+  const p=await lock(c,req);if(!p.finalised||['cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
   const m=schema.value.management;
   for(const kind of ['entry','exit'])for(const key of Object.keys(m[kind])){
    if(!(kind==='exit'&&key==='runner')&&!p.definition[kind==='entry'?'entries':'exits'].some(e=>e.key===key))fail('Management row does not belong to this plan');
