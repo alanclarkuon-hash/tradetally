@@ -220,10 +220,13 @@ router.put('/:id/management',run(async(req,res)=>{
   const canonical=value=>Object.fromEntries(['entry','exit'].map(kind=>[kind,Object.fromEntries(Object.entries(value?.[kind]||{}).map(([key,r])=>[key,{...r,time:new Date(r.time).toISOString(),tactics:r.tactics||[],marketContext:r.marketContext||[]}]))]));
   if(isDeepStrictEqual(canonical(m),canonical(p.management)))return;
   const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');
-  const hasExecuted=Object.values(m.entry).some(r=>r.executed);
-  const baseline=p.baseline||(hasExecuted?{...p.definition,recordedAt:new Date().toISOString(),source:'user_reported'}:null);
-  await c.query("UPDATE trade_plans SET management=$1::jsonb,baseline=$2::jsonb,status=$3,version=version+1,updated_at=NOW() WHERE id=$4",[JSON.stringify(m),JSON.stringify(baseline),hasExecuted?'entered':p.status,p.id]);
-  await record(c,p,'management_updated',{previous:p.management,next:m,source:'user_reported'});
+  const hasExecuted=Object.values(m.entry).some(r=>r.executed)||allocated.some(a=>a.action==='entry');
+  const returnedToWatching=p.status==='entered'&&!hasExecuted;
+  const nextStatus=hasExecuted?'entered':returnedToWatching?'watching':p.status;
+  const baseline=returnedToWatching&&p.baseline?.source==='user_reported'?null:p.baseline||(hasExecuted?{...p.definition,recordedAt:new Date().toISOString(),source:'user_reported'}:null);
+  await c.query("UPDATE trade_plans SET management=$1::jsonb,baseline=$2::jsonb,status=$3,version=version+1,updated_at=NOW() WHERE id=$4",[JSON.stringify(m),JSON.stringify(baseline),nextStatus,p.id]);
+  await record(c,p,'management_updated',{previous:p.management,next:m,source:'user_reported',previousStatus:p.status,status:nextStatus});
+  if(returnedToWatching)await record(c,p,'watching',{previousStatus:p.status,status:'watching',reason:'All provisional entry marks removed; no entry trades linked'});
  });res.json({success:true});
 }));
 router.post('/:id/stop',run(async(req,res)=>{

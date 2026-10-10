@@ -22,10 +22,17 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   async function version(){return (await db.query('SELECT version FROM trade_plans WHERE id=$1',[planId])).rows[0].version}
   assert.equal((await call('/finalisation','POST',{version:await version(),finalised:true})).status,200,'finalisation validates and persists');
   assert.equal((await db.query('SELECT status,finalised FROM trade_plans WHERE id=$1',[planId])).rows[0].status,'draft','finalisation does not move the lifecycle stage');
+  assert.equal((await call('','PUT',{version:await version(),definition:{...normalized,riskBudget:200}})).status,422,'finalised preparation is read-only');
   assert.equal((await call('/finalisation','POST',{version:await version(),finalised:false})).status,200,'finalisation can be removed');
+  assert.equal((await call('/status','POST',{version:await version(),status:'watching'})).status,422,'unfinished plan cannot move to Watching');
   assert.equal((await call('/finalisation','POST',{version:await version(),finalised:true})).status,200);
   assert.equal((await call('/status','POST',{version:await version(),status:'watching'})).status,200,'Draft moves directly to Watching');
   assert.equal((await db.query('SELECT finalised FROM trade_plans WHERE id=$1',[planId])).rows[0].finalised,true,'Watching retains preparation evidence');
+  const mistakenEntry={executed:true,units:1,price:100,time:'2026-01-01T10:00:00Z'};
+  assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:mistakenEntry},exit:{}}})).status,200);
+  assert.equal((await db.query('SELECT status FROM trade_plans WHERE id=$1',[planId])).rows[0].status,'entered');
+  assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:{...mistakenEntry,executed:false}},exit:{}}})).status,200);
+  const resetPlan=(await db.query('SELECT status,baseline FROM trade_plans WHERE id=$1',[planId])).rows[0];assert.equal(resetPlan.status,'watching','last mistaken mark returns to Watching');assert.equal(resetPlan.baseline,null,'mistaken provisional baseline is cleared');
   const automaticRow={executed:false,units:null,price:100,time:'2026-01-01T10:00:00Z'};
   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:automaticRow},exit:{}}})).status,200,'automatic unexecuted sizing is accepted');
   assert.equal((await db.query('SELECT management FROM trade_plans WHERE id=$1',[planId])).rows[0].management.entry.a.units,null,'automatic sizing persists instead of a zero override');
@@ -42,6 +49,8 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   async function link(index,stage){const f=fills[index];return call('/allocations','POST',{version:await version(),tradeId,sourceKey:f.key,fingerprint:f.fingerprint,stageKey:stage,action:f.action,quantity:f.quantity})}
   assert.equal((await link(0,'a')).status,201,'entry allocation');
   assert.equal((await link(0,'a')).status,409,'duplicate allocation');
+  assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:automaticRow},exit:{}}})).status,200);
+  assert.equal((await db.query('SELECT status FROM trade_plans WHERE id=$1',[planId])).rows[0].status,'entered','linked entries prevent reversal to Watching');
   assert.equal((await call('/stop','POST',{version:1,stopPrice:95,reason:'Synthetic stop test'})).status,409,'stale edit');
   assert.equal((await call('/stop','POST',{version:await version(),stopPrice:95,reason:'Synthetic stop test'})).status,200,'persisted stop');
   assert.equal((await link(1,'b')).status,201,'partial exit');
