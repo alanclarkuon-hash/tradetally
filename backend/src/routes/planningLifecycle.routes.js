@@ -175,6 +175,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(current.unresolved)fail('Resolve changed source fills before adding allocations',409);
   const candidate={id:'pending',trade_id:t.id,source_key:f.key,stage_key:b.stageKey,action:b.action,quantity:b.quantity,source_snapshot:f};
   const existing=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
+  if(existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
   const tradeIds=[...new Set([...existing.map(a=>a.trade_id),t.id])];
   const allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
   if(ledger(p,[...existing,candidate],allTrades).overExit)fail('Exit exceeds linked entries in this account/contract or precedes them',409);
@@ -196,6 +197,21 @@ router.post('/:id/allocations',run(async(req,res)=>{
   await record(c,p,'trade_linked',{tradeId:t.id,sourceKey:f.key,stageKey:b.stageKey,action:b.action,quantity:b.quantity,source:f});
  });
  res.status(201).json({success:true});
+}));
+router.delete('/:id/row-allocations',run(async(req,res)=>{
+ const schema=Joi.object({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required()}).validate(req.body);
+ if(schema.error)fail('Choose a valid linked row');const b=schema.value;
+ await db.withTransaction(async c=>{
+  const p=await lock(c,req);if(p.status==='completed')fail('Reopen the review before correcting a completed plan');
+  const removed=(await c.query('DELETE FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4 RETURNING *',[p.id,p.user_id,b.action,b.stageKey])).rows;
+  if(!removed.length)fail('No trade is linked to this row',404);
+  const management=JSON.parse(JSON.stringify(p.management||{}));if(management[b.action]?.[b.stageKey])management[b.action][b.stageKey].executed=false;
+  const result=await evidence(c,{...p,management});
+  const hasExecutions=result.records.length>0,nextStatus=hasExecutions?'entered':'watching',baseline=hasExecutions?p.baseline:null;
+  for(const a of removed)await record(c,p,'trade_unlinked',{allocation:a,reason:'Unlinked from ladder row by user',previousBaseline:p.baseline});
+  await c.query('UPDATE trade_plans SET management=$1::jsonb,baseline=$2::jsonb,status=$3,review=NULL,version=version+1,updated_at=NOW() WHERE id=$4',[JSON.stringify(management),JSON.stringify(baseline),nextStatus,p.id]);
+  if(nextStatus==='watching'&&p.status!=='watching')await record(c,p,'watching',{previousStatus:p.status,status:'watching',reason:'No linked or provisional executions remain'});
+ });res.json({success:true});
 }));
 router.delete('/:id/allocations/:allocationId',run(async(req,res)=>{
  validId(req.params.allocationId);if(typeof req.body.reason!=='string'||req.body.reason.trim().length<10)fail('Record why this allocation is being corrected');
