@@ -83,6 +83,7 @@ function ledger(plan,allocations,trades) {
   const key=accountKey+'|'+JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null)+'|'+f.currency;
   const queue=queues.get(key)||[];queues.set(key,queue);
   if(a.action==='entry'){
+   a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*f.price*f.multiplier:null;
    entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*f.price*f.multiplier;fees+=fee;queue.push({q,price:f.price,multiplier:f.multiplier,feePerUnit:fee/q});
   }else{
    exited+=q;let remaining=q;let gross=0,entryFees=0;
@@ -92,7 +93,8 @@ function ledger(plan,allocations,trades) {
     entryFees+=matched*first.feePerUnit;remaining-=matched;first.q-=matched;if(first.q<=1e-8)queue.shift();
    }
    if(remaining>1e-8)overExit=true;
-   realised+=gross-entryFees-fee;
+   a.realisedProfit=gross-entryFees-fee;
+   realised+=a.realisedProfit;
   }
  }
  for(const queue of queues.values())for(const lot of queue)cost+=lot.q*lot.price*lot.multiplier;
@@ -100,6 +102,7 @@ function ledger(plan,allocations,trades) {
  const currency=currencies.size===1?[...currencies][0]:null;
  const costsUnresolved=records.filter(a=>a.fill.costsVerified===false).length;
  const complete=records.length>0&&!unresolved&&!overExit&&!costsUnresolved&&currencies.size===1&&!!currency;
+ for(const a of records)if(a.action==='exit'&&!complete)a.realisedProfit=null;
  const avg=openQuantity>1e-8?cost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null;
  const stop=Number(plan.definition.stopPrice)*(plan.stopConversion||1);
  const capitalRisk=complete&&(plan.definition.currency===currency||plan.stopConversion)&&['stock','crypto'].includes(plan.definition.instrument)&&stop>0
