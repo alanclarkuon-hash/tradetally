@@ -1,5 +1,6 @@
 
 const crypto = require('crypto');
+const {isDeepStrictEqual}=require('node:util');
 const {fail} = require('./tradePlanning');
 const positive = v => Number.isFinite(Number(v)) && Number(v)>0;
 function sourceFills(trade) {
@@ -75,7 +76,7 @@ function ledger(plan,allocations,trades) {
  const records=[...allocations,...provisional].map(a=>{
   const fill=sourceFills(byId.get(a.trade_id)||{}).find(f=>f.key===a.source_key);
   const stored=a.source_snapshot;
-  const fxMatches=!Object.hasOwn(stored,'transactionFx')||JSON.stringify(stored.transactionFx)===JSON.stringify(fill?.transactionFx);
+  const fxMatches=!Object.hasOwn(stored,'transactionFx')||isDeepStrictEqual(stored.transactionFx,fill?.transactionFx);
   const valid=stored.provisional||(fill&&fill.fingerprint===stored.fingerprint&&fill.costsVerified===stored.costsVerified&&fxMatches);
   const snapshot=valid&&fill&&!Object.hasOwn(stored,'transactionFx')?{...stored,transactionFx:fill.transactionFx}:stored;
   if(!valid)unresolved++;
