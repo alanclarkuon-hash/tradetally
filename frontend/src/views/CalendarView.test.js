@@ -31,13 +31,14 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/composables/useGlobalAccountFilter', () => ({
   useGlobalAccountFilter: () => ({
-    selectedAccount: ref(null)
+    selectedAccount: ref(null),accounts:ref([{value:'usd',currency:'USD'}]),fetchAccounts:vi.fn()
   })
 }))
 
 vi.mock('@/composables/useCurrencyFormatter', () => ({
+  CURRENCY_OPTIONS:[{code:'USD',symbol:'$'}],
   useCurrencyFormatter: () => ({
-    currencySymbol: ref('$'),
+    currencySymbol: ref('$'),symbolFor:()=> '$',
     formatCurrency: (value, options = {}) => {
       const digits = options.maximumFractionDigits ?? 2
       return `$${Number(value).toFixed(digits)}`

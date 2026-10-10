@@ -61,7 +61,7 @@
         <!-- Cashflow Summary Cards -->
         <div v-if="cashflow" class="grid gap-4 grid-cols-1 sm:grid-cols-3">
           <!-- YTD Deposits / Withdrawals -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">YTD Deposits</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
@@ -74,9 +74,9 @@
                 {{ formatSignedCurrency(-cashflow.summary.ytdWithdrawals) }}
               </div>
             </div>
-          </div>
+          </div></CurrencyCard>
           <!-- Total Inflow / Outflow -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col gap-4">
             <div>
               <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">Total Inflow</div>
               <div class="mt-1 text-lg font-bold tabular-nums tracking-tight whitespace-nowrap text-green-600 dark:text-green-400">
@@ -89,9 +89,9 @@
                 {{ formatSignedCurrency(-cashflow.summary.totalOutflow) }}
               </div>
             </div>
-          </div>
+          </div></CurrencyCard>
           <!-- Current Balance -->
-          <div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm p-5 flex flex-col justify-center">
             <div class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'USDT wallet · USD equivalent' : cashflow.summary.liveCashBalance ? 'Latest synced USD cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Statement cash balance' : 'Current Balance' }}</div>
             <div class="mt-1 text-2xl font-bold tabular-nums tracking-tight whitespace-nowrap" :class="balanceClass">
               {{ formatCurrency(cashflow.summary.liveCashBalance?.amount ?? cashflow.summary.currentBalance) }}
@@ -99,7 +99,7 @@
             <div v-if="cashflow.summary.liveCashBalance" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Synced {{ new Date(cashflow.summary.liveCashBalance.asOf).toLocaleString() }}
             </div>
-          </div>
+          </div></CurrencyCard>
         </div>
 
         <div v-if="cashflow" class="mb-4 flex flex-wrap gap-6 text-sm text-gray-600 dark:text-gray-300">
@@ -109,7 +109,7 @@
           <span>Withholding &amp; sales tax: {{ formatCurrency(cashflow.summary.totalWithholdingTax) }}</span>
         </div>
 
-        <div v-if="cashflow?.summary?.reconciliation" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
+        <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div v-if="cashflow?.summary?.reconciliation" class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
           <span :class="cashflow.summary.reconciliation.matched ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'">
             {{ cashflow.summary.reconciliation.matched ? (cashflow.summary.cashflowSource === 'kraken_fiat_wallets' ? 'Matches Kraken fiat cash' : cashflow.summary.cashflowSource === 'okx_usdt_wallet' ? 'Matches OKX USDT valuation' : cashflow.summary.cashflowSource === 'trading212_wallet' ? 'Matches Trading 212 cash' : cashflow.summary.cashflowSource === 'etoro_statement' ? 'Matches eToro USD statement' : 'Matches IBKR statement') : 'Balance needs review' }}
           </span>
@@ -118,7 +118,7 @@
             Difference: {{ cashflow.summary.reconciliation.matched ? formatCurrency(0) : formatSignedCurrency(cashflow.summary.reconciliation.difference) }}.
             Currency conversion effects: {{ formatSignedCurrency(cashflow.summary.totalFxAdjustments) }}.
           </span>
-        </div>
+        </div></CurrencyCard>
 
         <div v-if="cashflow?.summary?.cashflowSource === 'kraken_fiat_wallets'" class="mb-4 rounded-lg border border-gray-200 p-3 text-sm text-gray-600 dark:border-gray-700 dark:text-gray-300">
           Kraken cash includes its GBP and USD wallets, shown in USD. Coins and stablecoins are included in investments.
@@ -143,7 +143,7 @@
 
         <!-- Cashflow Table -->
         <div class="card">
-          <div class="card-body">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="card-body">
             <div class="flex items-center justify-between mb-4">
               <h3 class="heading-card">Daily Cashflow</h3>
               <div v-if="cashflow" class="text-sm text-gray-500 dark:text-gray-400">
@@ -316,7 +316,7 @@
                 </button>
               </div>
             </div>
-          </div>
+          </div></CurrencyCard>
         </div>
       </div>
 
@@ -329,7 +329,7 @@
 
         <!-- Accounts List -->
         <div class="card">
-          <div class="card-body">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="card-body">
             <div class="flex items-center justify-between mb-4">
               <h3 class="heading-card">Accounts</h3>
               <button @click="openAddAccountModal" class="btn-primary text-sm">
@@ -394,7 +394,7 @@
                 </div>
               </div>
             </div>
-          </div>
+          </div></CurrencyCard>
         </div>
 
         <!-- Transaction Entry -->
@@ -471,7 +471,7 @@
 
         <!-- Recent Transactions -->
         <div v-if="transactions.length > 0" class="card">
-          <div class="card-body">
+          <CurrencyCard :source-currency="accountCurrency" :account-currencies="[accountCurrency]" v-slot="{formatCurrency,formatSignedCurrency}"><div class="card-body">
             <h3 class="heading-card mb-4">Recent Transactions</h3>
             <div class="space-y-2">
               <div
@@ -502,7 +502,7 @@
                 </button>
               </div>
             </div>
-          </div>
+          </div></CurrencyCard>
         </div>
       </div>
     </div>
@@ -518,6 +518,7 @@
 </template>
 
 <script setup>
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import { resolveDatePreset, monthPresetOptions } from '@/utils/datePresets'
 import { ref, computed, watch, onMounted } from 'vue'
 import { useAccountsStore } from '@/stores/accounts'
@@ -532,9 +533,9 @@ import PlaidReviewQueue from '@/components/accounts/PlaidReviewQueue.vue'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
-const { formatCurrency: formatMoney, formatSignedCurrency: formatSignedMoney } = useCurrencyFormatter()
+const { formatCurrency: formatMoney, formatSignedCurrency: formatSignedMoney,symbolFor } = useCurrencyFormatter()
 const accountCurrency = computed(() => cashflow.value?.account?.currency || accounts.value.find(a => a.id === selectedAccountId.value)?.currency || 'USD')
-const currencySymbol = computed(() => accountCurrency.value === 'GBP' ? '\u00a3' : '$')
+const currencySymbol = computed(() => symbolFor(accountCurrency.value))
 function formatCurrency(value, options = {}) { return formatMoney(value, {currency:accountCurrency.value,...options}) }
 function formatSignedCurrency(value, options = {}) { return formatSignedMoney(value, {currency:accountCurrency.value,...options}) }
 

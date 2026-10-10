@@ -177,7 +177,7 @@ const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:
 const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage'),preparationLocked=computed(()=>!!plan.value.finalised&&!managing.value)
-const {currency:positionCurrency,choices:currencyChoices,displayCurrency}=useCardCurrency()
+const {currency:positionCurrency,choices:currencyChoices,displayCurrency}=useCardCurrency(undefined,computed(()=>{const currency=props.accounts.find(a=>a.id===draft.value?.accountId)?.currency;return currency?[currency]:[]}))
 const currencies=ref({entry:displayCurrency.value,exit:displayCurrency.value})
 watch(displayCurrency,c=>{currencies.value={entry:c,exit:c}})
 watch(currencyChoices,choices=>{for(const k of ['entry','exit'])if(!choices.includes(currencies.value[k]))currencies.value[k]=displayCurrency.value})

@@ -75,6 +75,7 @@ class PlaidBalanceSnapshot {
     const seriesResult = await db.query(`
       SELECT
         s.snapshot_date,
+        s.iso_currency_code,
         SUM(s.current_balance) AS current_balance,
         SUM(s.available_balance) AS available_balance,
         COUNT(DISTINCT s.plaid_account_row_id) AS account_count
@@ -84,8 +85,8 @@ class PlaidBalanceSnapshot {
         AND pa.is_active = true
         AND ${date_condition}
         ${accountFilter}
-      GROUP BY s.snapshot_date
-      ORDER BY s.snapshot_date ASC
+      GROUP BY s.snapshot_date, s.iso_currency_code
+      ORDER BY s.snapshot_date ASC, s.iso_currency_code
     `, params);
 
     const accountsResult = await db.query(`
@@ -100,13 +101,10 @@ class PlaidBalanceSnapshot {
       ORDER BY pa.account_name ASC
     `, params);
 
+    const fx=seriesResult.rows.length?await require('../services/planningFx').latestPlanningFx():null;
+    const reporting=require('../services/balanceHistoryCurrency').balanceHistoryCurrency(seriesResult.rows,fx?.rates);
     return {
-      series: seriesResult.rows.map(row => ({
-        date: row.snapshot_date,
-        currentBalance: row.current_balance !== null ? parseFloat(row.current_balance) : null,
-        availableBalance: row.available_balance !== null ? parseFloat(row.available_balance) : null,
-        accountCount: parseInt(row.account_count, 10) || 0
-      })),
+      ...reporting,
       accounts: accountsResult.rows.map(row => ({
         plaidAccountRowId: row.id,
         accountName: row.account_name,
