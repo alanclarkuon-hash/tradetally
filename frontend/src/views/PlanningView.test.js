@@ -1,0 +1,33 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {describe,it,expect,vi,beforeEach} from 'vitest'
+import {ref} from 'vue'
+import PlanningView from './PlanningView.vue'
+const {get,post,put,selectedAccount,routeParams}=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),put:vi.fn(),selectedAccount:{value:null},routeParams:{}}))
+vi.mock('@/services/api',()=>({default:{get,post,put}}))
+vi.mock('@/stores/accounts',()=>({useAccountsStore:()=>({accounts:[],fetchAccounts:vi.fn().mockResolvedValue([])})}))
+vi.mock('@/composables/useGlobalAccountFilter',()=>({useGlobalAccountFilter:()=>({selectedAccount,selectedAccountLabel:ref('All accounts')})}))
+vi.mock('vue-router',()=>({useRouter:()=>({replace:vi.fn().mockResolvedValue()}),useRoute:()=>({params:routeParams})}))
+const factory=()=>mount(PlanningView,{global:{stubs:{RouterLink:{template:'<a><slot/></a>'},MoneyPrivacyToggle:true,PlanningWorkspace:{template:"<div>Planning workflow workspace</div>"}}}})
+beforeEach(()=>{vi.clearAllMocks();delete routeParams.id;selectedAccount.value=null;get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[],commitments:[]}:{playbooks:[]}}))})
+describe('Planning first slice',()=>{
+ it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).toContain('not verified');expect(w.text()).toContain('No committed entries');expect(w.text()).toContain('Draft and Watching reserve no capacity');w.unmount()})
+ it('new drafts include a definition for the persistent workflow workspace',async()=>{const w=factory();await flushPromises();await w.findAll('button').find(b=>b.text()==='New plan').trigger('click');expect(w.text()).toContain('Planning workflow workspace');expect(post).not.toHaveBeenCalled();w.unmount()})
+
+})
+const example=status=>({id:'example-plan',status,finalised:true,version:1,definition:{title:'Synthetic example',symbol:'TEST',assetName:'Test asset',instrument:'stock',direction:'long',accountId:null,currency:'GBP',playbookId:null,riskBudget:100,stopPrice:90,quantityStep:.01,thesis:'Test setup',chartUrl:'',runnerRule:'',entries:[{key:'entry1',label:'Entry 1',price:100,riskWeight:100,tactic:'Level'}],exits:[],preparation:[],options:{}},calculation:{stages:[]}})
+const button=(w,text)=>w.findAll('button').find(b=>b.text()===text)
+function loadExample(status){let plan=example(status);get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[plan],commitments:[]}:url==='/playbooks'?{playbooks:[]}:{history:[]}}));post.mockImplementation((url,body)=>{plan={...plan,status:body.status,version:2};return Promise.resolve({data:{plan}})})}
+it('All plans includes cancelled plans while active excludes them',async()=>{loadExample('cancelled');const w=factory();await flushPromises();expect(w.text()).not.toContain('Synthetic example');await w.findAll('select')[0].setValue('all');expect(w.text()).toContain('Synthetic example');
+ w.unmount()})
+it('cancellation requires confirmation and Keep plan performs no write',async()=>{loadExample('draft');const w=factory();await flushPromises();await button(w,'Open plan').trigger('click');await flushPromises();await button(w,'Cancel plan').trigger('click');expect(post).not.toHaveBeenCalled();await button(w,'Keep plan').trigger('click');expect(post).not.toHaveBeenCalled();expect(w.find('[aria-label="Confirm plan cancellation"]').exists()).toBe(false);await button(w,'Cancel plan').trigger('click');await button(w,'Confirm cancellation').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/example-plan/status',{status:'cancelled',version:1,cancellationConfirmed:true});expect(button(w,'Reopen as Draft')).toBeTruthy();w.unmount()})
+it('reopens a cancelled plan without trying to edit the read-only definition',async()=>{loadExample('cancelled');const w=factory();await flushPromises();await w.findAll('select')[0].setValue('cancelled');await button(w,'Open plan').trigger('click');await flushPromises();await button(w,'Reopen as Draft').trigger('click');await flushPromises();expect(put).not.toHaveBeenCalled();expect(post).toHaveBeenCalledWith('/trade-plans/example-plan/status',{status:'draft',version:1,cancellationConfirmed:false});expect(button(w,'Cancel plan')).toBeTruthy();w.unmount()})
+it('Ready can return to Draft without changing broker records',async()=>{loadExample('watching');const w=factory();await flushPromises();await button(w,'Open plan').trigger('click');await flushPromises();await button(w,'Return to Draft').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/example-plan/status',{status:'draft',version:1,cancellationConfirmed:false});w.unmount()});
+
+it('Unassigned view remains available with selected global accounts',async()=>{loadExample('draft');selectedAccount.value=['synthetic-account'];const w=factory();await flushPromises();await w.findAll('select')[1].setValue('unassigned');expect(w.text()).toContain('Synthetic example');w.unmount()});
+
+it('requests latest selected-account capital without historical date filters',async()=>{selectedAccount.value=['synthetic-account','__unsorted__'];const w=factory();await flushPromises();expect(get).toHaveBeenCalledWith('/investments/portfolio/dashboard',{params:{currency:'GBP',accounts:'synthetic-account'},timeout:180000});w.unmount()});
+it('does not substitute all accounts when no accounts are selected',async()=>{selectedAccount.value=[];const w=factory();await flushPromises();expect(get.mock.calls.some(([url])=>url==='/investments/portfolio/dashboard')).toBe(false);w.unmount()});
+
+it('opens a direct plan while the independent capital valuation is still loading',async()=>{loadExample('watching');routeParams.id='example-plan';const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url==='/investments/portfolio/dashboard'?new Promise(()=>{}):original(url,...args));const w=factory();await flushPromises();expect(w.text()).toContain('Planning workflow workspace');w.unmount()});
+
+it('Draft can move straight to Watching',async()=>{loadExample('draft');const w=factory();await flushPromises();await button(w,'Open plan').trigger('click');await flushPromises();expect(button(w,'Return to Watching')).toBeUndefined();await button(w,'Move to Watching').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/example-plan/status',{status:'watching',version:1,cancellationConfirmed:false});w.unmount()});

@@ -17,6 +17,7 @@
       </div>
     </div>
 
+    <PlanningTagLibrary/>
     <div v-if="loading && playbooks.length === 0" class="card">
       <div class="card-body py-12 text-center text-gray-500 dark:text-gray-400">
         Loading profiles...
@@ -427,6 +428,7 @@
 </template>
 
 <script setup>
+import PlanningTagLibrary from "@/components/planning/PlanningTagLibrary.vue"
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import api from '@/services/api'
 import { useGlobalAccountFilter } from '@/composables/useGlobalAccountFilter'
