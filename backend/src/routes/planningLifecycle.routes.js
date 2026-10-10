@@ -20,12 +20,16 @@ async function lock(c,req){
 async function evidence(c,p){
  const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
  const trades=allocations.length?(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,[...new Set(allocations.map(a=>a.trade_id))]])).rows:[];
- let result=ledger(p,allocations,trades);
- if(result.currency&&result.currency!==p.definition.currency){
-  const fx=(await c.query("SELECT rates FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date DESC LIMIT 1")).rows[0];
-  const from=p.definition.currency==='USD'?1:Number(fx?.rates?.[p.definition.currency]),to=result.currency==='USD'?1:Number(fx?.rates?.[result.currency]);
-  if(from>0&&to>0)result=ledger({...p,stopConversion:to/from},allocations,trades);
+ const actualCurrencies=new Set(allocations.map(a=>a.source_snapshot.currency));
+ const target=actualCurrencies.size===1?[...actualCurrencies][0]:p.definition.currency;
+ let fx=null,working=p;
+ if(target&&target!==p.definition.currency){
+  fx=await require('../services/planningFx').latestPlanningFx();
+  const rates={USD:1,...fx?.rates},from=Number(rates[p.definition.currency]),to=Number(rates[target]);
+  if(from>0&&to>0)working={...p,stopConversion:to/from,...(actualCurrencies.size===1?{provisionalConversion:{currency:target,rate:to/from}}:{})};
  }
+ const result=ledger(working,allocations,trades);
+ if(fx)result.displayFx=fx;
  return result;
 }
 async function record(c,p,type,snapshot){
@@ -34,7 +38,7 @@ async function record(c,p,type,snapshot){
 router.get('/library',run(async(req,res)=>{
  const tags=(await db.query('SELECT id,kind,name,definition FROM trade_plan_tags WHERE user_id=$1 ORDER BY kind,name',[req.user.id])).rows;
  const settings=(await db.query('SELECT settings FROM trade_planning_settings WHERE user_id=$1',[req.user.id])).rows[0]?.settings||{};
- const fx=(await db.query("SELECT rates,rate_date FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date DESC LIMIT 1")).rows[0]||null;
+ const fx=await require('../services/planningFx').latestPlanningFx();
  res.json({tags,settings,fx});
 }));
 
@@ -62,7 +66,7 @@ router.get('/risk',run(async(req,res)=>{
   db.query('SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1',[req.user.id]),
   db.query("SELECT * FROM trade_plans WHERE user_id=$1 AND status NOT IN ('cancelled','completed')",[req.user.id]),
   db.query('SELECT settings FROM trade_planning_settings WHERE user_id=$1',[req.user.id]),
-  db.query("SELECT rates,rate_date FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date DESC LIMIT 1"),
+  require('../services/planningFx').latestPlanningFx().then(value=>({rows:value?[value]:[]})),
   db.query('SELECT COUNT(*) AS count FROM investment_holdings WHERE user_id=$1',[req.user.id])
  ]);
  const ids=[...new Set([...trades.rows.map(t=>t.account_identifier||'unassigned'),...snapshots.rows.map(t=>t.account_identifier)])];
@@ -111,7 +115,7 @@ router.get('/:id/workflow',run(async(req,res)=>{
  const result=await evidence(db,p);
  const history=(await db.query('SELECT event_type,created_at,snapshot FROM trade_plan_events WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at',[p.id,req.user.id])).rows;
  const tradeReviews=(await db.query('SELECT r.trade_id,r.adherence_score,r.review_type,r.reviewed_at,r.followed_plan FROM trade_playbook_reviews r WHERE r.user_id=$1 AND r.trade_id IN (SELECT trade_id FROM trade_plan_allocations WHERE plan_id=$2 AND user_id=$1)',[p.user_id,p.id])).rows;
- res.json({tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
+ res.json({fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
 }));
 function digest(result){return require('crypto').createHash('sha256').update(JSON.stringify(result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid})))).digest('hex')}
 

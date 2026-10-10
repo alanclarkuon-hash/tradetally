@@ -51,6 +51,17 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal((await link(0,'a')).status,409,'duplicate allocation');
   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{a:automaticRow},exit:{}}})).status,200);
   assert.equal((await db.query('SELECT status FROM trade_plans WHERE id=$1',[planId])).rows[0].status,'entered','linked entries prevent reversal to Watching');
+  const fxService=require(root+'/src/services/planningFx'),realFx=fxService.latestPlanningFx;
+  const beforeFx=(await db.query('SELECT definition,management FROM trade_plans WHERE id=$1',[planId])).rows[0];
+  fxService.latestPlanningFx=async()=>({rates:{USD:1,GBP:.8},source:'synthetic_quote'});
+  try{
+   const fxDefinition={...normalized,currency:'GBP',stopPrice:72,riskBudget:80,entries:[{...normalized.entries[0],price:80},{key:'extra',label:'Extra',price:88,riskWeight:0,units:2,tactic:'Condition',marketContext:[],tactics:[]}]};
+   await db.query('UPDATE trade_plans SET definition=$1::jsonb WHERE id=$2',[JSON.stringify(fxDefinition),planId]);
+   assert.equal((await call('/management','PUT',{version:await version(),management:{entry:{...beforeFx.management.entry,extra:{executed:true,units:2,price:88,time:'2026-01-02T00:00:00Z'}},exit:{}}})).status,200,'mixed-currency provisional entry');
+   const fxWorkflow=(await call('/workflow')).data;
+   assert.equal(fxWorkflow.ledger.currency,'USD');assert.equal(fxWorkflow.ledger.positionValue,1220);assert.equal(fxWorkflow.ledger.capitalRisk,140);assert.equal(fxWorkflow.ledger.fxEstimated,true);assert.equal(fxWorkflow.ledger.coverageComplete,false);
+   assert.equal((await db.query('SELECT management FROM trade_plans WHERE id=$1',[planId])).rows[0].management.entry.extra.price,88,'original provisional GBP price retained');
+  }finally{fxService.latestPlanningFx=realFx;await db.query('UPDATE trade_plans SET definition=$1::jsonb,management=$2::jsonb WHERE id=$3',[JSON.stringify(beforeFx.definition),JSON.stringify(beforeFx.management),planId]);}
   assert.equal((await call('/stop','POST',{version:1,stopPrice:95,reason:'Synthetic stop test'})).status,409,'stale edit');
   assert.equal((await call('/stop','POST',{version:await version(),stopPrice:95,reason:'Synthetic stop test'})).status,200,'persisted stop');
   assert.equal((await link(1,'b')).status,201,'partial exit');
