@@ -266,7 +266,7 @@ router.post('/:id/roll',run(async(req,res)=>{
  const b=schema.value;
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.definition.instrument!=='option'||p.status!=='entered')fail('Rolls require an entered single-leg option plan');
-  const result=await evidence(c,p);if(!result.coverageComplete||result.openQuantity<=0)fail('Reconcile current option exposure before rolling');
+  if(require('../services/planningAccounts').accountIds(p.definition).length>1)fail('Option rolls currently require a separate plan per account');const result=await evidence(c,p);if(!result.coverageComplete||result.openQuantity<=0)fail('Reconcile current option exposure before rolling');
   const chosen=[];
   for(const [action,choice] of [['exit',b.close],['entry',b.open]]){
    const t=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[choice.tradeId,p.user_id])).rows[0];if(!t)fail('Roll trade not found',404);
