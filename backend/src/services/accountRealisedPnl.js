@@ -17,16 +17,17 @@ function calculateAccountResult(trade, configuredCurrency) {
   return {...r,nativeCurrency:native,entryCost:fills.filter(f=>f.action==='entry').reduce((sum,f)=>sum+f.quantity*f.price*multiplier/(f.transactionFx?.rate||1),0)};
  }
  if(currency===native) {
+  const reportingFees=trade.broker==='etoro'&&fills.length&&fills.every(f=>f.costsVerified)?fills.reduce((sum,f)=>sum+(f.netFees??f.fees),0):Number(trade.fees||0);
   let events=Array.isArray(trade.executions)&&trade.executions.length?computeTradePnl({side:trade.side,instrumentType:trade.instrument_type,contractSize:trade.contract_size,pointValue:trade.point_value,executions:trade.executions,fallbackCommission:trade.commission,fallbackFees:trade.fees}).annotatedExecutions.flatMap((e,sourceIndex)=>e.realized_pnl==null?[]:[{sourceIndex,time:e.exitTime||e.exit_time||e.datetime,pnl:e.realized_pnl,gross_pnl:e.gross_realized_pnl}]):[];
   // A completed single-exit broker record has an authoritative cash result.
   // Price arithmetic can omit leverage, income or broker adjustments. Attribute
   // its stored account-native result to that exit; metadata-only imports use
   // the recorded close time. Do not redistribute multi-day partial exits.
   if(trade.exit_time&&trade.pnl!=null&&events.length<=1) {
-   events=[{...events[0],time:events[0]?.time||trade.exit_time,pnl:Number(trade.pnl),gross_pnl:Number(trade.pnl)+Number(trade.commission||0)+Number(trade.fees||0)}];
+   events=[{...events[0],time:events[0]?.time||trade.exit_time,pnl:Number(trade.pnl),gross_pnl:Number(trade.pnl)+Number(trade.commission||0)+reportingFees}];
   }
   return {status:'complete',currency,nativeCurrency:native,basis:'account_native',pnl:trade.pnl==null?null:Number(trade.pnl),
-   commission:Number(trade.commission||0),fees:Number(trade.fees||0),entryCost:Number(trade.entry_price||0)*Number(trade.quantity||0)*multiplier,events};
+   commission:Number(trade.commission||0),fees:reportingFees,entryCost:require('./etoroCapital').entryCapital(trade)??Number(trade.entry_price||0)*Number(trade.quantity||0)*multiplier,events};
  }
  // Some legacy imports already captured account-native settlement, then
  // normalised it to USD. Restore the preserved cash result, not price-derived
@@ -53,7 +54,7 @@ function calculateAccountResult(trade, configuredCurrency) {
   }
   if(!positive(rate))return unavailable('Broker transaction FX missing');
   accountFills.push({action:f.action==='entry'?(trade.side==='short'?'sell':'buy'):(trade.side==='short'?'buy':'sell'),quantity:f.quantity,
-   price:f.price/Number(rate),commission:f.commission/Number(rate),fees:(f.netFees??f.fees)/Number(rate),datetime:f.time,sourceIndex:f.sourceIndex,sourceKey:f.key});
+   price:(f.economicPrice??f.price)/Number(rate),commission:f.commission/Number(rate),fees:(f.netFees??f.fees)/Number(rate),datetime:f.time,sourceIndex:f.sourceIndex,sourceKey:f.key});
  }
  const result=computeTradePnl({side:trade.side,instrumentType:trade.instrument_type||'stock',contractSize:trade.contract_size,pointValue:trade.point_value,executions:accountFills,timezone:'UTC'});
  const exits=result.annotatedExecutions.filter(e=>e.realized_pnl!=null);

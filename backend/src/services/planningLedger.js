@@ -21,6 +21,7 @@ function sourceFills(trade) {
  });
  const currency=trade.original_entry_price_currency!=null?'USD':trade.original_currency||null;
  const multiplier=trade.instrument_type==='option'?Number(trade.contract_size):trade.instrument_type==='future'?Number(trade.point_value):1;
+ const capital=require('./etoroCapital').entryCapital(trade);
  const fills=list.map(e=>{
   const action=String(e.action||e.side||'').toLowerCase();
   const kind=(trade.side==='short'?action==='sell':action==='buy')?'entry':(trade.side==='short'?action==='buy':action==='sell')?'exit':null;
@@ -33,14 +34,14 @@ function sourceFills(trade) {
   // signed source evidence, but admit it only when the broker net verifies it.
   const rawFees=Number(e.fees||e.fee||0),reported=Number(e.etoro_reported_net_profit);
   const brokerGross=(Number(e.price)-Number(trade.entry_price))*Number(e.quantity)*multiplier*(trade.side==='short'?-1:1);
-  const verifiedCredit=trade.broker==='etoro'&&kind==='exit'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&rawFees<0&&Number(e.commission||0)===0&&Number.isFinite(reported)&&(Math.abs(brokerGross-rawFees-reported)<=.05||Math.abs(brokerGross-reported)<=.05);
-  if(!Number.isFinite(snapshot.costs)||(snapshot.costs<0&&!verifiedCredit))return null;
+  const verifiedAdjustment=trade.broker==='etoro'&&kind==='exit'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&rawFees!==0&&Number(e.commission||0)===0&&Number.isFinite(reported)&&(Math.abs(brokerGross-rawFees-reported)<=.05||Math.abs(brokerGross-reported)<=.05);
+  if(!Number.isFinite(snapshot.costs)||(snapshot.costs<0&&!(verifiedAdjustment&&rawFees<0)))return null;
   const fingerprint=crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
   const id=e.execution_id||e.executionId||e.fill_id||e.id;
   const accountCurrency=e.account_currency||e.accountCurrency;
   const rawRate=e.broker_fx_rate??e.brokerFxRate;
   const transactionFx=typeof accountCurrency==='string'&&/^[A-Z]{3}$/.test(accountCurrency)?{accountCurrency,rate:accountCurrency===currency?1:positive(rawRate)?Number(rawRate):null}:null;
-  return {...snapshot,sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),...(verifiedCredit?{cashCredit:-rawFees,feeCharge:0,netCosts:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:snapshot.costs,netFees:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:rawFees}:{}),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
+  return {...snapshot,...(trade.broker==='etoro'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&Number.isFinite(reported)?{brokerReportedNet:reported,brokerLeverage:Number(e.etoro_leverage||1)}:{}),...(kind==='entry'&&capital!=null&&Number(e.etoro_leverage||1)===1?{economicPrice:capital/Number(e.quantity),investedCapital:capital}:{}),sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),...(verifiedAdjustment?{cashCredit:Math.max(0,-rawFees),feeCharge:Math.max(0,rawFees),netCosts:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:snapshot.costs,netFees:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:rawFees}:{}),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
  }).filter(Boolean);
  const totalCosts=fills.reduce((sum,f)=>sum+f.costs,0);
  const aggregateKnown=trade.commission!=null||trade.fees!=null;
@@ -84,8 +85,10 @@ function ledger(plan,allocations,trades) {
   const stored=a.source_snapshot;
   const fxMatches=!Object.hasOwn(stored,'transactionFx')||isDeepStrictEqual(stored.transactionFx,fill?.transactionFx);
   const costEvidenceImproved=stored.costsVerified===false&&fill?.costsVerified===true;
-  const valid=stored.provisional||(fill&&fill.fingerprint===stored.fingerprint&&(fill.costsVerified===stored.costsVerified||costEvidenceImproved)&&fxMatches);
-  const snapshot=valid&&fill&&costEvidenceImproved?fill:valid&&fill&&!Object.hasOwn(stored,'transactionFx')?{...stored,transactionFx:fill.transactionFx}:stored;
+  const capitalMatches=!Object.hasOwn(stored,'investedCapital')||stored.investedCapital===fill?.investedCapital;
+  const reportedMatches=!Object.hasOwn(stored,'brokerReportedNet')||stored.brokerReportedNet===fill?.brokerReportedNet;
+  const valid=stored.provisional||(fill&&capitalMatches&&reportedMatches&&fill.fingerprint===stored.fingerprint&&(fill.costsVerified===stored.costsVerified||costEvidenceImproved)&&fxMatches);
+  const snapshot=valid&&fill?{...stored,...fill}:stored;
   if(!valid)unresolved++;
   return {...a,valid:!!valid,fill:snapshot,quantity:Number(a.quantity)};
  }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action!==b.action?(a.action==='entry'?-1:1):String(a.id).localeCompare(String(b.id))));
@@ -99,16 +102,17 @@ function ledger(plan,allocations,trades) {
   const recordAccountCurrency=f.transactionFx?.accountCurrency||f.currency;
   const accountRate=f.transactionFx?f.transactionFx.rate:1;
   if(!accountCurrency||recordAccountCurrency!==accountCurrency||!(accountRate>0))accountFxMissing++;
-  const accountPrice=accountRate>0?f.price*f.multiplier/accountRate:null,accountFee=accountRate>0?fee/accountRate:null;
+  const economicPrice=f.economicPrice??f.price;
+  const accountPrice=accountRate>0?economicPrice*f.multiplier/accountRate:null,accountFee=accountRate>0?fee/accountRate:null;
   a.accountCurrency=recordAccountCurrency;
   const accountKey=plan.definition.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
   const key=accountKey+'|'+JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null)+'|'+f.currency;
   const queue=queues.get(key)||[];queues.set(key,queue);
   if(a.action==='entry'){
-   a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*f.price*f.multiplier:null;
+   a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*economicPrice*f.multiplier:null;
    a.accountPositionValue=a.valid&&accountPrice!=null&&f.instrument!=='spread_bet'?q*accountPrice:null;
    if(!a.stage_key.startsWith('roll_')&&accountPrice!=null)accountEntryCost+=q*accountPrice;
-   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*f.price*f.multiplier;fees+=fee;queue.push({q,price:f.price,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
+   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*economicPrice*f.multiplier;fees+=fee;queue.push({q,price:economicPrice,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
   }else{
    exited+=q;let remaining=q;let gross=0,entryFees=0,accountGross=0,accountEntryFees=0,accountExitValid=accountPrice!=null&&accountFee!=null;
    while(remaining>1e-8&&queue.length){
@@ -142,7 +146,8 @@ function ledger(plan,allocations,trades) {
   if(!nativeResults.has(trade.id)) {
    const fills=sourceFills(trade),entries=fills.filter(f=>f.action==='entry');
    const fullyLinked=entries.length>0&&fills.filter(f=>f.action==='exit').length===1&&entries.every(f=>Math.abs(records.filter(r=>r.trade_id===trade.id&&r.action==='entry'&&r.source_key===f.key&&r.valid).reduce((s,r)=>s+r.quantity,0)-f.quantity)<1e-8);
-   const result=fullyLinked?require('./accountRealisedPnl').calculateAccountResult(trade,a.accountCurrency):null;
+   const proportionalEtoro=trade.broker==='etoro'&&fills.filter(f=>f.action==='exit').length===1&&entries.length===1&&records.filter(r=>r.trade_id===trade.id&&r.action==='entry'&&r.valid).reduce((s,r)=>s+r.quantity,0)+1e-8>=records.filter(r=>r.trade_id===trade.id&&r.action==='exit'&&r.valid).reduce((s,r)=>s+r.quantity,0)&&fills.some(f=>f.action==='exit'&&f.brokerLeverage===1&&f.brokerReportedNet!=null&&Math.abs(f.brokerReportedNet-Number(trade.pnl))<1e-8);
+   const result=fullyLinked||proportionalEtoro?require('./accountRealisedPnl').calculateAccountResult(trade,a.accountCurrency):null;
    nativeResults.set(trade.id,result?.basis==='account_native'&&result.events.length===1?result:null);
   }
   const result=nativeResults.get(trade.id),event=result?.events[0];
