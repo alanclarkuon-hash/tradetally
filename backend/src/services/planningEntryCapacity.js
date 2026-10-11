@@ -8,8 +8,8 @@ function check(coverage,d,stage){
  const cash=rate&&stage.positionValue!=null?stage.positionValue*rate:null;
  if(addedRisk!=null){if(account?.limit!=null&&account.knownRisk+addedRisk>account.limit)fail('Account risk limit would be exceeded');if(coverage.limit!=null&&account?.inScope&&coverage.knownRisk+addedRisk>coverage.limit)fail('Combined trading-account risk limit would be exceeded');}
  if(exposure!=null&&account?.exposureLimit!=null&&account.knownExposure+exposure>account.exposureLimit)fail('Account exposure limit would be exceeded');
- if(cash!=null&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')&&account?.buyingPower!=null&&cash>account.buyingPower)fail('Account buying power is insufficient');
+ if(cash!=null&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')&&account?.buyingPower!=null&&cash+(account.reservedCash||0)>account.buyingPower)fail('Account buying power is insufficient');
  const verified=coverage.unknown===0&&account?.unknown===0&&addedRisk!=null&&account?.limit!=null&&coverage.limit!=null;
- return {addedRisk,exposure,cash,portfolioRiskVerified:verified,exposureVerified:account?.exposureLimit!=null&&account.exposureUnknown===0&&exposure!=null,buyingPowerVerified:cash!=null&&account?.buyingPower!=null&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')};
+ return {addedRisk,exposure,cash,portfolioRiskVerified:verified,exposureVerified:account?.exposureLimit!=null&&account.exposureUnknown===0&&exposure!=null,buyingPowerVerified:cash!=null&&account?.buyingPower!=null&&!account.buyingPowerUnknown&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')};
 }
 module.exports={check};
