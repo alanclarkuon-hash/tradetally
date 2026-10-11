@@ -23,6 +23,7 @@
         <RouterLink :to="'/dashboard/planning/'+trade.plan_trade.id" class="btn-secondary">Manage plan</RouterLink>
         <RouterLink :to="{path:'/trades/'+trade.id,query:{source:'1'}}" class="text-primary-500">Open original broker record</RouterLink>
       </div>
+      <p v-if="trade.plan_trade?.evidenceWarning" role="status" class="card p-4 text-amber-700 dark:text-amber-300">{{ trade.plan_trade.evidenceWarning }}</p>
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">

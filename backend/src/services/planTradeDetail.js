@@ -6,7 +6,7 @@ const guid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 // Read-only projection of the plan's explicit allocations. Broker pairing remains
 // source evidence, not the position boundary of this trade detail response.
 function projectPlanTrade(source,plan,result) {
- if(result.unresolved||result.overExit||result.costsUnresolved||!result.coverageComplete)fail('Reconcile the plan trade links before opening the combined trade',409);
+ if(result.unresolved||result.overExit||(!result.coverageComplete&&!result.costsUnresolved)||result.provisionalCount||!result.currency)fail('Reconcile the plan trade links before opening the combined trade',409);
  const records=result.records.filter(r=>!r.fill.provisional);
  const groups=new Map();
  for(const r of records){
@@ -14,20 +14,22 @@ function projectPlanTrade(source,plan,result) {
   if(!groups.has(key))groups.set(key,{id:'plan:'+r.id,action:r.action==='entry'?(f.tradeSide==='short'?'sell':'buy'):(f.tradeSide==='short'?'buy':'sell'),quantity:0,price:f.price,datetime:f.time,commission:0,fees:0,realized_pnl:r.action==='exit'?0:null,accountProfit:r.action==='exit'?0:null,stage_key:r.stage_key,source_trade_ids:[],broker_fx_rate:f.transactionFx?.rate,account_currency:f.transactionFx?.accountCurrency});
   const e=groups.get(key),portion=r.quantity/f.quantity;
   e.quantity+=r.quantity;e.commission+=Number(f.commission||0)*portion;e.fees+=Number(f.fees||0)*portion;
-  if(r.action==='exit'){e.realized_pnl+=r.realisedProfit;if(r.accountRealisedProfit==null)e.accountProfit=null;else if(e.accountProfit!=null)e.accountProfit+=r.accountRealisedProfit;}
+  if(r.action==='exit'){if(r.realisedProfit==null)e.realized_pnl=null;else if(e.realized_pnl!=null)e.realized_pnl+=r.realisedProfit;if(r.accountRealisedProfit==null)e.accountProfit=null;else if(e.accountProfit!=null)e.accountProfit+=r.accountRealisedProfit;}
   if(!e.source_trade_ids.includes(r.trade_id))e.source_trade_ids.push(r.trade_id);
  }
  const executions=[...groups.values()].sort((a,b)=>a.datetime.localeCompare(b.datetime));
  const entries=records.filter(r=>r.action==='entry'),exits=records.filter(r=>r.action==='exit');
  const average=rows=>rows.length?rows.reduce((sum,r)=>sum+r.quantity*r.fill.price,0)/rows.reduce((sum,r)=>sum+r.quantity,0):null;
  const accountComplete=result.accountRealisedProfit!=null;
+ const closed=result.economicallyClosed||(!result.unresolved&&!result.overExit&&!result.provisionalCount&&Math.abs(result.openQuantity)<1e-8);
+ const evidenceWarning=result.costsUnresolved?'Linked quantities and prices are verified. Broker costs are not fully assigned to these fills, so realised profit is unavailable.':null;
  const costs=records.reduce((sum,r)=>sum+r.fill.costs*r.quantity/r.fill.quantity,0);
  const commission=records.reduce((sum,r)=>sum+Number(r.fill.commission||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const fees=records.reduce((sum,r)=>sum+Number(r.fill.fees||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const report={status:accountComplete?'complete':'unavailable',basis:'plan_allocations',currency:result.accountCurrency,pnl:result.accountRealisedProfit,entryCost:result.accountEntryCost,commission,fees,
   events:executions.flatMap((e,index)=>e.realized_pnl==null||e.accountProfit==null?[]:[{sourceIndex:index,pnl:e.accountProfit,gross_pnl:e.accountProfit,time:e.datetime}])};
- const trade={...source,plan_trade:{id:plan.id,title:plan.definition.title,sourceTradeId:source.id,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
-  executions,quantity:result.entered,price:average(entries),entry_price:average(entries),exit_price:result.economicallyClosed?average(exits):null,entry_time:entries[0]?.fill.time,exit_time:result.economicallyClosed?exits.at(-1)?.fill.time:null,
+ const trade={...source,plan_trade:{id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
+  executions,quantity:result.entered,price:average(entries),entry_price:average(entries),exit_price:closed?average(exits):null,entry_time:entries[0]?.fill.time,exit_time:closed?exits.at(-1)?.fill.time:null,
   trade_date:entries[0]?.fill.time,pnl:result.realisedProfit,gross_pnl:result.realisedProfit==null?null:result.realisedProfit+costs,open_average_price:result.averagePrice,pnl_percent:result.percentGain,r_value:result.realisedR,commission:executions.reduce((s,e)=>s+e.commission,0),fees:executions.reduce((s,e)=>s+e.fees,0),
   original_currency:result.currency,original_entry_price_currency:null,account_currency:result.accountCurrency,account_pnl_result:report,
   stop_loss:plan.definition.stopPrice,take_profit:null,notes:plan.definition.thesis||'',quality_grade:null,quality_score:null,quality_metrics:null,setup:plan.definition.setup||''};
