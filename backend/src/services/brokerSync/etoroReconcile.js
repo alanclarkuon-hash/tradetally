@@ -123,7 +123,7 @@ function mapSnapshot(payload) {
         { ...common, type: 'exit', action: row.isBuy ? 'sell' : 'buy', quantity, price: exitPrice,
           datetime: exitTime, order_id: String(row.orderId), fees,
           realized_pnl: netProfit, gross_realized_pnl: gross, exit_date: exitTime.slice(0, 10),
-          etoro_reported_net_profit: netProfit }
+          etoro_reported_net_profit: netProfit, etoro_fee_charge: Math.max(0,fees), etoro_cash_credit: Math.max(0,-fees), etoro_adjustment_in_net: Math.abs(gross-fees-netProfit)<Math.abs(gross-netProfit) }
       ] });
   }
   const grouped = new Map();

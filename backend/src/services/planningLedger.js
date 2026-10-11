@@ -29,13 +29,18 @@ function sourceFills(trade) {
   const snapshot={action:kind,quantity:Number(e.quantity),price:Number(e.price),time:new Date(time).toISOString(),currency,multiplier,
     costs:Number(e.commission||0)+Number(e.fees||e.fee||0),tradeSide:trade.side,instrument:trade.instrument_type||'stock',
     contract:trade.instrument_type==='option'?{symbol:trade.symbol,strike:trade.strike_price,expiry:trade.expiration_date?new Date(trade.expiration_date).toISOString().slice(0,10):'',type:trade.option_type}:null};
-  if(!Number.isFinite(snapshot.costs)||snapshot.costs<0)return null;
+  // eToro reports cash credits as negative fees on a closed position. Keep
+  // signed source evidence, but admit it only when the broker net verifies it.
+  const rawFees=Number(e.fees||e.fee||0),reported=Number(e.etoro_reported_net_profit);
+  const brokerGross=(Number(e.price)-Number(trade.entry_price))*Number(e.quantity)*multiplier*(trade.side==='short'?-1:1);
+  const verifiedCredit=trade.broker==='etoro'&&kind==='exit'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&rawFees<0&&Number(e.commission||0)===0&&Number.isFinite(reported)&&(Math.abs(brokerGross-rawFees-reported)<=.05||Math.abs(brokerGross-reported)<=.05);
+  if(!Number.isFinite(snapshot.costs)||(snapshot.costs<0&&!verifiedCredit))return null;
   const fingerprint=crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
   const id=e.execution_id||e.executionId||e.fill_id||e.id;
   const accountCurrency=e.account_currency||e.accountCurrency;
   const rawRate=e.broker_fx_rate??e.brokerFxRate;
   const transactionFx=typeof accountCurrency==='string'&&/^[A-Z]{3}$/.test(accountCurrency)?{accountCurrency,rate:accountCurrency===currency?1:positive(rawRate)?Number(rawRate):null}:null;
-  return {...snapshot,sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
+  return {...snapshot,sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),...(verifiedCredit?{cashCredit:-rawFees,feeCharge:0,netCosts:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:snapshot.costs,netFees:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:rawFees}:{}),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
  }).filter(Boolean);
  const totalCosts=fills.reduce((sum,f)=>sum+f.costs,0);
  const aggregateKnown=trade.commission!=null||trade.fees!=null;
@@ -78,8 +83,9 @@ function ledger(plan,allocations,trades) {
   const fill=sourceFills(byId.get(a.trade_id)||{}).find(f=>f.key===a.source_key);
   const stored=a.source_snapshot;
   const fxMatches=!Object.hasOwn(stored,'transactionFx')||isDeepStrictEqual(stored.transactionFx,fill?.transactionFx);
-  const valid=stored.provisional||(fill&&fill.fingerprint===stored.fingerprint&&fill.costsVerified===stored.costsVerified&&fxMatches);
-  const snapshot=valid&&fill&&!Object.hasOwn(stored,'transactionFx')?{...stored,transactionFx:fill.transactionFx}:stored;
+  const costEvidenceImproved=stored.costsVerified===false&&fill?.costsVerified===true;
+  const valid=stored.provisional||(fill&&fill.fingerprint===stored.fingerprint&&(fill.costsVerified===stored.costsVerified||costEvidenceImproved)&&fxMatches);
+  const snapshot=valid&&fill&&costEvidenceImproved?fill:valid&&fill&&!Object.hasOwn(stored,'transactionFx')?{...stored,transactionFx:fill.transactionFx}:stored;
   if(!valid)unresolved++;
   return {...a,valid:!!valid,fill:snapshot,quantity:Number(a.quantity)};
  }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action!==b.action?(a.action==='entry'?-1:1):String(a.id).localeCompare(String(b.id))));
@@ -89,7 +95,7 @@ function ledger(plan,allocations,trades) {
  const accountCurrency=accountCurrencies.size===1?[...accountCurrencies][0]:null;
  let accountCost=0,accountRealised=0,accountEntryCost=0,accountFxMissing=0;
  for(const a of records){
-  const f=a.fill,q=a.quantity,fee=f.costs*q/f.quantity;
+  const f=a.fill,q=a.quantity,fee=(f.netCosts??f.costs)*q/f.quantity;
   const recordAccountCurrency=f.transactionFx?.accountCurrency||f.currency;
   const accountRate=f.transactionFx?f.transactionFx.rate:1;
   if(!accountCurrency||recordAccountCurrency!==accountCurrency||!(accountRate>0))accountFxMissing++;

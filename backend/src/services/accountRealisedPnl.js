@@ -53,7 +53,7 @@ function calculateAccountResult(trade, configuredCurrency) {
   }
   if(!positive(rate))return unavailable('Broker transaction FX missing');
   accountFills.push({action:f.action==='entry'?(trade.side==='short'?'sell':'buy'):(trade.side==='short'?'buy':'sell'),quantity:f.quantity,
-   price:f.price/Number(rate),commission:f.commission/Number(rate),fees:f.fees/Number(rate),datetime:f.time,sourceIndex:f.sourceIndex,sourceKey:f.key});
+   price:f.price/Number(rate),commission:f.commission/Number(rate),fees:(f.netFees??f.fees)/Number(rate),datetime:f.time,sourceIndex:f.sourceIndex,sourceKey:f.key});
  }
  const result=computeTradePnl({side:trade.side,instrumentType:trade.instrument_type||'stock',contractSize:trade.contract_size,pointValue:trade.point_value,executions:accountFills,timezone:'UTC'});
  const exits=result.annotatedExecutions.filter(e=>e.realized_pnl!=null);
