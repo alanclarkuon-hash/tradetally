@@ -23,6 +23,19 @@ function calculateAccountResult(trade, configuredCurrency) {
   return {status:'complete',currency,nativeCurrency:native,basis:'account_native',pnl:trade.pnl==null?null:Number(trade.pnl),
    commission:Number(trade.commission||0),fees:Number(trade.fees||0),entryCost:Number(trade.entry_price||0)*Number(trade.quantity||0)*multiplier,events};
  }
+ // Some legacy imports already captured account-native settlement, then
+ // normalised it to USD. Restore the preserved cash result, not price-derived
+ // P/L or today's FX. A single recorded close gives unambiguous attribution.
+ if(native==='USD'&&trade.original_currency===currency&&trade.original_entry_price_currency!=null&&trade.original_pnl_currency!=null&&positive(trade.exchange_rate)&&trade.exit_time&&fills.filter(f=>f.action==='exit').length<=1) {
+  const rate=Number(trade.exchange_rate),pnl=Number(trade.original_pnl_currency);
+  const commission=trade.original_commission_currency==null?Number(trade.commission||0)/rate:Number(trade.original_commission_currency);
+  const fees=trade.original_fees_currency==null?Number(trade.fees||0)/rate:Number(trade.original_fees_currency);
+  if(![pnl,commission,fees].every(Number.isFinite))return unavailable('Preserved account cash needs reconciliation');
+  const exit=fills.find(f=>f.action==='exit');
+  return {status:'complete',currency,nativeCurrency:native,basis:'account_native_restored',pnl,commission,fees,
+   entryCost:Number(trade.original_entry_price_currency)*Number(trade.quantity||0)*multiplier,
+   events:[{time:exit?.time||trade.exit_time,...(exit?{sourceIndex:exit.sourceIndex,sourceKey:exit.key}:{}),pnl,gross_pnl:pnl+commission+fees}]};
+ }
  if(!fills.length||fills.some(f=>f.costsVerified===false))return unavailable('Execution prices or costs need reconciliation');
  const accountFills=[];
  for(const f of fills) {

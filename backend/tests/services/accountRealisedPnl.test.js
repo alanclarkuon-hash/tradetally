@@ -58,3 +58,10 @@ test('fully linked native cash trade reconciles across Planning and reporting wi
  const partial=allocations.map(a=>({...a,quantity:1}));expect(ledger(plan,partial,[trade]).accountRealisedProfit).toBe(10);
  const changed=structuredClone(trade);changed.executions[0].price=101;expect(ledger(plan,allocations,[changed]).accountRealisedProfit).toBeNull();
 });
+
+
+test('preserved account-native settlement survives legacy import normalisation and unallocated fees',()=>{
+ const trade={id:'legacy-cash',broker:'ig',side:'long',instrument_type:'spread_bet',original_currency:'GBP',original_entry_price_currency:100,original_pnl_currency:47,original_fees_currency:3,exchange_rate:1.25,entry_price:125,exit_price:137.5,quantity:2,pnl:58.75,commission:0,fees:3.75,exit_time:'2026-01-02T10:00:00Z',executions:[{action:'buy',price:125,quantity:2,datetime:'2026-01-01T10:00:00Z'},{action:'sell',price:137.5,quantity:2,datetime:'2026-01-02T10:00:00Z'}]};
+ const before=structuredClone(trade),r=calculateAccountResult(trade,'GBP');expect(r).toMatchObject({status:'complete',currency:'GBP',basis:'account_native_restored',pnl:47,fees:3,commission:0});expect(r.events[0]).toMatchObject({sourceIndex:1,pnl:47,gross_pnl:50});expect(trade).toEqual(before);
+ delete trade.original_pnl_currency;expect(calculateAccountResult(trade,'GBP').status).toBe('unavailable');
+});

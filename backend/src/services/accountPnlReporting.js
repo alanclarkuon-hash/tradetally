@@ -11,12 +11,12 @@ async function refreshAccountResults(userId) {
    // Account-scoped transaction lock serialises simultaneous reporting reads.
    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[userId]);
    const rows=(await client.query(`SELECT t.*,a.currency AS configured_account_currency,
-     md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v2') AS source_signature
+     md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v3') AS source_signature
     FROM trades t LEFT JOIN LATERAL (SELECT currency FROM user_accounts ua
      WHERE ua.user_id=t.user_id AND ua.account_identifier=t.account_identifier
      ORDER BY (ua.broker=t.broker) DESC NULLS LAST,ua.is_archived ASC,ua.is_primary DESC,ua.created_at ASC LIMIT 1) a ON true
     LEFT JOIN trade_account_reports r ON r.trade_id=t.id
-    WHERE t.user_id=$1 AND r.source_signature IS DISTINCT FROM md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v2') FOR SHARE OF t`,[userId])).rows;
+    WHERE t.user_id=$1 AND r.source_signature IS DISTINCT FROM md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v3') FOR SHARE OF t`,[userId])).rows;
    for(const trade of rows) {
     const result=calculateAccountResult(trade,trade.configured_account_currency);
     await client.query(`INSERT INTO trade_account_reports(trade_id,user_id,source_signature,result) VALUES($1,$2,$3,$4::jsonb)
