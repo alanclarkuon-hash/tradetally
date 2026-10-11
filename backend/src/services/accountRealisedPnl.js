@@ -12,9 +12,16 @@ function calculateAccountResult(trade, configuredCurrency) {
  if(currencies.some(c=>c!==currency))return unavailable('Account currency conflicts with broker execution metadata');
  const multiplier=trade.instrument_type==='option'?Number(trade.contract_size||100):trade.instrument_type==='future'?Number(trade.point_value||1):1;
  if(currency===native) {
+  let events=Array.isArray(trade.executions)&&trade.executions.length?computeTradePnl({side:trade.side,instrumentType:trade.instrument_type,contractSize:trade.contract_size,pointValue:trade.point_value,executions:trade.executions,fallbackCommission:trade.commission,fallbackFees:trade.fees}).annotatedExecutions.flatMap((e,sourceIndex)=>e.realized_pnl==null?[]:[{sourceIndex,time:e.exitTime||e.exit_time||e.datetime,pnl:e.realized_pnl,gross_pnl:e.gross_realized_pnl}]):[];
+  // A completed single-exit broker record has an authoritative cash result.
+  // Price arithmetic can omit leverage, income or broker adjustments. Attribute
+  // its stored account-native result to that exit; metadata-only imports use
+  // the recorded close time. Do not redistribute multi-day partial exits.
+  if(trade.exit_time&&trade.pnl!=null&&events.length<=1) {
+   events=[{...events[0],time:events[0]?.time||trade.exit_time,pnl:Number(trade.pnl),gross_pnl:Number(trade.pnl)+Number(trade.commission||0)+Number(trade.fees||0)}];
+  }
   return {status:'complete',currency,nativeCurrency:native,basis:'account_native',pnl:trade.pnl==null?null:Number(trade.pnl),
-   commission:Number(trade.commission||0),fees:Number(trade.fees||0),entryCost:Number(trade.entry_price||0)*Number(trade.quantity||0)*multiplier,
-   events:Array.isArray(trade.executions)&&trade.executions.length?computeTradePnl({side:trade.side,instrumentType:trade.instrument_type,contractSize:trade.contract_size,pointValue:trade.point_value,executions:trade.executions,fallbackCommission:trade.commission,fallbackFees:trade.fees}).annotatedExecutions.flatMap((e,sourceIndex)=>e.realized_pnl==null?[]:[{sourceIndex,time:e.exitTime||e.exit_time||e.datetime,pnl:e.realized_pnl,gross_pnl:e.gross_realized_pnl}]):trade.exit_time&&trade.pnl!=null?[{time:trade.exit_time,pnl:Number(trade.pnl),gross_pnl:Number(trade.pnl)+Number(trade.commission||0)+Number(trade.fees||0)}]:[]};
+   commission:Number(trade.commission||0),fees:Number(trade.fees||0),entryCost:Number(trade.entry_price||0)*Number(trade.quantity||0)*multiplier,events};
  }
  if(!fills.length||fills.some(f=>f.costsVerified===false))return unavailable('Execution prices or costs need reconciliation');
  const accountFills=[];

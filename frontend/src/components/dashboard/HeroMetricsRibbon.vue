@@ -24,8 +24,7 @@
             <span class="text-label whitespace-nowrap">{{ rMode ? 'Net R' : 'Net P&L' }}</span>
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{{ rangeLabel }}</span>
-              <CurrencyToggle v-model="cardCurrency" :currencies="choices" @update:model-value="emit('update:rMode',false)" />
-              <button type="button" class="btn-secondary" :class="{'text-primary-400':rMode}" :aria-pressed="rMode" aria-label="Show R multiples" @click="emit('update:rMode', !rMode)">R</button>
+              <CurrencyToggle v-model="cardCurrency" :currencies="choices" />
             </div>
           </div>
           <!-- Value block is bottom-anchored with mt-auto so the hero number,
@@ -166,17 +165,10 @@ const props = defineProps({
     type: String,
     default: 'All Time'
   },
-  // When true, the hero number and daily bars show R-multiples instead of
-  // dollar values so the ribbon can be shared without exposing account size.
-  rMode: {
-    type: Boolean,
-    default: false
-  }
 })
 
-const emit = defineEmits(['update:rMode'])
-
-const { currency:cardCurrency, choices, currencySymbol, formatCurrency, formatSignedCurrency } = useCardCurrency(computed(()=>props.analytics?.display_currency),undefined,'hero-metrics')
+const { currency:cardCurrency, choices, formatCurrency, formatSignedCurrency, convert } = useCardCurrency(computed(()=>props.analytics?.display_currency),undefined,'hero-metrics',['R'])
+const rMode = computed(() => cardCurrency.value === 'R')
 
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {
@@ -193,8 +185,8 @@ const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.va
 
 // The active hero metric: drives both the displayed string and the sign-based
 // color/size classes so $ and R modes share one code path.
-const heroSign = computed(() => props.rMode ? totalR.value : netPnl.value)
-const heroDisplay = computed(() => props.rMode ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
+const heroSign = computed(() => rMode.value ? totalR.value : netPnl.value)
+const heroDisplay = computed(() => rMode.value ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
 const totalTrades = computed(() => parseInt(summary.value.totalTrades) || 0)
 const winningTrades = computed(() => parseInt(summary.value.winningTrades) || 0)
 const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
@@ -359,7 +351,7 @@ const profitFactorClass = computed(() => {
 const todayR = computed(() => streakStats.value.todayR)
 
 const todayPnlClass = computed(() => {
-  const v = props.rMode ? todayR.value : todayPnl.value
+  const v = rMode.value ? todayR.value : todayPnl.value
   if (v > 0) return 'text-green-600 dark:text-green-400'
   if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
@@ -371,18 +363,18 @@ const todayPnlClass = computed(() => {
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
 const dailyBarValues = computed(() =>
-  recentDays.value.map(d => props.rMode
+  recentDays.value.map(d => rMode.value
     ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
-    : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
+    : convert(parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0))
 )
 
 const dailyBarLabels = computed(() =>
   recentDays.value.map(d => {
     const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
-    const value = props.rMode
+    const value = rMode.value
       ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
       : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
-    const formatted = props.rMode ? formatSignedR(value) : formatSignedCurrency(value)
+    const formatted = rMode.value ? formatSignedR(value) : formatSignedCurrency(value)
     return date ? `${date}: ${formatted}` : formatted
   })
 )
