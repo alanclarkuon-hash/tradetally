@@ -343,7 +343,7 @@ function enrichOpenTradePnL(trade) {
     return;
   }
 
-  const entryPrice = Number(trade.entry_price || 0);
+  const entryPrice = Number(trade.open_average_price ?? trade.entry_price ?? 0);
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return;
   }
@@ -956,6 +956,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      trade = await require('../services/planTradeDetail').resolvePlanTrade(req,trade);
       const isOwner = req.user?.id === trade.user_id;
       if (!isOwner) {
         trade = sanitizePublicTrade(trade);
@@ -1014,7 +1015,7 @@ const tradeController = {
       if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
-      if (isOwner) {
+      if (isOwner && !trade.plan_trade) {
         const [reviews, suggestionCandidates] = await Promise.all([
           Playbook.getTradeReviewsByTradeId(tradeId, req.user.id),
           Playbook.listAutoAssignableByUser(req.user.id)
@@ -4329,10 +4330,12 @@ const tradeController = {
       }
 
       // First, get the trade to verify ownership and get symbol/dates
-      const trade = await Trade.findById(tradeId, userId);
+      let trade = await Trade.findById(tradeId, userId);
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
+
+      trade = await require('../services/planTradeDetail').resolvePlanTrade(req,trade);
 
       // Debug: Log what fields we actually get from the database
       console.log('=== TRADE RECORD DEBUG ===');
@@ -4378,6 +4381,8 @@ const tradeController = {
       // Add trade information to the response
       chartData.trade = {
         id: trade.id,
+        plan_trade: trade.plan_trade,
+        account_pnl_result: trade.account_pnl_result,
         symbol: symbol,
         entryDate: entryDate,
         exitDate: exitDate,

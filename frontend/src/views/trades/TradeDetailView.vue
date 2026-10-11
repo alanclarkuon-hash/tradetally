@@ -18,6 +18,11 @@
     </div>
 
     <div v-else-if="trade" class="space-y-8">
+      <div v-if="trade.plan_trade" class="card p-4 flex flex-wrap items-center justify-between gap-3">
+        <span>{{ trade.plan_trade.title }} · All linked entries and exits</span>
+        <RouterLink :to="'/dashboard/planning/'+trade.plan_trade.id" class="btn-secondary">Manage plan</RouterLink>
+        <RouterLink :to="{path:'/trades/'+trade.id,query:{source:'1'}}" class="text-primary-500">Open original broker record</RouterLink>
+      </div>
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
@@ -1003,7 +1008,7 @@
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Executions ({{ processedExecutions.length }})
                 </h3>
-                <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
+                <div v-if="isOwner && processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
                   <template v-if="splitMode">
                     <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span>
                     <button
@@ -1328,7 +1333,7 @@
                 </svg>
               </button>
               <div v-show="!chartSectionCollapsed" class="mt-4">
-                <TradeChartVisualization :trade-id="trade.id" />
+                <TradeChartVisualization :key="route.fullPath" :trade-id="trade.id" :plan-id="trade.plan_trade?.id" :source="route.query.source==='1'" />
               </div>
             </div>
           </div>
@@ -1668,7 +1673,7 @@
 
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -1795,7 +1800,7 @@ const symbolCompanyName = computed(() => {
 
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
-const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
+const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id && !trade.value.plan_trade)
 const allocationModalGroups = computed(() => {
   const byId = new Map(allocationGroups.value.map((group) => [group.id, group]))
   for (const allocation of tradeAllocations.value) {
@@ -2932,11 +2937,13 @@ async function calculateQuality() {
   }
 }
 
+watch(()=>route.fullPath,()=>loadTrade())
+
 async function loadTrade() {
   try {
     loading.value = true
     chartImageFailed.value = false // Reset chart image state for new trade
-    trade.value = await tradesStore.fetchTrade(route.params.id)
+    trade.value = await tradesStore.fetchTrade(route.params.id,{planId:route.query.planId,source:route.query.source==='1'})
     if (!trade.value.setupQuality) {
       trade.value.setupQuality = {
         grade: trade.value.qualityGrade || null,
@@ -2946,7 +2953,7 @@ async function loadTrade() {
     }
     // Owner-only data (playbooks, comments, AI analyses) require auth - skip it for
     // guests viewing a public trade so their requests don't 401 and bounce them to login.
-    if (trade.value && authStore.isAuthenticated) {
+    if (trade.value && authStore.isAuthenticated && !trade.value.plan_trade) {
       await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()

@@ -175,6 +175,8 @@ const KLineTradeChart = {
 }
 
 const props = defineProps({
+  planId: String,
+  source: Boolean,
   tradeId: {
     type: [String, Number],
     required: true,
@@ -307,7 +309,7 @@ async function fetchChartData() {
 
   try {
     const response = await api.get(`/trades/${props.tradeId}/chart-data`, {
-      params: { resolution: selectedResolution.value },
+      params: { resolution: selectedResolution.value, ...(props.planId?{planId:props.planId}:{}), ...(props.source?{source:1}:{}) },
     })
     chartData.value = response.data
     selectedResolution.value = resolutionForInterval(response.data.interval)
