@@ -55,7 +55,7 @@ function mapClosedPositions(rows) {
       executions: [
         { ...common, type: 'entry', action: side === 'long' ? 'buy' : 'sell', quantity,
           price: entryPrice, datetime: entryTime, etoro_native_price: nativeOpen, etoro_fx: fxOpen === 0 ? null : fxOpen,
-          etoro_entry_price_basis: fxOpen === 0 ? 'reported_usd_capital' : 'reported_rate_and_fx' },
+          etoro_entry_price_basis: fxOpen === 0 ? 'reported_usd_capital' : 'reported_rate_and_fx', etoro_invested_capital: capital, etoro_capital_currency: 'USD', etoro_capital_basis: 'statement_amount' },
         { ...common, type: 'exit', action: side === 'long' ? 'sell' : 'buy', quantity,
           price: exitPrice, datetime: exitTime, realized_pnl: pnl, exit_date: exitTime.slice(0,10),
           etoro_reported_net_profit: pnl, etoro_native_price: Number(row['Close Rate']), etoro_fx: fxClose,
@@ -105,7 +105,7 @@ async function importClosedPositions(connection, statement, { dryRun = false } =
       // Keep API precision and IDs; add statement-confirmed CFD/copy metadata.
       const original = typeof old.executions === 'string' ? JSON.parse(old.executions) : old.executions;
       const executions = original.map(e => ({ ...e, etoro_source_type: t.executions[0].etoro_source_type,
-        etoro_copied_from: t.executions[0].etoro_copied_from, etoro_leverage: t.executions[0].etoro_leverage }));
+        etoro_copied_from: t.executions[0].etoro_copied_from, etoro_leverage: t.executions[0].etoro_leverage, ...(e.action===(old.side==='short'?'sell':'buy')?{etoro_invested_capital:t.executions[0].etoro_invested_capital,etoro_capital_currency:'USD',etoro_capital_basis:'statement_amount'}:{}) }));
       await client.query('UPDATE trades SET instrument_type=$1,executions=$2::jsonb,updated_at=NOW() WHERE id=$3 AND user_id=$4',
       [t.type,JSON.stringify(executions),old.id,connection.userId]);
     }

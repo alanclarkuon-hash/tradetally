@@ -17,7 +17,7 @@ function planClassifications(statement,trades,allocations=[]) {
   if(declared.size>1||[...declared].some(v=>({Stocks:'stock',ETF:'stock',Crypto:'crypto',CFD:'cfd'}[v]||v)!==row.type))fail('Conflicting broker instrument classifications. Resolve them before importing.');
   counts.verified++;counts.types[meta.etoro_source_type]=(counts.types[meta.etoro_source_type]||0)+1;
   if(t.instrument_type!==row.type){counts.corrected++;for(const a of allocations.filter(a=>a.trade_id===t.id))affected.add(a.plan_id);}
-  const next=es.map(e=>({...e,etoro_source_type:meta.etoro_source_type,etoro_copied_from:meta.etoro_copied_from,etoro_leverage:meta.etoro_leverage}));
+  const next=es.map(e=>({...e,etoro_source_type:meta.etoro_source_type,etoro_copied_from:meta.etoro_copied_from,etoro_leverage:meta.etoro_leverage,...(e.action===(t.side==='short'?'sell':'buy')?{etoro_invested_capital:meta.etoro_invested_capital,etoro_capital_currency:'USD',etoro_capital_basis:'statement_amount'}:{})}));
   if(t.instrument_type!==row.type||!isDeepStrictEqual(es,next))updates.push({id:t.id,instrument:row.type,executions:next});
  }
  counts.affectedPlans=affected.size;

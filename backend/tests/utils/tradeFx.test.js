@@ -90,3 +90,5 @@ test('account-aware normalisation preserves account cash and reports USD once',(
  const row={original_currency:'USD',pnl:260,entry_price:100,account_pnl_result:{status:'complete',currency:'GBP',pnl:200,entryCost:800,commission:0,fees:0,events:[]}};
  normalizeRowToUsd(row,{USD:1,GBP:.8});expect(row.pnl).toBe(250);expect(row.entry_price).toBe(100);expect(row.account_pnl_result.pnl).toBe(200);
 });
+
+test('account invested capital follows display FX independently of instrument quotations',()=>{const {applyAccountResult}=require('../../src/utils/tradeFx');const row={entry_price:.03,quantity:10000,pnl_percent:0,account_pnl_result:{status:'complete',currency:'USD',entryCost:250,pnl:150,commission:0,fees:0,events:[]}};applyAccountResult(row,()=>.8);expect(row.account_entry_cost).toBe(200);expect(row.pnl).toBe(120);expect(row.pnl_percent).toBe(60);expect(row.entry_price).toBe(.03)});

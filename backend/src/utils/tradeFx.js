@@ -111,6 +111,7 @@ function applyAccountResult(row, rateForCurrency) {
  const rate=rateForCurrency(result.currency);
  if(result.status!=='complete'||!(rate>0)){row.pnl=null;row.pnl_percent=null;row.pnlPercent=null;row.account_pnl_coverage='unavailable';if(Array.isArray(row.executions))for(const e of row.executions){e.realized_pnl=null;e.gross_realized_pnl=null;}return;}
  row.account_pnl_reporting_rate=rate;row.account_pnl_coverage='complete';
+ row.account_entry_cost=result.entryCost==null?null:Number(result.entryCost)*rate;
  row.pnl=result.pnl==null?null:Number(result.pnl)*rate;
  if(row.profit_loss!==undefined)row.profit_loss=row.pnl;
  if(row.trade_pnl!==undefined)row.trade_pnl=row.pnl;

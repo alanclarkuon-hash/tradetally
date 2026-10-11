@@ -81,7 +81,7 @@ function mapSnapshot(payload) {
     const key = `open:${id}`;
     const execution = { type: 'entry', action: 'buy', quantity, price: cost / quantity,
       datetime: entryTime, order_id: String(field(row, 'orderId')), etoro_record_key: key,
-      etoro_position_id: String(id), etoro_native_price: rawPrice, etoro_open_conversion_rate: fx,
+      etoro_position_id: String(id), etoro_invested_capital: cost, etoro_capital_currency: 'USD', etoro_capital_basis: 'broker_remaining_cost', etoro_native_price: rawPrice, etoro_open_conversion_rate: fx,
       etoro_mirror_id: field(row, 'mirrorId') || null,
       etoro_parent_position_id: field(row, 'parentPositionId') || null,
       ...(field(row,'settlementTypeID') != null ? {etoro_settlement_type:field(row,'settlementTypeID'),etoro_source_type:asset.instrumentType === 'cfd'?'CFD':asset.instrumentType === 'crypto'?'Crypto':'Stocks'} : {}) };
@@ -119,7 +119,7 @@ function mapSnapshot(payload) {
     add({ ...asset, key, positionId: String(row.positionId), side: row.isBuy ? 'long' : 'short',
       quantity, entryTime, exitTime, entryPrice, exitPrice, pnl: netProfit, fees,
       executions: [
-        { ...common, type: 'entry', action: row.isBuy ? 'buy' : 'sell', quantity, price: entryPrice, datetime: entryTime },
+        { ...common, type: 'entry', action: row.isBuy ? 'buy' : 'sell', quantity, price: entryPrice, datetime: entryTime, etoro_invested_capital: investment, etoro_capital_currency: 'USD', etoro_capital_basis: 'broker_investment' },
         { ...common, type: 'exit', action: row.isBuy ? 'sell' : 'buy', quantity, price: exitPrice,
           datetime: exitTime, order_id: String(row.orderId), fees,
           realized_pnl: netProfit, gross_realized_pnl: gross, exit_date: exitTime.slice(0, 10),

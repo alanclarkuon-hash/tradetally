@@ -13,7 +13,7 @@ function projectPlanTrade(source,plan,result) {
   const f=r.fill,key=JSON.stringify([r.action,r.stage_key,f.time,f.price,f.currency,f.multiplier,f.contract,f.transactionFx?.accountCurrency,f.transactionFx?.rate]);
   if(!groups.has(key))groups.set(key,{id:'plan:'+r.id,action:r.action==='entry'?(f.tradeSide==='short'?'sell':'buy'):(f.tradeSide==='short'?'buy':'sell'),quantity:0,price:f.price,datetime:f.time,commission:0,fees:0,realized_pnl:r.action==='exit'?0:null,accountProfit:r.action==='exit'?0:null,stage_key:r.stage_key,source_trade_ids:[],broker_fx_rate:f.transactionFx?.rate,account_currency:f.transactionFx?.accountCurrency});
   const e=groups.get(key),portion=r.quantity/f.quantity;
-  e.quantity+=r.quantity;e.commission+=Number(f.commission||0)*portion;e.fees+=Number(f.fees||0)*portion;
+  e.quantity+=r.quantity;e.commission+=Number(f.commission||0)*portion;e.fees+=Number(f.netFees??f.fees??0)*portion;
   if(r.action==='exit'){if(r.realisedProfit==null)e.realized_pnl=null;else if(e.realized_pnl!=null)e.realized_pnl+=r.realisedProfit;if(r.accountRealisedProfit==null)e.accountProfit=null;else if(e.accountProfit!=null)e.accountProfit+=r.accountRealisedProfit;}
   if(!e.source_trade_ids.includes(r.trade_id))e.source_trade_ids.push(r.trade_id);
  }
@@ -25,7 +25,7 @@ function projectPlanTrade(source,plan,result) {
  const evidenceWarning=result.costsUnresolved?'Linked quantities and prices are verified. Broker costs are not fully assigned to these fills, so realised profit is unavailable.':null;
  const costs=records.reduce((sum,r)=>sum+(r.fill.netCosts??r.fill.costs)*r.quantity/r.fill.quantity,0);
  const commission=records.reduce((sum,r)=>sum+Number(r.fill.commission||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
- const fees=records.reduce((sum,r)=>sum+Number(r.fill.fees||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
+ const fees=records.reduce((sum,r)=>sum+Number(r.fill.netFees??r.fill.fees??0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const report={status:accountComplete?'complete':'unavailable',basis:'plan_allocations',currency:result.accountCurrency,pnl:result.accountRealisedProfit,entryCost:result.accountEntryCost,commission,fees,
   events:executions.flatMap((e,index)=>e.realized_pnl==null||e.accountProfit==null?[]:[{sourceIndex:index,pnl:e.accountProfit,gross_pnl:e.accountProfit,time:e.datetime}])};
  const trade={...source,plan_trade:{id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
