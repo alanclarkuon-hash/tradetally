@@ -41,10 +41,10 @@ function usedQuantity(group,allocations){
 function availableGroups(groups,allocations){
  return groups.filter(g=>g.valid&&!allocations.some(a=>a.source_snapshot?.brokerExecution?.key===g.key||a.source_key===g.key)).map(g=>({...g.fill,available:stableNumber(Math.max(0,g.quantity-usedQuantity(g,allocations)))})).filter(f=>f.available>1e-8).sort((a,b)=>b.time.localeCompare(a.time)||a.key.localeCompare(b.key));
 }
-async function loadGroups(client,userId,account=null,symbol=null,locked=false){
- const params=[userId,account,symbol];
- const trades=(await client.query(`SELECT * FROM trades WHERE user_id=$1 AND broker='trading212' AND COALESCE(instrument_type,'stock')='stock' AND ($2::text IS NULL OR account_identifier=$2) AND ($3::text IS NULL OR UPPER(symbol)=UPPER($3)) ORDER BY id ${locked?'FOR UPDATE':''}`,params)).rows;
- const detached=(await client.query(`SELECT d.execution,t.* FROM detached_trade_exits d JOIN trades t ON t.id=d.origin_trade_id WHERE d.user_id=$1 AND t.user_id=$1 AND d.assigned_trade_id IS NULL AND t.broker='trading212' AND COALESCE(t.instrument_type,'stock')='stock' AND ($2::text IS NULL OR t.account_identifier=$2) AND ($3::text IS NULL OR UPPER(t.symbol)=UPPER($3)) ORDER BY d.id ${locked?'FOR UPDATE OF d':''}`,params)).rows.map(t=>({trade:t,execution:t.execution}));
+async function loadGroups(client,userId,account=null,symbol=null,locked=false,aliases=[]){
+ const params=[userId,account,symbol,aliases];
+ const trades=(await client.query(`SELECT * FROM trades WHERE user_id=$1 AND broker='trading212' AND COALESCE(instrument_type,'stock')='stock' AND ($2::text IS NULL OR account_identifier=$2) AND ($3::text IS NULL OR UPPER(symbol)=UPPER($3) OR UPPER(symbol)=ANY($4::text[])) ORDER BY id ${locked?'FOR UPDATE':''}`,params)).rows;
+ const detached=(await client.query(`SELECT d.execution,t.* FROM detached_trade_exits d JOIN trades t ON t.id=d.origin_trade_id WHERE d.user_id=$1 AND t.user_id=$1 AND d.assigned_trade_id IS NULL AND t.broker='trading212' AND COALESCE(t.instrument_type,'stock')='stock' AND ($2::text IS NULL OR t.account_identifier=$2) AND ($3::text IS NULL OR UPPER(t.symbol)=UPPER($3) OR UPPER(t.symbol)=ANY($4::text[])) ORDER BY d.id ${locked?'FOR UPDATE OF d':''}`,params)).rows.map(t=>({trade:t,execution:t.execution}));
  return originalGroups(trades,detached);
 }
 function originalSettlementReports(groups){

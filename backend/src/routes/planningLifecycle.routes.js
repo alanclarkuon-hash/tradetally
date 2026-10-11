@@ -6,6 +6,7 @@ const db=require('../config/database');
 const {fail,calculate}=require('../services/tradePlanning');
 const {sourceFills,verifyAllocation,ledger}=require('../services/planningLedger');
 const brokerFills=require('../services/planBrokerFills');
+const {resolvePlanningSymbols}=require('../services/planningAssetSymbols');
 const router=express.Router();
 const uuid=Joi.string().guid({version:['uuidv4','uuidv5']});
 const validId=id=>{if(uuid.validate(id).error)fail('Invalid record ID',400)};
@@ -153,15 +154,16 @@ router.get('/:id/fills',run(async(req,res)=>{
  const roll=req.query.purpose==='roll';if(req.query.purpose&&(!roll||p.definition.instrument!=='option'))fail('Choose a valid trade finder purpose');
  const account=(await db.query('SELECT account_identifier,broker FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,req.user.id])).rows[0];
  if(!account?.account_identifier)return res.json({fills:[]});
+ const assetSymbols=account.broker==='trading212'&&p.definition.instrument==='stock'?await resolvePlanningSymbols(db,req.user.id,account,p.definition.symbol):[p.definition.symbol.toUpperCase()];
  const d=p.definition,o=d.options||{},exactOption=d.instrument==='option'&&!roll;
- const trades=(await db.query(`SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2))
+ const trades=(await db.query(`SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2) OR UPPER(symbol)=ANY($11::text[]))
  AND account_identifier=$3 AND COALESCE(instrument_type,'stock')=$4 AND side=$5
  AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
- ORDER BY entry_time DESC`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
+ ORDER BY entry_time DESC`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null,assetSymbols])).rows;
  const used=(await db.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;
  const brokerTrades=trades.filter(t=>t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long');
  let originals=[];
- if(brokerTrades.length||(account.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')){const groups=await brokerFills.loadGroups(db,req.user.id,account.account_identifier,d.symbol);originals=brokerFills.availableGroups(groups,used);}
+ if(brokerTrades.length||(account.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')){const groups=await brokerFills.loadGroups(db,req.user.id,account.account_identifier,d.symbol,false,assetSymbols);originals=brokerFills.availableGroups(groups,used);}
 
  res.json({fills:[...originals,...trades.filter(t=>!(t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')).flatMap(t=>sourceFills(t).filter(f=>!used.some(a=>a.trade_id===t.id&&a.source_key===f.key)).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity})))].filter(f=>f.available>1e-8)});
 }));
@@ -189,7 +191,8 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(allocations.some(a=>a.plan_id===p.id&&a.stage_key===b.stageKey))fail('This fill is already linked to that row',409);
   if(allocations.length)fail('This fill is already linked to a plan. Unlink it before linking again.',409);
   const used=allocations.reduce((s,a)=>s+Number(a.quantity),0);
-  verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t);
+  const assetSymbols=t.broker==='trading212'&&p.definition.instrument==='stock'&&String(t.symbol).toUpperCase()!==p.definition.symbol.toUpperCase()?await resolvePlanningSymbols(c,p.user_id,{broker:t.broker,account_identifier:t.account_identifier},p.definition.symbol):[];
+  verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t,assetSymbols);
   const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,p.user_id])).rows[0];
   if(!account?.account_identifier||account.account_identifier!==t.account_identifier)fail('Trade account does not match the selected plan account');
   const current=await evidence(c,p);
