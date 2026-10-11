@@ -6,13 +6,14 @@ const positive = v => Number.isFinite(Number(v)) && Number(v)>0;
 function sourceFills(trade) {
  let executions=trade.executions;
  if(typeof executions==='string'){try{executions=JSON.parse(executions)}catch{executions=[]}}
- // OKX stores raw broker evidence inside a reconciled journal-lot envelope.
+ // OKX and Kraken store metadata inside reconciled journal-lot envelopes.
  // Use the normalized lot quantity and USD prices: raw fills can span several
  // journal rows, and fees/USDT conversion are already included in these prices.
  const okx=trade.broker==='okx'&&Array.isArray(executions)&&executions.length===1&&executions[0].okx_record_key&&executions[0].okx_entry&&executions[0].feesIncluded===true;
- if(okx){const key=String(executions[0].okx_record_key);executions=[
-  {id:'okx:'+key+':entry',action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:0,fees:0},
-  ...(trade.exit_time?[{id:'okx:'+key+':exit',action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:0,fees:0}]:[])
+ const kraken=trade.broker==='kraken'&&Array.isArray(executions)&&executions.length===1&&executions[0].kraken_record_key&&executions[0].feesIncluded===true;
+ if(okx||kraken){const key=String(executions[0][okx?'okx_record_key':'kraken_record_key']);const prefix=trade.broker+':';executions=[
+  {id:prefix+key+':entry',action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:0,fees:0},
+  ...(trade.exit_time?[{id:prefix+key+':exit',action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:0,fees:0}]:[])
  ];}
  const input=Array.isArray(executions)&&executions.length?executions:[
   {action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:trade.entry_commission??(Number(trade.commission||0)-Number(trade.exit_commission||0)),fees:trade.fees},
@@ -27,6 +28,9 @@ function sourceFills(trade) {
   if(e.id){entry.id=e.id+':entry';if(exit)exit.id=e.id+':exit'}
   return [entry,...(exit?[exit]:[])];
  });
+ // IBKR normalizes commission rebates to negative costs. Admit a signed
+ // execution only when broker identities and aggregate cost evidence agree.
+ const ibkrSignedCosts=trade.broker==='ibkr'&&(trade.commission!=null||trade.fees!=null)&&list.every(e=>e.execution_id&&Number.isFinite(Number(e.commission||0))&&Number.isFinite(Number(e.fees||e.fee||0)))&&Math.abs(list.reduce((sum,e)=>sum+Number(e.commission||0)+Number(e.fees||e.fee||0),0)-Number(trade.commission||0)-Number(trade.fees||0))<.000001;
  const currency=trade.original_entry_price_currency!=null?'USD':trade.original_currency||null;
  const multiplier=trade.instrument_type==='option'?Number(trade.contract_size):trade.instrument_type==='future'?Number(trade.point_value):1;
  const capital=require('./etoroCapital').entryCapital(trade);
@@ -43,7 +47,7 @@ function sourceFills(trade) {
   const rawFees=Number(e.fees||e.fee||0),reported=Number(e.etoro_reported_net_profit);
   const brokerGross=(Number(e.price)-Number(trade.entry_price))*Number(e.quantity)*multiplier*(trade.side==='short'?-1:1);
   const verifiedAdjustment=trade.broker==='etoro'&&kind==='exit'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&rawFees!==0&&Number(e.commission||0)===0&&Number.isFinite(reported)&&(Math.abs(brokerGross-rawFees-reported)<=.05||Math.abs(brokerGross-reported)<=.05);
-  if(!Number.isFinite(snapshot.costs)||(snapshot.costs<0&&!(verifiedAdjustment&&rawFees<0)))return null;
+  if(!Number.isFinite(snapshot.costs)||(snapshot.costs<0&&!(verifiedAdjustment&&rawFees<0)&&!ibkrSignedCosts))return null;
   const fingerprint=crypto.createHash('sha256').update(JSON.stringify(snapshot)).digest('hex');
   const id=e.execution_id||e.executionId||e.fill_id||e.id;
   const accountCurrency=e.account_currency||e.accountCurrency;
