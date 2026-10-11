@@ -1,8 +1,10 @@
 <template>
+
+
   <!-- Stats + Top Symbols side by side -->
   <div class="grid grid-cols-1 gap-8 xl:grid-cols-3">
     <!-- Stats -->
-    <div class="card xl:col-span-2">
+    <div class="card xl:col-span-2"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
       <div class="card-body">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-medium text-gray-900 dark:text-white">Stats</h3>
@@ -72,7 +74,7 @@
     </div>
 
     <!-- Top Symbols -->
-    <div class="card xl:col-span-1">
+    <CurrencyCard preference-key="detailedstats-1" v-slot="{formatCurrency}"><div class="card xl:col-span-1">
       <div class="card-body">
         <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Top Performing Symbols</h3>
         <div v-if="symbolStats.length === 0" class="text-center py-4 text-gray-500 dark:text-gray-400">
@@ -135,14 +137,17 @@
           </div>
         </div>
       </div>
-    </div>
+    </div></CurrencyCard>
   </div>
+
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { computed } from 'vue'
 import StockLogo from '@/components/common/StockLogo.vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import { winRateExclBERounded } from '@/utils/analyticsFormatters'
 
 const props = defineProps({
@@ -155,7 +160,7 @@ const props = defineProps({
 
 defineEmits(['navigate-symbol'])
 
-const { formatCurrency } = useCurrencyFormatter()
+const { currency:cardCurrency, choices, formatCurrency } = useCardCurrency(undefined,undefined,'detailedstats-1')
 
 const POSITIVE_CLASS = 'text-green-600'
 const NEGATIVE_CLASS = 'text-red-600'

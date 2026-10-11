@@ -41,8 +41,8 @@ function periodResult(position, range, rates, lots) {
 
 async function getDashboard(userId, query={}, historical=null) {
   const range=parseReportDateRange(query);
-  const currency=query.currency || 'GBP';
-  if(!['GBP','USD'].includes(currency)){const e=Error('Choose GBP or USD');e.status=400;throw e;}
+  const currency=String(query.currency || 'GBP').toUpperCase();
+  if(!/^[A-Z]{3}$/.test(currency)){const e=Error('Choose a valid currency code');e.status=400;throw e;}
   const selected=String(query.accounts || '').split(',').map(x=>x.trim()).filter(Boolean);
   const positions=historical?.positions || await Portfolio.getPositions(userId,{accounts:selected.join(',')});
   const symbols=[...new Set(positions.flatMap(p=>[p.symbol,...(p.sourceSymbols||[])]))];

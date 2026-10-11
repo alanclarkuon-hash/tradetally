@@ -468,7 +468,7 @@
             <template v-if="element.visible">
             <!-- Hero Metrics Ribbon -->
             <template v-if="element.id === 'hero-metrics'">
-              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
+              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" />
             </template>
 
             <!-- AI Insight of the Day -->
@@ -503,7 +503,7 @@
                       <div v-else class="flex-1 min-h-[280px]">
                         <EquityCurveChart
                           :daily-pn-l="analytics?.dailyPnL || []"
-                          :currency-symbol="currencySymbol"
+                          :source-currency="analytics?.display_currency"
                           @select-date="navigateToTradesByDate"
                         />
                       </div>
@@ -574,7 +574,7 @@
                 <div class="card-body">
                   <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center">
-                      <h3 class="heading-card">Open Positions</h3>
+                      <h3 class="heading-card">Open Positions</h3><CurrencyToggle v-model="positionCardCurrency" :currencies="positionChoices" class="ml-3" />
                       <button 
                         @click="navigateToOpenTrades"
                         class="ml-3 text-sm text-primary-600 hover:text-primary-900 dark:text-primary-400 dark:hover:text-primary-300"
@@ -994,7 +994,7 @@
                         ? `Converted to ${accountCurrency}; positions with no exchange rate are excluded`
                         : `Positions converted to ${accountCurrency} at current rates`"
                     >
-                      (in {{ accountCurrency }}<template v-if="totalsArePartial">, partial</template>)
+                      (in {{ positionCardCurrency }}<template v-if="totalsArePartial">, partial</template>)
                     </span>
                   </td>
                   <td class="px-3 py-3 text-sm font-bold text-gray-900 dark:text-white text-right tabular-nums">
@@ -1086,7 +1086,7 @@
               </div>
               <div v-else class="flex-card-container">
                 <div class="card card-mobile-safe flex-1">
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-1" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Total P&L
                     </dt>
@@ -1111,7 +1111,7 @@
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       {{ calculationMethod }} net avg: {{ formatCurrency(dashboardAvgNetPnl) }}
                     </div>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
 
                 <div class="card card-mobile-safe flex-1">
@@ -1155,7 +1155,7 @@
                   @keydown.enter.prevent="navigateToAnalytics('drawdown')"
                   @keydown.space.prevent="navigateToAnalytics('drawdown')"
                 >
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-2" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Max Drawdown
                     </dt>
@@ -1165,7 +1165,7 @@
                     <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                       Peak decline
                     </div>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
               </div>
             </template>
@@ -1190,14 +1190,14 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('avgWin')"
                   @keydown.space.prevent="navigateToTradesFiltered('avgWin')"
                 >
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-3" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Win
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgWin) }}
                     </dd>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
 
                 <div
@@ -1209,14 +1209,14 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('avgLoss')"
                   @keydown.space.prevent="navigateToTradesFiltered('avgLoss')"
                 >
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-4" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       {{ calculationMethod }} Loss
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.avgLoss, { abs: true }) }}
                     </dd>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
 
                 <div
@@ -1228,14 +1228,14 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('best')"
                   @keydown.space.prevent="navigateToTradesFiltered('best')"
                 >
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-5" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Best Trade
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-green-600 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.bestTrade) }}
                     </dd>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
 
                 <div
@@ -1247,14 +1247,14 @@
                   @keydown.enter.prevent="navigateToTradesFiltered('worst')"
                   @keydown.space.prevent="navigateToTradesFiltered('worst')"
                 >
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-6" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <dt class="text-data-secondary truncate">
                       Worst Trade
                     </dt>
                     <dd class="mt-1 text-lg sm:text-xl lg:text-2xl font-semibold text-red-600 whitespace-nowrap">
                       {{ formatCurrency(analytics.summary.worstTrade) }}
                     </dd>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
               </div>
             </template>
@@ -1348,7 +1348,7 @@
               <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <!-- Performance by Symbol -->
                 <div class="card">
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-7" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Performance by Symbol
                     </h3>
@@ -1398,12 +1398,12 @@
                         </tbody>
                       </table>
                     </div>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
 
                 <!-- Best and Worst Trades -->
                 <div class="card">
-                  <div class="card-body">
+                  <CurrencyCard preference-key="dashboardview-8" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                       Top Trades
                     </h3>
@@ -1469,7 +1469,7 @@
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </div></CurrencyCard>
                 </div>
               </div>
             </template>
@@ -1477,7 +1477,7 @@
             <!-- Additional Stats -->
             <template v-if="element.id === 'additional-stats'">
               <div class="card">
-                <div class="card-body">
+                <CurrencyCard preference-key="dashboardview-9" :source-currency="analytics?.display_currency || currencyCode" v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
                   <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">
                     Additional Statistics
                   </h3>
@@ -1518,7 +1518,7 @@
                       </dd>
                     </div>
                   </div>
-                </div>
+                </div></CurrencyCard>
               </div>
             </template>
             </template>
@@ -1635,6 +1635,9 @@
 </template>
 
 <script setup>
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { resolveDatePreset, dashboardDateRangeOptions } from '@/utils/datePresets'
 import { storeToRefs } from 'pinia'
 import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
@@ -1705,6 +1708,8 @@ const authStore = useAuthStore()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const { hideAmounts } = useDashboardPrivacy()
 const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter({ privacy: hideAmounts })
+const positionCard=useCardCurrency(undefined,undefined,'dashboardview-1')
+const positionCardCurrency=positionCard.currency,positionChoices=positionCard.choices
 const { selectedAccount, selectedAccountLabel } = useGlobalAccountFilter()
 const yearWrappedStore = useYearWrappedStore()
 const uiPreferencesStore = useUiPreferencesStore()
@@ -1831,20 +1836,6 @@ function getOptionPnL(position) {
 
 const dateFilter = useDashboardDateFilterStore()
 const { selection: filters } = storeToRefs(dateFilter)
-
-// Hero ribbon display mode: false = dollars, true = R-multiples. Persisted +
-// synced so the choice (e.g. hide dollar values when sharing) follows the user.
-const dashboardRMode = ref(false)
-
-function setDashboardRMode(value) {
-  dashboardRMode.value = value
-  try {
-    localStorage.setItem('dashboardRMode', JSON.stringify(value))
-    uiPreferencesStore.notifyChanged('dashboardRMode', value)
-  } catch (e) {
-    console.error('Failed to save dashboard R mode:', e)
-  }
-}
 
 // Advanced filter spec from the shared TradeFilters component (tags, strategies,
 // brokers, instrument types, etc.). Date/account come from the dashboard's own
@@ -2376,11 +2367,11 @@ function positionCurrency(position) {
 }
 
 function formatPositionCurrency(value, position) {
-  return formatCurrency(value, { currency: positionCurrency(position) })
+  return positionCard.formatCurrency(value, { currency: positionCurrency(position) })
 }
 
 function formatSignedPositionCurrency(value, position) {
-  return formatSignedCurrency(value, { currency: positionCurrency(position) })
+  return positionCard.formatSignedCurrency(value, { currency: positionCurrency(position) })
 }
 
 // Individual positions display in their own currency; aggregates only mean
@@ -2413,19 +2404,19 @@ const totalUnrealizedPnLAccount = computed(() => sumInAccountCurrency(position =
 const totalOpenCostLabel = computed(() => (
   totalOpenCostAccount.value === null
     ? '\u2014'
-    : formatCurrency(totalOpenCostAccount.value, { currency: accountCurrency.value })
+    : positionCard.formatCurrency(totalOpenCostAccount.value, { currency: accountCurrency.value })
 ))
 
 const totalCurrentValueLabel = computed(() => (
   totalCurrentValueAccount.value === null
     ? null
-    : formatCurrency(totalCurrentValueAccount.value, { currency: accountCurrency.value })
+    : positionCard.formatCurrency(totalCurrentValueAccount.value, { currency: accountCurrency.value })
 ))
 
 const totalUnrealizedPnLLabel = computed(() => (
   totalUnrealizedPnLAccount.value === null
     ? null
-    : formatSignedCurrency(totalUnrealizedPnLAccount.value, { currency: accountCurrency.value })
+    : positionCard.formatSignedCurrency(totalUnrealizedPnLAccount.value, { currency: accountCurrency.value })
 ))
 
 const totalUnrealizedPnLPercent = computed(() => {
@@ -3200,13 +3191,6 @@ onMounted(async () => {
 
   // Load manual option prices from localStorage
   loadManualOptionPrices()
-
-  // Restore hero ribbon $/R display mode
-  try {
-    dashboardRMode.value = localStorage.getItem('dashboardRMode') === 'true'
-  } catch (e) {
-    // localStorage load failed
-  }
 
   // Keep the dashboard and shared TradeFilters modal aligned with the
   // persisted trade filter state before any cached dashboard data is restored.

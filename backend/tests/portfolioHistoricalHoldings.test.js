@@ -58,3 +58,10 @@ test('Kraken spot and Earn wallets are counted once and selected accounts stay i
  expect(result.positions).toHaveLength(1);
  expect(result.positions[0]).toMatchObject({symbol:'BTC',totalShares:2,currentValue:24,periodResult:{pnl:4,basis:20}});
 });
+
+test('historical EUR display conversion uses EUR instead of GBP',async()=>{
+ fixture();const original=db.query.getMockImplementation();
+ db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:range.end_date,rates:{EUR:.9,GBP:.8}}]}):original(sql));
+ const result=await getHistoricalHoldings('synthetic',[account],range,'EUR');
+ expect(result.displayRates.USD).toBeCloseTo(.9);
+});

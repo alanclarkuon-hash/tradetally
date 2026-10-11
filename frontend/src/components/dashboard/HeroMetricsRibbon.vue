@@ -24,23 +24,7 @@
             <span class="text-label whitespace-nowrap">{{ rMode ? 'Net R' : 'Net P&L' }}</span>
             <div class="flex items-center gap-2 min-w-0">
               <span class="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap truncate">{{ rangeLabel }}</span>
-              <!-- $ / R toggle: lets the ribbon be shared without dollar values -->
-              <div class="inline-flex shrink-0 rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium" role="group" aria-label="Display values in dollars or R-multiples">
-                <button
-                  type="button"
-                  class="px-2 py-0.5 transition-colors"
-                  :class="!rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-                  :aria-pressed="!rMode"
-                  @click="emit('update:rMode', false)"
-                >$</button>
-                <button
-                  type="button"
-                  class="px-2 py-0.5 transition-colors"
-                  :class="rMode ? 'bg-primary-600 text-white' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'"
-                  :aria-pressed="rMode"
-                  @click="emit('update:rMode', true)"
-                >R</button>
-              </div>
+              <CurrencyToggle v-model="cardCurrency" :currencies="choices" />
             </div>
           </div>
           <!-- Value block is bottom-anchored with mt-auto so the hero number,
@@ -168,7 +152,8 @@
 <script setup>
 import { computed } from 'vue'
 import MiniBarChart from '@/components/common/MiniBarChart.vue'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useCardCurrency } from '@/composables/useCardCurrency'
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
 
 const props = defineProps({
   analytics: {
@@ -180,17 +165,10 @@ const props = defineProps({
     type: String,
     default: 'All Time'
   },
-  // When true, the hero number and daily bars show R-multiples instead of
-  // dollar values so the ribbon can be shared without exposing account size.
-  rMode: {
-    type: Boolean,
-    default: false
-  }
 })
 
-const emit = defineEmits(['update:rMode'])
-
-const { formatCurrency, formatSignedCurrency } = useCurrencyFormatter()
+const { currency:cardCurrency, choices, formatCurrency, formatSignedCurrency, convert } = useCardCurrency(computed(()=>props.analytics?.display_currency),undefined,'hero-metrics',['R'])
+const rMode = computed(() => cardCurrency.value === 'R')
 
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {
@@ -203,12 +181,13 @@ const summary = computed(() => props.analytics?.summary || {})
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
 // Total R across trades with a defined stop loss (NULL r_value trades are
 // excluded server-side, matching the analytics performance endpoint).
+const rAvailable = computed(() => (summary.value.totalRValue ?? summary.value.total_r_value) != null)
 const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.value.total_r_value ?? 0) || 0)
 
 // The active hero metric: drives both the displayed string and the sign-based
 // color/size classes so $ and R modes share one code path.
-const heroSign = computed(() => props.rMode ? totalR.value : netPnl.value)
-const heroDisplay = computed(() => props.rMode ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
+const heroSign = computed(() => rMode.value ? totalR.value : netPnl.value)
+const heroDisplay = computed(() => rMode.value ? (rAvailable.value ? formatSignedR(totalR.value) : 'R unavailable') : formatSignedCurrency(netPnl.value))
 const totalTrades = computed(() => parseInt(summary.value.totalTrades) || 0)
 const winningTrades = computed(() => parseInt(summary.value.winningTrades) || 0)
 const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
@@ -373,7 +352,7 @@ const profitFactorClass = computed(() => {
 const todayR = computed(() => streakStats.value.todayR)
 
 const todayPnlClass = computed(() => {
-  const v = props.rMode ? todayR.value : todayPnl.value
+  const v = rMode.value ? todayR.value : todayPnl.value
   if (v > 0) return 'text-green-600 dark:text-green-400'
   if (v < 0) return 'text-red-600 dark:text-red-400'
   return 'text-gray-700 dark:text-gray-300'
@@ -384,19 +363,19 @@ const todayPnlClass = computed(() => {
 // curve below and surfaces recent rhythm and volatility at a glance.
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
-const dailyBarValues = computed(() =>
-  recentDays.value.map(d => props.rMode
+const dailyBarValues = computed(() => rMode.value && !rAvailable.value ? [] :
+  recentDays.value.map(d => rMode.value
     ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
-    : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0)
+    : convert(parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0))
 )
 
 const dailyBarLabels = computed(() =>
   recentDays.value.map(d => {
     const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
-    const value = props.rMode
+    const value = rMode.value
       ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
       : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
-    const formatted = props.rMode ? formatSignedR(value) : formatSignedCurrency(value)
+    const formatted = rMode.value ? formatSignedR(value) : formatSignedCurrency(value)
     return date ? `${date}: ${formatted}` : formatted
   })
 )

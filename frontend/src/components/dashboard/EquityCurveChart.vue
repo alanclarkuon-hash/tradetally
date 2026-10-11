@@ -1,13 +1,19 @@
 <template>
-  <canvas ref="canvas" />
+  <div class="equity-curve">
+    <div class="flex justify-end mb-2"><CurrencyToggle v-model="cardCurrency" :currencies="choices" /></div>
+    <p v-if="fxMissing" class="text-sm text-amber-700 dark:text-amber-300">FX unavailable for the selected currency.</p>
+    <div class="relative h-[280px]"><canvas ref="canvas" /></div>
+  </div>
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 // Command-center equity curve for the dashboard's equity-and-calendar section.
 // Owns its full Chart.js lifecycle (create/update/destroy) so the parent view
 // doesn't have to manage a canvas ref or a createCharts()/setTimeout flow.
 // Data comes in via props; day clicks are emitted up for navigation.
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { Chart } from '@/lib/chartSetup'
 import { formatTradeDate } from '@/utils/date'
 import { useMonetaryPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
@@ -18,12 +24,13 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  currencySymbol: {
-    type: String,
-    default: '$'
-  }
+  sourceCurrency: { type: String, default: undefined }
 })
 
+const {currency:cardCurrency,choices,formatCurrency,convert,rates}=useCardCurrency(computed(()=>props.sourceCurrency),undefined,'equitycurvechart-1')
+const pnlValues = computed(() => props.dailyPnL.map(d => convert(d.cumulative_pnl)))
+const fxMissing = computed(() => pnlValues.value.some(v => v == null))
+const formatAxis = value => formatCurrency(value, {currency:cardCurrency.value})
 const emit = defineEmits(['select-date'])
 
 const canvas = ref(null)
@@ -40,7 +47,7 @@ function renderChart() {
   const dailyData = props.dailyPnL || []
   if (dailyData.length === 0) return
 
-  const pnlValues = dailyData.map(d => parseFloat(d.cumulative_pnl) || 0)
+  if (fxMissing.value) return
   const positiveColor = 'rgba(22, 163, 74, 1)'
   const negativeColor = 'rgba(220, 38, 38, 1)'
   const positiveFill = 'rgba(22, 163, 74, 0.12)'
@@ -53,7 +60,7 @@ function renderChart() {
         labels: dailyData.map(d => formatTradeDate(d.trade_date, 'MMM dd')),
         datasets: [{
           label: 'Cumulative P&L',
-          data: pnlValues,
+          data: pnlValues.value,
           fill: {
             target: 'origin',
             above: positiveFill,
@@ -88,7 +95,7 @@ function renderChart() {
             padding: 8,
             displayColors: false,
             callbacks: {
-              label: ctx => hideAmounts.value ? MONEY_MASK : `${props.currencySymbol}${Number(ctx.parsed.y).toLocaleString()}`
+              label: ctx => hideAmounts.value ? MONEY_MASK : formatAxis(Number(ctx.parsed.y))
             }
           }
         },
@@ -98,7 +105,7 @@ function renderChart() {
             grid: { color: 'rgba(156, 163, 175, 0.08)' },
             ticks: {
               font: { family: 'ui-monospace, SFMono-Regular, Menlo, monospace', size: 10 },
-              callback: v => hideAmounts.value ? MONEY_MASK : props.currencySymbol + Number(v).toLocaleString()
+              callback: v => hideAmounts.value ? MONEY_MASK : formatAxis(Number(v))
             }
           },
           x: {
@@ -118,7 +125,7 @@ function renderChart() {
 }
 
 onMounted(renderChart)
-watch(() => [props.dailyPnL, props.currencySymbol, hideAmounts.value], renderChart)
+watch(() => [props.dailyPnL, props.sourceCurrency,cardCurrency.value,rates.value, hideAmounts.value], renderChart)
 onBeforeUnmount(() => {
   if (chartInstance) {
     chartInstance.destroy()
