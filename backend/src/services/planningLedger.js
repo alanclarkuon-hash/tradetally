@@ -6,6 +6,14 @@ const positive = v => Number.isFinite(Number(v)) && Number(v)>0;
 function sourceFills(trade) {
  let executions=trade.executions;
  if(typeof executions==='string'){try{executions=JSON.parse(executions)}catch{executions=[]}}
+ // OKX stores raw broker evidence inside a reconciled journal-lot envelope.
+ // Use the normalized lot quantity and USD prices: raw fills can span several
+ // journal rows, and fees/USDT conversion are already included in these prices.
+ const okx=trade.broker==='okx'&&Array.isArray(executions)&&executions.length===1&&executions[0].okx_record_key&&executions[0].okx_entry&&executions[0].feesIncluded===true;
+ if(okx){const key=String(executions[0].okx_record_key);executions=[
+  {id:'okx:'+key+':entry',action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:0,fees:0},
+  ...(trade.exit_time?[{id:'okx:'+key+':exit',action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:0,fees:0}]:[])
+ ];}
  const input=Array.isArray(executions)&&executions.length?executions:[
   {action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:trade.entry_commission??(Number(trade.commission||0)-Number(trade.exit_commission||0)),fees:trade.fees},
   ...(trade.exit_time?[{action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:trade.exit_commission}]:[])
