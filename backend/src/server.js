@@ -955,6 +955,13 @@ async function startServer() {
       await BillingService.initialize();
     }
 
+    // Recover abandoned manual and scheduled imports before accepting requests,
+    // even when automatic/background sync scheduling is disabled.
+    if (!standbyMode) {
+      const recovered=await require('./services/brokerSync/syncRecovery').recoverAbandoned();
+      if(recovered.recovered)logger.info(`Marked ${recovered.recovered} interrupted broker sync(s) for retry`, 'startup');
+    }
+
     // Start the server
     const server = app.listen(PORT, () => {
       logger.info(`✓ TradeTally server running on port ${PORT}`);

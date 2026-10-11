@@ -958,6 +958,14 @@ class BrokerConnection {
     return this.formatSyncLog(result.rows[0]);
   }
 
+  // Store only bounded public progress metadata, never response contents/cursors.
+  static async updateSyncProgress(logId, section, pages, complete=false) {
+    if(!['orders','transactions','dividends','cash_report','portfolio_history'].includes(section)||!Number.isInteger(pages)||pages<0||pages>1000)throw new Error('Invalid sync progress');
+    await db.query(`UPDATE broker_sync_logs SET sync_details=jsonb_set(COALESCE(sync_details,'{}'::jsonb),'{progress}',$2::jsonb)
+      WHERE id=$1 AND status IN ('started','fetching','parsing','importing') AND completed_at IS NULL`,
+      [logId,JSON.stringify({section,pages,complete,updated_at:new Date().toISOString()})]);
+  }
+
   /**
    * Get sync logs for a connection
    */

@@ -323,6 +323,8 @@
                     >
                       {{ getStatusLabel(log) }}
                     </span>
+                    <span v-if="syncInterrupted(log)" class="block mt-2 max-w-xs text-xs text-gray-600 dark:text-gray-300 whitespace-normal">Interrupted by application restart. Use Sync Now to finish; committed records are retained.</span>
+                    <span v-if="syncProgressLabel(log)" class="block mt-2 text-xs text-gray-500 dark:text-gray-400">{{ syncProgressLabel(log) }}</span>
                     <details
                       v-if="warningsFromSyncLog(log).length > 0"
                       class="mt-2 max-w-xs text-xs text-amber-800 dark:text-amber-300"
@@ -963,7 +965,20 @@ function formatDate(date) {
   return formatDateTimeTz(date, { includeSeconds: true })
 }
 
+function syncInterrupted(log) {
+  return log?.status === 'failed' && parseSyncDetails(log?.syncDetails || log?.sync_details).outcome === 'interrupted'
+}
+function syncProgressLabel(log) {
+  if (!['started','fetching','parsing','importing'].includes(log?.status) && !syncInterrupted(log)) return ''
+  const progress = parseSyncDetails(log?.syncDetails || log?.sync_details).progress
+  const labels = { orders: 'Trade history', transactions: 'Cash transactions', dividends: 'Dividends', cash_report: 'Cash reconciliation', portfolio_history: 'Portfolio history' }
+  if (!labels[progress?.section] || !Number.isInteger(progress.pages) || progress.pages < 0 || progress.pages > 1000) return ''
+  if (['cash_report','portfolio_history'].includes(progress.section)) return labels[progress.section]
+  return `${labels[progress.section]} · ${progress.pages} page${progress.pages === 1 ? '' : 's'}${progress.complete ? ' retrieved' : ' retrieved so far'}`
+}
 function getStatusLabel(log) {
+  if (syncInterrupted(log)) return 'Interrupted'
+
   if (syncCompletedWithWarnings(log)) return 'Completed with warnings'
   return log?.status || 'unknown'
 }
