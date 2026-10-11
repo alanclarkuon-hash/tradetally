@@ -71,7 +71,7 @@ async function read(buffer) {
   if(end<start)fail('Invalid statement dates.');
   if(!end.endsWith('T23:59:59.000Z'))fail('Download a statement ending at the end of a day.');
   const statement={};
-  for(const name of ['Account Activity','Dividends']) {
+  for(const name of ['Account Activity','Dividends','Closed Positions']) {
     const data=sheet(name);const headers=Array.from(data[0]||[],v=>typeof v==='string'?v.trim():v);
     if(!headers.length||headers.some(h=>!h)||new Set(headers).size!==headers.length)fail('Invalid statement column headings.');
     statement[name]=data.slice(1).filter(row=>row.some(v=>v!=null&&v!=='')).map(row=>{const record={};headers.forEach((h,c)=>{record[h]=row[c]??null;});return record;});
