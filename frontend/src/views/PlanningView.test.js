@@ -11,7 +11,7 @@ vi.mock('vue-router',()=>({useRouter:()=>({replace:vi.fn().mockResolvedValue()})
 const factory=()=>mount(PlanningView,{global:{stubs:{RouterLink:{template:'<a><slot/></a>'},MoneyPrivacyToggle:true,PlanningWorkspace:{template:"<div>Planning workflow workspace</div>"}}}})
 beforeEach(()=>{vi.clearAllMocks();delete routeParams.id;selectedAccount.value=null;get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[],commitments:[]}:{playbooks:[]}}))})
 describe('Planning first slice',()=>{
- it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).not.toContain('Test build');expect(w.text()).not.toContain('Risk coverage remains incomplete');expect(w.text()).toContain('No committed entries');expect(w.text()).toContain('Draft and Watching reserve no capacity');w.unmount()})
+ it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).not.toContain('Test build');expect(w.text()).not.toContain('Risk coverage remains incomplete');expect(w.text()).not.toContain('Outstanding entry commitments');expect(w.text()).not.toContain('These totals are reservations only');expect(w.text()).toContain('Draft and Watching reserve no capacity');w.unmount()})
  it('new drafts include a definition for the persistent workflow workspace',async()=>{const w=factory();await flushPromises();await w.findAll('button').find(b=>b.text()==='New plan').trigger('click');expect(w.text()).toContain('Planning workflow workspace');expect(post).not.toHaveBeenCalled();w.unmount()})
 
 })
