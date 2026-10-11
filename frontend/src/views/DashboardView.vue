@@ -470,7 +470,7 @@
             <template v-if="element.visible">
             <!-- Hero Metrics Ribbon -->
             <template v-if="element.id === 'hero-metrics'">
-              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" :r-mode="dashboardRMode" @update:r-mode="setDashboardRMode" />
+              <HeroMetricsRibbon :analytics="analytics" :range-label="heroRangeLabel" />
             </template>
 
             <!-- AI Insight of the Day -->
@@ -505,7 +505,7 @@
                       <div v-else class="flex-1 min-h-[280px]">
                         <EquityCurveChart
                           :daily-pn-l="analytics?.dailyPnL || []"
-                          :currency-symbol="currencySymbol"
+                          :source-currency="analytics?.display_currency"
                           @select-date="navigateToTradesByDate"
                         />
                       </div>
@@ -1838,20 +1838,6 @@ function getOptionPnL(position) {
 
 const dateFilter = useDashboardDateFilterStore()
 const { selection: filters } = storeToRefs(dateFilter)
-
-// Hero ribbon display mode: false = dollars, true = R-multiples. Persisted +
-// synced so the choice (e.g. hide dollar values when sharing) follows the user.
-const dashboardRMode = ref(false)
-
-function setDashboardRMode(value) {
-  dashboardRMode.value = value
-  try {
-    localStorage.setItem('dashboardRMode', JSON.stringify(value))
-    uiPreferencesStore.notifyChanged('dashboardRMode', value)
-  } catch (e) {
-    console.error('Failed to save dashboard R mode:', e)
-  }
-}
 
 // Advanced filter spec from the shared TradeFilters component (tags, strategies,
 // brokers, instrument types, etc.). Date/account come from the dashboard's own
@@ -3207,13 +3193,6 @@ onMounted(async () => {
 
   // Load manual option prices from localStorage
   loadManualOptionPrices()
-
-  // Restore hero ribbon $/R display mode
-  try {
-    dashboardRMode.value = localStorage.getItem('dashboardRMode') === 'true'
-  } catch (e) {
-    // localStorage load failed
-  }
 
   // Keep the dashboard and shared TradeFilters modal aligned with the
   // persisted trade filter state before any cached dashboard data is restored.

@@ -38,3 +38,12 @@ test('a converted account-native import restores preserved transaction amounts',
  const trade={...example(),original_currency:'GBP',original_entry_price_currency:80,exchange_rate:1.25,commission:0,fees:0,executions:[{action:'buy',quantity:1,price:100,datetime:'2026-01-01T10:00:00Z'},{action:'sell',quantity:1,price:125,datetime:'2026-01-02T10:00:00Z'}]};
  expect(calculateAccountResult(trade,'GBP').pnl).toBe(20);
 });
+
+
+test('single-exit native broker cash result is authoritative over price arithmetic',()=>{
+ const trade={id:'cash',broker:'etoro',side:'long',original_currency:'USD',instrument_type:'stock',entry_price:100,exit_price:110,quantity:2,pnl:47,commission:2,fees:1,exit_time:'2026-01-02T10:00:00Z',executions:[{action:'buy',price:100,quantity:2,datetime:'2026-01-01T10:00:00Z'},{action:'sell',price:110,quantity:2,datetime:'2026-01-02T10:00:00Z'}]};
+ const before=structuredClone(trade);const result=calculateAccountResult(trade,'USD');expect(result.events).toEqual([{sourceIndex:1,time:'2026-01-02T10:00:00Z',pnl:47,gross_pnl:50}]);expect(result.pnl).toBe(47);expect(trade).toEqual(before);
+});
+test('metadata-only native imports retain stored cash at their recorded exit time',()=>{
+ const result=calculateAccountResult({original_currency:'USD',pnl:15,commission:1,fees:0,exit_time:'2026-01-02T10:00:00Z',executions:[{notes:'synthetic broker reconciliation'}]},'USD');expect(result.events).toEqual([{time:'2026-01-02T10:00:00Z',pnl:15,gross_pnl:16}]);
+});
