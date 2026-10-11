@@ -101,7 +101,7 @@ class PlaidBalanceSnapshot {
       ORDER BY pa.account_name ASC
     `, params);
 
-    const fx=seriesResult.rows.length?await require('../services/planningFx').latestPlanningFx():null;
+    const fx=seriesResult.rows.length?await require('../services/displayFx').latestDisplayFx():null;
     const reporting=require('../services/balanceHistoryCurrency').balanceHistoryCurrency(seriesResult.rows,fx?.rates);
     return {
       ...reporting,

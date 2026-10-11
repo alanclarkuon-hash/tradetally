@@ -13,16 +13,42 @@ beforeEach(()=>{
 describe('portfolio value chart',()=>{
   it('plots only the combined line even when older responses contain individual account histories',async()=>{
     const point={date:'2026-01-01',value:100,holdings:60,cash:40,stablecoins:0,reconstructedAccounts:1}
-    const history={series:[{date:point.date,value:null}],events:[],accountSeries:[{name:'First',series:[point]},{name:'Second',series:[]}],coverage:{recordedDays:0,partialDays:1,missingEventFx:0,accounts:[]}}
+    const history={series:[{date:'2025-12-31',value:null},point],events:[],accountSeries:[{name:'First',series:[point]},{name:'Second',series:[]}],coverage:{recordedDays:1,partialDays:1,missingEventFx:0,accounts:[]}}
     const wrapper=mount(PortfolioValueChart,{props:{history}});await flushPromises()
     const config=captured.at(-1)
     expect(config.data.datasets[0].data[0].y).toBeNull()
     expect(config.data.datasets.filter(d=>d.type!=='scatter')).toHaveLength(1)
     expect(config.data.datasets[0]).toMatchObject({label:'Portfolio value',spanGaps:false})
-    expect(config.options.scales.value.display).toBe(false)
+    expect(config.options.scales.value.display).toBe(true)
     expect(wrapper.findAll('details')).toHaveLength(0)
     expect(wrapper.text()).not.toContain('Show individual account histories')
     wrapper.unmount()
+  })
+  it('explains missing combined values instead of drawing a blank graph',async()=>{
+    const history={series:[{date:'2026-10-05',value:null,missingAccounts:1}],events:[],change:null,
+      captureWarnings:['Example broker: dated snapshot unavailable.'],coverage:{recordedDays:0,accounts:[{name:'Example account',days:0}]}}
+    const view=mount(PortfolioValueChart,{props:{history}});await flushPromises()
+    expect(view.find('canvas').exists()).toBe(false)
+    expect(view.text()).toContain('No complete combined portfolio values')
+    expect(view.text()).toContain('Example account')
+    expect(view.text()).toContain('dated snapshot unavailable')
+    await view.setProps({history:{...history,series:[{date:'2026-10-05',value:100}],coverage:{recordedDays:1,accounts:[]}}});await flushPromises()
+    expect(view.find('canvas').exists()).toBe(true)
+    expect(view.text()).toContain('A second is needed')
+    view.unmount()
+  })
+  it('shows one last successful sync per selected broker and distinguishes missing syncs from manual imports',async()=>{
+    const view=mount(PortfolioValueChart,{props:{history:{series:[],events:[],coverage:{accounts:[
+      {name:'First',broker:'kraken',lastSuccessfulSyncAt:'2026-10-03T12:00:00Z',days:0},
+      {name:'Second',broker:'kraken',lastSuccessfulSyncAt:'2026-10-04T12:00:00Z',days:0},
+      {name:'Third',broker:'okx',lastSuccessfulSyncAt:null,days:0},
+      {name:'Fourth',broker:'ig',lastSuccessfulSyncAt:null,days:0}
+    ]}}}});await flushPromises()
+    expect(view.text()).toContain('Last successful broker syncs')
+    expect(view.text()).toContain('OKX: No successful sync recorded')
+    expect(view.text()).toContain('IG: Statement imports')
+    expect(view.findAll('li').filter(row=>row.text().startsWith('Kraken:'))).toHaveLength(1)
+    view.unmount()
   })
   it('places today and past funding on real dates without waiting for background-tab animations',async()=>{
     const history={change:null,series:[{date:'2026-10-03',value:120,holdings:80,cash:30,stablecoins:10}],
@@ -90,3 +116,11 @@ describe('Portfolio change selector', () => {
     expect(view.find('.history-change').text()).not.toContain('£200');view.unmount()
   })
 })
+
+it('converts plotted coordinates and axis labels together without double conversion',async()=>{
+ const point={date:'2026-01-01',value:80,holdings:80,cash:0,stablecoins:0};
+ const view=mount(PortfolioValueChart,{props:{currency:'GBP',history:{series:[point],events:[],coverage:{recordedDays:1,accounts:[]}}}});await flushPromises();
+ await view.find('button[aria-label^="Showing GBP"]').trigger('click');await flushPromises();
+ const config=captured.at(-1);expect(config.data.datasets[0].data[0].y).toBe(100);expect(config.options.scales.value.ticks.callback(100)).toBe('$100.00');
+ expect(config.options.plugins.tooltip.callbacks.label({dataset:config.data.datasets[0],raw:config.data.datasets[0].data[0]})[0]).toContain('$100.00');view.unmount();
+});
