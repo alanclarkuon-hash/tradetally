@@ -723,7 +723,7 @@ function pricePrecision() {
 }
 
 function drawingStorageKey() {
-  const tradeId = props.chartData?.trade?.id
+  const tradeId = props.chartData?.trade?.plan_trade?.id ? 'plan:'+props.chartData.trade.plan_trade.id : props.chartData?.trade?.id
   return tradeId ? `trade_chart_drawings:${tradeId}` : null
 }
 
@@ -1199,7 +1199,7 @@ async function createChart() {
   if (volumeEnabled.value) volumeIndicatorId = chart.createIndicator('VOL')
 
   const position = addPositionOverlay()
-  if (position) addActualExitLine(position)
+  if (position && !props.chartData?.trade?.plan_trade) addActualExitLine(position)
   else addExecutionMarkers()
   restoreDrawings()
   requestAnimationFrame(focusTradeView)
