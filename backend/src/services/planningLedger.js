@@ -119,6 +119,24 @@ function ledger(plan,allocations,trades) {
    realised+=a.realisedProfit;
   }
  }
+ // Preserve authoritative native-account cash for fully linked single-exit
+ // source trades. Reconstructing their prices can omit broker adjustments.
+ // Partial entry allocations retain the allocation ledger's own cost basis.
+ const nativeResults=new Map();
+ for(const a of records.filter(a=>a.action==='exit'&&a.valid&&a.accountRealisedProfit!=null)) {
+  const trade=byId.get(a.trade_id);if(!trade?.exit_time||trade.pnl==null)continue;
+  if(!nativeResults.has(trade.id)) {
+   const fills=sourceFills(trade),entries=fills.filter(f=>f.action==='entry');
+   const fullyLinked=entries.length>0&&fills.filter(f=>f.action==='exit').length===1&&entries.every(f=>Math.abs(records.filter(r=>r.trade_id===trade.id&&r.action==='entry'&&r.source_key===f.key&&r.valid).reduce((s,r)=>s+r.quantity,0)-f.quantity)<1e-8);
+   const result=fullyLinked?require('./accountRealisedPnl').calculateAccountResult(trade,a.accountCurrency):null;
+   nativeResults.set(trade.id,result?.basis==='account_native'&&result.events.length===1?result:null);
+  }
+  const result=nativeResults.get(trade.id),event=result?.events[0];
+  if(!event)continue;
+  const cash=event.pnl*a.quantity/a.fill.quantity;
+  accountRealised+=cash-a.accountRealisedProfit;a.accountRealisedProfit=cash;
+  if(a.fill.currency===a.accountCurrency){realised+=cash-a.realisedProfit;a.realisedProfit=cash;}
+ }
  for(const queue of queues.values())for(const lot of queue){cost+=lot.q*lot.price*lot.multiplier;if(lot.accountPrice!=null)accountCost+=lot.q*lot.accountPrice;}
  const openQuantity=entered-exited;
  const currency=currencies.size===1?[...currencies][0]:null;
