@@ -9,6 +9,14 @@ const accounts=[{id:'one',account_identifier:'one',account_name:'First',broker:'
   {id:'two',account_identifier:'two',account_name:'Second',broker:'alpaca',currency:'GBP',initial_balance_date:'2024-01-01'}];
 const row=(account,date,holdings,cash,stablecoins=0)=>({account_identifier:account,value_date:date,holdings_usd:holdings,cash_usd:cash,stablecoins_usd:stablecoins,gbp_per_usd:.8});
 beforeEach(()=>jest.resetAllMocks());
+test('returns selected-broker last-successful-sync metadata without connection identifiers',async()=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM user_accounts') ? accounts.map(a=>({...a,last_successful_sync_at:'2026-10-03T12:00:00Z'})) : []}));
+  Account.getCashflow.mockResolvedValue({cashflow:[]});
+  const result=await getHistory('owner',{accounts:'one',currency:'USD'});
+  expect(result.coverage.accounts).toHaveLength(1);
+  expect(result.coverage.accounts[0]).toMatchObject({name:'First',broker:'alpaca',lastSuccessfulSyncAt:'2026-10-03T12:00:00Z'});
+  expect(result.coverage.accounts[0].account_identifier).toBeUndefined();
+});
 test('combines selected account cash, assets and stablecoins once at the recorded FX rate',()=>{
   const rows=[row('one','2026-01-01',100,20,10),row('two','2026-01-01',30,40)];
   expect(combineValues(rows,accounts,'USD')[0]).toMatchObject({value:200,holdings:130,cash:60,stablecoins:10});

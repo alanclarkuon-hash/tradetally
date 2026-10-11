@@ -7,8 +7,22 @@
     <p v-if="loading" class="history-message" role="status">Loading portfolio history…</p>
     <p v-else-if="error" class="history-message" role="status">{{ error }}</p>
     <template v-else-if="history">
+      <div v-if="!completePoints.length" class="history-message" role="status">
+        <p>{{ includeFunding ? 'No complete combined portfolio values are available for this range.' : 'Overall gains cannot be calculated from the available balances and funding data.' }}</p>
+        <p v-if="accountsWithoutValues.length">No dated values in this range for: {{ accountsWithoutValues.join(', ') }}.</p>
+        <p>Choose a range with recorded balances. For recent dates, run a broker sync to collect fresh dated balances.</p>
+        <p v-if="isTestEnvironment">Automatic broker syncs are off in this test environment.</p>
+        <ul v-if="history.captureWarnings?.length" class="mt-2 list-disc pl-5"><li v-for="warning in history.captureWarnings" :key="warning">{{ warning }}</li></ul>
+      </div>
+      <template v-else>
+      <p v-if="completePoints.length===1" class="history-message" role="status">Only one complete value is available in this range. A second is needed to calculate period change.</p>
       <div class="history-legend"><span><i class="value-key"></i>{{ includeFunding ? "Portfolio value" : "Overall gains" }}</span><span class="deposit-key">▲ Deposit</span><span class="withdrawal-key">▼ Withdrawal</span><span>◆ Transfer</span></div>
       <div class="history-canvas"><canvas ref="canvas" role="img" :aria-label="includeFunding ? 'Recorded portfolio values and funding activity over time.' : 'Overall portfolio gains excluding cash funding over time.'" /></div>
+      </template>
+      <div v-if="brokerSyncs.length" class="history-message">
+        <p class="font-medium">Last successful broker syncs ({{ timezoneLabel }})</p>
+        <ul class="mt-1"><li v-for="broker in brokerSyncs" :key="broker.type">{{ broker.label }}: {{ broker.lastSync ? formatDateTime(broker.lastSync) : broker.type==='ig' ? 'Statement imports · no API sync' : 'No successful sync recorded' }}</li></ul>
+      </div>
     </template>
   </section>
 </template>
@@ -21,10 +35,28 @@ import {Chart} from '@/lib/chartSetup'
 import {useMonetaryPrivacy,MONEY_MASK} from '@/composables/useDashboardPrivacy'
 const {hideAmounts}=useMonetaryPrivacy()
 import {dateNumber,valueChartPoints,fundingAdjustedHistory} from '@/utils/portfolioValueChart'
+import {useUserTimezone} from '@/composables/useUserTimezone'
+const {formatDateTime,timezoneLabel}=useUserTimezone()
 const props=defineProps({history:Object,loading:Boolean,error:String,currency:{type:String,default:null}})
-const {currency:cardCurrency,choices,formatCurrency:money,formatSignedCurrency:signedMoney,rates}=useCardCurrency(toRef(props,'currency'),undefined,'portfolio-history')
+const {currency:cardCurrency,choices,formatCurrency:money,formatSignedCurrency:signedMoney,convert,rates}=useCardCurrency(toRef(props,'currency'),undefined,'portfolio-history')
 const includeFunding=ref(true)
 const adjusted=computed(()=>fundingAdjustedHistory(props.history))
+const displayedSeries=computed(()=>includeFunding.value ? props.history?.series||[] : adjusted.value.series||[])
+const completePoints=computed(()=>displayedSeries.value.filter(point=>point.value!=null && Number.isFinite(Number(point.value))))
+const accountsWithoutValues=computed(()=>(props.history?.coverage?.accounts||[]).filter(account=>!account.days).map(account=>account.name))
+const brokerSyncs=computed(()=>{
+  const labels={ibkr:'IBKR',trading212:'Trading 212',okx:'OKX',kraken:'Kraken',etoro:'eToro',ig:'IG'}
+  const brokers=new Map()
+  for(const account of props.history?.coverage?.accounts||[]) {
+    if(!account.broker)continue
+    const prior=brokers.get(account.broker)
+    const lastSync=Number.isFinite(Date.parse(account.lastSuccessfulSyncAt)) ? account.lastSuccessfulSyncAt : null
+    if(!prior || (lastSync && (!prior.lastSync || Date.parse(lastSync)>Date.parse(prior.lastSync))))
+      brokers.set(account.broker,{type:account.broker,label:labels[account.broker]||account.broker,lastSync})
+  }
+  return [...brokers.values()]
+})
+const isTestEnvironment=window.__APP_CONFIG__?.APP_ENVIRONMENT==='test'
 const displayedChange=computed(()=>includeFunding.value ? props.history?.change : adjusted.value.change)
 const canvas=ref(null)
 let chart=null
@@ -35,7 +67,7 @@ async function render() {
   chart?.destroy();chart=null
   if(!canvas.value||!props.history||props.loading||props.error)return
   const history=props.history
-  const values=valueChartPoints(includeFunding.value?history.series:adjusted.value.series)
+  const values=valueChartPoints(displayedSeries.value).map(point=>({...point,nativeValue:point.y,y:convert(point.y)}))
   const events=history.events.map(e=>({...e,x:dateNumber(e.date),y:0.035}))
   const dates=[...values,...events].map(p=>p.x)
   const bounds=history.range ? {min:Date.parse(history.range.start_date+'T00:00:00Z'),max:Date.parse(history.range.end_date+'T23:59:59.999Z')} : dates.length ? {min:Math.min(...dates)-86400000,max:Math.max(...dates)+86400000} : {}
@@ -44,8 +76,8 @@ async function render() {
   chart=new Chart(canvas.value,{type:'line',data:{datasets},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:false},tooltip:{displayColors:false,backgroundColor:'#111827',titleColor:'#fff',bodyColor:'#e5e7eb',callbacks:{title:items=>dateLabel(new Date(items[0].raw.x).toISOString().slice(0,10)),label:context=>{
     const point=context.raw
     if(point.type)return `${point.account}: ${point.type} ${point.amount==null?nativeMoney(point):signedMoney(point.amount)}`
-    return [...(includeFunding.value?[`Combined portfolio: ${money(point.y)}`]:[`Overall gains: ${money(point.y)}`,`Portfolio value: ${money(point.portfolioValue)}`,`Net funding since baseline: ${signedMoney(point.netFunding)}`,...(point.missingFunding?['Funding amounts unavailable']:[])]),`Holdings: ${money(point.holdings)}`,`Cash: ${money(point.cash)}`,`Stablecoins: ${money(point.stablecoins)}`,...(point.estimatedAccounts?['Estimate: missing historical prices valued at zero']:[]),...(point.migrationEstimatedAccounts?['Estimate: documented 1:1 token migration price']:[]),...(point.statementEstimatedAccounts?['Estimate: IBKR weekend holdings at last reported close']:[]),...(point.carryForwardBalances||[]).map(balance=>`Estimate: ${balance.account}; last known value ${dateLabel(balance.from)}`),...(point.igCarryForwardAccounts?['Estimate: last available IG balance; no open positions confirmed']:[]),...(point.reconstructedAccounts?['Rebuilt from historical records and closing prices']:['Recorded snapshot or statement']),...(point.stalePrices?['Includes older market quotes']:[])]
-  }}}},scales:{x:{type:'linear',...bounds,grid:{display:false},ticks:{color:'#8290a1',maxTicksLimit:7,callback:value=>new Date(value).toLocaleDateString('en-GB',{...(dates.length&&Math.max(...dates)-Math.min(...dates)<=90*86400000?{day:'numeric',month:'short'}:{month:'short',year:'2-digit'}),timeZone:'UTC'})}},value:{axis:'y',type:'linear',display:history.coverage.recordedDays>0,grid:{color:'#71809618'},ticks:{color:'#8290a1',callback:value=>money(value)}},funding:{axis:'y',type:'linear',display:false,min:0,max:1}}}})
+    return [...(includeFunding.value?[`Combined portfolio: ${money(point.nativeValue)}`]:[`Overall gains: ${money(point.nativeValue)}`,`Portfolio value: ${money(point.portfolioValue)}`,`Net funding since baseline: ${signedMoney(point.netFunding)}`,...(point.missingFunding?['Funding amounts unavailable']:[])]),`Holdings: ${money(point.holdings)}`,`Cash: ${money(point.cash)}`,`Stablecoins: ${money(point.stablecoins)}`,...(point.estimatedAccounts?['Estimate: missing historical prices valued at zero']:[]),...(point.migrationEstimatedAccounts?['Estimate: documented 1:1 token migration price']:[]),...(point.statementEstimatedAccounts?['Estimate: IBKR weekend holdings at last reported close']:[]),...(point.carryForwardBalances||[]).map(balance=>`Estimate: ${balance.account}; last known value ${dateLabel(balance.from)}`),...(point.igCarryForwardAccounts?['Estimate: last available IG balance; no open positions confirmed']:[]),...(point.reconstructedAccounts?['Rebuilt from historical records and closing prices']:['Recorded snapshot or statement']),...(point.stalePrices?['Includes older market quotes']:[])]
+  }}}},scales:{x:{type:'linear',...bounds,grid:{display:false},ticks:{color:'#8290a1',maxTicksLimit:7,callback:value=>new Date(value).toLocaleDateString('en-GB',{...(dates.length&&Math.max(...dates)-Math.min(...dates)<=90*86400000?{day:'numeric',month:'short'}:{month:'short',year:'2-digit'}),timeZone:'UTC'})}},value:{axis:'y',type:'linear',display:history.coverage.recordedDays>0,grid:{color:'#71809618'},ticks:{color:'#8290a1',callback:value=>money(value,{currency:cardCurrency.value})}},funding:{axis:'y',type:'linear',display:false,min:0,max:1}}}})
 }
 watch(()=>[props.history,props.loading,props.error,props.currency,cardCurrency.value,rates.value,includeFunding.value,hideAmounts.value],render,{immediate:true})
 onBeforeUnmount(()=>chart?.destroy())

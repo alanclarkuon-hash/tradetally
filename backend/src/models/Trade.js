@@ -1050,7 +1050,8 @@ class Trade {
         (SELECT count(*)::integer FROM trade_comments tc WHERE tc.trade_id = t.id) as comment_count,
         sc.finnhub_industry as sector,
         sc.company_name as company_name,
-        CASE WHEN sc.currency IN ('GBp','GBX') THEN 'GBP' WHEN sc.currency IN ('ZAr','ZAX') THEN 'ZAR' WHEN sc.currency IN ('ILs','ILX') THEN 'ILS' ELSE UPPER(sc.currency) END AS instrument_currency
+        COALESCE(CASE WHEN sc.currency IN ('GBp','GBX') THEN 'GBP' WHEN sc.currency IN ('ZAr','ZAX') THEN 'ZAR' WHEN sc.currency IN ('ILs','ILX') THEN 'ILS' ELSE UPPER(sc.currency) END, (SELECT UPPER(e->>'currency') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t.executions)='array' THEN t.executions ELSE '[]'::jsonb END) e WHERE e->>'currency' ~ '^[A-Z]{3}$' LIMIT 1)) AS instrument_currency,
+        (SELECT ua.currency FROM user_accounts ua WHERE ua.user_id=t.user_id AND ua.account_identifier=t.account_identifier AND ua.broker=t.broker LIMIT 1) AS account_currency
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
