@@ -7,8 +7,8 @@ const db=require('../src/config/database');
 const {getHistoricalHoldings,remainingLots}=require('../src/services/portfolioHistoricalHoldings');
 const range={start_date:'2024-01-01',end_date:'2024-02-01'};
 const account={id:'a',account_identifier:'one',broker:'ibkr',currency:'USD'};
-function fixture({trades=[],prices=[],reports=[],snapshots=[]}={}) {
- db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('portfolio_reconstruction_prices')?prices:
+function fixture({trades=[],prices=[],reports=[],snapshots=[],catalogues=[]}={}) {
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('broker_instrument_catalogues')?catalogues:sql.includes('portfolio_reconstruction_prices')?prices:
    sql.includes('broker_cash_reports')?reports:sql.includes('broker_import_snapshots')?snapshots:
    sql.includes('FROM trades')?trades:[]}));
 }
@@ -65,3 +65,5 @@ test('historical EUR display conversion uses EUR instead of GBP',async()=>{
  const result=await getHistoricalHoldings('synthetic',[account],range,'EUR');
  expect(result.displayRates.USD).toBeCloseTo(.9);
 });
+
+test('closed Trading 212 instruments use saved catalogue identity without current holdings or broker requests',async()=>{fixture({catalogues:[{instruments:[{ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'}]}],reports:[{account_id:'a',broker_type:'trading212',records:[{symbol:'LOKB_US_EQ',side:'BUY',date:'2023-01-01',quantity:10,amount:-50},{symbol:'LOKB_US_EQ',side:'SELL',date:'2024-03-01',quantity:10,amount:100}]}],prices:[{symbol:'NVTS',payload:{currency:'USD',prices:[{date:range.start_date,close:10},{date:range.end_date,close:12}]}}]});const r=await getHistoricalHoldings('owner',[{...account,broker:'trading212'}],range);expect(r.positions).toHaveLength(1);expect(r.positions[0]).toMatchObject({symbol:'NVTS',totalShares:10,currentValue:120,periodResult:{pnl:20,basis:100}});expect(db.query).toHaveBeenCalledWith(expect.stringContaining('broker_instrument_catalogues'),['owner','one']);expect(db.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true)});

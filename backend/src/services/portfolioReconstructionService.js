@@ -3,6 +3,7 @@ const axios=require('axios');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const {assetCode,nativeWalletCode,decimal,format,category}=require('./brokerSync/krakenReconcile');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
+const {catalogueForAccount,catalogueMapping,historicalSymbol}=require('./brokerInstrumentSymbols');
 const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
 const {statementSplits,historicalLotQuantity,statementLotMetadata}=require('./etoroHistoricalSplits');
 const {cfdEquity}=require('./etoroHistoricalCfd');
@@ -171,7 +172,9 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    if(account.broker==='trading212') {
     const report=(await db.query("SELECT * FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='trading212' ORDER BY updated_at DESC LIMIT 1",[userId,account.id])).rows[0];
     const mapping=new Map((portfolio?.positions||[]).map(p=>[p.instrument.ticker,currentSymbol(p.instrument)]));
-    fills=(report?.records||[]).map(r=>({date:r.date,symbol:historySymbol(mapping.get(r.symbol)||normalizeTicker(r.symbol),r.date),quantity:Number(r.quantity)*(r.side==='BUY'?1:-1)}));
+      const catalogue=await catalogueForAccount(db,userId,identifier);
+      for(const [key,value] of catalogueMapping(catalogue||[]))mapping.set(key,value);
+    fills=(report?.records||[]).map(r=>({date:r.date,symbol:historicalSymbol(mapping,r.symbol,r.date),quantity:Number(r.quantity)*(r.side==='BUY'?1:-1)}));
     // Only an explicitly annotated subscription can create new shares. The
     // public prospectus supplies the issue price; native cash supplies units.
     // https://www.nationalgrid.com/document/152061/download (645p per share)
