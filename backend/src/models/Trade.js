@@ -1049,7 +1049,8 @@ class Trade {
         ) FROM trade_charts tch WHERE tch.trade_id = t.id) as charts,
         (SELECT count(*)::integer FROM trade_comments tc WHERE tc.trade_id = t.id) as comment_count,
         sc.finnhub_industry as sector,
-        sc.company_name as company_name
+        sc.company_name as company_name,
+        CASE WHEN sc.currency IN ('GBp','GBX') THEN 'GBP' WHEN sc.currency IN ('ZAr','ZAX') THEN 'ZAR' WHEN sc.currency IN ('ILs','ILX') THEN 'ILS' ELSE UPPER(sc.currency) END AS instrument_currency
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id

@@ -3785,8 +3785,7 @@ const tradeController = {
   async getAccountList(req, res, next) {
     try {
       const accounts = await Trade.getAccountList(req.user.id);
-      const instrumentCurrencies=await require('../services/instrumentCurrencyChoices').forUser(req.user.id);
-      res.json({ accounts, instrumentCurrencies });
+      res.json({ accounts });
     } catch (error) {
       next(error);
     }
