@@ -11,6 +11,11 @@ function calculateAccountResult(trade, configuredCurrency) {
  const unavailable=reason=>({status:'unavailable',currency,nativeCurrency:native,reason,pnl:null,events:[]});
  if(currencies.some(c=>c!==currency))return unavailable('Account currency conflicts with broker execution metadata');
  const multiplier=trade.instrument_type==='option'?Number(trade.contract_size||100):trade.instrument_type==='future'?Number(trade.point_value||1):1;
+ if(trade.broker_settlement){
+  const r=trade.broker_settlement;
+  if(r.currency!==currency)return unavailable('Broker settlement currency conflicts with account');
+  return {...r,nativeCurrency:native,entryCost:fills.filter(f=>f.action==='entry').reduce((sum,f)=>sum+f.quantity*f.price*multiplier/(f.transactionFx?.rate||1),0)};
+ }
  if(currency===native) {
   let events=Array.isArray(trade.executions)&&trade.executions.length?computeTradePnl({side:trade.side,instrumentType:trade.instrument_type,contractSize:trade.contract_size,pointValue:trade.point_value,executions:trade.executions,fallbackCommission:trade.commission,fallbackFees:trade.fees}).annotatedExecutions.flatMap((e,sourceIndex)=>e.realized_pnl==null?[]:[{sourceIndex,time:e.exitTime||e.exit_time||e.datetime,pnl:e.realized_pnl,gross_pnl:e.gross_realized_pnl}]):[];
   // A completed single-exit broker record has an authoritative cash result.

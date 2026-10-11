@@ -119,6 +119,14 @@ function ledger(plan,allocations,trades) {
    realised+=a.realisedProfit;
   }
  }
+ // Broker settlement follows account pooled cost, independent of plan FIFO links.
+ for(const a of records.filter(a=>a.action==='exit'&&a.valid&&a.accountRealisedProfit!=null)){
+  const result=byId.get(a.trade_id)?.broker_settlement;
+  const event=result?.status==='complete'&&result.currency===a.accountCurrency?result.events.find(e=>e.sourceKey===a.source_key):null;
+  if(!event)continue;
+  const cash=event.pnl*a.quantity/a.fill.quantity;
+  accountRealised+=cash-a.accountRealisedProfit;a.accountRealisedProfit=cash;
+ }
  // Preserve authoritative native-account cash for fully linked single-exit
  // source trades. Reconstructing their prices can omit broker adjustments.
  // Partial entry allocations retain the allocation ledger's own cost basis.

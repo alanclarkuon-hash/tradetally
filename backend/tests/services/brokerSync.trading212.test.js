@@ -263,3 +263,12 @@ describe('Trading 212 broker sync', () => {
     expect(()=>buildRepair(edited,new Map([['40',entry],['41',exit]]),'UTC')).toThrow('Price edited');
   });
 });
+
+ test('preserves account-currency broker gross Result proportionally on split closing executions',()=>{
+ const item=historyItem({id:999,side:'SELL',quantity:4,price:120});
+ item.fill.walletImpact.realisedProfitLoss=20;item.fill.walletImpact.currency='GBP';item.fill.walletImpact.fxRate=1.25;
+ const fill=trading212Service.mapExecutionToFill(item);
+ const part=trading212Service.toExecutionData({...fill,quantity:1},'exit');
+ expect(part.broker_result).toBe(5);expect(part.broker_result_currency).toBe('GBP');
+ item.fill.walletImpact.realisedProfitLoss=0;expect(trading212Service.toExecutionData(trading212Service.mapExecutionToFill(item),'exit').broker_result).toBe(0);
+ });

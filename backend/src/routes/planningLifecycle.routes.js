@@ -20,6 +20,11 @@ async function lock(c,req){
 async function evidence(c,p){
  const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
  const trades=allocations.length?(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,[...new Set(allocations.map(a=>a.trade_id))]])).rows:[];
+ if(trades.some(t=>t.broker==='trading212')){
+  const history=(await c.query("SELECT * FROM trades WHERE user_id=$1 AND broker='trading212'",[p.user_id])).rows;
+  const results=require('../services/trading212Settlements').settlements(history);
+  for(const t of trades)t.broker_settlement=results.get(t.id);
+ }
  const actualCurrencies=new Set(allocations.map(a=>a.source_snapshot.currency));
  const target=actualCurrencies.size===1?[...actualCurrencies][0]:p.definition.currency;
  let fx=null,working=p;
