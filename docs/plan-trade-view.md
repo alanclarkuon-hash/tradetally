@@ -5,3 +5,5 @@ Tracked in #100, PR #97. The existing `/trades/:id` page displays the position d
 Combine source partitions with the same plan row, action, time, price and contract into one displayed execution. Preserve allocated units and costs; use the verified plan ledger and broker account settlements for realised results. Both detail and chart endpoints use this projection. Show every linked entry and exit on the chart, including partial exits while the position remains open. Changed source evidence must be reconciled rather than plotted as valid.
 
 Keep source broker records unchanged. The combined page links to Manage plan and Open original broker record, and hides source editing/splitting controls. The raw edit API remains scoped to the original source. The separate plan-trade modal was removed following user review. Stable broker partition reconciliation remains tracked under #94.
+
+Original broker trade pages no longer show the Correct matched exits card. Review the entries and exits explicitly linked to the plan through the combined trade detail page. Removing the card does not change broker matching or stored allocations.

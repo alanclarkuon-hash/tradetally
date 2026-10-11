@@ -1000,7 +1000,6 @@
             </div>
           </div>
 
-          <ExitMatching v-if="isOwner && trade.broker === 'trading212' && trade.instrument_type === 'stock'" :trade="trade" @changed="loadTrade" />
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
@@ -1692,7 +1691,6 @@ import { useAuthStore } from '@/stores/auth'
 import StockLogo from '@/components/common/StockLogo.vue'
 import { useSymbolMetadata } from '@/composables/useSymbolMetadata'
 import TradeChartVisualization from '@/components/trades/TradeChartVisualization.vue'
-import ExitMatching from '@/components/trades/ExitMatching.vue'
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
