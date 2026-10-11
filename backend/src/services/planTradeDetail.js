@@ -44,8 +44,8 @@ async function resolvePlanTrade(req,source){
  if(plans.length!==1)return source;
  const plan=plans[0];
  const allocations=(await db.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[plan.id,req.user.id])).rows;
- const trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[req.user.id,[...new Set(allocations.map(a=>a.trade_id))]])).rows;
- if(trades.some(t=>t.broker==='trading212')){const history=(await db.query("SELECT * FROM trades WHERE user_id=$1 AND broker='trading212'",[req.user.id])).rows;const settlements=require('./trading212Settlements').settlements(history);for(const t of trades)t.broker_settlement=settlements.get(t.id);}
+ let trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[req.user.id,[...new Set(allocations.map(a=>a.trade_id))]])).rows;
+ if(trades.some(t=>t.broker==='trading212')){const sources=require('./planBrokerFills');trades=sources.attachSources(trades,allocations,await sources.loadGroups(db,req.user.id));}
  const result=ledger({...plan,management:{}},allocations,trades);
  const trade=projectPlanTrade(source,plan,result);
  if(plan.definition.currency!==result.currency){const fx=await require('./planningFx').latestPlanningFx();const rates={USD:1,...fx?.rates};trade.stop_loss=rates[result.currency]>0&&rates[plan.definition.currency]>0?plan.definition.stopPrice*rates[result.currency]/rates[plan.definition.currency]:null;}

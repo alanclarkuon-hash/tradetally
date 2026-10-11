@@ -5,6 +5,7 @@ const {isDeepStrictEqual}=require('node:util');
 const db=require('../config/database');
 const {fail,calculate}=require('../services/tradePlanning');
 const {sourceFills,verifyAllocation,ledger}=require('../services/planningLedger');
+const brokerFills=require('../services/planBrokerFills');
 const router=express.Router();
 const uuid=Joi.string().guid({version:['uuidv4','uuidv5']});
 const validId=id=>{if(uuid.validate(id).error)fail('Invalid record ID',400)};
@@ -19,11 +20,10 @@ async function lock(c,req){
 }
 async function evidence(c,p){
  const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
- const trades=allocations.length?(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,[...new Set(allocations.map(a=>a.trade_id))]])).rows:[];
+ let trades=allocations.length?(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,[...new Set(allocations.map(a=>a.trade_id))]])).rows:[];
  if(trades.some(t=>t.broker==='trading212')){
-  const history=(await c.query("SELECT * FROM trades WHERE user_id=$1 AND broker='trading212'",[p.user_id])).rows;
-  const results=require('../services/trading212Settlements').settlements(history);
-  for(const t of trades)t.broker_settlement=results.get(t.id);
+  const groups=await brokerFills.loadGroups(c,p.user_id);
+  trades=brokerFills.attachSources(trades,allocations,groups);
  }
  const actualCurrencies=new Set(allocations.map(a=>a.source_snapshot.currency));
  const target=actualCurrencies.size===1?[...actualCurrencies][0]:p.definition.currency;
@@ -151,15 +151,19 @@ router.get('/:id/fills',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
  const roll=req.query.purpose==='roll';if(req.query.purpose&&(!roll||p.definition.instrument!=='option'))fail('Choose a valid trade finder purpose');
- const account=(await db.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,req.user.id])).rows[0];
+ const account=(await db.query('SELECT account_identifier,broker FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,req.user.id])).rows[0];
  if(!account?.account_identifier)return res.json({fills:[]});
  const d=p.definition,o=d.options||{},exactOption=d.instrument==='option'&&!roll;
  const trades=(await db.query(`SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2))
  AND account_identifier=$3 AND COALESCE(instrument_type,'stock')=$4 AND side=$5
  AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
  ORDER BY entry_time DESC LIMIT 250`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
- const used=(await db.query('SELECT trade_id,source_key,SUM(quantity) AS quantity FROM trade_plan_allocations WHERE user_id=$1 GROUP BY trade_id,source_key',[req.user.id])).rows;
- res.json({fills:trades.flatMap(t=>sourceFills(t).filter(f=>!used.some(a=>a.trade_id===t.id&&a.source_key===f.key)).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity}))).filter(f=>f.available>1e-8)});
+ const used=(await db.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;
+ const brokerTrades=trades.filter(t=>t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long');
+ let originals=[];
+ if(brokerTrades.length||(account.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')){const groups=await brokerFills.loadGroups(db,req.user.id,account.account_identifier,d.symbol);originals=brokerFills.availableGroups(groups,used);}
+
+ res.json({fills:[...originals,...trades.filter(t=>!(t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')).flatMap(t=>sourceFills(t).filter(f=>!used.some(a=>a.trade_id===t.id&&a.source_key===f.key)).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity})))].filter(f=>f.available>1e-8)});
 }));
 router.post('/:id/allocations',run(async(req,res)=>{
  const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
@@ -173,8 +177,14 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(body.fills&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
   for(const selected of body.fills||[body]){
   const b={...body,...selected};
-  const t=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!t)fail('Trade not found',404);
-  const f=sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
+  const source=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!source)fail('Trade not found',404);
+  const canonical=b.sourceKey.startsWith('id:broker:');
+  const groups=source.broker==='trading212'?await brokerFills.loadGroups(c,req.user.id,source.account_identifier,source.symbol,true):[];
+  const group=groups.find(g=>g.valid&&(canonical?g.key===b.sourceKey&&g.parts.some(part=>part.tradeId===source.id):g.parts.some(part=>part.tradeId===source.id&&part.key===b.sourceKey)));
+  const t=canonical&&group?{...source,...group.trade,id:source.id,user_id:source.user_id}:source;
+  const f=canonical?group?.fill:sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
+  if(canonical&&f.action==='exit'&&brokerFills.originalSettlementReports(groups).canonical.get(group.key)?.status!=='complete')fail('Original broker exit settlement history needs reconciliation before linking',409);
+  if(group){const all=(await c.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;if(all.some(a=>a.source_key===group.key))fail('This original broker execution is already linked to a plan. Unlink it before linking again.',409);const usedOriginal=brokerFills.usedQuantity(group,all);if(b.quantity+usedOriginal>group.quantity+1e-8)fail('Allocation exceeds the available original broker execution quantity',409);} 
   const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 AND source_key=$3',[req.user.id,t.id,f.key])).rows;
   if(allocations.some(a=>a.plan_id===p.id&&a.stage_key===b.stageKey))fail('This fill is already linked to that row',409);
   if(allocations.length)fail('This fill is already linked to a plan. Unlink it before linking again.',409);
@@ -188,7 +198,8 @@ router.post('/:id/allocations',run(async(req,res)=>{
   const existing=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
   if(!body.fills&&existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
   const tradeIds=[...new Set([...existing.map(a=>a.trade_id),t.id])];
-  const allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
+  let allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
+  if(canonical||existing.some(a=>a.source_snapshot?.brokerExecution))allTrades=brokerFills.attachSources(allTrades,[...existing,candidate],await brokerFills.loadGroups(c,p.user_id));
   if(ledger(p,[...existing,candidate],allTrades).overExit)fail('Exit exceeds linked entries in this account/contract or precedes them',409);
   await c.query('INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',[p.user_id,p.id,t.id,f.key,b.stageKey,b.action,b.quantity,JSON.stringify(f)]);
   let baseline=p.baseline;
