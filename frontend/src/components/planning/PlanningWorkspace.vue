@@ -156,7 +156,7 @@
     </header>
     <div class="finder-fills min-h-0 overflow-y-auto">
      <p v-if="!fills.length">No unlinked {{ finder.action }} fills for this asset, instrument and account.</p>
-     <div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ number(f.available) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}</span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
+     <div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ executionQuantity(f.quantity) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}<span v-if="f.available<f.quantity-0.00000001" class="block text-sm text-gray-400">{{ executionQuantity(f.available) }} available to link</span></span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
     </div>
    </section>
   </div>
@@ -219,6 +219,7 @@ const finalExitDate=computed(()=>{
 function symbol(c){return CURRENCY_OPTIONS.find(v=>v.code===c)?.symbol||c}
 function executionDate(value){if(!value)return 'Date unavailable';const date=new Date(value);return Number.isNaN(date.getTime())?'Date unavailable':date.toLocaleString(undefined,{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
 function money(v,c){if(v==null||v===''||!Number.isFinite(Number(v)))return 'Unavailable';return new Intl.NumberFormat(undefined,{style:'currency',currency:c||'USD'}).format(v)}
+const executionQuantity=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:8})
 const number=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:6})
 const percent=v=>v==null?'Unavailable':number(v)+'%'
 function rate(from,to){if(from===to)return 1;const rates={USD:1,...fx.value?.rates};return rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null}
