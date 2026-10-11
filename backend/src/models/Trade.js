@@ -1067,7 +1067,7 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name, sc.currency`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];
