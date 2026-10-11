@@ -5,7 +5,7 @@ function project(result,d,fx){
  const rates={USD:1,...fx?.rates},cross=(from,to)=>from===to?1:rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
  const currency=result.currency||d.currency,accountCurrency=d.currency;
  const records=result.records.map(a=>{
-  const original=a.fill,priceRate=original.currency===currency?1:original.transactionFx?.accountCurrency===currency&&original.transactionFx.rate>0?1/original.transactionFx.rate:cross(original.currency,currency);
+  const original=a.fill,priceRate=cross(original.currency,currency);
   const accountRate=cross(a.accountCurrency,accountCurrency);
   if(!priceRate)return {...a,presentationUnavailable:true};
   const fill={...original,price:original.price*priceRate,economicPrice:original.economicPrice==null?undefined:original.economicPrice*priceRate,currency,costs:original.costs*priceRate,commission:(original.commission||0)*priceRate,fees:(original.fees||0)*priceRate,netFees:original.netFees==null?undefined:original.netFees*priceRate,netCosts:original.netCosts==null?undefined:original.netCosts*priceRate,displaySource:{price:original.price,currency:original.currency,transactionFx:original.transactionFx},transactionFx:original.transactionFx&&accountRate?{accountCurrency,rate:original.transactionFx.rate*priceRate/accountRate}:null};
