@@ -79,7 +79,7 @@ class Trading212Service extends OAuthBrokerBase {
     }
 
     if (syncLogId) await BrokerConnection.updateSyncLog(syncLogId, 'fetching');
-    const rawExecutions = await this.fetchExecutions(connection, { startDate, endDate });
+    const rawExecutions = await this.fetchExecutions(connection, { startDate, endDate, syncLogId });
     if (syncLogId) {
       await BrokerConnection.updateSyncLog(syncLogId, 'parsing', { tradesFetched: rawExecutions.length });
     }
@@ -93,23 +93,25 @@ class Trading212Service extends OAuthBrokerBase {
     await require('./portfolioSnapshot').saveTrading212Snapshot(connection, positions);
     const cashSections = {};
     for (const section of ['transactions','dividends']) {
-      cashSections[section] = await this.fetchCashHistory(connection,section);
+      cashSections[section] = await this.fetchCashHistory(connection,section,syncLogId);
     }
     const cash = await require('./trading212CashEvents').importCashEvents(connection,cashSections);
     result.cashEventsImported = cash.imported;
+    if(syncLogId)await BrokerConnection.updateSyncProgress(syncLogId,'cash_report',0);
     const summary = await this.requestPage(`${getApiBase(connection.brokerEnvironment || 'live')}/equity/account/summary`,
       {username:connection.trading212ApiKey,password:connection.trading212ApiSecret});
     await require('./trading212CashLedger').saveCashReport(connection,rawExecutions,summary.data);
     return result;
   }
 
-  async fetchCashHistory(connection, section) {
+  async fetchCashHistory(connection, section, syncLogId=null) {
     if (!['transactions','dividends'].includes(section)) throw new Error('Unsupported cash history section');
     const base = getApiBase(connection.brokerEnvironment || 'live');
     const path = `/api/v0/equity/history/${section}`;
     const auth = {username:connection.trading212ApiKey,password:connection.trading212ApiSecret};
     const items = [], seen = new Set();
     let url = `${base}/equity/history/${section}?limit=${PAGE_SIZE}`;
+    if(syncLogId)await BrokerConnection.updateSyncProgress(syncLogId,section,0);
     while (url) {
       if (seen.has(url) || seen.size >= MAX_PAGES) throw new Error('Invalid Trading 212 cash pagination');
       seen.add(url);
@@ -117,6 +119,7 @@ class Trading212Service extends OAuthBrokerBase {
       if (!Array.isArray(response.data?.items)) throw new Error('Invalid Trading 212 cash history response');
       items.push(...response.data.items);
       const next = response.data.nextPagePath;
+      if(syncLogId)await BrokerConnection.updateSyncProgress(syncLogId,section,seen.size,!next);
       if (!next) break;
       const nextUrl = new URL(next,`${base}/`);
       if (nextUrl.origin !== new URL(base).origin || nextUrl.pathname !== path) throw new Error('Invalid Trading 212 cash pagination URL');
@@ -141,7 +144,7 @@ class Trading212Service extends OAuthBrokerBase {
     return response.data;
   }
 
-  async fetchExecutions(connection, { startDate, endDate } = {}) {
+  async fetchExecutions(connection, { startDate, endDate, syncLogId } = {}) {
     const baseUrl = getApiBase(connection.brokerEnvironment || 'live');
     const baseOrigin = new URL(baseUrl).origin;
     const auth = {
@@ -152,6 +155,7 @@ class Trading212Service extends OAuthBrokerBase {
     const seenPaths = new Set();
     let requestUrl = `${baseUrl}/equity/history/orders?limit=${PAGE_SIZE}`;
 
+    if(syncLogId)await BrokerConnection.updateSyncProgress(syncLogId,'orders',0);
     for (let page = 0; requestUrl && page < MAX_PAGES; page++) {
       if (seenPaths.has(requestUrl)) {
         throw new Error('Trading 212 returned a repeated pagination cursor');
@@ -175,6 +179,7 @@ class Trading212Service extends OAuthBrokerBase {
       }
 
       const nextPagePath = response.data?.nextPagePath;
+      if(syncLogId)await BrokerConnection.updateSyncProgress(syncLogId,'orders',page+1,!nextPagePath);
       if (!nextPagePath) {
         requestUrl = null;
         break;
