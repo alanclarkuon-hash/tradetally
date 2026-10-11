@@ -29,7 +29,12 @@ describe('restore upload limits and cleanup', () => {
     expect(result.body.error).toContain('upload limit');
     expect(service.restoreFromBackup).not.toHaveBeenCalled();
     // Cleanup completes in the handler's finally after the response.
-    await new Promise(resolve => setTimeout(resolve, 20));
+    const deadline=Date.now()+2000;
+    while(Date.now()<deadline){
+      const remaining=(await fs.readdir(os.tmpdir())).filter(name=>name.startsWith('tradetally-restore-')&&!before.includes(name));
+      if(!remaining.length)break;
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
     expect((await fs.readdir(os.tmpdir())).filter(name => name.startsWith('tradetally-restore-') && !before.includes(name))).toEqual([]);
   });
   test('validates the entire file before invoking the restore transaction', async () => {
@@ -47,7 +52,12 @@ describe('restore upload limits and cleanup', () => {
     });
     await request(app).post('/api/admin/backup/restore').set('X-Test-Role', 'admin')
       .attach('file', Buffer.from(JSON.stringify({ version: '1', tables: { instanceConfig: [{ key: 'synthetic', value: 'true' }] } })), 'synthetic.json').expect(200);
-    await new Promise(resolve => setTimeout(resolve, 20));
+    // Response completion precedes the asynchronous staging cleanup.
+    const deadline=Date.now()+2000;
+    while(Date.now()<deadline){
+      try{await fs.access(stagedPath)}catch(error){if(error.code==='ENOENT')break;throw error}
+      await new Promise(resolve=>setTimeout(resolve,20));
+    }
     await expect(fs.access(stagedPath)).rejects.toThrow();
   });
 });

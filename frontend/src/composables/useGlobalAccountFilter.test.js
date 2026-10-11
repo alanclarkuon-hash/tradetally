@@ -95,3 +95,26 @@ describe('useGlobalAccountFilter', () => {
     expect(localStorage.getItem('tradetally_global_account')).toBe(null)
   })
 })
+
+describe('account listing failures',()=>{
+ it.each(['/trades/accounts','/accounts'])('keeps persisted single and mixed selections when %s fails',async(failed)=>{
+  for(const selection of ['valid-account','__unsorted__,one,two']){
+   localStorage.setItem('tradetally_global_account',selection)
+   api.get.mockImplementation(url=>url===failed?Promise.reject(new Error('offline')):Promise.resolve({data:{accounts:[],data:[]}}))
+   const filter=(await loadComposable()).useGlobalAccountFilter()
+   await filter.fetchAccounts()
+   expect(filter.selectedAccount.value).toBe(selection)
+   expect(localStorage.getItem('tradetally_global_account')).toBe(selection)
+   expect(filter.error.value).toContain('selection has been kept')
+  }
+ })
+ it('preserves previous options on total failure and validates deletion after a successful retry',async()=>{
+  localStorage.setItem('tradetally_global_account','one,two')
+  api.get.mockImplementation(()=>Promise.resolve({data:{accounts:['one','two'],data:[]}}))
+  const filter=(await loadComposable()).useGlobalAccountFilter();await filter.fetchAccounts()
+  api.get.mockRejectedValue(new Error('offline'));await filter.fetchAccounts()
+  expect(filter.accounts.value.map(a=>a.value)).toEqual(['one','two']);expect(filter.selectedAccount.value).toBe('one,two')
+  api.get.mockImplementation(()=>Promise.resolve({data:{accounts:['one'],data:[]}}));await filter.fetchAccounts({force:true})
+  expect(filter.selectedAccount.value).toBe('one');expect(filter.error.value).toBeNull()
+ })
+})
