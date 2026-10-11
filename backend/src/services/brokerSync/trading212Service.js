@@ -286,7 +286,9 @@ class Trading212Service extends OAuthBrokerBase {
       // The broker rate is not a conversion of these stored prices to USD.
       fxRate: 1,
       accountCurrency: fill.walletImpact?.currency || null,
-      brokerFxRate: fill.walletImpact?.fxRate ?? null
+      brokerFxRate: fill.walletImpact?.fxRate ?? null,
+      brokerResult: fill.walletImpact?.realisedProfitLoss ?? null,
+      brokerResultQuantity: quantity
     };
   }
 
@@ -303,7 +305,9 @@ class Trading212Service extends OAuthBrokerBase {
       currency: fill.currency || null,
       fx_rate: fill.fxRate ?? null,
       account_currency: fill.accountCurrency || null,
-      broker_fx_rate: fill.brokerFxRate ?? null
+      broker_fx_rate: fill.brokerFxRate ?? null,
+      broker_result: fill.brokerResult == null ? null : Number(fill.brokerResult) * fill.quantity / fill.brokerResultQuantity,
+      broker_result_currency: fill.accountCurrency || null
     };
   }
 }

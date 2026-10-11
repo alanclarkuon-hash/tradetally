@@ -10,14 +10,19 @@ async function refreshAccountResults(userId) {
    await client.query('BEGIN');
    // Account-scoped transaction lock serialises simultaneous reporting reads.
    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[userId]);
-   const rows=(await client.query(`SELECT t.*,a.currency AS configured_account_currency,
-     md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v3') AS source_signature
+   const rows=(await client.query(`WITH pool_signatures AS (SELECT account_identifier,symbol,md5(string_agg(to_jsonb(h)::text,'' ORDER BY h.id)) AS signature FROM trades h WHERE user_id=$1 AND broker='trading212' GROUP BY account_identifier,symbol)
+    SELECT t.*,a.currency AS configured_account_currency,
+     md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v4' || COALESCE(pool.signature,'')) AS source_signature
     FROM trades t LEFT JOIN LATERAL (SELECT currency FROM user_accounts ua
      WHERE ua.user_id=t.user_id AND ua.account_identifier=t.account_identifier
      ORDER BY (ua.broker=t.broker) DESC NULLS LAST,ua.is_archived ASC,ua.is_primary DESC,ua.created_at ASC LIMIT 1) a ON true
+    LEFT JOIN pool_signatures pool ON t.broker='trading212' AND pool.account_identifier=t.account_identifier AND pool.symbol=t.symbol
     LEFT JOIN trade_account_reports r ON r.trade_id=t.id
-    WHERE t.user_id=$1 AND r.source_signature IS DISTINCT FROM md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v3') FOR SHARE OF t`,[userId])).rows;
+    WHERE t.user_id=$1 AND r.source_signature IS DISTINCT FROM md5(to_jsonb(t)::text || COALESCE(a.currency,'') || ':account-pnl-v4' || COALESCE(pool.signature,'')) FOR SHARE OF t`,[userId])).rows;
+   const poolRows=rows.some(t=>t.broker==='trading212')?(await client.query("SELECT * FROM trades WHERE user_id=$1 AND broker='trading212'",[userId])).rows:[];
+   const pooled=require('./trading212Settlements').settlements(poolRows);
    for(const trade of rows) {
+    trade.broker_settlement=pooled.get(trade.id);
     const result=calculateAccountResult(trade,trade.configured_account_currency);
     await client.query(`INSERT INTO trade_account_reports(trade_id,user_id,source_signature,result) VALUES($1,$2,$3,$4::jsonb)
      ON CONFLICT(trade_id) DO UPDATE SET source_signature=EXCLUDED.source_signature,result=EXCLUDED.result,calculated_at=NOW()`,[trade.id,userId,trade.source_signature,JSON.stringify(result)]);changed++;
