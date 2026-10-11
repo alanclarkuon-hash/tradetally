@@ -1,7 +1,7 @@
 import { accountSelection } from './accountSelection'
 export function cardCurrencies(displayCurrency, accounts = [], selection = null) {
   const selected = accountSelection(selection)
-  const codes = [displayCurrency || 'USD', ...accounts.filter(a => selected === null || selected.includes(a.value ?? a.accountIdentifier ?? a.id)).map(a => a.currency)].filter(Boolean).map(c => String(c).toUpperCase())
+  const codes = [displayCurrency || 'USD', ...accounts.filter(a => selected === null || selected.includes(a.value ?? a.accountIdentifier ?? a.id)).flatMap(a => [a.currency, ...(a.instrumentCurrencies || [])])].filter(Boolean).map(c => String(c).toUpperCase())
   return [...new Set(codes)]
 }
 export function crossRate(rates, from, to) {

@@ -22,3 +22,10 @@ describe('card currency choices and reporting conversions',()=>{
   expect(convertAmount(10,'USD','GBP',{GBP:0})).toBeNull()
  })
 })
+
+it('includes instrument currencies for selected accounts independently of their broker',()=>{
+ const rows=[{value:'gbp-broker',currency:'GBP',instrumentCurrencies:['USD','EUR']},{value:'usd-broker',currency:'USD',instrumentCurrencies:['EUR','JPY']}];
+ expect(cardCurrencies('GBP',rows,'gbp-broker')).toEqual(['GBP','USD','EUR']);
+ expect(cardCurrencies('EUR',rows,'usd-broker')).toEqual(['EUR','USD','JPY']);
+ expect(cardCurrencies('GBP',rows,'__none__')).toEqual(['GBP']);
+});

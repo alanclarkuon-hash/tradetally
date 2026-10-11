@@ -144,6 +144,7 @@ export function useGlobalAccountFilter() {
             ? redactedIdentifier
             : null,
           currency: managedAccount?.currency || null,
+          instrumentCurrencies: tradeAccountsResult.value?.data?.instrumentCurrencies?.[identifier] || [],
           isPrimary: Boolean(managedAccount?.isPrimary)
         }
       })
