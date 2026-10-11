@@ -1,7 +1,9 @@
 <template>
  <div class="planning-workspace" v-if="draft" :inert="busy" :aria-busy="busy">
   <label v-if="screen==='Plan'&&plan.status==='draft'" class="card p-4 flex items-center gap-3 font-semibold" :class="plan.finalised?'border border-emerald-500/40':''"><input type="checkbox" :checked="!!plan.finalised" :disabled="busy||planCommitments.length>0" @change="changeFinalisation($event)">Finalised<span class="text-sm font-normal text-gray-500 dark:text-gray-400">{{ plan.finalised?'Read-only · untick to edit':'Still in planning' }}</span></label>
-  <div class="journey card p-5" aria-label="Plan stages"><div v-for="m in milestones" :key="m.key" class="journey-stage" :class="{current:m.current}" :aria-current="m.current?'step':undefined"><small><time v-if="m.timestamp" :datetime="m.timestamp">{{ m.date }}</time><span v-else>{{ m.date }}</span></small><strong class="block">{{ m.label }}<span v-if="m.current" class="current-stage-dot" aria-label="Current stage"></span></strong></div></div>
+  <Teleport :to="calendarTarget||'body'" :disabled="!calendarTarget">
+  <div class="journey planning-calendar card p-5" aria-label="Plan stages"><div v-for="m in milestones" :key="m.key" class="journey-stage" :class="{current:m.current}" :aria-current="m.current?'step':undefined"><small><time v-if="m.timestamp" :datetime="m.timestamp">{{ m.date }}</time><span v-else>{{ m.date }}</span></small><strong class="block">{{ m.label }}<span v-if="m.current" class="current-stage-dot" aria-label="Current stage"></span></strong></div></div>
+  </Teleport>
   <nav class="workflow-tabs" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="{active:screen===s}" :aria-current="screen===s?'step':undefined" @click="moveScreen(s)">{{ s }}</button></nav>
   <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
   <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
@@ -173,7 +175,7 @@ import {useCardCurrency} from '@/composables/useCardCurrency'
 import {CURRENCY_OPTIONS} from '@/composables/useCurrencyFormatter'
 import PlanningSnapshot from './PlanningSnapshot.vue'
 import TagSelect from './PlanningTagSelect.vue'
-const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]},portfolioCapital:{type:Object,default:null},portfolioLoading:Boolean}),emit=defineEmits(['updated'])
+const props=defineProps({calendarTarget:{type:String,default:null},plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]},portfolioCapital:{type:Object,default:null},portfolioLoading:Boolean}),emit=defineEmits(['updated'])
 const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage'),preparationLocked=computed(()=>!!plan.value.finalised&&!managing.value)
@@ -418,8 +420,8 @@ summary{cursor:pointer;font-size:13px;color:#9ca3af;min-height:28px}
 @container planning (max-width:850px){.detail-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:850px){.detail-grid{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.planning-workspace>.card,.detail-grid .card,.completion-summary .card{padding:16px}.workflow-tabs{gap:18px}.workflow-tabs button{font-size:14px}.position-metrics{gap:16px}.position-metrics strong,.result-metrics strong{font-size:21px}}
-:global(html:not(.dark) .planning-workspace .journey-stage){color:#475569}
-:global(html:not(.dark) .planning-workspace .journey-stage.current){color:#9a3412;border-color:#ea580c}
+:global(html:not(.dark) .planning-calendar .journey-stage){color:#475569}
+:global(html:not(.dark) .planning-calendar .journey-stage.current){color:#9a3412;border-color:#ea580c}
 :global(html:not(.dark) .planning-workspace label){color:#374151}
 :global(html:not(.dark) .planning-workspace .input),:global(html:not(.dark) .planning-workspace .ladder-input){background-color:#fff;color:#111827;border-color:#d1d5db}
 :global(html:not(.dark) .planning-workspace .card){border-color:#d1d5db}

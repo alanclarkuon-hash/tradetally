@@ -3,6 +3,7 @@ import {describe,it,expect,vi,beforeEach} from 'vitest'
 import {ref} from 'vue'
 import PlanningView from './PlanningView.vue'
 const {get,post,put,selectedAccount,routeParams}=vi.hoisted(()=>({get:vi.fn(),post:vi.fn(),put:vi.fn(),selectedAccount:{value:null},routeParams:{}}))
+vi.mock('@/stores/auth',()=>({useAuthStore:()=>({user:{settings:{display_currency:'GBP'}}})}))
 vi.mock('@/services/api',()=>({default:{get,post,put}}))
 vi.mock('@/stores/accounts',()=>({useAccountsStore:()=>({accounts:[],fetchAccounts:vi.fn().mockResolvedValue([])})}))
 vi.mock('@/composables/useGlobalAccountFilter',()=>({useGlobalAccountFilter:()=>({selectedAccount,selectedAccountLabel:ref('All accounts')})}))
@@ -10,7 +11,7 @@ vi.mock('vue-router',()=>({useRouter:()=>({replace:vi.fn().mockResolvedValue()})
 const factory=()=>mount(PlanningView,{global:{stubs:{RouterLink:{template:'<a><slot/></a>'},MoneyPrivacyToggle:true,PlanningWorkspace:{template:"<div>Planning workflow workspace</div>"}}}})
 beforeEach(()=>{vi.clearAllMocks();delete routeParams.id;selectedAccount.value=null;get.mockImplementation(url=>Promise.resolve({data:url==='/trade-plans'?{plans:[],commitments:[]}:{playbooks:[]}}))})
 describe('Planning first slice',()=>{
- it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).toContain('not verified');expect(w.text()).toContain('No committed entries');expect(w.text()).toContain('Draft and Watching reserve no capacity');w.unmount()})
+ it('never claims the missing portfolio capacity is verified',async()=>{const w=factory();await flushPromises();expect(w.text()).not.toContain('Test build');expect(w.text()).not.toContain('Risk coverage remains incomplete');expect(w.text()).toContain('No committed entries');expect(w.text()).toContain('Draft and Watching reserve no capacity');w.unmount()})
  it('new drafts include a definition for the persistent workflow workspace',async()=>{const w=factory();await flushPromises();await w.findAll('button').find(b=>b.text()==='New plan').trigger('click');expect(w.text()).toContain('Planning workflow workspace');expect(post).not.toHaveBeenCalled();w.unmount()})
 
 })
