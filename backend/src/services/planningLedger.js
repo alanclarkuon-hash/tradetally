@@ -52,7 +52,7 @@ function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade) {
  if(!rows.some(r=>r.key===stageKey)&&!(action==='exit'&&stageKey==='runner'))fail('Ladder row not found');
  const symbol=trade.underlying_symbol||trade.symbol;
  if(String(symbol).toUpperCase()!==plan.definition.symbol.toUpperCase())fail('Trade asset does not match this plan');
- const expected=plan.definition.instrument==='option'?'option':plan.definition.instrument==='crypto'?'crypto':plan.definition.instrument==='spread_bet'?'spread_bet':'stock';
+ const expected=plan.definition.instrument;
  if((trade.instrument_type||'stock')!==expected)fail('Trade instrument does not match this plan');
  if(expected!=='option'&&trade.side!==plan.definition.direction)fail('Trade direction does not match this plan');
  if(expected==='option'){
@@ -155,7 +155,7 @@ function ledger(plan,allocations,trades) {
  const accountRisk=plan.baseline?.currency===accountCurrency?plan.baseline.riskBudget:plan.baseline?.originalRiskCurrency===accountCurrency?plan.baseline.originalRisk:null;
  const avg=openQuantity>1e-8?cost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null;
  const stop=Number(plan.definition.stopPrice)*(plan.stopConversion||1);
- const capitalRisk=complete&&(plan.definition.currency===currency||plan.stopConversion)&&['stock','crypto'].includes(plan.definition.instrument)&&stop>0
+ const capitalRisk=complete&&(plan.definition.currency===currency||plan.stopConversion)&&['stock','cfd','crypto'].includes(plan.definition.instrument)&&stop>0
   ? [...queues.values()].flat().reduce((s,l)=>s+l.q*Math.max(0,plan.definition.direction==='short'?stop-l.price:l.price-stop)*l.multiplier,0):null;
  return {accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
   realisedProfit:complete?realised:null,percentGain:complete&&entryCost>0?realised/entryCost*100:null,

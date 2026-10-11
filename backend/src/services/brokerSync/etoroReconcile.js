@@ -22,6 +22,18 @@ function getExecutions(row) {
 function identity(row) { return getExecutions(row)[0]?.etoro_record_key; }
 function positionId(row) { return String(getExecutions(row)[0]?.etoro_position_id); }
 
+// Product evidence belongs to a position, not to the underlying stock/ETF.
+function preserveProductClassification(trade, old, existing) {
+  const evidence = existing.filter(row => positionId(row) === trade.positionId);
+  if (old && !evidence.includes(old)) evidence.push(old);
+  const cfd = evidence.some(row => row.instrument_type === 'cfd' || getExecutions(row).some(e => e.etoro_source_type === 'CFD'));
+  if (cfd) {
+    trade.instrumentType = 'cfd';
+    trade.executions = trade.executions.map(e => ({...e, etoro_source_type:'CFD'}));
+  }
+  return trade;
+}
+
 function cashSnapshot(portfolio, accountIdentifier) {
   const raw = field(portfolio, 'credit');
   if (raw === '' || typeof raw === 'boolean') throw new Error('Invalid eToro cash balance.');
@@ -175,12 +187,13 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
     const plans = plan(mapped.trades, existing);
     result.imported = plans.filter(p => !p.old).length;
     result.updated = plans.filter(p => p.old).length;
+    for (const {trade,old} of plans) preserveProductClassification(trade,old,existing);
     if (dryRun) return;
     for (const { trade: t, old } of plans) {
       const original = old && getExecutions(old)[0];
       if (original?.etoro_source_type) {
         if (original.etoro_source_type === 'CFD') t.instrumentType = 'cfd';
-        t.executions = t.executions.map(e => ({ ...e, etoro_source_type: original.etoro_source_type,
+        t.executions = t.executions.map(e => ({ ...e, etoro_source_type: t.instrumentType === 'cfd' ? 'CFD' : original.etoro_source_type,
           etoro_copied_from: original.etoro_copied_from || null,
           etoro_leverage: original.etoro_leverage || 1 }));
       }
@@ -202,6 +215,10 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,'etoro','USD',1,0)`, values);
       }
     }
+    for (const position of mapped.positions) {
+      const lots = plans.filter(p => !p.trade.exitTime && p.trade.symbol === position.symbol);
+      if (lots.length && lots.every(p => p.trade.instrumentType === 'cfd')) position.instrumentType = 'cfd';
+    }
     await client.query(`INSERT INTO broker_portfolio_snapshots(user_id,broker_type,account_identifier,connection_id,positions)
       VALUES($1,'etoro',$2,$3,$4::jsonb) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,positions=EXCLUDED.positions,synced_at=NOW()`,
@@ -214,4 +231,4 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
   if (!dryRun) await AnalyticsCache.invalidate(connection.userId);
   return result;
 }
-module.exports = { mapSnapshot, plan, reconcile, cashSnapshot };
+module.exports = { mapSnapshot, plan, reconcile, cashSnapshot, preserveProductClassification };

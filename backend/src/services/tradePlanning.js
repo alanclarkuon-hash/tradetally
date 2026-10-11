@@ -3,7 +3,7 @@ const uuid = Joi.string().guid({ version: ['uuidv4','uuidv5'] });
 const stageSchema = Joi.object({ key:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(), label:Joi.string().max(120).required(), price:Joi.number().positive().allow(null).required(), riskWeight:Joi.number().min(0).max(100).required(), tactic:Joi.string().max(1000).allow('').default(''), units:Joi.number().min(0).allow(null).default(null), marketContext:Joi.array().items(Joi.string().max(100)).max(20).default([]), tactics:Joi.array().items(Joi.string().max(100)).max(20).default([]) });
 const schema = Joi.object({
  title:Joi.string().max(160).required(), symbol:Joi.string().trim().max(40).required(), assetName:Joi.string().max(120).allow('').default(''),
- instrument:Joi.string().valid('stock','crypto','spread_bet','option').required(), direction:Joi.string().valid('long','short').required(),
+ instrument:Joi.string().valid('stock','cfd','crypto','spread_bet','option').required(), direction:Joi.string().valid('long','short').required(),
  accountId:uuid.allow(null).default(null), currency:Joi.string().pattern(/^[A-Z]{3}$/).required(), playbookId:uuid.allow(null).default(null),
  riskBudget:Joi.number().positive().allow(null).required(), stopPrice:Joi.number().positive().allow(null).required(),
  quantityStep:Joi.number().positive().max(1000).required(), pointSize:Joi.number().positive().default(1),
