@@ -1049,7 +1049,9 @@ class Trade {
         ) FROM trade_charts tch WHERE tch.trade_id = t.id) as charts,
         (SELECT count(*)::integer FROM trade_comments tc WHERE tc.trade_id = t.id) as comment_count,
         sc.finnhub_industry as sector,
-        sc.company_name as company_name
+        sc.company_name as company_name,
+        COALESCE(CASE WHEN sc.currency IN ('GBp','GBX') THEN 'GBP' WHEN sc.currency IN ('ZAr','ZAX') THEN 'ZAR' WHEN sc.currency IN ('ILs','ILX') THEN 'ILS' ELSE UPPER(sc.currency) END, (SELECT UPPER(e->>'currency') FROM jsonb_array_elements(CASE WHEN jsonb_typeof(t.executions)='array' THEN t.executions ELSE '[]'::jsonb END) e WHERE e->>'currency' ~ '^[A-Z]{3},
+        (SELECT ua.currency FROM user_accounts ua WHERE ua.user_id=t.user_id AND ua.account_identifier=t.account_identifier AND ua.broker=t.broker LIMIT 1) AS account_currency
       FROM trades t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN gamification_profile gp ON u.id = gp.user_id
@@ -1066,7 +1068,3744 @@ class Trade {
       query += ` AND t.is_public = true`;
     }
 
-    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name`;
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name, sc.currency`;
+
+    const result = await db.query(query, values);
+    const trade = result.rows[0];
+
+    if (trade) await require('../utils/sectorCategory').applyTradeSectorCategories([trade]);
+
+    // Parse executions from JSONB column if they exist
+    if (trade && trade.executions) {
+      try {
+        trade.executions = typeof trade.executions === 'string'
+          ? JSON.parse(trade.executions)
+          : trade.executions;
+      } catch (error) {
+        console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
+        trade.executions = [];
+      }
+    } else if (trade) {
+      trade.executions = [];
+    }
+
+    // If executions haven't been stamped by the engine yet (pre-backfill trades),
+    // annotate them on the fly so the Trade Detail page can render per-row P&L
+    // without requiring the bulk backfill to have finished. Read-only mutation
+    // of the response — does not touch the DB.
+    if (trade && Array.isArray(trade.executions) && trade.executions.length > 0 && trade.side) {
+      const hasStamped = trade.executions.some((e) => e && e.realized_pnl !== undefined && e.realized_pnl !== null);
+      if (!hasStamped) {
+        try {
+          const tz = await getUserTimezone(trade.user_id);
+          const engineResult = computeTradePnl({
+            side: trade.side,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            fallbackCommission: trade.commission != null ? parseFloat(trade.commission) : null,
+            fallbackFees: trade.fees != null ? parseFloat(trade.fees) : null,
+            executions: trade.executions,
+            timezone: tz,
+            tradeId: trade.id
+          });
+          trade.executions = engineResult.annotatedExecutions;
+        } catch (err) {
+          console.warn(`[findById] Engine annotation failed for trade ${trade.id}: ${err.message}`);
+        }
+      }
+    }
+
+    // Convert charts from snake_case to camelCase for frontend
+    if (trade && trade.charts && Array.isArray(trade.charts)) {
+      trade.charts = trade.charts.map(chart => ({
+        id: chart.id,
+        chartUrl: chart.chart_url,
+        chartTitle: chart.chart_title,
+        uploadedAt: chart.uploaded_at
+      }));
+    }
+
+    return trade;
+  }
+
+  static async findRoundTripById(id, userId) {
+    // Query the round_trip_trades table using proper UUID
+    const query = `
+      SELECT 
+        rt.*,
+        array_agg(t.*) FILTER (WHERE t.id IS NOT NULL) as executions,
+        COUNT(t.id) as execution_count
+      FROM round_trip_trades rt
+      LEFT JOIN trades t ON rt.id = t.round_trip_id
+      WHERE rt.id = $1 AND rt.user_id = $2
+      GROUP BY rt.id
+    `;
+
+    const result = await db.query(query, [id, userId]);
+    if (result.rows.length === 0) return null;
+
+    const row = result.rows[0];
+    
+    return {
+      id: row.id,
+      symbol: row.symbol,
+      trade_date: row.entry_time ? new Date(row.entry_time).toISOString().split('T')[0] : null,
+      pnl: parseFloat(row.total_pnl) || 0,
+      pnl_percent: parseFloat(row.pnl_percent) || 0,
+      commission: parseFloat(row.total_commission) || 0,
+      fees: parseFloat(row.total_fees) || 0,
+      execution_count: parseInt(row.execution_count) || 0,
+      entry_time: row.entry_time,
+      exit_time: row.exit_time,
+      entry_price: parseFloat(row.entry_price) || 0,
+      exit_price: parseFloat(row.exit_price) || 0,
+      quantity: parseFloat(row.total_quantity) || 0,
+      side: row.side,
+      strategy: row.strategy || '',
+      notes: row.notes || '',
+      is_completed: row.is_completed,
+      trade_type: 'round-trip',
+      comment_count: 0,
+      executions: row.executions || []
+    };
+  }
+
+  static async findOpenPositionsByUser(userId, filters = {}) {
+    const startTime = Date.now();
+    const values = [userId];
+    let paramCount = 2;
+    let whereClause = 'WHERE t.user_id = $1 AND t.entry_price IS NOT NULL AND t.exit_price IS NULL';
+
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
+    if (filters.accounts && filters.accounts.length > 0) {
+      console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
+      if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
+        whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
+        paramCount=values.length+1;
+      } else {
+        whereClause += ` AND t.account_identifier = ANY($${paramCount}::text[])`;
+        values.push(filters.accounts);
+        paramCount++;
+      }
+    }
+
+    let query = `
+      SELECT
+        t.id,
+        t.symbol,
+        t.side,
+        t.quantity,
+        t.entry_price,
+        t.executions,
+        t.instrument_type,
+        t.contract_size,
+        t.point_value,
+        t.underlying_symbol,
+        t.expiration_date,
+        t.option_type,
+        t.strike_price,
+        t.trade_date,
+        t.entry_time,
+        -- Positions can be held in a currency other than the account's. Note
+        -- original_currency names the SOURCE currency, not the currency the
+        -- monetary columns are stored in: an import that converts leaves the
+        -- stored values in USD, and exchange_rate is 1 exactly when it did not.
+        t.original_currency,
+        t.broker,
+        t.account_identifier,
+        -- Written only when an import converted the monetary columns to USD;
+        -- that is the marker openPositionGrouping uses, not exchange_rate.
+        t.original_entry_price_currency
+      FROM trades t
+      ${whereClause}
+      ORDER BY t.trade_date DESC, t.entry_time DESC
+    `;
+
+    if (filters.limit) {
+      query += ` LIMIT $${paramCount}`;
+      values.push(filters.limit);
+    }
+
+    const result = await timedDbQuery('findOpenPositionsByUser query', query, values);
+    console.log('[PERF] findOpenPositionsByUser total time:', Date.now() - startTime, 'ms');
+    return result.rows;
+  }
+
+  static async update(id, userId, updates, options = {}) {
+    // Round all numeric fields to fit database precision (DECIMAL(20,8))
+    const numericFields = [
+      'entryPrice', 'exitPrice', 'quantity', 'commission', 'entryCommission', 'exitCommission',
+      'fees', 'pnl', 'pnlPercent', 'mae', 'mfe', 'postExitMae', 'postExitMfe',
+      'postExitWindowOverrideMinutes', 'postExitWindowMinutes', 'strikePrice', 'tickSize', 'pointValue',
+      'stopLoss', 'takeProfit', 'rValue', 'exchangeRate',
+      'originalEntryPriceCurrency', 'originalExitPriceCurrency', 'originalPnlCurrency',
+      'originalCommissionCurrency', 'originalFeesCurrency'
+    ];
+
+    numericFields.forEach(field => {
+      if (updates[field] !== undefined && updates[field] !== null && updates[field] !== '') {
+        updates[field] = roundToDbPrecision(updates[field]);
+      }
+    });
+
+    // Log stopLoss updates for debugging
+    if (updates.stopLoss !== undefined) {
+      console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
+    }
+
+    // First get the current trade data for calculations
+    const currentTrade = await this.findById(id, userId);
+
+    // Auto-set point value and underlying asset for futures trades if not provided
+    const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+    if (instrumentType === 'future') {
+      // If point value is being updated or is missing, auto-set it
+      if (updates.pointValue === undefined || updates.pointValue === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        
+        // Try to extract underlying from symbol if not provided
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        
+        // Auto-set point value if we have an underlying asset
+        if (finalUnderlying && !currentTrade.point_value) {
+          const autoPointValue = getFuturesPointValue(finalUnderlying);
+          updates.pointValue = autoPointValue;
+          if (!updates.underlyingAsset && !currentTrade.underlying_asset) {
+            updates.underlyingAsset = finalUnderlying;
+          }
+          console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+        }
+      }
+
+      // Mirror the above for tick size (needed for breakeven tolerance)
+      if (updates.tickSize === undefined || updates.tickSize === null) {
+        const underlyingAsset = updates.underlyingAsset || currentTrade.underlying_asset;
+        const symbol = updates.symbol || currentTrade.symbol;
+        let finalUnderlying = underlyingAsset;
+        if (!finalUnderlying && symbol) {
+          finalUnderlying = extractUnderlyingFromFuturesSymbol(symbol) || updates.underlyingSymbol || currentTrade.underlying_symbol || null;
+        }
+        if (finalUnderlying && !currentTrade.tick_size) {
+          const autoTickSize = getFuturesTickSize(finalUnderlying);
+          if (autoTickSize) {
+            updates.tickSize = autoTickSize;
+            console.log(`[TRADE UPDATE] Auto-set tick size for ${symbol}: ${finalUnderlying} = ${autoTickSize}`);
+          }
+        }
+      }
+    }
+
+    // Convert empty strings to null for optional fields
+    if (updates.exitTime === '') updates.exitTime = null;
+    if (updates.exitPrice === '') updates.exitPrice = null;
+    if (updates.stopLoss === '') updates.stopLoss = null;
+    if (updates.takeProfit === '') updates.takeProfit = null;
+    if (updates.underlyingSymbol !== undefined) {
+      updates.underlyingSymbol = normalizeUnderlyingSymbol(updates.underlyingSymbol);
+    }
+
+    // pg serializes Date params in server-local time, which shifts DATE
+    // columns back a day on servers west of UTC (issue #349). Joi-converted
+    // dates are anchored to UTC midnight, so the UTC date is the intended one.
+    if (updates.expirationDate instanceof Date) {
+      updates.expirationDate = updates.expirationDate.toISOString().slice(0, 10);
+    }
+
+    // Validate expiration date has 4-digit year (safety net for parser bugs)
+    if (updates.expirationDate && typeof updates.expirationDate === 'string') {
+      const expMatch = updates.expirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+      if (expMatch) {
+        updates.expirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
+        console.log(`[WARNING] Fixed 2-digit year in expirationDate update: "${updates.expirationDate}"`);
+      }
+    }
+
+    // Apply default stop loss/take profit if not provided and user has defaults configured
+    // This ensures defaults are applied on updates as well as creates
+    const entryPrice = updates.entryPrice || currentTrade.entry_price;
+    const side = updates.side || currentTrade.side;
+    const symbol = updates.symbol || currentTrade.symbol;
+    const entryTime = updates.entryTime || currentTrade.entry_time;
+
+    // Check if stop loss or take profit needs defaults applied
+    const needsStopLossDefault = (updates.stopLoss === null || updates.stopLoss === undefined) && !currentTrade.stop_loss;
+    const needsTakeProfitDefault = (updates.takeProfit === null || updates.takeProfit === undefined) && !currentTrade.take_profit;
+    const quantityForDefaults = updates.quantity ?? currentTrade.quantity;
+
+    if ((needsStopLossDefault || needsTakeProfitDefault) && entryPrice) {
+      try {
+        const User = require('./User');
+        const userSettings = await User.getSettings(userId);
+
+        console.log(`[DEFAULTS UPDATE] Checking defaults for ${symbol}: needsStopLoss=${needsStopLossDefault}, needsTakeProfit=${needsTakeProfitDefault}`);
+        console.log(`[DEFAULTS UPDATE] User settings: stopLossType=${userSettings?.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings?.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings?.default_take_profit_percent || 'not set'}`);
+
+        // Apply default stop loss if not provided
+        if (needsStopLossDefault) {
+          const stopLossType = userSettings?.default_stop_loss_type || 'percent';
+          console.log(`[DEFAULTS UPDATE] Applying default stop loss, type=${stopLossType}`);
+
+          if (stopLossType === 'lod') {
+            // Use Low of Day for long positions, High of Day for short positions
+            try {
+              if (side === 'long' || side === 'buy') {
+                const lod = await this.getLowOfDayAtEntry(symbol, entryTime, userId);
+                if (lod !== null && lod !== undefined) {
+                  updates.stopLoss = lod;
+                  if (updates.stopLoss >= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] LoD (${updates.stopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01`);
+                    updates.stopLoss = entryPrice - 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied Low of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS UPDATE] LoD unavailable, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                  }
+                }
+              } else {
+                const hod = await this.getHighOfDayAtEntry(symbol, entryTime, userId);
+                if (hod !== null && hod !== undefined) {
+                  updates.stopLoss = hod;
+                  if (updates.stopLoss <= entryPrice) {
+                    console.warn(`[STOP LOSS UPDATE] HoD (${updates.stopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01`);
+                    updates.stopLoss = entryPrice + 0.01;
+                  }
+                  console.log(`[STOP LOSS UPDATE] Applied High of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                } else {
+                  console.warn(`[STOP LOSS UPDATE] HoD unavailable, falling back to percentage`);
+                  if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                    const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                    updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                    updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                  }
+                }
+              }
+            } catch (lodError) {
+              console.warn(`[STOP LOSS UPDATE] Error fetching LoD/HoD: ${lodError.message}`);
+              if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+                const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+                if (side === 'long' || side === 'buy') {
+                  updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+                } else {
+                  updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+                }
+                updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+                console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
+              }
+            }
+          } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
+            // Dollar-based stop loss (same multipliers as calculatePnL for options/futures)
+            const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
+            const instrumentTypeUpdate = updates.instrumentType ?? currentTrade.instrument_type ?? 'stock';
+            const contractSizeUpdate = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+            const pointValueUpdate = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+            const priceMove = this.getDollarStopLossPriceMove(stopLossDollars, quantityForDefaults, instrumentTypeUpdate, contractSizeUpdate, pointValueUpdate);
+            if (priceMove != null) {
+              if (side === 'long' || side === 'buy') {
+                updates.stopLoss = entryPrice - priceMove;
+              } else {
+                updates.stopLoss = entryPrice + priceMove;
+              }
+              updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+              console.log(`[STOP LOSS UPDATE] Applied $${stopLossDollars} stop loss for ${side} ${instrumentTypeUpdate}: $${updates.stopLoss}`);
+            }
+          } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
+            // Percentage-based stop loss
+            const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
+            if (side === 'long' || side === 'buy') {
+              updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
+            } else {
+              updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
+            }
+            updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
+            console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+          } else {
+            console.log(`[DEFAULTS UPDATE] No default stop loss configured`);
+          }
+        }
+
+        if (needsStopLossDefault && updates.stopLoss != null &&
+            !this.isValidStopForEntry(updates.stopLoss, entryPrice, side)) {
+          console.warn(`[STOP LOSS UPDATE] Default stop for ${symbol} does not define a valid price and was omitted`);
+          delete updates.stopLoss;
+        }
+
+        // Apply the active take-profit default after any stop-loss default.
+        if (needsTakeProfitDefault) {
+          updates.takeProfit = this.calculateDefaultTakeProfitFromSettings({
+            symbol,
+            entry_price: entryPrice,
+            stop_loss: updates.stopLoss ?? currentTrade.stop_loss,
+            side,
+            quantity: quantityForDefaults,
+            instrument_type: updates.instrumentType ?? currentTrade.instrument_type ?? 'stock',
+            contract_size: updates.contractSize ?? currentTrade.contract_size,
+            point_value: updates.pointValue ?? currentTrade.point_value,
+            underlying_asset: updates.underlyingAsset ?? currentTrade.underlying_asset
+          }, userSettings);
+
+          if (updates.takeProfit != null) {
+            const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+            console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitType} default for ${side} position: $${updates.takeProfit}`);
+          } else {
+            delete updates.takeProfit;
+          }
+        }
+      } catch (error) {
+        console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
+      }
+    }
+
+    const fields = [];
+    const values = [];
+    let paramCount = 1;
+
+    // Resolve trade_date in user's timezone — entryTime is UTC, so splitting it directly off-by-ones for non-UTC users.
+    if (updates.entryTime) {
+      updates.tradeDate = await getUserLocalDate(userId, updates.entryTime);
+    }
+
+    // Check if user is manually setting strategy - do this first to prevent re-classification from overwriting it
+    if (updates.strategy && !currentTrade.manual_override) {
+      // User is manually setting strategy - mark as override
+      updates.manualOverride = true;
+      updates.strategyConfidence = 100;
+      updates.classificationMethod = 'manual';
+      updates.classificationMetadata = { 
+        userProvided: true, 
+        overrideTimestamp: new Date().toISOString() 
+      };
+    }
+
+    // Check if we need to re-classify strategy
+    // Skip reclassification if skipApiCalls is set (e.g., during bulk imports)
+    // Also skip if user is manually setting strategy (already handled above)
+    const shouldReclassify = !options.skipApiCalls && !currentTrade.manual_override && !updates.strategy && (
+      updates.exitTime || updates.exitPrice || updates.entryTime || updates.entryPrice
+    );
+
+    if (shouldReclassify) {
+      // Create updated trade object for re-classification
+      const updatedTrade = {
+        symbol: currentTrade.symbol,
+        entry_time: updates.entryTime || currentTrade.entry_time,
+        exit_time: updates.exitTime || currentTrade.exit_time,
+        entry_price: updates.entryPrice || currentTrade.entry_price,
+        exit_price: updates.exitPrice || currentTrade.exit_price,
+        quantity: updates.quantity || currentTrade.quantity,
+        side: updates.side || currentTrade.side,
+        pnl: null, // Will be calculated
+        hold_time_minutes: null // Will be calculated
+      };
+
+      // Calculate updated P&L and hold time
+      // Use !== undefined to properly handle 0 values for commission and fees
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      updatedTrade.pnl = this.calculatePnL(
+        updatedTrade.entry_price,
+        updatedTrade.exit_price,
+        updatedTrade.quantity,
+        updatedTrade.side,
+        updates.commission !== undefined ? updates.commission : currentTrade.commission,
+        updates.fees !== undefined ? updates.fees : currentTrade.fees,
+        updates.instrumentType || currentTrade.instrument_type || 'stock',
+        updates.contractSize !== undefined ? updates.contractSize : (currentTrade.contract_size || (currentTrade.instrument_type === 'option' ? 100 : 1)),
+        pointValue
+      );
+
+      if (updatedTrade.exit_time) {
+        updatedTrade.hold_time_minutes = 
+          (new Date(updatedTrade.exit_time) - new Date(updatedTrade.entry_time)) / (1000 * 60);
+      }
+
+      try {
+        // Re-classify with enhanced analysis if complete, otherwise basic
+        const classification = updatedTrade.exit_time && updatedTrade.exit_price ? 
+          await this.classifyTradeStrategyWithAnalysis(updatedTrade, userId) :
+          await this.classifyTradeBasic(updatedTrade);
+
+        if (typeof classification === 'object') {
+          updates.strategy = classification.strategy;
+          updates.strategyConfidence = Math.round((classification.confidence || 0.5) * 100);
+          updates.classificationMethod = classification.method || (updatedTrade.exit_time ? 'technical_analysis' : 'time_based_partial');
+          updates.classificationMetadata = {
+            signals: classification.signals || [],
+            holdTimeMinutes: classification.holdTimeMinutes,
+            priceMove: classification.priceMove,
+            analysisTimestamp: new Date().toISOString(),
+            reclassified: true
+          };
+        } else {
+          updates.strategy = classification;
+          updates.strategyConfidence = 70;
+          updates.classificationMethod = 'time_based';
+          updates.classificationMetadata = {
+            holdTimeMinutes: updatedTrade.hold_time_minutes,
+            analysisTimestamp: new Date().toISOString(),
+            reclassified: true
+          };
+        }
+
+        console.log(`Re-classified trade ${id} as "${updates.strategy}" with ${updates.strategyConfidence}% confidence`);
+      } catch (error) {
+        console.warn('Error in trade re-classification:', error.message);
+        // Don't fail the update, just keep existing strategy
+      }
+    }
+
+    // Special handling for executions - replace instead of merge to prevent duplicates
+    // Allow execution updates from:
+    // 1. Imports (skipApiCalls=true)
+    // 2. Frontend edits (to allow commission/fees updates)
+    let executionsToSet = null;
+    if (updates.executions && updates.executions.length > 0) {
+      // Check if executions have actually changed by comparing JSON strings
+      const currentExecutionsJson = JSON.stringify(currentTrade.executions || []);
+      const newExecutionsJson = JSON.stringify(updates.executions);
+
+      if (currentExecutionsJson !== newExecutionsJson) {
+        // For frontend updates (non-imports), preserve original timestamps from current executions
+        // to prevent timestamp truncation from breaking duplicate detection
+        if (!options.skipApiCalls && currentTrade.executions && currentTrade.executions.length === updates.executions.length) {
+          // Merge: use incoming timestamps when explicitly provided, else keep existing (avoids truncation when frontend omits)
+          const hasValue = (v) => v !== undefined && v !== null && String(v).trim() !== '';
+          executionsToSet = updates.executions.map((newExec, index) => {
+            const currentExec = currentTrade.executions[index];
+            if (currentExec) {
+              const preserveTimestamp = (incoming, existing) => {
+                if (!hasValue(incoming)) return existing ?? incoming;
+                if (!hasValue(existing)) return incoming;
+
+                // datetime-local inputs only preserve minute precision. If the edited
+                // value still points at the same minute, keep broker-imported seconds.
+                // Joi converts validated ISO strings to Date objects, so comparing
+                // String(value) slices mixes Date.toString() with ISO formats and
+                // never matches (issue #385). Compare normalized epoch minutes.
+                const incomingTime = new Date(incoming).getTime();
+                const existingTime = new Date(existing).getTime();
+                const timestampsAreValid = Number.isFinite(incomingTime) && Number.isFinite(existingTime);
+                const sameMinute = timestampsAreValid &&
+                  Math.floor(incomingTime / 60000) === Math.floor(existingTime / 60000);
+                return sameMinute ? existing : incoming;
+              };
+
+              return {
+                ...currentExec,
+                ...newExec,
+                datetime: preserveTimestamp(newExec.datetime, currentExec.datetime),
+                entryTime: preserveTimestamp(newExec.entryTime, currentExec.entryTime),
+                exitTime: preserveTimestamp(newExec.exitTime, currentExec.exitTime)
+              };
+            }
+            return newExec;
+          });
+          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (user date changes will be saved)`);
+        } else {
+          // Full replacement for imports or when execution count changes
+          executionsToSet = updates.executions;
+        }
+
+        console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
+        console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
+        if (executionsToSet.length > 0) {
+          console.log(`First execution: ${executionsToSet[0].datetime || executionsToSet[0].entryTime} @ $${executionsToSet[0].price || executionsToSet[0].entryPrice}`);
+          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime || executionsToSet[executionsToSet.length-1].entryTime} @ $${executionsToSet[executionsToSet.length-1].price || executionsToSet[executionsToSet.length-1].entryPrice}`);
+        }
+        console.log(`=== END EXECUTION UPDATE ===\n`);
+      } else {
+        console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
+      }
+    }
+
+    // Always remove executions from updates since we handle it separately
+    delete updates.executions;
+
+    const roundForChange = (num, decimals = 6) => {
+      if (num === null || num === undefined || isNaN(num)) return null;
+      return Math.round(parseFloat(num) * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    };
+
+    const hasPnLAffectingChange = (
+      (updates.entryPrice !== undefined && roundForChange(updates.entryPrice) !== roundForChange(currentTrade.entry_price)) ||
+      (updates.exitPrice !== undefined && roundForChange(updates.exitPrice) !== roundForChange(currentTrade.exit_price)) ||
+      (updates.quantity !== undefined && roundForChange(updates.quantity) !== roundForChange(currentTrade.quantity)) ||
+      (updates.side !== undefined && updates.side !== currentTrade.side) ||
+      (updates.commission !== undefined && roundForChange(updates.commission) !== roundForChange(currentTrade.commission)) ||
+      (updates.fees !== undefined && roundForChange(updates.fees) !== roundForChange(currentTrade.fees)) ||
+      (updates.instrumentType !== undefined && updates.instrumentType !== currentTrade.instrument_type) ||
+      (updates.contractSize !== undefined && roundForChange(updates.contractSize) !== roundForChange(currentTrade.contract_size)) ||
+      (updates.pointValue !== undefined && roundForChange(updates.pointValue) !== roundForChange(currentTrade.point_value)) ||
+      (updates.tickSize !== undefined && roundForChange(updates.tickSize) !== roundForChange(currentTrade.tick_size))
+    );
+
+    if (executionsToSet !== null || hasPnLAffectingChange) {
+      const side = updates.side || currentTrade.side;
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const contractSize = updates.contractSize !== undefined
+        ? updates.contractSize
+        : (currentTrade.contract_size || (instrumentType === 'option' ? 100 : null));
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const fallbackCommission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fallbackFees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
+
+      let parsedCurrentExecs = currentTrade.executions || [];
+      if (typeof parsedCurrentExecs === 'string') {
+        try { parsedCurrentExecs = JSON.parse(parsedCurrentExecs); } catch { parsedCurrentExecs = []; }
+      }
+      let engineExecs = (executionsToSet !== null) ? executionsToSet : parsedCurrentExecs;
+      if (!Array.isArray(engineExecs)) engineExecs = [];
+
+      if (engineExecs.length === 0) {
+        const entryPriceFinal = updates.entryPrice !== undefined ? updates.entryPrice : currentTrade.entry_price;
+        const exitPriceFinal = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+        const quantityFinal = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+        const entryTimeFinal = updates.entryTime || currentTrade.entry_time;
+        const exitTimeFinal = updates.exitTime !== undefined ? updates.exitTime : currentTrade.exit_time;
+
+        if (entryPriceFinal != null && quantityFinal != null && entryTimeFinal) {
+          engineExecs = [{
+            action: side === 'short' ? 'sell' : 'buy',
+            quantity: quantityFinal,
+            price: entryPriceFinal,
+            datetime: entryTimeFinal
+          }];
+          if (exitTimeFinal && exitPriceFinal != null && exitPriceFinal !== '') {
+            engineExecs.push({
+              action: side === 'short' ? 'buy' : 'sell',
+              quantity: quantityFinal,
+              price: exitPriceFinal,
+              datetime: exitTimeFinal
+            });
+          }
+        }
+      }
+
+      const updateTz = await getUserTimezone(userId);
+      const engineResult = computeTradePnl({
+        side,
+        instrumentType,
+        contractSize,
+        pointValue,
+        fallbackCommission: fallbackCommission != null ? fallbackCommission : null,
+        fallbackFees: fallbackFees != null ? fallbackFees : null,
+        executions: engineExecs,
+        timezone: updateTz,
+        tradeId: id
+      });
+
+      executionsToSet = engineResult.annotatedExecutions;
+      updates.pnl = engineResult.aggregate.pnl;
+      updates.pnlPercent = engineResult.aggregate.pnl_percent;
+      updates.commission = engineResult.aggregate.commission;
+      updates.fees = engineResult.aggregate.fees;
+      if (engineResult.aggregate.entry_price != null) updates.entryPrice = engineResult.aggregate.entry_price;
+      if (engineResult.aggregate.exit_price != null) updates.exitPrice = engineResult.aggregate.exit_price;
+      if (engineResult.aggregate.quantity > 0) updates.quantity = engineResult.aggregate.quantity;
+      if (engineResult.aggregate.entry_time) updates.entryTime = engineResult.aggregate.entry_time;
+      if (engineResult.aggregate.is_fully_closed && engineResult.aggregate.exit_time) updates.exitTime = engineResult.aggregate.exit_time;
+      if (engineResult.aggregate.trade_date) updates.tradeDate = engineResult.aggregate.trade_date;
+    }
+
+    // Aggregate take profit targets from executions to trade level
+    // This REPLACES trade-level targets with execution-level targets (source of truth)
+    // Keep payload's trade-level targets when they have more (e.g. user edited main form or single-execution sync)
+    const payloadTakeProfitTargets = updates.takeProfitTargets;
+    if (executionsToSet && executionsToSet.length > 0) {
+      const aggregatedTargets = [];
+
+      executionsToSet.forEach(exec => {
+        if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets)) {
+          aggregatedTargets.push(...exec.takeProfitTargets);
+        }
+      });
+
+      // Deduplicate by (price, shares) so the same target is not stored once per execution.
+      // When every execution had the same targets, we preserve a single set and keep the first occurrence (first non-null shares).
+      const seen = new Set();
+      const deduplicatedTargets = aggregatedTargets.filter(t => {
+        const price = t.price != null ? parseFloat(t.price) : null;
+        const shares = t.shares != null ? t.shares : (t.quantity != null ? t.quantity : null);
+        const key = `${price}-${shares}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      // Only update if we found execution-level targets
+      if (deduplicatedTargets.length > 0) {
+        // Prefer payload's trade-level targets when it has more (user may have edited form; execution aggregation may have missed some)
+        if (Array.isArray(payloadTakeProfitTargets) && payloadTakeProfitTargets.length >= deduplicatedTargets.length) {
+          updates.takeProfitTargets = payloadTakeProfitTargets;
+          console.log(`[TP TARGETS UPDATE] Using payload takeProfitTargets (${payloadTakeProfitTargets.length}) over aggregation (${deduplicatedTargets.length})`);
+        } else {
+          updates.takeProfitTargets = deduplicatedTargets;
+          console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions, deduplicated to ${deduplicatedTargets.length}`);
+        }
+      }
+    }
+
+    // Log all updates for debugging
+    console.log(`[TRADE UPDATE] Processing updates for trade ${id}:`, Object.keys(updates));
+    if (updates.takeProfitTargets) {
+      console.log(`[TRADE UPDATE] takeProfitTargets in updates:`, JSON.stringify(updates.takeProfitTargets));
+    }
+
+    // Process all other fields
+    Object.entries(updates).forEach(([key, value]) => {
+      if (key !== 'id' && key !== 'user_id' && key !== 'created_at') {
+        // Convert camelCase to snake_case for database columns
+        const dbKey = toSnakeCase(key);
+        fields.push(`${dbKey} = $${paramCount}`);
+
+        // Handle JSON/JSONB fields that need serialization
+        if (key === 'classificationMetadata' || key === 'newsEvents' || key === 'takeProfitTargets') {
+          console.log(`[TRADE UPDATE] Saving ${key} as ${dbKey}:`, JSON.stringify(value));
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value);
+        }
+
+        // Log strategy and setup updates
+        if (key === 'strategy' || key === 'setup') {
+          console.log(`[TRADE UPDATE] Setting ${key}="${value}" for trade ${id}`);
+        }
+
+        paramCount++;
+      }
+    });
+    
+    // Add executions if we have them
+    if (executionsToSet !== null) {
+      fields.push(`executions = $${paramCount}`);
+      values.push(JSON.stringify(executionsToSet));
+      paramCount++;
+    }
+
+    // P&L is computed exclusively by the engine block above; no recalculation needed here.
+
+    // Recalculate R-Multiple if any of the relevant fields are updated
+    // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
+    // Check executions for stopLoss values (use executionsToSet since updates.executions was deleted above)
+    const executionsForRCalc = executionsToSet || currentTrade.executions || [];
+    const hasExecutionStopLoss = executionsForRCalc.length > 0 &&
+      executionsForRCalc.some(ex => ex.stopLoss !== null && ex.stopLoss !== undefined);
+
+    if (updates.entryPrice !== undefined || updates.exitPrice !== undefined ||
+        updates.stopLoss !== undefined || updates.side || executionsToSet !== null ||
+        updates.quantity !== undefined || updates.commission !== undefined ||
+        updates.fees !== undefined || updates.instrumentType !== undefined ||
+        updates.contractSize !== undefined || updates.pointValue !== undefined ||
+        updates.underlyingAsset !== undefined) {
+      let entryPrice = updates.entryPrice || currentTrade.entry_price;
+      let exitPrice = updates.exitPrice !== undefined ? updates.exitPrice : currentTrade.exit_price;
+      let stopLoss = updates.stopLoss !== undefined ? updates.stopLoss : currentTrade.stop_loss;
+      const side = updates.side || currentTrade.side;
+      const quantity = updates.quantity !== undefined ? updates.quantity : currentTrade.quantity;
+      const commission = updates.commission !== undefined ? updates.commission : currentTrade.commission;
+      const fees = updates.fees !== undefined ? updates.fees : currentTrade.fees;
+      const instrumentType = updates.instrumentType || currentTrade.instrument_type || 'stock';
+      const contractSize = updates.contractSize !== undefined ? updates.contractSize : currentTrade.contract_size;
+      const pointValue = updates.pointValue !== undefined ? updates.pointValue : currentTrade.point_value;
+      const underlyingAsset = updates.underlyingAsset !== undefined ? updates.underlyingAsset : currentTrade.underlying_asset;
+
+      // If stopLoss is in executions, calculate weighted average
+      if (!stopLoss && hasExecutionStopLoss) {
+        // For grouped executions with entry/exit prices, use weighted average
+        const executionsWithStopLoss = executionsForRCalc.filter(ex => ex.stopLoss);
+        if (executionsWithStopLoss.length > 0) {
+          // Calculate weighted average entry price and stop loss from executions
+          const totalQty = executionsWithStopLoss.reduce((sum, ex) => sum + (ex.quantity || 0), 0);
+          if (totalQty > 0) {
+            const weightedEntry = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.entryPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedStopLoss = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.stopLoss || 0) * (ex.quantity || 0)), 0) / totalQty;
+            const weightedExit = executionsWithStopLoss.reduce((sum, ex) =>
+              sum + ((ex.exitPrice || 0) * (ex.quantity || 0)), 0) / totalQty;
+
+            entryPrice = weightedEntry;
+            stopLoss = weightedStopLoss;
+            exitPrice = weightedExit || exitPrice;
+
+            console.log('[R-MULTIPLE] Using weighted averages from executions:', { entryPrice, stopLoss, exitPrice });
+          }
+        }
+      }
+
+      console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
+
+      // Calculate R-Multiple if stop loss and exit price are provided
+      // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
+      const rValue = (stopLoss && exitPrice && entryPrice && side)
+        ? this.calculateRValue(entryPrice, stopLoss, exitPrice, side, {
+          quantity,
+          commission,
+          fees,
+          instrumentType,
+          contractSize,
+          pointValue,
+          symbol: currentTrade.symbol,
+          underlyingAsset
+        })
+        : null;
+
+      console.log('[R-MULTIPLE CALC] Result:', rValue);
+
+      fields.push(`r_value = $${paramCount}`);
+      values.push(rValue);
+      paramCount++;
+    }
+
+    // Ensure tags exist in tags table if tags are being updated
+    if (updates.tags && updates.tags.length > 0) {
+      await this.ensureTagsExist(userId, updates.tags);
+    }
+
+    values.push(id);
+    values.push(userId);
+
+    const query = `
+      UPDATE trades
+      SET ${fields.join(', ')}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
+      RETURNING *
+    `;
+
+    // Log stopLoss in final query
+    if (updates.stopLoss !== undefined) {
+      const stopLossIndex = fields.findIndex(f => f.includes('stop_loss'));
+      console.log(`[STOP LOSS UPDATE] Final query includes stop_loss: ${stopLossIndex >= 0}`);
+      if (stopLossIndex >= 0) {
+        console.log(`[STOP LOSS UPDATE] Final value: ${values[stopLossIndex]}`);
+      }
+    }
+
+    const result = await db.query(query, values);
+    const updatedTrade = result.rows[0];
+
+    const optionGroupingFields = [
+      'entryTime', 'exitTime', 'tradeDate', 'instrumentType', 'underlyingSymbol',
+      'expirationDate', 'optionType', 'strikePrice', 'side', 'quantity', 'pnl',
+      'commission', 'fees', 'accountIdentifier', 'account_identifier', 'entryPrice',
+      'exitPrice', 'entry_time', 'exit_time', 'trade_date', 'instrument_type',
+      'underlying_symbol', 'expiration_date', 'option_type', 'strike_price',
+      'entry_price', 'exit_price'
+    ];
+    const shouldRebuildOptionGroups = !options.skipOptionGrouping
+      && (currentTrade.instrument_type === 'option' || updates.instrumentType === 'option' || updates.instrument_type === 'option')
+      && (executionsToSet !== null || optionGroupingFields.some(key => updates[key] !== undefined));
+
+    if (shouldRebuildOptionGroups) {
+      await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade update');
+    }
+    
+    // Check for new achievements after trade update (async, don't wait for completion)
+    if (!options.skipAchievements) {
+      AchievementService.checkAndAwardAchievements(userId).catch(error => {
+        console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
+      });
+      
+      // Update trading streak (async, don't wait for completion)  
+      AchievementService.updateTradingStreak(userId).catch(error => {
+        console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
+      });
+    }
+    
+    return updatedTrade;
+  }
+
+  static async delete(id, userId, options = {}) {
+    // Sentinel used to roll back the job deletions when the trade itself is
+    // not found (or belongs to another user), matching the previous behavior.
+    const TRADE_NOT_FOUND = Symbol('trade_not_found');
+    try {
+      // Run both deletes in a single transaction on one dedicated client so
+      // the trade and its associated jobs are removed together.
+      const deletedTrade = await db.withTransaction(async (client) => {
+        await BrokerTradeExclusions.recordDeleted(client, userId, [id]);
+        // First, delete associated jobs to prevent orphaned jobs
+        const jobDeleteQuery = `
+          DELETE FROM job_queue
+          WHERE data->>'tradeId' = $1
+          OR (data->'tradeIds' ? $1)
+          RETURNING id, type
+        `;
+
+        const deletedJobs = await client.query(jobDeleteQuery, [id]);
+
+        if (deletedJobs.rows.length > 0) {
+          console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
+        }
+
+        // Then delete the trade
+        const tradeDeleteQuery = `
+          DELETE FROM trades
+          WHERE id = $1 AND user_id = $2
+          RETURNING id
+        `;
+
+        const result = await client.query(tradeDeleteQuery, [id, userId]);
+
+        if (result.rows.length === 0) {
+          // Throw to roll back the job deletions as well
+          const notFound = new Error('Trade not found');
+          notFound.sentinel = TRADE_NOT_FOUND;
+          throw notFound;
+        }
+
+        return result.rows[0];
+      });
+
+      console.log(`Successfully deleted trade ${id} and its associated jobs`);
+      if (!options.skipOptionGrouping) {
+        await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
+      }
+
+      return deletedTrade;
+
+    } catch (error) {
+      if (error.sentinel === TRADE_NOT_FOUND) {
+        return null; // Trade not found or doesn't belong to user
+      }
+      console.error(`Failed to delete trade ${id}:`, error.message);
+      throw error;
+    }
+  }
+
+  static async addAttachment(tradeId, attachmentData) {
+    const { fileUrl, fileType, fileName, fileSize } = attachmentData;
+
+    const query = `
+      INSERT INTO trade_attachments (trade_id, file_url, file_type, file_name, file_size)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [tradeId, fileUrl, fileType, fileName, fileSize]);
+    return result.rows[0];
+  }
+
+  static async deleteAttachment(attachmentId, userId) {
+    const query = `
+      DELETE FROM trade_attachments ta
+      USING trades t
+      WHERE ta.id = $1 AND ta.trade_id = t.id AND t.user_id = $2
+      RETURNING ta.id
+    `;
+
+    const result = await db.query(query, [attachmentId, userId]);
+    return result.rows[0];
+  }
+
+  static async addChart(tradeId, chartData) {
+    const { chartUrl, chartTitle } = chartData;
+
+    const query = `
+      INSERT INTO trade_charts (trade_id, chart_url, chart_title)
+      VALUES ($1, $2, $3)
+      RETURNING *
+    `;
+
+    const result = await db.query(query, [tradeId, chartUrl, chartTitle || null]);
+    return result.rows[0];
+  }
+
+  static async deleteChart(chartId, userId) {
+    const query = `
+      DELETE FROM trade_charts tch
+      USING trades t
+      WHERE tch.id = $1 AND tch.trade_id = t.id AND t.user_id = $2
+      RETURNING tch.id
+    `;
+
+    const result = await db.query(query, [chartId, userId]);
+    return result.rows[0];
+  }
+
+  static async getPublicTrades(filters = {}) {
+    const values = [];
+    let paramCount = 1;
+    let ownerProjection = 'false AS is_owner';
+    if (filters.viewerUserId) {
+      ownerProjection = `(t.user_id = $${paramCount}) AS is_owner`;
+      values.push(filters.viewerUserId);
+      paramCount++;
+    }
+
+    let query = `
+      SELECT ${getPublicTradeSqlColumns('t')},
+        ${ownerProjection},
+        generate_anonymous_name(u.id) as username,
+        NULL::text as avatar_url,
+        generate_anonymous_name(u.id) as display_name,
+        array_agg(DISTINCT ta.file_url) FILTER (WHERE ta.id IS NOT NULL) as attachment_urls,
+        count(DISTINCT tc.id)::integer as comment_count
+      FROM trades t
+      JOIN users u ON t.user_id = u.id
+      JOIN user_settings us ON u.id = us.user_id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
+      LEFT JOIN trade_attachments ta ON t.id = ta.trade_id
+      LEFT JOIN trade_comments tc ON t.id = tc.trade_id
+      WHERE t.is_public = true AND us.public_profile = true
+    `;
+
+    if (filters.symbol) {
+      if (filters.symbolExact) {
+        query += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        query += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.username) {
+      query += ` AND u.username = $${paramCount}`;
+      values.push(filters.username);
+      paramCount++;
+    }
+
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name ORDER BY t.created_at DESC`;
+
+    if (filters.limit) {
+      query += ` LIMIT $${paramCount}`;
+      values.push(filters.limit);
+      paramCount++;
+    }
+
+    if (filters.offset) {
+      query += ` OFFSET $${paramCount}`;
+      values.push(filters.offset);
+    }
+
+    const result = await db.query(query, values);
+    return result.rows;
+  }
+
+  static calculatePnL(entryPrice, exitPrice, quantity, side, commission = 0, fees = 0, instrumentType = 'stock', contractSize = 1, pointValue = null) {
+    // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
+    if (exitPrice == null || entryPrice == null || quantity <= 0) return null;
+
+    // Determine the multiplier based on instrument type
+    let multiplier;
+    if (instrumentType === 'future') {
+      // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      // For options, use contract size (typically 100 shares per contract)
+      multiplier = contractSize || 100;
+    } else {
+      // For stocks, no multiplier needed (1 share = 1 share)
+      multiplier = 1;
+    }
+
+    let pnl;
+    if (side === 'long') {
+      pnl = (exitPrice - entryPrice) * quantity * multiplier;
+    } else {
+      pnl = (entryPrice - exitPrice) * quantity * multiplier;
+    }
+
+    const totalPnL = pnl - commission - fees;
+
+    // Guard against NaN, Infinity, or values that exceed database limits
+    if (!isFinite(totalPnL) || Math.abs(totalPnL) > 99999999) {
+      return null;
+    }
+
+    return totalPnL;
+  }
+
+  static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null, contractSize = null) {
+    // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
+    if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
+
+    let pnlPercent;
+
+    // Prefer net P&L over opening notional so costs/rebates cannot disagree with the dollar result.
+    if (pnl !== null && quantity !== null) {
+      const multiplier = instrumentType === 'future'
+        ? (pointValue || 1)
+        : instrumentType === 'option'
+          ? (contractSize || 100)
+          : 1;
+      const notionalValue = entryPrice * quantity * multiplier;
+
+      if (notionalValue > 0) pnlPercent = (pnl / notionalValue) * 100;
+    }
+
+    if (pnlPercent === undefined) {
+      // Fallback for legacy callers that only have prices.
+      if (side === 'long') {
+        pnlPercent = ((exitPrice - entryPrice) / entryPrice) * 100;
+      } else {
+        pnlPercent = ((entryPrice - exitPrice) / entryPrice) * 100;
+      }
+    }
+
+    // Guard against NaN, Infinity, or values that exceed database limits
+    if (!isFinite(pnlPercent) || Math.abs(pnlPercent) > 999999) {
+      return null;
+    }
+
+    return pnlPercent;
+  }
+
+  /**
+   * Calculate the total dollar risk for a trade based on entry, stop loss, size, and instrument multiplier.
+   * This is the initial risk amount used to interpret summed R values in analytics surfaces.
+   *
+   * @param {number} entryPrice
+   * @param {number} stopLoss
+   * @param {number} quantity
+   * @param {string} side
+   * @param {string} instrumentType
+   * @param {number|null} contractSize
+   * @param {number|null} pointValue
+   * @param {string|null} symbol
+   * @param {string|null} underlyingAsset
+   * @returns {number|null}
+   */
+  static calculateRiskAmount(entryPrice, stopLoss, quantity, side, instrumentType = 'stock', contractSize = null, pointValue = null, symbol = null, underlyingAsset = null) {
+    if (entryPrice == null || stopLoss == null || quantity == null || !side) return null;
+
+    const parsedEntry = parseFloat(entryPrice);
+    const parsedStop = parseFloat(stopLoss);
+    const parsedQty = parseFloat(quantity);
+
+    if (!isFinite(parsedEntry) || !isFinite(parsedStop) || !isFinite(parsedQty) || parsedQty <= 0) {
+      return null;
+    }
+
+    let riskPerUnit;
+    if (side === 'long' || side === 'buy') {
+      if (parsedStop >= parsedEntry) return null;
+      riskPerUnit = parsedEntry - parsedStop;
+    } else if (side === 'short' || side === 'sell') {
+      if (parsedStop <= parsedEntry) return null;
+      riskPerUnit = parsedStop - parsedEntry;
+    } else {
+      return null;
+    }
+
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
+
+    let multiplier = 1;
+    if (normalizedInstrumentType === 'future') {
+      let finalPointValue = pointValue ? parseFloat(pointValue) : null;
+
+      if (!finalPointValue || !isFinite(finalPointValue) || finalPointValue <= 0) {
+        const underlying = underlyingAsset || extractUnderlyingFromFuturesSymbol(symbol);
+        finalPointValue = getFuturesPointValue(underlying);
+      }
+
+      multiplier = finalPointValue;
+    } else if (normalizedInstrumentType === 'option') {
+      const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
+      multiplier = parsedContractSize && isFinite(parsedContractSize) && parsedContractSize > 0
+        ? parsedContractSize
+        : 100;
+    }
+
+    const riskAmount = riskPerUnit * parsedQty * multiplier;
+    return isFinite(riskAmount) ? riskAmount : null;
+  }
+
+  /**
+   * Get the price move (in price units) that equals a given dollar risk per trade.
+   * Used for dollar-based default stop loss. Uses the same multipliers as calculatePnL:
+   * - Stock: 1 share = 1 unit → priceMove = dollars / quantity
+   * - Option: 1 contract = contractSize (e.g. 100) → dollar move = priceMove * quantity * contractSize → priceMove = dollars / (quantity * contractSize)
+   * - Future: 1 point = pointValue dollars per contract → priceMove = dollars / (quantity * pointValue)
+   *
+   * @param {number} defaultStopLossDollars - Total dollar risk per trade
+   * @param {number} quantity - Number of contracts/shares
+   * @param {string} instrumentType - 'stock', 'option', or 'future'
+   * @param {number|null} contractSize - Options: shares per contract (default 100)
+   * @param {number|null} pointValue - Futures: dollars per point per contract
+   * @returns {number|null} Price move to apply (subtract for long, add for short), or null if invalid
+   */
+  static getDollarStopLossPriceMove(defaultStopLossDollars, quantity, instrumentType = 'stock', contractSize = null, pointValue = null) {
+    if (!defaultStopLossDollars || defaultStopLossDollars <= 0 || !quantity || quantity <= 0) return null;
+    let multiplier;
+    if (instrumentType === 'future') {
+      multiplier = pointValue || 1;
+    } else if (instrumentType === 'option') {
+      multiplier = contractSize || 100;
+    } else {
+      multiplier = 1;
+    }
+    return defaultStopLossDollars / (quantity * multiplier);
+  }
+
+  /**
+   * Calculate R-Multiple (Risk-Adjusted Return)
+   *
+   * R = Risk = Initial Stop (the distance from entry to stop loss)
+   * R-Multiple = Profit Per Trade / R
+   *
+   * This measures trade outcomes in terms of risk units (R):
+   *   - R-Multiple of 1.0 means you made exactly what you risked
+   *   - R-Multiple of 2.0 means you made twice what you risked
+   *   - R-Multiple of -0.5 means you lost half of what you risked
+   *   - R-Multiple of -1.0 means you lost exactly what you risked (hit stop loss)
+   *
+   * Examples with a 2.0 pt initial stop (R = 2.0):
+   *   - Lost 1.00 pt → R-Multiple = -1.00 / 2.0 = -0.5R
+   *   - Won 2.00 pt → R-Multiple = 2.00 / 2.0 = 1.0R
+   *   - Won 4.00 pt → R-Multiple = 4.00 / 2.0 = 2.0R
+   *
+   * @param {number} entryPrice - The entry price of the trade
+   * @param {number} stopLoss - The stop loss price level (defines R)
+   * @param {number} exitPrice - The actual exit price of the trade
+   * @param {string} side - The trade side ('long' or 'short')
+   * @returns {number|null} The calculated R-Multiple, or null if inputs are invalid
+   */
+  static calculateRValue(entryPrice, stopLoss, exitPrice, side, options = {}) {
+    // Validate inputs - all required for calculation
+    if (!entryPrice || !stopLoss || !exitPrice || !side) {
+      console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
+      return null;
+    }
+
+    // Ensure all values are positive
+    if (entryPrice <= 0 || stopLoss <= 0 || exitPrice <= 0) {
+      console.warn('[R-MULTIPLE] All values must be positive:', { entryPrice, stopLoss, exitPrice });
+      return null;
+    }
+
+    let riskAmount; // R = Initial risk (distance from entry to stop)
+    let actualProfit;
+
+    if (side === 'long') {
+      // For long positions:
+      // R (risk) = entry price - stop loss (stop is below entry)
+      // Actual Profit = exit price - entry price
+      riskAmount = entryPrice - stopLoss;
+      actualProfit = exitPrice - entryPrice;
+
+      // Validation: stop loss should be below entry for long
+      if (stopLoss >= entryPrice) {
+        console.warn('[R-MULTIPLE] Warning: stop loss should be below entry for long positions');
+        return null;
+      }
+    } else if (side === 'short') {
+      // For short positions:
+      // R (risk) = stop loss - entry price (stop is above entry)
+      // Actual Profit = entry price - exit price
+      riskAmount = stopLoss - entryPrice;
+      actualProfit = entryPrice - exitPrice;
+
+      // Validation: stop loss should be above entry for short
+      if (stopLoss <= entryPrice) {
+        console.warn('[R-MULTIPLE] Warning: stop loss should be above entry for short positions');
+        return null;
+      }
+    } else {
+      console.warn('[R-MULTIPLE] Invalid side value:', side);
+      return null;
+    }
+
+    // Calculate R-Multiple as actual profit divided by risk amount
+    if (riskAmount <= 0) {
+      console.warn('[R-MULTIPLE] Risk amount must be positive, got:', riskAmount);
+      return null;
+    }
+
+    const {
+      quantity,
+      commission = 0,
+      fees = 0,
+      instrumentType = 'stock',
+      contractSize = null,
+      pointValue = null,
+      symbol = null,
+      underlyingAsset = null
+    } = options || {};
+
+    let rMultiple;
+    const parsedQty = parseFloat(quantity);
+    const normalizedInstrumentType = normalizeInstrumentType(instrumentType, symbol);
+
+    if (isFinite(parsedQty) && parsedQty > 0) {
+      const totalRiskAmount = this.calculateRiskAmount(
+        entryPrice,
+        stopLoss,
+        parsedQty,
+        side,
+        normalizedInstrumentType,
+        contractSize,
+        pointValue,
+        symbol,
+        underlyingAsset
+      );
+
+      if (!totalRiskAmount || totalRiskAmount <= 0) {
+        console.warn('[R-MULTIPLE] Total risk amount must be positive, got:', totalRiskAmount);
+        return null;
+      }
+
+      const multiplier = totalRiskAmount / (riskAmount * parsedQty);
+      const grossProfit = actualProfit * parsedQty * multiplier;
+      const netProfit = grossProfit - (parseFloat(commission) || 0) - (parseFloat(fees) || 0);
+      rMultiple = netProfit / totalRiskAmount;
+    } else {
+      rMultiple = actualProfit / riskAmount;
+    }
+
+    // Guard against NaN or Infinity (negative values are allowed)
+    if (!isFinite(rMultiple)) {
+      console.warn('[R-MULTIPLE] Invalid calculated R-Multiple:', rMultiple);
+      return null;
+    }
+
+    // Round to 2 decimal places
+    return Math.round(rMultiple * 100) / 100;
+  }
+
+  static getSettingValue(settings, snakeKey, camelKey) {
+    if (!settings) return undefined;
+    return settings[snakeKey] ?? settings[camelKey];
+  }
+
+  /**
+   * Calculate a take-profit price from the user's active default mode.
+   * Percentage uses entry price, risk/reward uses the effective stop distance,
+   * and dollar mode converts a gross trade-level profit into a price move using
+   * the same instrument multipliers as P&L calculations.
+   */
+  static calculateDefaultTakeProfitFromSettings(trade, settings) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price ?? trade.entryPrice);
+    const side = trade.side;
+    const isLong = side === 'long' || side === 'buy';
+    const isShort = side === 'short' || side === 'sell';
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || (!isLong && !isShort)) {
+      return null;
+    }
+
+    let priceMove = null;
+
+    if (takeProfitType === 'percent') {
+      const percent = parseFloat(this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent'));
+      if (isFinite(percent) && percent > 0) {
+        priceMove = entryPrice * percent / 100;
+      }
+    } else if (takeProfitType === 'risk_reward') {
+      const rMultiple = parseFloat(this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple'));
+      const stopLoss = parseFloat(trade.stop_loss ?? trade.stopLoss);
+      if (isFinite(rMultiple) && rMultiple > 0 && isFinite(stopLoss) && stopLoss > 0) {
+        const riskPerUnit = isLong ? entryPrice - stopLoss : stopLoss - entryPrice;
+        if (riskPerUnit > 0) {
+          priceMove = riskPerUnit * rMultiple;
+        }
+      }
+    } else if (takeProfitType === 'dollar') {
+      const dollars = parseFloat(this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars'));
+      const quantity = parseFloat(trade.quantity);
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+      let pointValue = trade.point_value ?? trade.pointValue;
+
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
+      priceMove = this.getDollarStopLossPriceMove(
+        dollars,
+        quantity,
+        instrumentType,
+        trade.contract_size ?? trade.contractSize,
+        pointValue
+      );
+    }
+
+    if (priceMove == null || !isFinite(priceMove) || priceMove <= 0) {
+      return null;
+    }
+
+    const takeProfit = isLong ? entryPrice + priceMove : entryPrice - priceMove;
+    return isFinite(takeProfit) && takeProfit > 0
+      ? Math.round(takeProfit * 10000) / 10000
+      : null;
+  }
+
+  static calculateDefaultStopLossFromSettings(trade, settings) {
+    const stopLossType = this.getSettingValue(settings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const entryPrice = parseFloat(trade.entry_price);
+    const quantity = parseFloat(trade.quantity);
+    const side = trade.side;
+
+    if (!isFinite(entryPrice) || entryPrice <= 0 || !side) {
+      return null;
+    }
+
+    let stopLoss = null;
+
+    if (stopLossType === 'percent') {
+      const stopLossPercent = parseFloat(this.getSettingValue(settings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+      if (!isFinite(stopLossPercent) || stopLossPercent <= 0) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice * (1 - stopLossPercent / 100);
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice * (1 + stopLossPercent / 100);
+      }
+    } else if (stopLossType === 'dollar') {
+      const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+      if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;
+
+      const instrumentType = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+
+      // Resolve the futures point value the same way calculateRiskAmount does;
+      // getDollarStopLossPriceMove would otherwise fall back to 1 while the
+      // R calculation falls back to the symbol's real multiplier, placing the
+      // stop up to 50x too far from entry on rows with NULL point_value.
+      let pointValue = trade.point_value;
+      if (instrumentType === 'future') {
+        const parsedPointValue = parseFloat(pointValue);
+        if (!isFinite(parsedPointValue) || parsedPointValue <= 0) {
+          const underlying = trade.underlying_asset || extractUnderlyingFromFuturesSymbol(trade.symbol);
+          pointValue = getFuturesPointValue(underlying);
+        }
+      }
+
+      const priceMove = this.getDollarStopLossPriceMove(
+        stopLossDollars,
+        quantity,
+        instrumentType,
+        trade.contract_size,
+        pointValue
+      );
+      if (priceMove == null) return null;
+
+      if (side === 'long' || side === 'buy') {
+        stopLoss = entryPrice - priceMove;
+      } else if (side === 'short' || side === 'sell') {
+        stopLoss = entryPrice + priceMove;
+      }
+    }
+
+    if (stopLoss == null || !isFinite(stopLoss)) return null;
+    const roundedStop = Math.round(stopLoss * 10000) / 10000;
+    return this.isValidStopForEntry(roundedStop, entryPrice, side) ? roundedStop : null;
+  }
+
+  static isValidStopForEntry(stopLoss, entryPrice, side) {
+    const stop = Number(stopLoss);
+    const entry = Number(entryPrice);
+    if (!Number.isFinite(stop) || stop <= 0 || !Number.isFinite(entry) || entry <= 0) return false;
+    if (side === 'long' || side === 'buy') return stop < entry;
+    if (side === 'short' || side === 'sell') return stop > entry;
+    return false;
+  }
+
+  static stopLossMatches(actualStopLoss, expectedStopLoss) {
+    if (actualStopLoss == null || expectedStopLoss == null) return false;
+    const actual = parseFloat(actualStopLoss);
+    const expected = parseFloat(expectedStopLoss);
+    if (!isFinite(actual) || !isFinite(expected)) return false;
+    return Math.abs(actual - expected) <= 0.0001;
+  }
+
+  /**
+   * Keep default-generated stop losses aligned with the user's active default.
+   *
+   * This updates trades that either have no stop loss yet or still match a
+   * previous default formula. It deliberately skips trades with SL history so
+   * managed trades are not rewritten by a preference sync.
+   */
+  static async syncDefaultStopLossToExistingTrades(userId, previousSettings = {}, currentSettings = {}) {
+    const currentType = this.getSettingValue(currentSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    if (currentType !== 'percent' && currentType !== 'dollar') {
+      return 0;
+    }
+
+    const currentStopLossDollars = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+    const currentStopLossPercent = parseFloat(this.getSettingValue(currentSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const hasUsableCurrentDefault = currentType === 'dollar'
+      ? isFinite(currentStopLossDollars) && currentStopLossDollars > 0
+      : isFinite(currentStopLossPercent) && currentStopLossPercent > 0;
+
+    if (!hasUsableCurrentDefault) {
+      return 0;
+    }
+
+    const previousType = this.getSettingValue(previousSettings, 'default_stop_loss_type', 'defaultStopLossType') || 'percent';
+    const previousStopLossPercent = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_percent', 'defaultStopLossPercent'));
+    const previousStopLossDollars = parseFloat(this.getSettingValue(previousSettings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
+
+    const matcherSettings = [];
+    if (previousType === 'percent' && isFinite(previousStopLossPercent) && previousStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: previousStopLossPercent });
+    }
+    if (previousType === 'dollar' && isFinite(previousStopLossDollars) && previousStopLossDollars > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'dollar', default_stop_loss_dollars: previousStopLossDollars });
+    }
+
+    // Repair rows affected by the older percent default bug: the setting can be
+    // dollar already, while the trade still stores a percent-derived stop.
+    if (currentType === 'dollar' && isFinite(currentStopLossPercent) && currentStopLossPercent > 0) {
+      matcherSettings.push({ default_stop_loss_type: 'percent', default_stop_loss_percent: currentStopLossPercent });
+    }
+
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tradesResult = await client.query(`
+        SELECT id, symbol, entry_price, exit_price, side, quantity, commission,
+               fees, instrument_type, contract_size, point_value, underlying_asset,
+               stop_loss, r_value
+        FROM trades
+        WHERE user_id = $1
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+          AND (risk_level_history IS NULL OR risk_level_history = '[]'::jsonb)
+      `, [userId]);
+
+      let updatedCount = 0;
+      for (const trade of tradesResult.rows) {
+        const newStopLoss = this.calculateDefaultStopLossFromSettings(trade, currentSettings);
+        if (newStopLoss == null) continue;
+
+        const matchesPreviousDefault = matcherSettings.some(settings => {
+          const expectedStopLoss = this.calculateDefaultStopLossFromSettings(trade, settings);
+          return this.stopLossMatches(trade.stop_loss, expectedStopLoss);
+        });
+
+        if (trade.stop_loss != null && !matchesPreviousDefault) {
+          continue;
+        }
+
+        const rValue = trade.exit_price
+          ? this.calculateRValue(trade.entry_price, newStopLoss, trade.exit_price, trade.side, {
+            quantity: trade.quantity,
+            commission: trade.commission,
+            fees: trade.fees,
+            instrumentType: trade.instrument_type || 'stock',
+            contractSize: trade.contract_size,
+            pointValue: trade.point_value,
+            symbol: trade.symbol,
+            underlyingAsset: trade.underlying_asset
+          })
+          : null;
+
+        // This sync runs on every settings write for users in the dollar
+        // regression-repair state; skip the UPDATE when nothing would change
+        // so repeated writes (e.g. debounced UI preference flushes) don't
+        // rewrite every trade with identical values.
+        const existingRValue = trade.r_value == null ? null : parseFloat(trade.r_value);
+        const rValueUnchanged = (rValue == null && existingRValue == null)
+          || (rValue != null && existingRValue != null && Math.abs(existingRValue - rValue) < 0.005);
+        if (this.stopLossMatches(trade.stop_loss, newStopLoss) && rValueUnchanged) {
+          continue;
+        }
+
+        await client.query(
+          `UPDATE trades SET stop_loss = $1, r_value = $2 WHERE id = $3 AND user_id = $4`,
+          [newStopLoss, rValue, trade.id, userId]
+        );
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      if (updatedCount > 0) {
+        console.log(`[STOP LOSS] Synced ${updatedCount} default-derived stop losses for user ${userId}`);
+      }
+      return updatedCount;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[STOP LOSS] Error syncing default stop losses:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async syncDollarDefaultStopLossesForAffectedUsers() {
+    let settingsResult;
+    try {
+      settingsResult = await db.query(`
+        SELECT user_id, default_stop_loss_type, default_stop_loss_percent, default_stop_loss_dollars
+        FROM user_settings
+        WHERE default_stop_loss_type = 'dollar'
+          AND default_stop_loss_dollars IS NOT NULL
+          AND default_stop_loss_dollars > 0
+          AND default_stop_loss_percent IS NOT NULL
+          AND default_stop_loss_percent > 0
+      `);
+    } catch (error) {
+      if (error.code === '42P01' || error.code === '42703') {
+        console.log('[STOP LOSS] Dollar stop-loss repair skipped; settings table/columns are not migrated yet.');
+        return { usersProcessed: 0, tradesUpdated: 0 };
+      }
+      throw error;
+    }
+
+    let usersProcessed = 0;
+    let tradesUpdated = 0;
+    const AnalyticsCache = require('../services/analyticsCache');
+
+    for (const settings of settingsResult.rows) {
+      usersProcessed++;
+      const updated = await this.syncDefaultStopLossToExistingTrades(
+        settings.user_id,
+        settings,
+        settings
+      );
+      tradesUpdated += updated;
+
+      if (updated > 0) {
+        try {
+          await AnalyticsCache.invalidate(settings.user_id);
+        } catch (error) {
+          console.warn(`[STOP LOSS] Failed to invalidate analytics cache for user ${settings.user_id}: ${error.message}`);
+        }
+      }
+    }
+
+    if (usersProcessed > 0) {
+      console.log(`[STOP LOSS] Dollar default repair checked ${usersProcessed} users and updated ${tradesUpdated} trades.`);
+    }
+
+    return { usersProcessed, tradesUpdated };
+  }
+
+  /**
+   * Apply the active take-profit default to trades that do not have a target.
+   * Existing explicit targets are never overwritten.
+   */
+  static async applyDefaultTakeProfitToExistingTrades(userId, settings = {}) {
+    const takeProfitType = this.getSettingValue(settings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
+    const configuredValue = takeProfitType === 'risk_reward'
+      ? this.getSettingValue(settings, 'default_take_profit_r_multiple', 'defaultTakeProfitRMultiple')
+      : takeProfitType === 'dollar'
+        ? this.getSettingValue(settings, 'default_take_profit_dollars', 'defaultTakeProfitDollars')
+        : this.getSettingValue(settings, 'default_take_profit_percent', 'defaultTakeProfitPercent');
+
+    if (!['percent', 'risk_reward', 'dollar'].includes(takeProfitType)
+      || !isFinite(parseFloat(configuredValue))
+      || parseFloat(configuredValue) <= 0) {
+      return 0;
+    }
+
+    console.log(`[TAKE PROFIT] Applying ${takeProfitType} default to existing trades without take profit for user ${userId}`);
+
+    // Use a transaction to update all trades at once
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const tradesQuery = `
+        SELECT id, symbol, entry_price, stop_loss, side, quantity,
+               instrument_type, contract_size, point_value, underlying_asset
+        FROM trades
+        WHERE user_id = $1
+          AND take_profit IS NULL
+          AND entry_price IS NOT NULL
+          AND side IS NOT NULL
+      `;
+
+      const tradesResult = await client.query(tradesQuery, [userId]);
+      const trades = tradesResult.rows;
+
+      console.log(`[TAKE PROFIT] Found ${trades.length} trades without take profit`);
+
+      if (trades.length === 0) {
+        await client.query('COMMIT');
+        return 0;
+      }
+
+      let updatedCount = 0;
+
+      for (const trade of trades) {
+        const takeProfit = this.calculateDefaultTakeProfitFromSettings(trade, settings);
+        if (takeProfit == null) continue;
+
+        // Update the trade
+        const updateQuery = `
+          UPDATE trades
+          SET take_profit = $1
+          WHERE id = $2 AND user_id = $3
+        `;
+
+        await client.query(updateQuery, [takeProfit, trade.id, userId]);
+        updatedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[TAKE PROFIT] Successfully updated ${updatedCount} trades with default take profit`);
+      return updatedCount;
+
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('[TAKE PROFIT] Error applying default take profit to existing trades:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  // Total count for the trade list's pagination. Delegates to the canonical
+  // TradeQueries._buildWhereClause so the count always agrees with the rows
+  // findByUser returns. The previous hand-rolled builder only implemented a
+  // subset of filters (and e.g. ignored pnlType='breakeven' entirely), so the
+  // "total" could wildly disagree with the trades actually listed.
+  static async getCountWithFilters(userId, filters = {}) {
+    const TradeQueries = require('../services/tradeQueries');
+    const { whereClause, values } = await TradeQueries._buildWhereClause(userId, filters);
+
+    const query = `SELECT COUNT(*) as total FROM trades t ${whereClause}`;
+    const result = await db.query(query, values);
+    return parseInt(result.rows[0].total, 10) || 0;
+  }
+
+  static async getPartialExitAnalytics(userId, filters = {}) {
+    console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
+
+    // Build WHERE clause. The date-range predicate is shared with the canonical
+    // TradeQueries._buildWhereClause via buildTradeDateRangeClause so the two
+    // cannot drift. NOTE: the remaining filters below intentionally stay inline
+    // and are NOT identical to the canonical builder (e.g. symbol here is an
+    // exact/prefix match without the CUSIP fallback, single-strategy is plain
+    // equality rather than the hold-time mapping, tags casts to ::text[]). When
+    // adding a NEW trade filter, add it to TradeQueries._buildWhereClause first
+    // and route this method through it rather than growing this block.
+    let whereClause = `WHERE t.user_id = $1 AND t.exit_price IS NOT NULL`;
+    const values = [userId];
+    let paramCount = 2;
+
+    if (filters.includeArchived !== true) {
+      whereClause += ` AND NOT EXISTS (
+        SELECT 1
+        FROM user_accounts reporting_account
+        WHERE reporting_account.user_id = t.user_id
+          AND reporting_account.account_identifier IS NOT NULL
+          AND reporting_account.account_identifier != ''
+          AND reporting_account.account_identifier = t.account_identifier
+          AND reporting_account.include_in_reports = false
+      )`;
+    }
+
+    // Date filtering (shared with the canonical builder)
+    const dateRange = buildTradeDateRangeClause(filters, paramCount);
+    if (dateRange.clause) {
+      whereClause += dateRange.clause;
+      dateRange.params.forEach(v => values.push(v));
+      paramCount += dateRange.params.length;
+    }
+
+    if (filters.symbol) {
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(t.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
+      }
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.broker) {
+      whereClause += ` AND t.broker = $${paramCount}`;
+      values.push(filters.broker);
+      paramCount++;
+    } else if (filters.brokers) {
+      const brokerList = filters.brokers.split(',').map(b => b.trim()).filter(b => b);
+      if (brokerList.length > 0) {
+        whereClause += ` AND t.broker = ANY($${paramCount}::text[])`;
+        values.push(brokerList);
+        paramCount++;
+      }
+    }
+
+    if (filters.side) {
+      whereClause += ` AND t.side = $${paramCount}`;
+      values.push(filters.side);
+      paramCount++;
+    }
+
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.strategy IN (${placeholders})`;
+      filters.strategies.forEach(s => values.push(s));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
+      whereClause += ` AND t.strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      whereClause += ` AND t.tags && $${paramCount}::text[]`;
+      values.push(filters.tags);
+      paramCount++;
+    }
+
+    if (filters.instrumentTypes && filters.instrumentTypes.length > 0) {
+      const placeholders = filters.instrumentTypes.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.instrument_type IN (${placeholders})`;
+      filters.instrumentTypes.forEach(it => values.push(it));
+      paramCount += filters.instrumentTypes.length;
+    }
+
+    if (filters.accounts && filters.accounts.length > 0) {
+      if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
+        whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
+        paramCount=values.length+1;
+      } else {
+        const placeholders = filters.accounts.map((_, index) => `$${paramCount + index}`).join(',');
+        whereClause += ` AND t.account_identifier IN (${placeholders})`;
+        filters.accounts.forEach(account => values.push(account));
+        paramCount += filters.accounts.length;
+      }
+    }
+
+    if (filters.qualityGrades && filters.qualityGrades.length > 0) {
+      const placeholders = filters.qualityGrades.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND t.quality_grade IN (${placeholders})`;
+      filters.qualityGrades.forEach(grade => values.push(grade));
+      paramCount += filters.qualityGrades.length;
+    }
+
+    // Fetch trades with their executions - only need specific columns
+    const query = `
+      SELECT t.id, t.side, t.entry_price, t.stop_loss, t.tick_size,
+             t.point_value, t.contract_size, t.instrument_type, t.executions
+      FROM trades t
+      ${whereClause}
+      AND t.executions IS NOT NULL
+      AND jsonb_array_length(t.executions) > 0
+    `;
+
+    console.log('[PARTIAL-EXIT] Query:', query);
+    console.log('[PARTIAL-EXIT] Values:', values);
+
+    const result = await db.query(query, values);
+    const trades = result.rows;
+
+    console.log('[PARTIAL-EXIT] Found', trades.length, 'trades with executions');
+
+    // Process each trade to extract partial exit data
+    const tradePartials = [];
+
+    for (const trade of trades) {
+      let executions = trade.executions;
+      if (typeof executions === 'string') {
+        try { executions = JSON.parse(executions); } catch { continue; }
+      }
+      if (!Array.isArray(executions) || executions.length === 0) continue;
+
+      const side = trade.side;
+      const entryPrice = parseFloat(trade.entry_price);
+      if (isNaN(entryPrice)) continue;
+
+      // Separate exit fills using same logic as recalculateFromFills
+      const exitFills = executions.filter(e =>
+        (side === 'long' && e.action === 'sell') || (side === 'short' && e.action === 'buy')
+      );
+
+      // Must have at least 2 exit fills to be included
+      if (exitFills.length < 2) continue;
+
+      // Sort exit fills chronologically
+      exitFills.sort((a, b) => new Date(a.datetime) - new Date(b.datetime));
+
+      // Determine tick size for classification
+      const tickSize = parseFloat(trade.tick_size) || 0.01;
+
+      // Calculate stop distance in points
+      const stopLoss = parseFloat(trade.stop_loss);
+      const hasStopLoss = !isNaN(stopLoss) && stopLoss > 0;
+      const slDistance = hasStopLoss ? Math.abs(entryPrice - stopLoss) : null;
+
+      // Process each exit fill as a partial
+      const partials = exitFills.map((fill, index) => {
+        const exitPrice = parseFloat(fill.price);
+        // pts from entry
+        const pts = side === 'long' ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
+
+        // Classify
+        let classification;
+        if (pts > tickSize) {
+          classification = 'profitable';
+        } else if (pts < -tickSize) {
+          classification = 'loss';
+        } else {
+          classification = 'be_scratch';
+        }
+
+        // R-value (only if stop_loss is set)
+        const rValue = (slDistance && slDistance > 0) ? (pts / slDistance) : null;
+
+        return {
+          index: index + 1, // P1, P2, P3...
+          pts,
+          classification,
+          rValue,
+          slDistance
+        };
+      });
+
+      tradePartials.push({
+        exitCount: exitFills.length,
+        partials
+      });
+    }
+
+    // Apply minPartials/maxPartials filters (post-query JS filter)
+    let filteredTradePartials = tradePartials;
+    if (filters.minPartials) {
+      const min = parseInt(filters.minPartials);
+      if (!isNaN(min)) {
+        filteredTradePartials = filteredTradePartials.filter(t => t.exitCount >= min);
+      }
+    }
+    if (filters.maxPartials) {
+      const max = parseInt(filters.maxPartials);
+      if (!isNaN(max)) {
+        filteredTradePartials = filteredTradePartials.filter(t => t.exitCount <= max);
+      }
+    }
+
+    const totalTrades = filteredTradePartials.length;
+    if (totalTrades === 0) {
+      return { partials: [], total_trades: 0, max_partials: 0 };
+    }
+
+    // Find max partial index across all trades
+    const maxPartialIndex = Math.max(...filteredTradePartials.map(t => t.exitCount));
+
+    // Aggregate metrics per partial index
+    const partialResults = [];
+
+    for (let pIndex = 1; pIndex <= maxPartialIndex; pIndex++) {
+      // Eligible trades = those with at least pIndex exit fills
+      const eligible = filteredTradePartials.filter(t => t.exitCount >= pIndex);
+      if (eligible.length === 0) continue;
+
+      const partialsAtIndex = eligible.map(t => t.partials[pIndex - 1]);
+
+      // Counts by classification
+      const profitableCount = partialsAtIndex.filter(p => p.classification === 'profitable').length;
+      const beScratchCount = partialsAtIndex.filter(p => p.classification === 'be_scratch').length;
+      const lossCount = partialsAtIndex.filter(p => p.classification === 'loss').length;
+
+      // Absolute hit rate: profitable / total trades (not eligible, for comparability per issue spec)
+      const absoluteHitRate = totalTrades > 0 ? (profitableCount / totalTrades) * 100 : 0;
+
+      // Conditional hit rate (P2 onwards)
+      let conditionalHitRate = null;
+      if (pIndex >= 2) {
+        // Trades where P(n-1) was profitable
+        const prevProfitable = filteredTradePartials.filter(t =>
+          t.exitCount >= pIndex && t.partials[pIndex - 2].classification === 'profitable'
+        );
+        if (prevProfitable.length > 0) {
+          // Of those, how many have Pn profitable?
+          const bothProfitable = prevProfitable.filter(t =>
+            t.partials[pIndex - 1].classification === 'profitable'
+          );
+          conditionalHitRate = (bothProfitable.length / prevProfitable.length) * 100;
+        } else {
+          conditionalHitRate = 0;
+        }
+      }
+
+      // Avg exit pts (all)
+      const allPts = partialsAtIndex.map(p => p.pts);
+      const avgExitPts = allPts.reduce((sum, v) => sum + v, 0) / allPts.length;
+
+      // Avg exit pts (profitable only)
+      const profitablePts = partialsAtIndex.filter(p => p.classification === 'profitable').map(p => p.pts);
+      const avgExitPtsProfitable = profitablePts.length > 0
+        ? profitablePts.reduce((sum, v) => sum + v, 0) / profitablePts.length
+        : null;
+
+      // Avg R at exit (only trades with stop_loss)
+      const rValues = partialsAtIndex.filter(p => p.rValue !== null).map(p => p.rValue);
+      const avgR = rValues.length > 0
+        ? rValues.reduce((sum, v) => sum + v, 0) / rValues.length
+        : null;
+
+      // Avg SL in pts (only eligible trades with stop_loss)
+      const slDistances = partialsAtIndex.filter(p => p.slDistance !== null).map(p => p.slDistance);
+      const avgSlPts = slDistances.length > 0
+        ? slDistances.reduce((sum, v) => sum + v, 0) / slDistances.length
+        : null;
+
+      // Determine if this is the "last" partial for majority of eligible trades
+      const lastCount = eligible.filter(t => t.exitCount === pIndex).length;
+      const isLast = lastCount > eligible.length / 2;
+
+      partialResults.push({
+        index: pIndex,
+        label: `P${pIndex}`,
+        eligible_trades: eligible.length,
+        absolute_hit_rate: Math.round(absoluteHitRate * 100) / 100,
+        conditional_hit_rate: conditionalHitRate !== null ? Math.round(conditionalHitRate * 100) / 100 : null,
+        profitable_count: profitableCount,
+        be_scratch_count: beScratchCount,
+        loss_count: lossCount,
+        avg_exit_pts: Math.round(avgExitPts * 100) / 100,
+        avg_exit_pts_profitable: avgExitPtsProfitable !== null ? Math.round(avgExitPtsProfitable * 100) / 100 : null,
+        avg_r_at_exit: avgR !== null ? Math.round(avgR * 100) / 100 : null,
+        avg_sl_pts: avgSlPts !== null ? Math.round(avgSlPts * 100) / 100 : null,
+        is_last: isLast
+      });
+    }
+
+    return {
+      partials: partialResults,
+      total_trades: totalTrades,
+      max_partials: maxPartialIndex
+    };
+  }
+
+  static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
+    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
+
+    const { getBreakevenToleranceConfig, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
+    const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
+const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
+    const breakevenConfig = await getBreakevenToleranceConfig(userId);
+    // Whole-trade win rate (issue #339): when enabled, collapse multi-leg
+    // positions before the monthly aggregation so counts and win rate match
+    // the headline analytics. P&L sums are unchanged either way.
+    const groupByPosition = await isPositionGroupingEnabled(userId);
+    const be = groupByPosition
+      ? groupedBreakevenPredicate({ gross: 'gross_pnl', net: 'pnl' }, breakevenConfig)
+      : breakevenPredicate({
+          gross: '(pnl + COALESCE(commission, 0) + COALESCE(fees, 0))',
+          tickSize: 'tick_size',
+          pointValue: 'point_value',
+          quantity: 'quantity',
+          underlying: 'underlying_asset'
+        }, breakevenConfig);
+
+    // Build account + tag + strategy filter conditions. Param index starts at 3
+    // because $1=userId and $2=year. We append conditions in the order they're
+    // added to params to keep placeholders aligned.
+    let extraFilter = '';
+    const params = [userId, year];
+    let paramIndex = 3;
+
+    if (accounts && accounts.length > 0) {
+      extraFilter += ' AND '+accountPredicate(accounts,params,'account_identifier',paramIndex);
+      paramIndex=params.length+1;
+    }
+
+    if (filters.tags && filters.tags.length > 0) {
+      extraFilter += ` AND tags && $${paramIndex++}`;
+      params.push(filters.tags);
+    }
+
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map(() => `$${paramIndex++}`).join(',');
+      extraFilter += ` AND strategy IN (${placeholders})`;
+      params.push(...filters.strategies);
+    }
+
+    const reportingAccountCondition = filters.includeArchived === true ? '' : `
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts reporting_account
+            WHERE reporting_account.user_id = trades.user_id
+              AND reporting_account.account_identifier IS NOT NULL
+              AND reporting_account.account_identifier != ''
+              AND reporting_account.account_identifier = trades.account_identifier
+              AND reporting_account.include_in_reports = false
+          )`;
+
+    const whereBody = `
+        WHERE user_id = $1
+          AND EXTRACT(YEAR FROM trade_date) = $2
+          AND exit_price IS NOT NULL
+          AND pnl IS NOT NULL${reportingAccountCondition}${extraFilter}`;
+
+    // Grouped mode aggregates legs to positions first; r-value stats then read
+    // the position-level sum, gated on any leg having a stop (has_stop).
+    const sourceCte = groupByPosition ? `position_trades AS (
+        SELECT
+          MIN(trade_date) as trade_date,
+          MIN(COALESCE(NULLIF(underlying_symbol, ''), symbol)) as symbol,
+          SUM(${fxUsdTrade('pnl', '')}) as pnl,
+          SUM(COALESCE(${fxUsdTrade('pnl', '')}, 0) + COALESCE(${fxUsdTrade('commission', '')}, 0) + COALESCE(${fxUsdTrade('fees', '')}, 0)) as gross_pnl,
+          SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL) as r_value,
+          BOOL_OR(stop_loss IS NOT NULL) as has_stop
+        FROM trades
+        ${whereBody}
+        GROUP BY ${POSITION_GROUP_KEY}
+      ),
+      ` : '';
+
+    const monthlySource = groupByPosition
+      ? 'FROM position_trades'
+      : `FROM trades
+        ${whereBody}`;
+
+    const rValueFilter = groupByPosition
+      ? 'r_value IS NOT NULL AND has_stop'
+      : 'r_value IS NOT NULL AND stop_loss IS NOT NULL';
+
+    // Grouped mode reads USD-normalized pnl from position_trades (wrapped in
+    // the CTE); leg mode reads raw trades rows and must wrap here.
+    const monthlyPnlRef = groupByPosition ? 'pnl' : fxUsdTrade('pnl', '');
+
+    const monthlyQuery = `
+      WITH ${sourceCte}monthly_trades AS (
+        SELECT
+          EXTRACT(MONTH FROM trade_date) as month,
+          COUNT(*)::integer as total_trades,
+          -- Breakeven = gross P&L within tolerance; wins/losses by NET P&L.
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
+          COUNT(*) FILTER (WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+          COUNT(*) FILTER (WHERE ${be.is})::integer as breakeven_trades,
+          COALESCE(SUM(${monthlyPnlRef}), 0)::numeric as total_pnl,
+          COALESCE(AVG(${monthlyPnlRef}), 0)::numeric as avg_pnl,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win,
+          COALESCE(AVG(${monthlyPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss,
+          COALESCE(MAX(${monthlyPnlRef}), 0)::numeric as best_trade,
+          COALESCE(MIN(${monthlyPnlRef}), 0)::numeric as worst_trade,
+          COALESCE(AVG(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as avg_r_value,
+          COALESCE(SUM(r_value) FILTER (WHERE ${rValueFilter}), 0)::numeric as total_r_value,
+          COUNT(DISTINCT symbol)::integer as symbols_traded,
+          COUNT(DISTINCT trade_date)::integer as trading_days
+        ${monthlySource}
+        GROUP BY EXTRACT(MONTH FROM trade_date)
+      ),
+      all_months AS (
+        SELECT generate_series(1, 12) as month
+      )
+      SELECT
+        am.month,
+        COALESCE(mt.total_trades, 0) as total_trades,
+        COALESCE(mt.winning_trades, 0) as winning_trades,
+        COALESCE(mt.losing_trades, 0) as losing_trades,
+        COALESCE(mt.breakeven_trades, 0) as breakeven_trades,
+        COALESCE(mt.total_pnl, 0) as total_pnl,
+        COALESCE(mt.avg_pnl, 0) as avg_pnl,
+        COALESCE(mt.avg_win, 0) as avg_win,
+        COALESCE(mt.avg_loss, 0) as avg_loss,
+        COALESCE(mt.best_trade, 0) as best_trade,
+        COALESCE(mt.worst_trade, 0) as worst_trade,
+        COALESCE(mt.avg_r_value, 0) as avg_r_value,
+        COALESCE(mt.total_r_value, 0) as total_r_value,
+        COALESCE(mt.symbols_traded, 0) as symbols_traded,
+        COALESCE(mt.trading_days, 0) as trading_days,
+        CASE
+          WHEN COALESCE(mt.total_trades, 0) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / mt.total_trades)
+        END as win_rate,
+        CASE
+          WHEN (COALESCE(mt.winning_trades, 0) + COALESCE(mt.losing_trades, 0)) = 0 THEN 0
+          ELSE (COALESCE(mt.winning_trades, 0) * 100.0 / (mt.winning_trades + mt.losing_trades))
+        END as win_rate_excluding_breakeven,
+        TO_CHAR(TO_DATE(am.month::text, 'MM'), 'Month') as month_name
+      FROM all_months am
+      LEFT JOIN monthly_trades mt ON am.month = mt.month
+      ORDER BY am.month
+    `;
+
+    try {
+      const result = await db.query(monthlyQuery, params);
+
+      // Format the data for easier consumption
+      const monthlyData = result.rows.map(row => ({
+        month: parseInt(row.month),
+        monthName: row.month_name.trim(),
+        trades: {
+          total: parseInt(row.total_trades) || 0,
+          wins: parseInt(row.winning_trades) || 0,
+          losses: parseInt(row.losing_trades) || 0,
+          breakeven: parseInt(row.breakeven_trades) || 0
+        },
+        pnl: {
+          total: parseFloat(row.total_pnl) || 0,
+          average: parseFloat(row.avg_pnl) || 0,
+          avgWin: parseFloat(row.avg_win) || 0,
+          avgLoss: parseFloat(row.avg_loss) || 0,
+          best: parseFloat(row.best_trade) || 0,
+          worst: parseFloat(row.worst_trade) || 0
+        },
+        metrics: {
+          winRate: parseFloat(row.win_rate) || 0,
+          winRateExcludingBreakeven: parseFloat(row.win_rate_excluding_breakeven) || 0,
+          avgRValue: parseFloat(row.avg_r_value) || 0,
+          totalRValue: parseFloat(row.total_r_value) || 0,
+          symbolsTraded: parseInt(row.symbols_traded) || 0,
+          tradingDays: parseInt(row.trading_days) || 0
+        }
+      }));
+
+      // Calculate year totals
+      const yearTotals = monthlyData.reduce((acc, month) => {
+        acc.trades.total += month.trades.total;
+        acc.trades.wins += month.trades.wins;
+        acc.trades.losses += month.trades.losses;
+        acc.trades.breakeven += month.trades.breakeven;
+        acc.pnl.total += month.pnl.total;
+
+        // Track best/worst across all months
+        if (month.pnl.best > acc.pnl.best) {
+          acc.pnl.best = month.pnl.best;
+        }
+        if (month.pnl.worst < acc.pnl.worst) {
+          acc.pnl.worst = month.pnl.worst;
+        }
+
+        // Accumulate for averaging
+        if (month.trades.total > 0) {
+          acc.monthsWithTrades++;
+          acc.totalRValue += month.metrics.totalRValue;
+        }
+
+        return acc;
+      }, {
+        trades: { total: 0, wins: 0, losses: 0, breakeven: 0 },
+        pnl: { total: 0, best: 0, worst: 0 },
+        monthsWithTrades: 0,
+        totalRValue: 0
+      });
+
+      // Calculate year averages
+      yearTotals.metrics = {
+        winRate: yearTotals.trades.total > 0
+          ? (yearTotals.trades.wins * 100.0 / yearTotals.trades.total)
+          : 0,
+        winRateExcludingBreakeven: (yearTotals.trades.wins + yearTotals.trades.losses) > 0
+          ? (yearTotals.trades.wins * 100.0 / (yearTotals.trades.wins + yearTotals.trades.losses))
+          : 0,
+        avgRValue: yearTotals.trades.total > 0
+          ? yearTotals.totalRValue / yearTotals.trades.total
+          : 0,
+        totalRValue: yearTotals.totalRValue,
+        avgMonthlyPnL: yearTotals.monthsWithTrades > 0
+          ? yearTotals.pnl.total / yearTotals.monthsWithTrades
+          : 0
+      };
+
+      console.log(`[MONTHLY] Found data for ${monthlyData.length} months in year ${year}`);
+      console.log(`[MONTHLY] Total R-Value sum: ${yearTotals.totalRValue.toFixed(2)}R`);
+
+      return {
+        monthly: monthlyData,
+        yearTotals: {
+          trades: yearTotals.trades,
+          pnl: {
+            total: yearTotals.pnl.total,
+            best: yearTotals.pnl.best,
+            worst: yearTotals.pnl.worst,
+            avgMonthly: yearTotals.metrics.avgMonthlyPnL
+          },
+          metrics: yearTotals.metrics
+        }
+      };
+    } catch (error) {
+      console.error('[ERROR] Failed to get monthly performance:', error);
+      throw error;
+    }
+  }
+
+  static async getSymbolList(userId) {
+    const query = `
+      SELECT DISTINCT symbol
+      FROM trades
+      WHERE user_id = $1
+      ORDER BY symbol
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.symbol);
+  }
+
+  static async getStrategyList(userId) {
+    // Return each strategy with how many trades use it, most-used first, so
+    // dropdowns can surface the strategies the user actually relies on.
+    const query = `
+      SELECT name, SUM(count)::int AS count
+      FROM (
+        SELECT strategy AS name, COUNT(*)::int AS count
+        FROM trades
+        WHERE user_id = $1 AND strategy IS NOT NULL AND strategy != ''
+        GROUP BY strategy
+        UNION ALL
+        SELECT detected_strategy AS name, COUNT(*)::int AS count
+        FROM trade_position_groups
+        WHERE user_id = $1 AND detected_strategy IS NOT NULL AND detected_strategy != ''
+        GROUP BY detected_strategy
+      ) strategies
+      GROUP BY name
+      ORDER BY count DESC, name ASC
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows;
+  }
+
+  static async getSetupList(userId) {
+    const query = `
+      SELECT setup AS name, COUNT(*)::int AS count
+      FROM trades
+      WHERE user_id = $1 AND setup IS NOT NULL AND setup != ''
+      GROUP BY setup
+      ORDER BY count DESC, setup ASC
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows;
+  }
+
+  static async getBrokerList(userId) {
+    const query = `
+      SELECT DISTINCT broker
+      FROM trades
+      WHERE user_id = $1 AND broker IS NOT NULL AND broker != ''
+      ORDER BY broker
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.broker);
+  }
+
+  static async getAccountList(userId) {
+    const query = `
+      SELECT DISTINCT account_identifier FROM (
+        SELECT account_identifier
+        FROM trades t
+        WHERE t.user_id = $1 AND t.account_identifier IS NOT NULL AND t.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = t.user_id
+              AND archived_account.account_identifier = t.account_identifier
+              AND archived_account.is_archived = true
+          )
+        UNION
+        SELECT account_identifier
+        FROM user_accounts
+        WHERE user_id = $1 AND account_identifier IS NOT NULL AND account_identifier != ''
+          AND is_archived = false
+        UNION
+        SELECT l.account_identifier
+        FROM investment_lots l
+        WHERE l.user_id = $1 AND l.account_identifier IS NOT NULL AND l.account_identifier != ''
+          AND NOT EXISTS (
+            SELECT 1
+            FROM user_accounts archived_account
+            WHERE archived_account.user_id = l.user_id
+              AND archived_account.account_identifier = l.account_identifier
+              AND archived_account.is_archived = true
+          )
+      ) combined
+      ORDER BY account_identifier
+    `;
+    const result = await db.query(query, [userId]);
+    return result.rows.map(row => row.account_identifier);
+  }
+
+  // Create a new round trip trade record
+  static async createRoundTrip(userId, roundTripData) {
+    const {
+      symbol, entry_time, exit_time, entry_price, exit_price,
+      total_quantity, side, strategy, notes
+    } = roundTripData;
+
+    // Calculate P&L and commission totals
+    const total_pnl = this.calculatePnL(entry_price, exit_price, total_quantity, side);
+    const pnl_percent = this.calculatePnLPercent(entry_price, exit_price, side);
+    const is_completed = !!exit_time && !!exit_price;
+
+    const query = `
+      INSERT INTO round_trip_trades (
+        user_id, symbol, entry_time, exit_time, entry_price, exit_price,
+        total_quantity, total_pnl, pnl_percent, side, strategy, notes, is_completed
+      )
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *
+    `;
+
+    const values = [
+      userId, symbol.toUpperCase(), entry_time, exit_time, entry_price, exit_price,
+      total_quantity, total_pnl, pnl_percent, side, strategy, notes, is_completed
+    ];
+
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  // Update a round trip trade record
+  static async updateRoundTrip(roundTripId, userId, updates) {
+    const fields = [];
+    const values = [];
+    let paramCount = 1;
+
+    // Handle allowed updates
+    const allowedFields = [
+      'exit_time', 'exit_price', 'total_quantity', 'strategy', 'notes'
+    ];
+
+    allowedFields.forEach(field => {
+      if (updates[field] !== undefined) {
+        fields.push(`${field} = $${paramCount}`);
+        values.push(updates[field]);
+        paramCount++;
+      }
+    });
+
+    // Recalculate P&L if prices/quantity changed
+    if (updates.exit_price !== undefined || updates.total_quantity !== undefined) {
+      // Get current round trip data to calculate P&L
+      const currentData = await this.findRoundTripById(roundTripId, userId);
+      if (currentData) {
+        const entry_price = currentData.entry_price;
+        const exit_price = updates.exit_price !== undefined ? updates.exit_price : currentData.exit_price;
+        const quantity = updates.total_quantity !== undefined ? updates.total_quantity : currentData.quantity;
+        const side = currentData.side;
+
+        if (exit_price) {
+          const total_pnl = this.calculatePnL(entry_price, exit_price, quantity, side);
+          const pnl_percent = this.calculatePnLPercent(entry_price, exit_price, side);
+          
+          fields.push(`total_pnl = $${paramCount}`);
+          values.push(total_pnl);
+          paramCount++;
+          
+          fields.push(`pnl_percent = $${paramCount}`);
+          values.push(pnl_percent);
+          paramCount++;
+          
+          fields.push(`is_completed = $${paramCount}`);
+          values.push(true);
+          paramCount++;
+        }
+      }
+    }
+
+    if (fields.length === 0) {
+      return null; // No updates to apply
+    }
+
+    values.push(roundTripId);
+    values.push(userId);
+
+    const query = `
+      UPDATE round_trip_trades
+      SET ${fields.join(', ')}
+      WHERE id = $${paramCount} AND user_id = $${paramCount + 1}
+      RETURNING *
+    `;
+
+    const result = await db.query(query, values);
+    return result.rows[0];
+  }
+
+  // Link individual trades to a round trip
+  static async linkTradesToRoundTrip(roundTripId, tradeIds) {
+    const query = `
+      UPDATE trades
+      SET round_trip_id = $1
+      WHERE id = ANY($2)
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [roundTripId, tradeIds]);
+    return result.rows.map(row => row.id);
+  }
+
+  static async updateSymbolForCusip(userId, cusip, ticker) {
+    // Option trades are excluded: a CUSIP resolves to the underlying equity ticker,
+    // and renaming an option trade to it corrupts the contract's identity.
+    const query = `
+      UPDATE trades
+      SET symbol = $3
+      WHERE user_id = $1 AND symbol = $2
+        AND instrument_type IS DISTINCT FROM 'option'
+    `;
+    const result = await db.query(query, [userId, cusip, ticker]);
+    console.log(`Updated ${result.rowCount} trades: changed symbol from ${cusip} to ${ticker}`);
+    return { affectedRows: result.rowCount };
+  }
+
+  static async getRoundTripTradeCount(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
+    // Build WHERE clause for round_trip_trades table
+    let whereClause = 'WHERE user_id = $1';
+    const values = [userId];
+    let paramCount = 2;
+
+    if (filters.symbol) {
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND symbol ILIKE $${paramCount} || '%'`;
+      }
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.startDate) {
+      whereClause += ` AND DATE(entry_time) >= $${paramCount}`;
+      values.push(filters.startDate);
+      paramCount++;
+    }
+
+    if (filters.endDate) {
+      whereClause += ` AND DATE(entry_time) <= $${paramCount}`;
+      values.push(filters.endDate);
+      paramCount++;
+    }
+
+    // Multi-select strategies filter for round-trip trade count
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
+      whereClause += ` AND strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    // Days of week filter for round-trip trade count (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND extract(dow from (entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
+    }
+
+    const query = `
+      SELECT COUNT(*)::integer as round_trip_count
+      FROM round_trip_trades
+      ${whereClause}
+    `;
+
+    const result = await db.query(query, values);
+    return parseInt(result.rows[0].round_trip_count) || 0;
+  }
+
+  static async getRoundTripTrades(userId, filters = {}) {
+    const { getUserTimezone } = require('../utils/timezone');
+    // Build WHERE clause for round_trip_trades table
+    let whereClause = 'WHERE rt.user_id = $1';
+    const values = [userId];
+    let paramCount = 2;
+
+    if (filters.symbol) {
+      if (filters.symbolExact) {
+        whereClause += ` AND UPPER(rt.symbol) = $${paramCount}`;
+      } else {
+        whereClause += ` AND rt.symbol ILIKE $${paramCount} || '%'`;
+      }
+      values.push(filters.symbol.toUpperCase());
+      paramCount++;
+    }
+
+    if (filters.startDate) {
+      whereClause += ` AND DATE(rt.entry_time) >= $${paramCount}`;
+      values.push(filters.startDate);
+      paramCount++;
+    }
+
+    if (filters.endDate) {
+      whereClause += ` AND DATE(rt.entry_time) <= $${paramCount}`;
+      values.push(filters.endDate);
+      paramCount++;
+    }
+
+    // Multi-select strategies filter for round-trip trades
+    if (filters.strategies && filters.strategies.length > 0) {
+      const placeholders = filters.strategies.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND rt.strategy IN (${placeholders})`;
+      filters.strategies.forEach(strategy => values.push(strategy));
+      paramCount += filters.strategies.length;
+    } else if (filters.strategy) {
+      whereClause += ` AND rt.strategy = $${paramCount}`;
+      values.push(filters.strategy);
+      paramCount++;
+    }
+
+    // Multi-select sectors filter for round-trip trades
+    if (filters.sectors && filters.sectors.length > 0) {
+      const placeholders = filters.sectors.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND sc.finnhub_industry IN (${placeholders})`;
+      filters.sectors.forEach(sector => values.push(sector));
+      paramCount += filters.sectors.length;
+    }
+
+    // Days of week filter for round-trip trades (timezone-aware)
+    // "AT TIME ZONE tz" converts timestamptz from UTC to that timezone
+    if (filters.daysOfWeek && filters.daysOfWeek.length > 0) {
+      const userTimezone = await getUserTimezone(userId);
+      const placeholders = filters.daysOfWeek.map((_, index) => `$${paramCount + index}`).join(',');
+      whereClause += ` AND extract(dow from (rt.entry_time AT TIME ZONE $${paramCount + filters.daysOfWeek.length})) IN (${placeholders})`;
+      filters.daysOfWeek.forEach(dayNum => values.push(dayNum));
+      values.push(userTimezone);
+      paramCount += filters.daysOfWeek.length + 1;
+    }
+
+    // Add pagination
+    const limit = filters.limit || 50;
+    const offset = filters.offset || 0;
+
+    const query = `
+      SELECT 
+        rt.*,
+        sc.finnhub_industry as sector,
+        COUNT(t.id) as execution_count,
+        DATE(rt.entry_time) as trade_date
+      FROM round_trip_trades rt
+      LEFT JOIN symbol_categories sc ON rt.symbol = sc.symbol
+      LEFT JOIN trades t ON rt.id = t.round_trip_id
+      ${whereClause}
+      GROUP BY rt.id, sc.finnhub_industry
+      ORDER BY rt.entry_time DESC
+      LIMIT $${paramCount} OFFSET $${paramCount + 1}
+    `;
+
+    values.push(limit, offset);
+
+    const result = await db.query(query, values);
+    
+    return result.rows.map(row => ({
+      id: row.id,
+      symbol: row.symbol,
+      trade_date: row.trade_date,
+      pnl: parseFloat(row.total_pnl) || 0,
+      pnl_percent: parseFloat(row.pnl_percent) || 0,
+      commission: parseFloat(row.total_commission) || 0,
+      fees: parseFloat(row.total_fees) || 0,
+      execution_count: parseInt(row.execution_count) || 0,
+      entry_time: row.entry_time,
+      exit_time: row.exit_time,
+      entry_price: parseFloat(row.entry_price) || 0,
+      exit_price: parseFloat(row.exit_price) || 0,
+      quantity: parseFloat(row.total_quantity) || 0,
+      side: row.side,
+      strategy: row.strategy || '',
+      broker: '',
+      sector: row.sector || '',
+      notes: row.notes || '',
+      is_completed: row.is_completed,
+      trade_type: 'round-trip',
+      comment_count: 0
+    }));
+  }
+
+  // Convert minHoldTime/maxHoldTime (in minutes) to holdTime range option
+  static convertHoldTimeRange(minMinutes, maxMinutes) {
+    // Handle specific strategy ranges first (more inclusive approach)
+    if (maxMinutes <= 15) return '5-15 min' // Scalper: trades under 15 minutes
+    if (maxMinutes <= 240) return '2-4 hours' // Momentum: up to 4 hours (more inclusive)
+    if (maxMinutes <= 480) return '4-24 hours' // Mean reversion: up to 8 hours (more inclusive) 
+    if (minMinutes >= 1440) return '1-7 days' // Swing: over 1 day
+    
+    // Fallback to exact mapping for edge cases
+    if (maxMinutes < 1) return '< 1 min'
+    if (maxMinutes <= 5) return '1-5 min'
+    if (maxMinutes <= 30) return '15-30 min'
+    if (maxMinutes <= 60) return '30-60 min'
+    if (maxMinutes <= 120) return '1-2 hours'
+    if (maxMinutes <= 1440) return '4-24 hours'
+    if (maxMinutes <= 10080) return '1-7 days'
+    if (maxMinutes <= 40320) return '1-4 weeks'
+    
+    return '1+ months' // Default for very long trades
+  }
+
+  static getHoldTimeFilter(holdTimeRange) {
+    // Calculate hold time as the difference between entry_time and exit_time
+    // For open trades (no exit_time), use current time
+    let timeCondition = '';
+    
+    switch (holdTimeRange) {
+      case '< 1 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) < 60`;
+        break;
+      case '1-5 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 60 AND 300`;
+        break;
+      case '5-15 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 300 AND 900`;
+        break;
+      case '15-30 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 1800`;
+        break;
+      case '30-60 min':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 1800 AND 3600`;
+        break;
+      case '1-2 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 3600 AND 7200`;
+        break;
+      case '2-4 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 7200 AND 14400`;
+        break;
+      case '4-24 hours':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400`;
+        break;
+      case '1-7 days':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 86400 AND 604800`;
+        break;
+      case '1-4 weeks':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 604800 AND 2419200`;
+        break;
+      case '1+ months':
+        timeCondition = ` AND EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) >= 2419200`;
+        break;
+      default:
+        timeCondition = '';
+    }
+    
+    return timeCondition;
+  }
+
+  // Classify individual trades by strategy using technical analysis (basic fallback version)
+  static classifyTradeStrategy(trade) {
+    const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+    const pnl = parseFloat(trade.pnl || 0);
+    const quantity = parseFloat(trade.quantity || 0);
+    
+    // Strategy classification based on hold time (primary factor) - this is a fallback
+    // The real classification should use classifyTradeStrategyWithAnalysis for accurate results
+    if (holdTimeMinutes < 15) {
+      return 'scalper'; // Ultra-short term trades
+    } else if (holdTimeMinutes < 240) { // < 4 hours
+      // Secondary classification for short-term trades
+      if (pnl > 0 && holdTimeMinutes < 60) {
+        return 'momentum'; // Quick profitable trades suggest momentum
+      } else {
+        return 'day_trading'; // Other short-term trades
+      }
+    } else if (holdTimeMinutes < 480) { // 4-8 hours
+      return 'momentum'; // Medium-term momentum/breakout trades
+    } else if (holdTimeMinutes < 1440) { // < 1 day
+      return 'mean_reversion'; // Intraday mean reversion
+    } else if (holdTimeMinutes < 10080) { // < 1 week
+      return 'swing'; // Multi-day swing trades
+    } else {
+      return 'position'; // Long-term position trades
+    }
+  }
+
+  // Enhanced strategy classification using Finnhub technical analysis
+  static async classifyTradeStrategyWithAnalysis(trade, userId = null) {
+    const finnhub = require('../utils/finnhub');
+    
+    if (!finnhub.isConfigured()) {
+      return this.classifyTradeStrategy(trade);
+    }
+
+    // Circuit breaker: if Finnhub has been failing frequently, skip API calls
+    const circuitBreakerKey = 'finnhub_circuit_breaker';
+    const cache = require('../utils/cache');
+    
+    try {
+      const circuitBreakerData = await cache.get(circuitBreakerKey);
+      if (circuitBreakerData && circuitBreakerData.failures >= 10) {
+        console.log(`Circuit breaker OPEN: Skipping Finnhub API calls due to ${circuitBreakerData.failures} recent failures`);
+        return {
+          strategy: this.classifyTradeStrategy(trade),
+          confidence: 0.6,
+          method: 'circuit_breaker_fallback',
+          signals: [],
+          analysisType: 'time_based_due_to_api_failures'
+        };
+      }
+    } catch (cacheError) {
+      // Ignore cache errors, continue with normal processing
+    }
+
+    try {
+      const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+      const pnl = Math.abs(parseFloat(trade.pnl || 0));
+      const quantity = parseFloat(trade.quantity || 0);
+      const value = quantity * parseFloat(trade.entry_price || 0);
+
+      // Fast path: Skip expensive API calls for small/simple trades
+      // Only do full technical analysis for significant trades
+      const isSignificantTrade = value > 1000 || pnl > 50 || holdTimeMinutes > 1440; // $1000+ value, $50+ P&L, or 1+ day hold
+      
+      if (!isSignificantTrade) {
+        console.log(`Fast classification for small trade ${trade.id}: $${value.toFixed(2)} value, ${holdTimeMinutes}min hold`);
+        return {
+          strategy: this.classifyTradeStrategy(trade),
+          confidence: 0.7,
+          method: 'fast_path',
+          signals: [],
+          holdTimeMinutes,
+          analysisType: 'time_based_optimized'
+        };
+      }
+
+      const symbol = trade.symbol;
+      const entryTime = new Date(trade.entry_time);
+      const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
+      const entryPrice = parseFloat(trade.entry_price);
+      const exitPrice = parseFloat(trade.exit_price);
+
+      // Get price data around the trade period (minimal range for performance)
+      const entryTimestamp = Math.floor(entryTime.getTime() / 1000);
+      const exitTimestamp = Math.floor(exitTime.getTime() / 1000);
+      
+      // Reduced analysis window for performance
+      const analysisStart = entryTimestamp - (12 * 60 * 60); // 12 hours before (was 24)
+      const analysisEnd = exitTimestamp + (6 * 60 * 60); // 6 hours after (was 24)
+
+      // Only fetch candles (skip expensive technical indicators for performance)
+      console.log(`Full classification for significant trade ${trade.id}: $${value.toFixed(2)} value`);
+      
+      const candles = await finnhub.getCandles(symbol, '60', analysisStart, analysisEnd, userId).catch(() => null);
+
+      // Skip news data and technical indicators for performance
+      // Analyze the trade based on basic price movement
+      const analysis = this.analyzeTradeCharacteristics({
+        trade,
+        patterns: null,
+        candles,
+        technicalData: null, // Skip for performance
+        entryTimestamp,
+        exitTimestamp,
+        newsData: null // Skip for performance
+      });
+
+      // Record successful API call for circuit breaker
+      try {
+        await cache.set(circuitBreakerKey, { failures: 0, lastSuccess: Date.now() }, 3600 * 1000); // Reset failures on success
+      } catch (cacheError) {
+        // Ignore cache errors
+      }
+
+      return analysis.strategy;
+
+    } catch (error) {
+      console.error(`Error analyzing trade ${trade.id} for strategy classification:`, error);
+      
+      // Record failure for circuit breaker
+      try {
+        const circuitBreakerData = await cache.get(circuitBreakerKey) || { failures: 0 };
+        circuitBreakerData.failures = (circuitBreakerData.failures || 0) + 1;
+        circuitBreakerData.lastFailure = Date.now();
+        await cache.set(circuitBreakerKey, circuitBreakerData, 3600 * 1000); // Store for 1 hour
+        
+        if (circuitBreakerData.failures >= 10) {
+          console.log(`[ERROR] Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
+        }
+      } catch (cacheError) {
+        // Ignore cache errors
+      }
+      
+      return this.classifyTradeStrategy(trade); // Fallback to time-based
+    }
+  }
+
+  // Get relevant technical indicators for trade analysis
+  static async getTechnicalIndicators(symbol, entryTimestamp, exitTimestamp, userId = null) {
+    const finnhub = require('../utils/finnhub');
+    
+    // Calculate intelligent date range to avoid "increase from and to range" errors
+    const tradeStart = entryTimestamp;
+    const tradeEnd = exitTimestamp || entryTimestamp;
+    const tradeDurationDays = (tradeEnd - tradeStart) / (24 * 60 * 60);
+    
+    // Use adaptive range based on trade duration and technical indicator requirements
+    // RSI needs 14+ periods, MACD needs 26+ periods, BBands needs 20+ periods
+    // Use 5-minute resolution for more data points
+    let analysisStart, analysisEnd, resolution;
+    
+    if (tradeDurationDays < 1) {
+      // Short trades: use minimal data for quick analysis
+      // RSI-14 needs ~3-4x periods for stability: 14 periods × 4 = 56 periods minimum
+      // At 60-minute resolution: 56 hours = ~2.3 days minimum
+      analysisStart = tradeStart - (7 * 24 * 60 * 60); // 7 days before (168 hours = 168 periods)
+      analysisEnd = tradeEnd + (1 * 24 * 60 * 60); // 1 day after
+      resolution = '60'; // 60-minute bars
+    } else if (tradeDurationDays < 7) {
+      // Medium trades: use daily data for better stability
+      analysisStart = tradeStart - (30 * 24 * 60 * 60); // 30 days before
+      analysisEnd = tradeEnd + (5 * 24 * 60 * 60); // 5 days after
+      resolution = 'D'; // Daily bars
+    } else {
+      // Long trades: use daily data with more history
+      analysisStart = tradeStart - (60 * 24 * 60 * 60); // 60 days before
+      analysisEnd = tradeEnd + (7 * 24 * 60 * 60); // 7 days after
+      resolution = 'D'; // Daily bars
+    }
+
+    try {
+      console.log(`Fetching technical indicators for ${symbol}: ${new Date(analysisStart * 1000).toISOString()} to ${new Date(analysisEnd * 1000).toISOString()} (${resolution}min resolution)`);
+      
+      // Fetch indicators with adaptive parameters
+      const indicators = {};
+      
+      // RSI - most reliable indicator
+      // Skip RSI for known problematic symbols that consistently fail
+      const problematicSymbols = ['AAPL', 'ORIS']; // Add symbols that consistently fail
+      if (problematicSymbols.includes(symbol)) {
+        console.warn(`Skipping RSI for known problematic symbol: ${symbol}`);
+        indicators.rsi = null;
+      } else {
+        try {
+          indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 }, userId);
+        } catch (error) {
+          console.warn(`RSI failed for ${symbol}: ${error.message}`);
+
+          // Try one simple fallback: daily data with minimal range
+          if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
+            try {
+              // Minimal approach: 30 days of daily data only
+              console.warn(`Retrying RSI for ${symbol} with minimal daily data`);
+              const minimalStart = tradeStart - (30 * 24 * 60 * 60); // 30 days only
+              const minimalEnd = tradeEnd; // No extra days after
+              indicators.rsi = await finnhub.getTechnicalIndicator(symbol, 'D', minimalStart, minimalEnd, 'rsi', { timeperiod: 14 }, userId);
+            } catch (minimalError) {
+              console.warn(`RSI minimal fallback failed for ${symbol}, adding to problematic symbols list: ${minimalError.message}`);
+              indicators.rsi = null;
+            }
+          } else {
+            indicators.rsi = null;
+          }
+        }
+      }
+
+      // MACD - requires more data
+      try {
+        indicators.macd = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'macd', {
+          fastperiod: 12, slowperiod: 26, signalperiod: 9
+        }, userId);
+      } catch (error) {
+        console.warn(`MACD failed for ${symbol}: ${error.message}`);
+
+        // Skip MACD on this error since it requires even more data than RSI
+        console.warn(`Skipping MACD for ${symbol} due to data range limitations`);
+        indicators.macd = null;
+      }
+
+      // Bollinger Bands - also requires significant data
+      try {
+        indicators.bbands = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'bbands', {
+          timeperiod: 20, nbdevup: 2, nbdevdn: 2
+        }, userId);
+      } catch (error) {
+        console.warn(`BBands failed for ${symbol}: ${error.message}`);
+
+        // Try fallback with shorter BBands period
+        if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
+          try {
+            // Fallback: Use shorter BBands period (10 instead of 20) with daily resolution
+            console.warn(`Retrying BBands for ${symbol} with shorter period (10) and daily resolution`);
+            const dailyStart = Math.floor((tradeStart - (30 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 30 days for BBands-10
+            const dailyEnd = Math.floor((tradeEnd + (3 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 3 days after
+            indicators.bbands = await finnhub.getTechnicalIndicator(symbol, 'D', dailyStart, dailyEnd, 'bbands', {
+              timeperiod: 10, nbdevup: 2, nbdevdn: 2
+            }, userId);
+          } catch (fallbackError) {
+            console.warn(`BBands fallback failed for ${symbol}: ${fallbackError.message}`);
+            indicators.bbands = null;
+          }
+        } else {
+          indicators.bbands = null;
+        }
+      }
+
+      // Return indicators with null placeholders for unused ones
+      return { 
+        ...indicators,
+        sma: null, 
+        ema: null, 
+        adx: null, 
+        stoch: null 
+      };
+    } catch (error) {
+      console.error('Error fetching technical indicators:', error);
+      return null;
+    }
+  }
+
+  // Analyze trade characteristics to determine strategy
+  static analyzeTradeCharacteristics({ trade, patterns, candles, technicalData, entryTimestamp, exitTimestamp, newsData = null }) {
+    const holdTimeMinutes = parseFloat(trade.hold_time_minutes || 0);
+    const pnl = parseFloat(trade.pnl || 0);
+    const entryPrice = parseFloat(trade.entry_price);
+    const exitPrice = parseFloat(trade.exit_price);
+    const side = trade.side;
+    const priceMove = side === 'long' ? (exitPrice - entryPrice) / entryPrice : (entryPrice - exitPrice) / entryPrice;
+
+    let strategy = 'day_trading'; // Default
+    let confidence = 0.5;
+    const signals = [];
+
+    // Time-based initial classification
+    if (holdTimeMinutes < 15) {
+      strategy = 'scalper';
+      confidence = 0.8;
+    } else if (holdTimeMinutes > 1440) {
+      strategy = 'swing';
+      confidence = 0.7;
+    }
+
+    // Skip pattern analysis - removed per user request to use only technical indicators
+
+    // Enhanced technical indicator analysis with comprehensive indicators
+    if (technicalData) {
+      const rsiSignals = this.analyzeRSI(technicalData.rsi, entryTimestamp, exitTimestamp);
+      const macdSignals = this.analyzeMACD(technicalData.macd, entryTimestamp, exitTimestamp);
+      
+      if (rsiSignals.indicates === 'momentum') {
+        strategy = 'momentum';
+        confidence = Math.max(confidence, 0.75);
+        signals.push('RSI momentum signals');
+      } else if (rsiSignals.indicates === 'mean_reversion') {
+        strategy = 'mean_reversion';
+        confidence = Math.max(confidence, 0.8);
+        signals.push('RSI oversold/overbought signals');
+      }
+
+      if (macdSignals.indicates === 'momentum') {
+        if (strategy !== 'mean_reversion') { // Don't override strong mean reversion signals
+          strategy = 'momentum';
+          confidence = Math.max(confidence, 0.8);
+          signals.push('MACD momentum crossover');
+        }
+      }
+
+      // Analyze Bollinger Bands for volatility breakouts or mean reversion
+      if (technicalData.bbands) {
+        const bbandAnalysis = this.analyzeBollingerBands(technicalData.bbands, entryTimestamp, exitTimestamp, side);
+        if (bbandAnalysis.indicates === 'breakout') {
+          strategy = 'momentum';
+          confidence = Math.max(confidence, 0.85);
+          signals.push('Bollinger Band breakout');
+        } else if (bbandAnalysis.indicates === 'mean_reversion') {
+          strategy = 'mean_reversion';
+          confidence = Math.max(confidence, 0.8);
+          signals.push('Bollinger Band touch and reversal');
+        }
+      }
+
+      // Analyze ADX for trend strength
+      if (technicalData.adx) {
+        const adxAnalysis = this.analyzeADX(technicalData.adx, entryTimestamp);
+        if (adxAnalysis.trendStrength === 'strong' && holdTimeMinutes < 480) {
+          if (strategy !== 'mean_reversion') { // Strong trends favor momentum
+            strategy = 'momentum';
+            confidence = Math.max(confidence, 0.8);
+            signals.push('Strong trend (ADX > 25)');
+          }
+        }
+      }
+
+      // Analyze Stochastic for overbought/oversold conditions
+      if (technicalData.stoch) {
+        const stochAnalysis = this.analyzeStochastic(technicalData.stoch, entryTimestamp, side);
+        if (stochAnalysis.indicates === 'mean_reversion') {
+          strategy = 'mean_reversion';
+          confidence = Math.max(confidence, 0.75);
+          signals.push('Stochastic oversold/overbought reversal');
+        }
+      }
+    }
+
+    // Price movement analysis
+    if (Math.abs(priceMove) > 0.05 && holdTimeMinutes < 60) { // >5% move in <1 hour
+      strategy = 'momentum';
+      confidence = Math.max(confidence, 0.85);
+      signals.push('Large quick price movement');
+    }
+
+    // News-driven trade analysis (Pro feature)
+    if (newsData && newsData.hasNews && newsData.newsEvents.length > 0) {
+      signals.push(`${newsData.newsEvents.length} news event(s) on trade date`);
+      
+      // Analyze news sentiment impact on strategy
+      if (newsData.sentiment === 'positive' || newsData.sentiment === 'negative') {
+        // News-driven trades often indicate momentum or event-driven strategies
+        if (holdTimeMinutes < 240) { // Less than 4 hours
+          if (Math.abs(priceMove) > 0.02) { // >2% move
+            strategy = 'news_momentum';
+            confidence = Math.max(confidence, 0.9);
+            signals.push(`${newsData.sentiment} news drove price movement`);
+          }
+        } else if (holdTimeMinutes < 1440) { // Less than 1 day
+          // Longer news-driven positions might be event-based swing trades
+          strategy = 'news_swing';
+          confidence = Math.max(confidence, 0.8);
+          signals.push(`${newsData.sentiment} news influenced swing position`);
+        }
+      }
+      
+      // Mixed sentiment might indicate uncertainty-driven mean reversion
+      if (newsData.sentiment === 'mixed' && Math.abs(priceMove) < 0.01) {
+        strategy = 'news_uncertainty';
+        confidence = Math.max(confidence, 0.7);
+        signals.push('Mixed news sentiment led to range-bound trading');
+      }
+    }
+
+    return {
+      strategy,
+      confidence: Math.round(confidence * 100) / 100,
+      signals,
+      holdTimeMinutes,
+      priceMove: Math.round(priceMove * 10000) / 100 // As percentage
+    };
+  }
+
+  // Pattern recognition methods removed - now using only technical indicators per user request
+
+  // Technical indicator analysis helpers
+  static analyzeRSI(rsiData, entryTime, exitTime) {
+    if (!rsiData || !rsiData.rsi || rsiData.rsi.length === 0) {
+      return { indicates: 'unknown' };
+    }
+
+    // Find RSI values around entry and exit
+    const entryRSI = this.findIndicatorAtTime(rsiData, entryTime);
+    const exitRSI = this.findIndicatorAtTime(rsiData, exitTime);
+
+    if (entryRSI < 30 || exitRSI > 70) {
+      return { indicates: 'mean_reversion', reason: 'RSI oversold/overbought levels' };
+    } else if (entryRSI > 50 && exitRSI > entryRSI) {
+      return { indicates: 'momentum', reason: 'RSI trending higher' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  static analyzeMACD(macdData, entryTime, exitTime) {
+    if (!macdData || !macdData.macd || !macdData.signal) {
+      return { indicates: 'unknown' };
+    }
+
+    const entryMACD = this.findIndicatorAtTime(macdData, entryTime);
+    const entrySignal = this.findIndicatorAtTime({ signal: macdData.signal }, entryTime);
+
+    if (entryMACD && entrySignal && entryMACD > entrySignal) {
+      return { indicates: 'momentum', reason: 'MACD above signal line' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  static findIndicatorAtTime(indicatorData, targetTime) {
+    if (!indicatorData.t || !indicatorData.t.length) return null;
+    
+    const targetTimestamp = Math.floor(targetTime);
+    let closestIndex = 0;
+    let closestDiff = Math.abs(indicatorData.t[0] - targetTimestamp);
+
+    for (let i = 1; i < indicatorData.t.length; i++) {
+      const diff = Math.abs(indicatorData.t[i] - targetTimestamp);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        closestIndex = i;
+      }
+    }
+
+    // Return the main indicator value (RSI, MACD, etc.)
+    const dataKeys = Object.keys(indicatorData).filter(key => key !== 't');
+    if (dataKeys.length > 0) {
+      return indicatorData[dataKeys[0]][closestIndex];
+    }
+    
+    return null;
+  }
+
+  // Analyze Bollinger Bands for breakout or mean reversion
+  static analyzeBollingerBands(bbandsData, entryTime, exitTime, side) {
+    if (!bbandsData || !bbandsData.lower || !bbandsData.middle || !bbandsData.upper) {
+      return { indicates: 'unknown' };
+    }
+
+    // Find values around entry
+    const entryLower = this.findIndicatorAtTime(bbandsData.lower, entryTime);
+    const entryMiddle = this.findIndicatorAtTime(bbandsData.middle, entryTime);
+    const entryUpper = this.findIndicatorAtTime(bbandsData.upper, entryTime);
+
+    // Simple analysis: if price near bands, it's either breakout or mean reversion
+    // This is simplified - real implementation would check actual price vs bands
+    const bandwidth = entryUpper - entryLower;
+    const narrowBand = bandwidth < (entryMiddle * 0.02); // Band squeeze
+
+    if (narrowBand) {
+      return { indicates: 'breakout', reason: 'Bollinger Band squeeze' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  // Analyze ADX for trend strength
+  static analyzeADX(adxData, entryTime) {
+    if (!adxData || !adxData.adx) {
+      return { trendStrength: 'unknown' };
+    }
+
+    const adxValue = this.findIndicatorAtTime(adxData, entryTime);
+    
+    if (adxValue > 25) {
+      return { trendStrength: 'strong', value: adxValue };
+    } else if (adxValue > 20) {
+      return { trendStrength: 'moderate', value: adxValue };
+    } else {
+      return { trendStrength: 'weak', value: adxValue };
+    }
+  }
+
+  // Analyze Stochastic for overbought/oversold
+  static analyzeStochastic(stochData, entryTime, side) {
+    if (!stochData || !stochData.k || !stochData.d) {
+      return { indicates: 'unknown' };
+    }
+
+    const kValue = this.findIndicatorAtTime(stochData.k, entryTime);
+    const dValue = this.findIndicatorAtTime(stochData.d, entryTime);
+
+    if (side === 'long' && kValue < 20) {
+      return { indicates: 'mean_reversion', reason: 'Stochastic oversold entry' };
+    } else if (side === 'short' && kValue > 80) {
+      return { indicates: 'mean_reversion', reason: 'Stochastic overbought entry' };
+    }
+
+    return { indicates: 'neutral' };
+  }
+
+  // Get strategy filter condition for SQL queries
+  static getStrategyFilter(strategy) {
+    if (!strategy) return '';
+
+    // Map strategy to hold time ranges
+    const strategyMappings = {
+      'scalper': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) < 900', // < 15 min
+      'day_trading': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 14400', // 15min - 4hrs (excluding quick profitable momentum)
+      'momentum': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 28800', // 15min - 8hrs
+      'mean_reversion': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400', // 4hrs - 1day
+      'swing': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 86400 AND 604800', // 1day - 1week
+      'position': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) >= 604800', // > 1 week
+      'breakout': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 900 AND 28800 AND t.pnl > 0', // Quick profitable trades
+      'reversal': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400', // Same as mean reversion
+      'trend_following': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 28800 AND 604800', // 8hrs - 1week
+      'contrarian': 'EXTRACT(EPOCH FROM (COALESCE(t.exit_time, NOW()) - t.entry_time)) BETWEEN 14400 AND 86400' // Same as mean reversion
+    };
+
+    const condition = strategyMappings[strategy];
+    return condition ? ` AND ${condition}` : '';
+  }
+
+  // Delete a round trip trade
+  static async deleteRoundTrip(roundTripId, userId) {
+    // First, unlink any associated trades
+    await db.query('UPDATE trades SET round_trip_id = NULL WHERE round_trip_id = $1', [roundTripId]);
+    
+    // Then delete the round trip record
+    const query = `
+      DELETE FROM round_trip_trades
+      WHERE id = $1 AND user_id = $2
+      RETURNING id
+    `;
+
+    const result = await db.query(query, [roundTripId, userId]);
+    return result.rows[0];
+  }
+
+  // Basic strategy classification for incomplete trades (no exit data)
+  static async classifyTradeBasic(trade) {
+    const entryTime = new Date(trade.entry_time);
+    const exitTime = trade.exit_time ? new Date(trade.exit_time) : new Date();
+    const holdTimeMinutes = trade.hold_time_minutes || ((exitTime - entryTime) / (1000 * 60));
+    const quantity = parseFloat(trade.quantity || 0);
+    const entryPrice = parseFloat(trade.entry_price || 0);
+    const positionSize = quantity * entryPrice;
+
+    // Basic classification primarily based on current hold time for open positions
+    let strategy = 'day_trading'; // Default
+    let confidence = 0.6; // Lower confidence for incomplete trades
+
+    if (holdTimeMinutes < 15) {
+      strategy = 'scalper';
+      confidence = 0.8; // High confidence for very short holds
+    } else if (holdTimeMinutes < 240) { // < 4 hours
+      strategy = 'day_trading';
+      confidence = 0.7;
+    } else if (holdTimeMinutes < 480) { // 4-8 hours
+      strategy = 'momentum';
+      confidence = 0.65;
+    } else if (holdTimeMinutes < 1440) { // < 1 day
+      strategy = 'mean_reversion';
+      confidence = 0.6;
+    } else if (holdTimeMinutes < 10080) { // < 1 week
+      strategy = 'swing';
+      confidence = 0.75;
+    } else {
+      strategy = 'position';
+      confidence = 0.8; // High confidence for very long holds
+    }
+
+    // Additional factors for partial classification
+    const signals = [];
+    
+    // Position size analysis (basic)
+    if (positionSize > 50000) {
+      signals.push('Large position size');
+      if (strategy === 'scalper') {
+        strategy = 'day_trading'; // Large positions less likely to be scalping
+        confidence = Math.max(confidence, 0.7);
+      }
+    } else if (positionSize < 1000) {
+      signals.push('Small position size');
+      if (strategy === 'swing' || strategy === 'position') {
+        confidence = Math.max(confidence - 0.1, 0.4); // Lower confidence for small swing trades
+      }
+    }
+
+    // Time of day patterns (basic heuristic)
+    const entryHour = entryTime.getHours();
+    if (entryHour >= 9 && entryHour <= 11) {
+      signals.push('Market open entry');
+      if (strategy === 'scalper' || strategy === 'day_trading') {
+        confidence = Math.min(confidence + 0.1, 0.9);
+      }
+    } else if (entryHour >= 15 && entryHour <= 16) {
+      signals.push('Market close entry');
+      if (strategy === 'scalper') {
+        confidence = Math.min(confidence + 0.1, 0.9);
+      }
+    }
+
+    return {
+      strategy,
+      confidence,
+      signals,
+      holdTimeMinutes: Math.round(holdTimeMinutes),
+      method: 'basic_time_based'
+    };
+  }
+
+  // Check for news events on trade date (Pro feature)
+  static async checkNewsForTrade(tradeData, userId = null) {
+    try {
+      // Use the same eligibility check as NewsEnrichmentService
+      const newsEnrichmentService = require('../services/newsEnrichmentService');
+      const isEligible = await newsEnrichmentService.isNewsEnrichmentEnabled(userId);
+      
+      if (!isEligible) {
+        console.log('News enrichment not available for this user');
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          checkedAt: new Date().toISOString()
+        };
+      }
+
+      const finnhub = require('../utils/finnhub');
+      
+      if (!finnhub.isConfigured()) {
+        console.warn('Finnhub not configured, skipping news check');
+        return {
+          hasNews: false,
+          newsEvents: [],
+          sentiment: null,
+          checkedAt: new Date().toISOString()
+        };
+      }
+      
+      const tradeDate = new Date(tradeData.tradeDate || tradeData.entry_time);
+      const symbol = tradeData.symbol;
+      
+      console.log(`Checking news for ${symbol} on ${tradeDate.toISOString().split('T')[0]}`);
+      
+      const newsData = await newsEnrichmentService.getNewsForSymbolAndDate(symbol, tradeDate, userId);
+      
+      return {
+        hasNews: newsData.hasNews,
+        newsEvents: newsData.newsEvents,
+        sentiment: newsData.sentiment,
+        checkedAt: new Date().toISOString()
+      };
+
+    } catch (error) {
+      console.warn(`Error checking news for trade: ${error.message}`);
+      return {
+        hasNews: false,
+        newsEvents: [],
+        sentiment: null,
+        checkedAt: new Date().toISOString(),
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Get Low of Day "to the left" (LoD) at entry time for a symbol
+   * This is used for Qullamaggie-style swing trades where stop loss is set to the lowest price BEFORE entry
+   * The LoD is the minimum low from all candles STRICTLY BEFORE the entry candle
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - Low of Day price before entry time, or null if unavailable
+   */
+  static async getLowOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      const priceFallbackManager = require('../utils/priceFallbackManager');
+
+      const entryDate = new Date(entryTime);
+
+      // Ensure entry time is valid
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[LoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+
+      // Get the start of the trading day (4:00 AM ET for premarket)
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      const offsetHours = 12 - etHour;
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
+
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+
+      // Calculate time available before entry (in minutes)
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[LoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[LoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      // If entry is within 1 minute of day start, we can't determine LoD "to the left"
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[LoD] Entry time is less than 1 minute after day start, cannot determine LoD to the left`);
+        return null;
+      }
+
+      // Helper function to fetch candles with Finnhub->Schwab fallback
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        // Use the fallback manager which handles 403 errors and routes to Schwab
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          },
+          finnhub.providerName || 'finnhub'
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[LoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
+      // Ensure entry time is after day start
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[LoD] Entry time is before market open, cannot determine LoD to the left`);
+        return null;
+      }
+
+      // Choose resolution based on time available before entry
+      // Use 1-minute candles if we have less than 30 minutes, otherwise 5-minute is sufficient
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[LoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+
+      // Fetch candles from start of day to entry time
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      // If chosen resolution data is not available, try the other resolution
+      if (!candles || candles.length === 0) {
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[LoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
+      }
+
+      // If still no data, cannot determine LoD to the left
+      if (!candles || candles.length === 0) {
+        console.warn(`[LoD] No intraday candle data available for ${symbol}`);
+        return null;
+      }
+
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "LoD to the left" - the lowest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[LoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[LoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the minimum low price from candles BEFORE entry
+      const lows = candlesBeforeEntry.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
+
+      if (lows.length === 0) {
+        console.warn(`[LoD] No valid low prices found for ${symbol}`);
+        return null;
+      }
+
+      const lod = Math.min(...lows);
+
+      // Log detailed info for debugging
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[LoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[LoD] Low of Day "to the left" for ${symbol}: $${lod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+
+      return roundToDbPrecision(lod, 4);
+    } catch (error) {
+      console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get the High of Day (HoD) price "to the left" of entry time.
+   * Mirror of getLowOfDayAtEntry() but for short positions.
+   * The HoD is the maximum high from all candles STRICTLY BEFORE the entry candle
+   * @param {string} symbol - Stock symbol
+   * @param {Date|string} entryTime - Entry time of the trade
+   * @param {string} userId - User ID for API usage tracking
+   * @returns {Promise<number|null>} - High of Day price before entry time, or null if unavailable
+   */
+  static async getHighOfDayAtEntry(symbol, entryTime, userId = null) {
+    try {
+      const finnhub = require('../utils/finnhub');
+      const priceFallbackManager = require('../utils/priceFallbackManager');
+
+      const entryDate = new Date(entryTime);
+
+      if (isNaN(entryDate.getTime())) {
+        console.warn(`[HoD] Invalid entry time: ${entryTime}`);
+        return null;
+      }
+
+      const entryDateStr = entryDate.toISOString().split('T')[0];
+
+      // Calculate UTC offset for Eastern Time
+      const testUTC = new Date(`${entryDateStr}T12:00:00.000Z`);
+      const etParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      }).formatToParts(testUTC);
+
+      const etHour = parseInt(etParts.find(p => p.type === 'hour').value);
+      const offsetHours = 12 - etHour;
+      const utcHour4amET = 4 + offsetHours;
+      const dayStart = new Date(`${entryDateStr}T${String(utcHour4amET).padStart(2, '0')}:00:00.000Z`);
+
+      const entryTimestamp = Math.floor(entryDate.getTime() / 1000);
+      const dayStartTimestamp = Math.floor(dayStart.getTime() / 1000);
+
+      const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
+
+      console.log(`[HoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
+      console.log(`[HoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+
+      if (minutesBeforeEntry < 1) {
+        console.warn(`[HoD] Entry time is less than 1 minute after day start, cannot determine HoD to the left`);
+        return null;
+      }
+
+      const fetchCandlesWithFallback = async (res, from, to) => {
+        const { data, source } = await priceFallbackManager.getCandlesWithFallback(
+          symbol,
+          res,
+          from,
+          to,
+          async (sym, resolution, fromTs, toTs) => {
+            return await finnhub.getStockCandles(sym, resolution, fromTs, toTs, userId);
+          },
+          finnhub.providerName || 'finnhub'
+        );
+
+        if (data && data.length > 0) {
+          console.log(`[HoD] Got ${data.length} candles for ${symbol} from ${source}`);
+        }
+        return data;
+      };
+
+      if (entryTimestamp <= dayStartTimestamp) {
+        console.warn(`[HoD] Entry time is before market open, cannot determine HoD to the left`);
+        return null;
+      }
+
+      let resolution = minutesBeforeEntry < 30 ? '1' : '5';
+      console.log(`[HoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+
+      let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
+
+      if (!candles || candles.length === 0) {
+        const fallbackResolution = resolution === '1' ? '5' : '1';
+        console.log(`[HoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
+      }
+
+      if (!candles || candles.length === 0) {
+        console.warn(`[HoD] No intraday candle data available for ${symbol}`);
+        return null;
+      }
+
+      // CRITICAL: Filter candles to only include those STRICTLY BEFORE entry time
+      // This gives us "HoD to the left" - the highest price before we entered the trade
+      const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
+
+      console.log(`[HoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+
+      if (candlesBeforeEntry.length === 0) {
+        console.warn(`[HoD] No candles found before entry time for ${symbol}`);
+        return null;
+      }
+
+      // Find the maximum high price from candles BEFORE entry
+      const highs = candlesBeforeEntry.map(c => parseFloat(c.high)).filter(h => !isNaN(h));
+
+      if (highs.length === 0) {
+        console.warn(`[HoD] No valid high prices found for ${symbol}`);
+        return null;
+      }
+
+      const hod = Math.max(...highs);
+
+      const firstCandle = candlesBeforeEntry[0];
+      const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
+      console.log(`[HoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
+      console.log(`[HoD] High of Day "to the left" for ${symbol}: $${hod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+
+      return roundToDbPrecision(hod, 4);
+    } catch (error) {
+      console.warn(`[HoD] Error fetching High of Day for ${symbol}: ${error.message}`);
+      return null;
+    }
+  }
+
+  // Simple sentiment analysis for news headlines and summaries
+  static analyzeNewsSentiment(headline, summary) {
+    const text = `${headline} ${summary}`.toLowerCase();
+    
+    const positiveWords = [
+      'positive', 'up', 'rise', 'gain', 'growth', 'increase', 'strong', 'beat', 'beats',
+      'exceed', 'higher', 'good', 'great', 'excellent', 'profit', 'surge', 'jump',
+      'rally', 'bullish', 'breakthrough', 'success', 'upgrade', 'outperform'
+    ];
+    
+    const negativeWords = [
+      'negative', 'down', 'fall', 'drop', 'decline', 'decrease', 'weak', 'miss', 'misses',
+      'below', 'lower', 'bad', 'poor', 'loss', 'losses', 'plunge', 'crash',
+      'bearish', 'concern', 'worry', 'downgrade', 'underperform', 'cut', 'reduce'
+    ];
+
+    let positiveScore = 0;
+    let negativeScore = 0;
+
+    positiveWords.forEach(word => {
+      const matches = (text.match(new RegExp(word, 'g')) || []).length;
+      positiveScore += matches;
+    });
+
+    negativeWords.forEach(word => {
+      const matches = (text.match(new RegExp(word, 'g')) || []).length;
+      negativeScore += matches;
+    });
+
+    if (positiveScore > negativeScore) {
+      return 'positive';
+    } else if (negativeScore > positiveScore) {
+      return 'negative';
+    } else {
+      return 'neutral';
+    }
+  }
+
+  // Calculate overall sentiment from multiple news articles
+  static calculateOverallSentiment(newsArticles) {
+    if (!newsArticles || newsArticles.length === 0) {
+      return null;
+    }
+
+    const sentiments = newsArticles.map(article => article.sentiment);
+    const positiveCount = sentiments.filter(s => s === 'positive').length;
+    const negativeCount = sentiments.filter(s => s === 'negative').length;
+    const neutralCount = sentiments.filter(s => s === 'neutral').length;
+
+    if (positiveCount > negativeCount && positiveCount > neutralCount) {
+      return 'positive';
+    } else if (negativeCount > positiveCount && negativeCount > neutralCount) {
+      return 'negative';
+    } else if (positiveCount === negativeCount && positiveCount > 0) {
+      return 'mixed';
+    } else {
+      return 'neutral';
+    }
+  }
+}
+
+module.exports = Trade;
+ LIMIT 1)) AS instrument_currency,
+        (SELECT ua.currency FROM user_accounts ua WHERE ua.user_id=t.user_id AND ua.account_identifier=t.account_identifier AND ua.broker=t.broker LIMIT 1) AS account_currency
+      FROM trades t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN gamification_profile gp ON u.id = gp.user_id
+      LEFT JOIN symbol_categories sc ON t.symbol = sc.symbol
+      WHERE t.id = $1
+    `;
+
+    const values = [id];
+
+    if (userId) {
+      query += ` AND (t.user_id = $2 OR t.is_public = true)`;
+      values.push(userId);
+    } else {
+      query += ` AND t.is_public = true`;
+    }
+
+    query += ` GROUP BY t.id, u.id, u.username, u.avatar_url, gp.display_name, sc.finnhub_industry, sc.company_name, sc.currency`;
 
     const result = await db.query(query, values);
     const trade = result.rows[0];

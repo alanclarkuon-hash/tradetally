@@ -31,13 +31,14 @@ vi.mock('@/stores/auth', () => ({
 
 vi.mock('@/composables/useGlobalAccountFilter', () => ({
   useGlobalAccountFilter: () => ({
-    selectedAccount: ref(null)
+    selectedAccount: ref(null),accounts:ref([{value:'usd',currency:'USD'}]),fetchAccounts:vi.fn()
   })
 }))
 
 vi.mock('@/composables/useCurrencyFormatter', () => ({
+  CURRENCY_OPTIONS:[{code:'USD',symbol:'$'}],
   useCurrencyFormatter: () => ({
-    currencySymbol: ref('$'),
+    currencySymbol: ref('$'),symbolFor:()=> '$',
     formatCurrency: (value, options = {}) => {
       const digits = options.maximumFractionDigits ?? 2
       return `$${Number(value).toFixed(digits)}`
@@ -49,6 +50,7 @@ import CalendarView from '@/views/CalendarView.vue'
 
 describe('CalendarView P&L type toggle', () => {
   beforeEach(() => {
+  localStorage.clear()
     localStorage.clear()
     localStorage.setItem('calendar_expanded_month', '2026-07-15T12:00:00.000Z')
     localStorage.setItem('calendar_expanded_year', '2026')
