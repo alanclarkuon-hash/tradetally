@@ -3,6 +3,7 @@ jest.mock('axios', () => ({ get: jest.fn() }));
 jest.mock('../../src/models/Trade', () => ({ create: jest.fn() }));
 jest.mock('../../src/models/BrokerConnection', () => ({
   updateSyncLog: jest.fn(),
+  updateSyncProgress: jest.fn(),
   updateStatus: jest.fn()
 }));
 jest.mock('../../src/services/analyticsCache', () => ({ invalidate: jest.fn() }));
@@ -262,4 +263,10 @@ describe('Trading 212 broker sync', () => {
     const edited = {...trade, executions:trade.executions.map(e=>({...e,price:123}))};
     expect(()=>buildRepair(edited,new Map([['40',entry],['41',exit]]),'UTC')).toThrow('Price edited');
   });
+});
+test('cash section progress contains page counts only and retains imported history',async()=>{
+ const BC=require('../../src/models/BrokerConnection');const connection={trading212ApiKey:'key',trading212ApiSecret:'secret'};
+ axios.get.mockResolvedValueOnce({data:{items:[{id:'private-event',amount:123}],nextPagePath:'/api/v0/equity/history/transactions?cursor=private'},headers:{'x-ratelimit-remaining':1}}).mockResolvedValueOnce({data:{items:[]},headers:{}});
+ expect(await trading212Service.fetchCashHistory(connection,'transactions','log')).toEqual([{id:'private-event',amount:123}]);
+ expect(BC.updateSyncProgress.mock.calls.slice(-3)).toEqual([['log','transactions',0],['log','transactions',1,false],['log','transactions',2,true]]);
 });
