@@ -46,6 +46,7 @@ async function main(){
   for(const grouped of [false,true]){
    group=grouped;const analytics=await Queries.getAnalytics(user,{accounts:['gbp']});
    assert.equal(Number(analytics.summary.totalPnL)*.8,200);checks++;
+   assert.equal(analytics.summary.totalRValue,null,'Missing risk must not report a valid zero R');checks++;
    const daily=analytics.dailyPnL||[];
    assert.ok(daily.length>=2,'Actual dashboard exit-event series must include both exit dates');
    assert.ok(Math.abs(daily.reduce((s,d)=>s+Number(d.daily_pnl||0),0)*.8-200)<1e-8);checks++;
