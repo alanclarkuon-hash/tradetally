@@ -81,7 +81,7 @@ router.get('/risk',run(async(req,res)=>{
  const planEvidence=await Promise.all(plans.rows.filter(p=>p.baseline).map(async p=>({plan:p,result:await evidence(db,p),account:accountRows.find(a=>a.id===p.definition.accountId)?.account_identifier})));
  const config=settings.rows[0]?.settings||{},currency=config.currency||'GBP',rates={USD:1,...fx.rows[0]?.rates};
  const cross=(from,to)=>rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
- let knownRisk=0,unknown=0;const positions=[];
+ let knownRisk=0,conservativeRisk=0,unknown=0;const positions=[];
  for(const [identity,pos] of Object.entries(groups)){
   const stops=[...new Set(pos.trades.map(t=>Number(t.stop_loss)).filter(v=>v>0))];
   const stop=stops.length===1?stops[0]:null;
@@ -93,14 +93,20 @@ router.get('/risk',run(async(req,res)=>{
    risk=matched.reduce((sum,e)=>sum+e.result.capitalRisk*(cross(e.result.currency,currency)||0),0);
    if(matched.some(e=>!cross(e.result.currency,currency)))risk=null;
   }
+  let maximumLoss=null;
+  if(pos.instrumentType==='option'&&pos.side==='long'&&rate>0&&Number(pos.contractSize)>0&&Number(pos.avgPrice)>=0)maximumLoss=pos.totalQuantity*pos.avgPrice*Number(pos.contractSize)*rate;
+  if(matched.length&&matched.every(e=>e.result.maximumLoss!=null&&e.result.coverageComplete)&&Math.abs(matched.reduce((sum,e)=>sum+e.result.openQuantity,0)-pos.totalQuantity)<1e-8){
+   maximumLoss=matched.every(e=>cross(e.result.currency,currency))?matched.reduce((s,e)=>s+e.result.maximumLoss*cross(e.result.currency,currency),0):null;
+  }
+  if(maximumLoss!=null)conservativeRisk+=maximumLoss;
   if(risk==null)unknown++;else knownRisk+=risk;
-  positions.push({accountId:accountRows.find(a=>identity.startsWith(a.account_identifier+'|'))?.id||null,symbol:pos.symbol,quantity:pos.totalQuantity,risk,source:stop?'recorded stop':'missing stop/FX',asOf:pos.brokerQuote?.asOf||null});
+  positions.push({accountId:accountRows.find(a=>identity.startsWith(a.account_identifier+'|'))?.id||null,symbol:pos.symbol,quantity:pos.totalQuantity,risk,maximumLoss,source:stop?'recorded stop':'missing stop/FX',asOf:pos.brokerQuote?.asOf||null});
  }
 const commitments=(await db.query("SELECT currency,risk_amount FROM trade_plan_commitments WHERE user_id=$1 AND status='reserved'",[req.user.id])).rows;
  for(const c of commitments){const r=cross(c.currency,currency);if(r)knownRisk+=Number(c.risk_amount)*r;else unknown++;}
  // Manual investments need lot-level stops before they can count as known risk.
  if(Number(manual.rows[0]?.count)>0)unknown+=Number(manual.rows[0].count);
- res.json({knownRisk,unknown,positions,currency,limit:config.portfolioLimit||null,fxDate:fx.rows[0]?.rate_date||null,selectedLevel:config.selectedLevel??null});
+ res.json({knownRisk,conservativeRisk,unknown,positions,currency,limit:config.portfolioLimit||null,fxDate:fx.rows[0]?.rate_date||null,selectedLevel:config.selectedLevel??null});
 }));
 router.post('/library',run(async(req,res)=>{
  const s=Joi.object({kind:Joi.string().valid('entry','exit','context').required(),name:Joi.string().trim().min(1).max(100).required(),definition:Joi.string().max(2000).allow('').default('')}).validate(req.body);

@@ -71,3 +71,18 @@ test.each(['long','short'])('Kraken journal lots retain reconciled prices and co
 const rebateTrade=()=>({id:'rebate',broker:'ibkr',side:'long',symbol:'TEST',instrument_type:'stock',original_currency:'USD',commission:0,fees:.5,executions:[{execution_id:'open',action:'buy',quantity:1,price:100,datetime:'2026-01-01T00:00:00Z',fees:-.5},{execution_id:'close',action:'sell',quantity:1,price:110,datetime:'2026-01-02T00:00:00Z',fees:1}]});
 test('IBKR identified rebates reconcile aggregate costs and remain in entry linker and plan profit',()=>{const t=rebateTrade(),f=sourceFills(t);expect(f).toHaveLength(2);expect(f[0]).toMatchObject({costs:-.5,costsVerified:true});expect(ledger(plan(),allocations(t),[t]).realisedProfit).toBe(9.5)});
 test.each(['broker','identity','aggregate'])('unverified signed costs remain excluded: %s',field=>{const t=rebateTrade();if(field==='broker')t.broker='manual';if(field==='identity')delete t.executions[0].execution_id;if(field==='aggregate')t.fees=5;expect(sourceFills(t).some(f=>f.action==='entry')).toBe(false)});
+
+test('broker-evidenced zero-value exits retain their quantity, identity and complete loss',()=>{
+ const t=trade();t.broker='trading212';t.commission=0;t.executions=[{id:'entry',action:'buy',price:100,quantity:10,datetime:'2026-01-01',commission:0},{id:'zero-close',order_id:'close-id',action:'sell',price:0,quantity:10,datetime:'2026-01-02',broker_result:-1000,broker_result_currency:'USD',commission:0}];
+ const before=JSON.stringify(t);const fills=sourceFills(t);expect(fills).toHaveLength(2);expect(fills[1]).toMatchObject({price:0,quantity:10,zeroPriceEvidence:'broker_reported_zero_value_closure'});
+ const result=ledger(plan(),allocations(t),[t]);expect(result.realisedProfit).toBe(-1000);expect(result.economicallyClosed).toBe(true);expect(JSON.stringify(t)).toBe(before);
+ delete t.executions[1].broker_result;expect(sourceFills(t)).toHaveLength(1);
+});
+test('zero acquisition accepts verified statement cash basis without inventing a quoted price',()=>{
+ const t=trade();t.broker='etoro';t.quantity=10;t.commission=0;t.executions=[{id:'free',action:'buy',price:0,quantity:10,datetime:'2026-01-01',etoro_statement_source:true,etoro_capital_basis:'statement_close_cash_and_reported_net',etoro_capital_currency:'USD',etoro_invested_capital:0,etoro_leverage:1},{id:'exit',action:'sell',price:10,quantity:10,datetime:'2026-01-02',etoro_position_id:'synthetic',etoro_reported_net_profit:100}];
+ expect(sourceFills(t)[0]).toMatchObject({price:0,economicPrice:0,investedCapital:0,zeroPriceEvidence:'broker_cash_acquisition_basis'});
+ delete t.executions[0].etoro_invested_capital;expect(sourceFills(t).filter(f=>f.action==='entry')).toHaveLength(0);
+});
+test('unverified or negative zero-price source data never invents a fill',()=>{const t=trade();t.executions[0].price=0;expect(sourceFills(t).some(f=>f.action==='entry')).toBe(false);t.executions[0].price=-1;expect(sourceFills(t).some(f=>f.action==='entry')).toBe(false)});
+
+test('purchased option maximum premium loss is separate from underlying stop risk and clears after final exit',()=>{const t=trade();t.instrument_type='option';t.contract_size=100;t.commission=0;t.executions=t.executions.map(e=>({...e,price:e.action==='buy'?2:3,commission:0}));const p=plan();p.definition.instrument='option';p.definition.options={multiplier:100};const all=allocations(t);const opened=ledger(p,all.filter(a=>a.action==='entry'),[t]);expect(opened.capitalRisk).toBeNull();expect(opened.maximumLoss).toBe(2000);const partial=ledger(p,all.slice(0,2),[t]);expect(partial.maximumLoss).toBe(500);const closed=ledger(p,all,[t]);expect(closed.maximumLoss).toBe(0);});
