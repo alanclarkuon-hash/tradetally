@@ -4368,11 +4368,12 @@ const tradeController = {
 
       // Get chart data using the ChartService (for both stocks and options)
       // For options, this fetches the underlying stock's candlestick data (e.g., SPY)
+      const chartEndDate = trade.plan_trade && !exitDate ? new Date().toISOString() : exitDate;
       const chartData = await ChartService.getTradeChartData(
         userId,
         symbol,
         entryDate,
-        exitDate,
+        chartEndDate,
         req.headers.host,
         resolution,
         trade
