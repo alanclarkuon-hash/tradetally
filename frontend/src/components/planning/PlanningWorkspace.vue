@@ -87,7 +87,7 @@
       <td>{{ rowMoney(kind,e,i) }}</td>
       <td v-if="kind==='exit'&&draft.instrument==='option'"><input :value="displayValue(e.premium,currencies[kind])" @change="e.premium=priceValue($event,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
       <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/></td>
-      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/><details v-if="kind==='entry'" class="trigger-details"><summary>Trigger condition</summary><textarea v-model="e.tactic" class="input" :disabled="preparationLocked||linked(kind,e.key)" aria-label="Entry trigger condition" rows="2"></textarea></details></td>
+      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/></td>
       <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
       <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="toggleTrade(kind,e.key)">{{ linked(kind,e.key)?'Unlink trade':'Link trade' }}</button></td>
       <td><button class="text-red-400" :disabled="preparationLocked||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
@@ -402,7 +402,6 @@ button:disabled,input:disabled{opacity:.6}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid #fb923c;outline-offset:3px}
 .setup-summary{display:flex;flex-direction:column;gap:8px;margin-bottom:16px}.setup-summary span{color:#9ca3af;font-size:13px}.setup-summary p{font-size:14px}
 summary{cursor:pointer;font-size:13px;color:#9ca3af;min-height:28px}
-.trigger-details{margin-top:8px;max-width:220px}
 .position-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;margin-top:20px;font-variant-numeric:tabular-nums}
 .position-overview{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.position-overview strong{font-size:20px}
 .position-metrics small,.result-metrics small{display:block;font-size:12px;margin-bottom:5px}
