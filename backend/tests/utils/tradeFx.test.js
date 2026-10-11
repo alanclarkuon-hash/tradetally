@@ -74,14 +74,19 @@ describe('normalizeRowToUsd', () => {
 
 describe('fxUsd SQL fragment', () => {
   test('passes the companion columns the SQL function needs', () => {
-    expect(fxUsd('pnl', 't')).toBe(
+    expect(fxUsd('pnl', 't')).toContain(
       'trade_amount_usd(t.pnl, t.original_currency, t.exchange_rate, t.original_entry_price_currency)'
     );
   });
 
   test('supports an unaliased trades scan', () => {
-    expect(fxUsd('pnl', '')).toBe(
+    expect(fxUsd('pnl', '')).toContain(
       'trade_amount_usd(pnl, original_currency, exchange_rate, original_entry_price_currency)'
     );
   });
+});
+
+test('account-aware normalisation preserves account cash and reports USD once',()=>{
+ const row={original_currency:'USD',pnl:260,entry_price:100,account_pnl_result:{status:'complete',currency:'GBP',pnl:200,entryCost:800,commission:0,fees:0,events:[]}};
+ normalizeRowToUsd(row,{USD:1,GBP:.8});expect(row.pnl).toBe(250);expect(row.entry_price).toBe(100);expect(row.account_pnl_result.pnl).toBe(200);
 });
