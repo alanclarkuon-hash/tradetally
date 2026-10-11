@@ -122,17 +122,19 @@ function ledger(plan,allocations,trades) {
   const recordAccountCurrency=f.transactionFx?.accountCurrency||f.currency;
   const accountRate=f.transactionFx?f.transactionFx.rate:1;
   if(!accountCurrency||recordAccountCurrency!==accountCurrency||!(accountRate>0))accountFxMissing++;
+  a.accountId=require('./planningAccounts').stageAccount(plan.definition,a.action,a.stage_key);
+  a.accountKey=a.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
   const economicPrice=f.economicPrice??f.price;
   const accountPrice=accountRate>0?economicPrice*f.multiplier/accountRate:null,accountFee=accountRate>0?fee/accountRate:null;
   a.accountCurrency=recordAccountCurrency;
-  const accountKey=plan.definition.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
+  const accountKey=a.accountId||byId.get(a.trade_id)?.account_identifier||a.trade_id;
   const key=accountKey+'|'+JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null)+'|'+f.currency;
   const queue=queues.get(key)||[];queues.set(key,queue);
   if(a.action==='entry'){
    a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*economicPrice*f.multiplier:null;
    a.accountPositionValue=a.valid&&accountPrice!=null&&f.instrument!=='spread_bet'?q*accountPrice:null;
    if(!a.stage_key.startsWith('roll_')&&accountPrice!=null)accountEntryCost+=q*accountPrice;
-   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*economicPrice*f.multiplier;fees+=fee;queue.push({q,price:economicPrice,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
+   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*economicPrice*f.multiplier;fees+=fee;queue.push({q,currency:f.currency,price:economicPrice,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
   }else{
    exited+=q;let remaining=q;let gross=0,entryFees=0,accountGross=0,accountEntryFees=0,accountExitValid=accountPrice!=null&&accountFee!=null;
    while(remaining>1e-8&&queue.length){
@@ -181,8 +183,9 @@ function ledger(plan,allocations,trades) {
  const currency=currencies.size===1?[...currencies][0]:null;
  const costsUnresolved=records.filter(a=>a.fill.costsVerified===false).length;
  const complete=records.length>0&&!unresolved&&!overExit&&!costsUnresolved&&currencies.size===1&&!!currency;
- const accountComplete=complete&&!!accountCurrency&&!accountFxMissing;
- for(const a of records)if(a.action==='exit'){if(!complete)a.realisedProfit=null;if(!complete)a.accountRealisedProfit=null;}
+ const financialComplete=entered>0&&!unresolved&&!overExit&&!costsUnresolved&&records.every(a=>!!a.fill.currency);
+ const accountComplete=financialComplete&&!!accountCurrency&&!accountFxMissing;
+ for(const a of records)if(a.action==='exit'){if(!financialComplete)a.realisedProfit=null;if(!financialComplete)a.accountRealisedProfit=null;}
  const accountRisk=plan.baseline?.currency===accountCurrency?plan.baseline.riskBudget:plan.baseline?.originalRiskCurrency===accountCurrency?plan.baseline.originalRisk:null;
  const avg=openQuantity>1e-8?cost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null;
  const stop=Number(plan.definition.stopPrice)*(plan.stopConversion||1);
@@ -192,10 +195,20 @@ function ledger(plan,allocations,trades) {
  // conservative bound separate from an unverified underlying-stop estimate.
  const maximumLoss=complete&&plan.definition.instrument==='option'&&records.every(a=>a.fill.tradeSide==='long')
   ?openQuantity>1e-8?Math.max(0,cost+[...queues.values()].flat().reduce((s,l)=>s+l.q*l.feePerUnit,0)-realised):0:null;
- return {maximumLoss,accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
+ const accounts=[...new Set(records.map(a=>a.accountKey))].map(key=>{
+  const own=records.filter(a=>a.accountKey===key),lots=[...queues.entries()].filter(([k])=>k.startsWith(key+'|')).flatMap(([,q])=>q);
+  const currencies=new Set(own.map(a=>a.accountCurrency)),currency=currencies.size===1?[...currencies][0]:null;
+  const valid=own.every(a=>a.valid&&a.fill.costsVerified!==false)&&currency&&own.filter(a=>a.action==='exit').every(a=>a.accountRealisedProfit!=null);
+  const rates={USD:1,...plan.marketRates},cross=(from,to)=>from===to?1:rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
+  const nativeRisk=financialComplete&&['stock','cfd','crypto'].includes(plan.definition.instrument)&&plan.definition.stopPrice>0&&lots.every(l=>cross(plan.definition.currency,l.currency))?lots.reduce((v,l)=>{const c=cross(plan.definition.currency,l.currency),level=plan.definition.stopPrice*c;return v+l.q*Math.max(0,plan.definition.direction==='short'?level-l.price:l.price-level)*l.multiplier/c},0):null;
+  const cashLoss=valid&&plan.definition.instrument==='option'&&own.every(a=>a.fill.tradeSide==='long')?lots.length?Math.max(0,lots.reduce((v,l)=>v+l.q*(l.accountPrice+(l.accountFeePerUnit||0)),0)-own.filter(a=>a.action==='exit').reduce((v,a)=>v+a.accountRealisedProfit,0)):0:null;
+  return {capitalRisk:nativeRisk,capitalRiskCurrency:nativeRisk==null?null:plan.definition.currency,maximumLoss:cashLoss,maximumLossCurrency:currency,entryCost:own.filter(a=>a.action==='entry'&&!a.stage_key.startsWith('roll_')).reduce((s,a)=>s+(a.accountPositionValue??0),0),accountId:own[0]?.accountId||null,currency,entered:own.filter(a=>a.action==='entry').reduce((s,a)=>s+a.quantity,0),exited:own.filter(a=>a.action==='exit').reduce((s,a)=>s+a.quantity,0),openQuantity:lots.reduce((s,l)=>s+l.q,0),positionValue:valid&&lots.every(l=>l.accountPrice!=null)?lots.reduce((s,l)=>s+l.q*l.accountPrice,0):null,realisedProfit:valid?own.filter(a=>a.action==='exit').reduce((s,a)=>s+a.accountRealisedProfit,0):null};
+ });
+ const accountRiskCovered=accounts.length>1&&accounts.every(a=>a.capitalRisk!=null);
+ return {capitalRiskCurrency:accountRiskCovered?plan.definition.currency:currency,accounts,maximumLoss,accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
   realisedProfit:complete?realised:null,percentGain:complete&&entryCost>0?realised/entryCost*100:null,
   originalRisk:plan.baseline?.originalRisk??plan.baseline?.riskBudget??null,originalRiskCurrency:plan.baseline?.originalRiskCurrency??plan.baseline?.currency??null,
   realisedR:complete&&(plan.baseline?.originalRiskCurrency||plan.baseline?.currency)===currency&&(plan.baseline?.originalRisk||plan.baseline?.riskBudget)>0?realised/(plan.baseline.originalRisk||plan.baseline.riskBudget):null,
-  capitalRisk,costsUnresolved,provisionalCount:provisional.length,fxEstimated:!!(convert&&provisional.length),economicallyClosed:complete&&!provisional.length&&Math.abs(openQuantity)<1e-8,coverageComplete:complete&&!provisional.length,entryCost,entryFees:fees};
+  capitalRisk:accountRiskCovered?accounts.reduce((v,a)=>v+a.capitalRisk,0):capitalRisk,costsUnresolved,provisionalCount:provisional.length,fxEstimated:!!(convert&&provisional.length),economicallyClosed:financialComplete&&!provisional.length&&Math.abs(openQuantity)<1e-8,coverageComplete:financialComplete&&!provisional.length,entryCost,entryFees:fees};
 }
 module.exports={sourceFills,verifyAllocation,ledger};
