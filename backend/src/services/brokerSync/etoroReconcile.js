@@ -46,13 +46,15 @@ function cashSnapshot(portfolio, accountIdentifier) {
 function mapSnapshot(payload) {
   const instruments = new Map(payload.instruments.map(i => [String(field(i, 'instrumentId')), i]));
   const types = new Map(payload.instrumentTypes.map(t => [String(field(t, 'instrumentTypeId')), field(t, 'instrumentTypeDescription')]));
-  const instrument = id => {
+  const instrument = (id, row) => {
     const item = instruments.get(String(id));
     const description = String(types.get(String(field(item, 'instrumentTypeId'))) || '').toLowerCase();
     const type = description.includes('crypto') ? 'crypto' : ['stocks', 'stock', 'etf'].includes(description) ? 'stock' : null;
     const symbol = field(item, 'symbolFull');
     if (!type || typeof symbol !== 'string' || !symbol.trim()) throw new Error('Unsupported or unidentified eToro instrument. Import stopped for review.');
-    return { symbol: symbol.trim().toUpperCase(), instrumentType: type };
+    const settlement = field(row, 'settlementTypeID');
+    if (settlement != null && ![0,1].includes(settlement)) throw new Error('Unsupported eToro settlement product. Import stopped for review.');
+    return { symbol: symbol.trim().toUpperCase(), instrumentType: settlement === 0 ? 'cfd' : type };
   };
   const trades = [];
   const positions = [];
@@ -66,7 +68,7 @@ function mapSnapshot(payload) {
       throw new Error('Leveraged or short eToro positions need a separate import review.');
     }
     const id = field(row, 'positionId');
-    const asset = instrument(field(row, 'instrumentId'));
+    const asset = instrument(field(row, 'instrumentId'), row);
     const quantity = number(field(row, 'units'), 'open units', true);
     const rawPrice = number(field(row, 'openRate'), 'opening price', true);
     const fx = number(field(row, 'openConversionRate'), 'opening conversion rate', true);
@@ -81,7 +83,8 @@ function mapSnapshot(payload) {
       datetime: entryTime, order_id: String(field(row, 'orderId')), etoro_record_key: key,
       etoro_position_id: String(id), etoro_native_price: rawPrice, etoro_open_conversion_rate: fx,
       etoro_mirror_id: field(row, 'mirrorId') || null,
-      etoro_parent_position_id: field(row, 'parentPositionId') || null };
+      etoro_parent_position_id: field(row, 'parentPositionId') || null,
+      ...(field(row,'settlementTypeID') != null ? {etoro_settlement_type:field(row,'settlementTypeID'),etoro_source_type:asset.instrumentType === 'cfd'?'CFD':asset.instrumentType === 'crypto'?'Crypto':'Stocks'} : {}) };
     add({ ...asset, key, positionId: String(id), side: 'long', quantity,
       entryTime, exitTime: null, entryPrice: cost / quantity, exitPrice: null,
       pnl: null, fees: 0, executions: [execution] });
@@ -91,7 +94,7 @@ function mapSnapshot(payload) {
   }
   for (const row of payload.history) {
     if (Number(row.leverage) !== 1 || typeof row.isBuy !== 'boolean') throw new Error('Leveraged eToro history needs a separate import review.');
-    const asset = instrument(row.instrumentId);
+    const asset = instrument(row.instrumentId, row);
     const quantity = number(row.units, 'closed units', true);
     const entryPrice = number(row.openRate, 'closed opening price', true);
     const exitPrice = number(row.closeRate, 'closing price', true);
@@ -111,7 +114,7 @@ function mapSnapshot(payload) {
     const exitTime = timestamp(row.closeTimestamp);
     if (exitTime < entryTime || row.positionId == null || row.orderId == null) throw new Error('Invalid eToro closing identity or date.');
     const key = `closed:${row.positionId}:${row.orderId}:${exitTime}:${quantity}`;
-    const common = { etoro_record_key: key, etoro_position_id: String(row.positionId),
+    const common = { ...(field(row,'settlementTypeID') != null ? {etoro_settlement_type:field(row,'settlementTypeID')} : {}), etoro_record_key: key, etoro_position_id: String(row.positionId),
       etoro_social_trade_id: row.socialTradeId || null, etoro_parent_position_id: row.parentPositionId || null };
     add({ ...asset, key, positionId: String(row.positionId), side: row.isBuy ? 'long' : 'short',
       quantity, entryTime, exitTime, entryPrice, exitPrice, pnl: netProfit, fees,

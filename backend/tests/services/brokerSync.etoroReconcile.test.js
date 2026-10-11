@@ -95,3 +95,12 @@ test('cash uses real USD credit, supports zero, and excludes bonus credit and re
  expect(t.executions[0].etoro_source_type).toBe('CFD');
  expect(preserveProductClassification({positionId:'other',instrumentType:'stock',executions:[]},null,existing).instrumentType).toBe('stock');
  });
+
+test('settlement product distinguishes an unleveraged CFD from the underlying stock',()=>{
+ const p=payload();p.positions[0]={...p.positions[0],settlementTypeID:0};
+ const result=mapSnapshot(p);expect(result.trades[0].instrumentType).toBe('cfd');
+ expect(result.trades[0].executions[0]).toMatchObject({etoro_settlement_type:0,etoro_source_type:'CFD'});
+ expect(result.positions[0].instrumentType).toBe('cfd');
+ p.positions[0].settlementTypeID=1;expect(mapSnapshot(p).trades[0].instrumentType).toBe('stock');
+ p.positions[0].settlementTypeID=2;expect(()=>mapSnapshot(p)).toThrow(/settlement/);
+});
