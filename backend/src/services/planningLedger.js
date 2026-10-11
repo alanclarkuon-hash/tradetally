@@ -3,6 +3,13 @@ const crypto = require('crypto');
 const {isDeepStrictEqual}=require('node:util');
 const {fail} = require('./tradePlanning');
 const positive = v => Number.isFinite(Number(v)) && Number(v)>0;
+function zeroPriceEvidence(trade,e,kind,capital){
+ if(e.price==null||Number(e.price)!==0)return null;
+ if(kind==='entry'&&trade.broker==='etoro'&&capital!=null&&e.etoro_statement_source&&e.etoro_capital_basis==='statement_close_cash_and_reported_net')return 'broker_cash_acquisition_basis';
+ if(kind==='exit'&&trade.broker==='etoro'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&Number.isFinite(Number(e.etoro_reported_net_profit)))return 'broker_reported_zero_value_closure';
+ if(kind==='exit'&&trade.broker==='trading212'&&e.order_id!=null&&e.broker_result!=null&&Number.isFinite(Number(e.broker_result))&&/^[A-Z]{3}$/.test(e.broker_result_currency||''))return 'broker_reported_zero_value_closure';
+ return null;
+}
 function sourceFills(trade) {
  let executions=trade.executions;
  if(typeof executions==='string'){try{executions=JSON.parse(executions)}catch{executions=[]}}
@@ -38,8 +45,9 @@ function sourceFills(trade) {
   const action=String(e.action||e.side||'').toLowerCase();
   const kind=(trade.side==='short'?action==='sell':action==='buy')?'entry':(trade.side==='short'?action==='buy':action==='sell')?'exit':null;
   const time=e.datetime||e.timestamp||e.execution_time;
-  if(!kind||!positive(e.quantity)||!positive(e.price)||!time||!Number.isFinite(new Date(time).getTime())||!positive(multiplier))return null;
-  const snapshot={action:kind,quantity:Number(e.quantity),price:Number(e.price),time:new Date(time).toISOString(),currency,multiplier,
+  const zeroEvidence=zeroPriceEvidence(trade,e,kind,capital);
+  if(!kind||!positive(e.quantity)||(!positive(e.price)&&!zeroEvidence)||!time||!Number.isFinite(new Date(time).getTime())||!positive(multiplier))return null;
+  const snapshot={...(zeroEvidence?{zeroPriceEvidence:zeroEvidence}:{}),action:kind,quantity:Number(e.quantity),price:Number(e.price),time:new Date(time).toISOString(),currency,multiplier,
     costs:Number(e.commission||0)+Number(e.fees||e.fee||0),tradeSide:trade.side,instrument:trade.instrument_type||'stock',
     contract:trade.instrument_type==='option'?{symbol:trade.symbol,strike:trade.strike_price,expiry:trade.expiration_date?new Date(trade.expiration_date).toISOString().slice(0,10):'',type:trade.option_type}:null};
   // eToro reports cash credits as negative fees on a closed position. Keep
@@ -180,7 +188,11 @@ function ledger(plan,allocations,trades) {
  const stop=Number(plan.definition.stopPrice)*(plan.stopConversion||1);
  const capitalRisk=complete&&(plan.definition.currency===currency||plan.stopConversion)&&['stock','cfd','crypto'].includes(plan.definition.instrument)&&stop>0
   ? [...queues.values()].flat().reduce((s,l)=>s+l.q*Math.max(0,plan.definition.direction==='short'?stop-l.price:l.price-stop)*l.multiplier,0):null;
- return {accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
+ // Purchased single-leg options can lose the remaining premium. Keep this
+ // conservative bound separate from an unverified underlying-stop estimate.
+ const maximumLoss=complete&&plan.definition.instrument==='option'&&records.every(a=>a.fill.tradeSide==='long')
+  ?openQuantity>1e-8?Math.max(0,cost+[...queues.values()].flat().reduce((s,l)=>s+l.q*l.feePerUnit,0)-realised):0:null;
+ return {maximumLoss,accountCurrency,accountFxMissing,accountPositionValue:accountComplete?accountCost:null,accountEntryCost:accountComplete?accountEntryCost:null,accountAveragePrice:accountComplete&&openQuantity>1e-8?accountCost/openQuantity/(plan.definition.instrument==='option'?plan.definition.options.multiplier:1):null,accountRealisedProfit:accountComplete?accountRealised:null,accountPercentGain:accountComplete&&accountEntryCost>0?accountRealised/accountEntryCost*100:null,accountRealisedR:accountComplete&&accountRisk>0?accountRealised/accountRisk:null,records,unresolved,overExit,currency,entered,exited,openQuantity,averagePrice:avg,positionValue:cost,
   realisedProfit:complete?realised:null,percentGain:complete&&entryCost>0?realised/entryCost*100:null,
   originalRisk:plan.baseline?.originalRisk??plan.baseline?.riskBudget??null,originalRiskCurrency:plan.baseline?.originalRiskCurrency??plan.baseline?.currency??null,
   realisedR:complete&&(plan.baseline?.originalRiskCurrency||plan.baseline?.currency)===currency&&(plan.baseline?.originalRisk||plan.baseline?.riskBudget)>0?realised/(plan.baseline.originalRisk||plan.baseline.riskBudget):null,
