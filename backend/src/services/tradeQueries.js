@@ -207,6 +207,9 @@ class TradeQueries {
     }
 
     if (filters.symbol) {
+      const {tradeSymbolAliases,tradeSymbolAliasSql}=require('./brokerInstrumentSymbols');
+      const aliases=await tradeSymbolAliases(db,userId,filters.symbol,filters.symbolExact);
+      const aliasPredicate=aliases.length?' OR '+tradeSymbolAliasSql(paramCount+1):'';
       if (filters.symbolExact) {
         whereClause += ` AND (
           UPPER(t.symbol) = $${paramCount} OR
@@ -215,6 +218,7 @@ class TradeQueries {
             WHERE (cm.user_id = $1 OR cm.user_id IS NULL)
               AND UPPER(cm.ticker) = $${paramCount}
           )
+          ${aliasPredicate}
         )`;
       } else {
         whereClause += ` AND (
@@ -233,10 +237,12 @@ class TradeQueries {
                 (cm.ticker ILIKE $${paramCount} || '%')
               )
           )
+          ${aliasPredicate}
         )`;
       }
       values.push(filters.symbol.toUpperCase());
       paramCount++;
+      if(aliases.length){values.push(JSON.stringify(aliases));paramCount++;}
     }
 
     const dateRange = buildTradeDateRangeClause(filters, paramCount);
