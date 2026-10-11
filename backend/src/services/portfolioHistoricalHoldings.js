@@ -156,6 +156,6 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     const known=existing.periodResult.pnl!=null&&p.periodResult.pnl!=null,basis=existing.periodResult.basis+p.periodResult.basis;
     existing.periodResult={pnl:known?existing.periodResult.pnl+p.periodResult.pnl:null,percent:known&&basis>0?(existing.currentValue-basis)/basis*100:null,basis};
   }
-  return {positions:[...combined.values()],warnings,displayRates:{USD:currency==='USD'?1:(fx('GBP',range.end_date)>0?1/fx('GBP',range.end_date):null)}};
+  return {positions:[...combined.values()],warnings,displayRates:{USD:currency==='USD'?1:(fx(currency,range.end_date)>0?1/fx(currency,range.end_date):null)}};
 }
 module.exports={getHistoricalHoldings,remainingLots};

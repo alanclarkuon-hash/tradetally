@@ -96,7 +96,7 @@
         v-if="allocationEnabled && tradeAllocations.length > 0"
         class="card"
       >
-        <div class="card-body">
+        <CurrencyCard preference-key="tradedetailview-1" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocation</h2>
@@ -122,7 +122,7 @@
               </div>
             </div>
           </div>
-        </div>
+        </div></CurrencyCard>
       </div>
 
       <!-- Stored AI Analyses -->
@@ -269,7 +269,7 @@
         <!-- Main Details -->
         <div class="lg:col-span-2 space-y-6">
           <div class="card">
-            <div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-2" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Details</h3>
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
@@ -523,7 +523,7 @@
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">{{ formatTradeCurrency(detailFees) }}</dd>
                 </div>
               </dl>
-            </div>
+            </div></CurrencyCard>
           </div>
 
           <!-- Setup Quality Breakdown -->
@@ -997,7 +997,7 @@
 
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
-            <div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Executions ({{ processedExecutions.length }})
@@ -1286,7 +1286,7 @@
                   </div>
                 </div>
               </div>
-            </div>
+            </div></CurrencyCard>
           </div>
 
           <!-- Tags -->
@@ -1512,7 +1512,7 @@
         <!-- Performance Summary -->
         <div class="space-y-6">
           <div class="card">
-            <div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-4" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
                 <div>
@@ -1550,7 +1550,7 @@
                   </dd>
                 </div>
               </dl>
-            </div>
+            </div></CurrencyCard>
           </div>
 
           <!-- Timeline -->
@@ -1666,6 +1666,7 @@
 </template>
 
 <script setup>
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'

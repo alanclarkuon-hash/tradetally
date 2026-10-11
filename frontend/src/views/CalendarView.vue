@@ -87,7 +87,7 @@
               </div>
               <div class="flex flex-col gap-3 sm:flex-row sm:items-stretch xl:justify-end">
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <component
+                  <CurrencyCard preference-key="calendarview-1" v-slot="{formatCurrency}"><component
                     :is="showRValue ? 'div' : 'button'"
                     :type="showRValue ? undefined : 'button'"
                     data-testid="calendar-pnl-card"
@@ -110,9 +110,9 @@
                         {{ showRValue ? 'Performance in R' : pnlTypeDescription }}
                       </span>
                     </span>
-                  </component>
+                  </component></CurrencyCard>
                   <div class="card card-mobile-safe min-w-[210px] bg-gray-100 dark:bg-gray-800/60">
-                    <div class="card-body">
+                    <CurrencyCard preference-key="calendarview-2" v-slot="{formatCurrency}"><div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Avg Initial Risk
                       </dt>
@@ -124,10 +124,10 @@
                           ? `${monthlyRiskTradeCount} ${monthlyRiskTradeCount === 1 ? 'trade' : 'trades'} with stop loss`
                           : 'No stop-loss data this month' }}
                       </div>
-                    </div>
+                    </div></CurrencyCard>
                   </div>
                   <div class="card card-mobile-safe min-w-[210px] bg-primary-100/60 dark:bg-primary-900/25">
-                    <div class="card-body">
+                    <CurrencyCard preference-key="calendarview-3" v-slot="{formatCurrency}"><div class="card-body">
                       <dt class="text-data-secondary truncate">
                         Year To Date
                       </dt>
@@ -137,7 +137,7 @@
                       <div class="mt-2 text-xs text-gray-500 dark:text-gray-400">
                         {{ pnlTypeLabel }} through {{ format(expandedMonth, 'MMMM') }}
                       </div>
-                    </div>
+                    </div></CurrencyCard>
                   </div>
                 </div>
                 <button @click="closeExpandedMonth" class="btn-secondary self-start sm:self-center xl:self-start">
@@ -309,6 +309,7 @@
 </template>
 
 <script setup>
+import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'
