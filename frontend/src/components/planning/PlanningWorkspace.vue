@@ -5,7 +5,7 @@
   <div class="journey planning-calendar card p-5" aria-label="Plan stages"><div v-for="m in milestones" :key="m.key" class="journey-stage" :class="{current:m.current}" :aria-current="m.current?'step':undefined"><small><time v-if="m.timestamp" :datetime="m.timestamp">{{ m.date }}</time><span v-else>{{ m.date }}</span></small><strong class="block">{{ m.label }}<span v-if="m.current" class="current-stage-dot" aria-label="Current stage"></span></strong></div></div>
   </Teleport>
   <nav class="workflow-tabs" aria-label="Plan workflow"><button v-for="s in screens" :key="s" :class="{active:screen===s}" :aria-current="screen===s?'step':undefined" @click="moveScreen(s)">{{ s }}</button></nav>
-  <p v-if="error" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error }}</p>
+  <p v-if="error||previewError" class="text-red-400 bg-red-500/10 p-3" role="alert">{{ error||previewError }}</p>
   <section v-if="managing&&planCommitments.length" class="card p-5"><h2 class="font-semibold">Awaiting execution confirmation</h2><div v-for="c in planCommitments" :key="c.id" class="flex justify-between flex-wrap gap-3 mt-3"><span>{{ c.snapshot.stage.label }} · {{ money(c.risk_amount,c.currency) }} reserved</span><button class="btn-secondary" :disabled="busy" @click="releaseCommitment(c)">Release unfilled commitment</button></div></section><section v-if="managing" class="card p-5 space-y-3">
    <div class="flex justify-between"><h2 class="font-semibold text-lg">Portfolio risk</h2><CurrencyToggle v-model="riskCurrency" :currencies="currencyChoices" /><span>{{ risk?.unknown?'Incomplete coverage':'Recorded stop risk' }}</span></div>
    <div class="relative h-4 rounded bg-gray-600">
@@ -176,7 +176,7 @@ import {CURRENCY_OPTIONS} from '@/composables/useCurrencyFormatter'
 import PlanningSnapshot from './PlanningSnapshot.vue'
 import TagSelect from './PlanningTagSelect.vue'
 const props=defineProps({calendarTarget:{type:String,default:null},plan:Object,accounts:Array,playbooks:Array,commitments:{type:Array,default:()=>[]},portfolioCapital:{type:Object,default:null},portfolioLoading:Boolean}),emit=defineEmits(['updated'])
-const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
+const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),previewError=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage'),preparationLocked=computed(()=>!!plan.value.finalised&&!managing.value)
 const planAccountCurrencies=computed(()=>{const currency=props.accounts.find(a=>a.id===draft.value?.accountId)?.currency;return [currency,draft.value?.currency,...(workflow.value?.ledger?.records||[]).map(a=>a.fill?.currency)].filter(Boolean)})
@@ -297,7 +297,7 @@ const riskExceeded=computed(()=>risk.value?.limit&&currentRisk.value>risk.value.
 function barWidth(v){const scale=risk.value?.limit?risk.value.limit/0.8:Math.max(projectedRisk.value||0,1);return Math.min(100,Math.max(0,(v||0)/scale*100))}
 function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symbol.trim().toUpperCase();for(const k of ['riskBudget','stopPrice','runnerEstimatePrice','portfolioAmount','portfolioRiskPercent'])if(d[k]==='')d[k]=null;for(const e of [...d.entries,...d.exits])for(const k of ['price','units','premium'])if(e[k]==='')e[k]=null;for(const k of ['strike','premium','contractDelta','atr','expiry','asOf'])if(d.options[k]==='')d.options[k]=null;return d}
 function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
-function adopt(p){const previousStatus=plan.value?.status;if(p.status!==previousStatus){if(p.status==='watching')screen.value='Trade & Manage';else if(p.status==='draft')screen.value='Plan'}hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';applyPlaybookSetup();draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
+function adopt(p){++sequence;clearTimeout(previewTimer);previewError.value='';const previousStatus=plan.value?.status;if(p.status!==previousStatus){if(p.status==='watching')screen.value='Trade & Manage';else if(p.status==='draft')screen.value='Plan'}hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';applyPlaybookSetup();draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
 let managementSnapshot=''
 function hydrateManagement(){
  hydrating=true;
@@ -361,7 +361,13 @@ watch(()=>props.playbooks,()=>{if(!draft.value)return;hydrating=true;applyPlaybo
 watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
 watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
 function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
-watch([draft,managed],()=>{if(hydrating)return;dirty=true;clearTimeout(saveTimer);if(!preparationLocked.value&&plan.value.id&&!planCommitments.value.length&&!['reviewed','completed','cancelled'].includes(plan.value.status))saveTimer=setTimeout(save,900);clearTimeout(previewTimer);const seq=++sequence;previewTimer=setTimeout(async()=>{try{const r=await api.post('/trade-plans/calculate',{definition:previewDefinition()});if(seq===sequence)calculation.value=r.data.calculation}catch(e){fail(e)}},350)},{deep:true})
+watch([draft,managed],()=>{
+ if(hydrating)return;dirty=true;clearTimeout(saveTimer);
+ if(!preparationLocked.value&&plan.value.id&&!planCommitments.value.length&&!['reviewed','completed','cancelled'].includes(plan.value.status))saveTimer=setTimeout(save,900);
+ clearTimeout(previewTimer);const seq=++sequence;previewError.value='';
+ if(!draft.value?.symbol?.trim()){calculation.value=null;return}
+ previewTimer=setTimeout(async()=>{try{const r=await api.post('/trade-plans/calculate',{definition:previewDefinition()});if(seq===sequence){calculation.value=r.data.calculation;previewError.value=''}}catch(e){if(seq===sequence)previewError.value=e.response?.data?.error||'Sizing preview could not update.'}},350)
+},{deep:true})
 function leaving(e){if(dirty){e.preventDefault();e.returnValue=''}}
 onMounted(async()=>{adopt(props.plan);window.addEventListener('beforeunload',leaving);try{const r=await api.get('/trade-plans/library');tags.value=r.data.tags||[];fx.value=r.data.fx;settings.value={...settings.value,...r.data.settings};recommendation.value=(await api.get('/trade-plans/recommendation')).data;if(plan.value.id)await reload()}catch(e){fail(e)}})
 onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);clearTimeout(saveTimer);clearTimeout(previewTimer);window.removeEventListener('beforeunload',leaving)})
