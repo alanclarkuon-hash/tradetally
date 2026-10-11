@@ -98,4 +98,21 @@ describe('BrokerSyncView sync outcomes', () => {
     expect(wrapper.get('details').text()).toContain('Open position quantity could not be reconciled safely.')
     expect(mocks.brokerStore.fetchSyncLogs).toHaveBeenCalled()
   })
+  it('shows interrupted jobs as retryable terminal outcomes with preserved progress', async () => {
+    mocks.brokerStore.syncLogs=[{id:'interrupted',brokerType:'trading212',status:'failed',syncDetails:{outcome:'interrupted',progress:{section:'transactions',pages:7,complete:false}},errorMessage:'private broker response'}]
+    const wrapper=shallowMount(BrokerSyncView)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Interrupted')
+    expect(wrapper.text()).toContain('Use Sync Now to finish')
+    expect(wrapper.text()).toContain('Cash transactions · 7 pages retrieved so far')
+    expect(wrapper.text()).not.toContain('private broker response')
+  })
+  it('renders bounded active progress while ignoring unknown broker payload fields', async () => {
+    mocks.brokerStore.syncLogs=[{id:'active',status:'importing',syncDetails:{progress:{section:'dividends',pages:1,complete:true,privateCursor:'secret'}}}]
+    const wrapper=shallowMount(BrokerSyncView)
+    await flushPromises()
+    expect(wrapper.text()).toContain('Dividends · 1 page retrieved')
+    expect(wrapper.text()).not.toContain('secret')
+  })
+
 })
