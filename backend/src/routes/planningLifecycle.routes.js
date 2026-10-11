@@ -157,7 +157,7 @@ router.get('/:id/fills',run(async(req,res)=>{
  const trades=(await db.query(`SELECT * FROM trades WHERE user_id=$1 AND (UPPER(symbol)=UPPER($2) OR UPPER(underlying_symbol)=UPPER($2))
  AND account_identifier=$3 AND COALESCE(instrument_type,'stock')=$4 AND side=$5
  AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
- ORDER BY entry_time DESC LIMIT 250`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
+ ORDER BY entry_time DESC`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null])).rows;
  const used=(await db.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;
  const brokerTrades=trades.filter(t=>t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long');
  let originals=[];
