@@ -2829,13 +2829,12 @@ class Trade {
     }
 
     if (filters.symbol) {
-      if (filters.symbolExact) {
-        whereClause += ` AND UPPER(t.symbol) = $${paramCount}`;
-      } else {
-        whereClause += ` AND t.symbol ILIKE $${paramCount} || '%'`;
-      }
-      values.push(filters.symbol.toUpperCase());
-      paramCount++;
+      const {tradeSymbolAliases,tradeSymbolAliasSql}=require('../services/brokerInstrumentSymbols');
+      const aliases=await tradeSymbolAliases(db,userId,filters.symbol,filters.symbolExact);
+      const direct=filters.symbolExact?`UPPER(t.symbol) = $${paramCount}`:`t.symbol ILIKE $${paramCount} || '%'`;
+      whereClause+=` AND (${direct}${aliases.length?' OR '+tradeSymbolAliasSql(paramCount+1):''})`;
+      values.push(filters.symbol.toUpperCase());paramCount++;
+      if(aliases.length){values.push(JSON.stringify(aliases));paramCount++;}
     }
 
     if (filters.broker) {
