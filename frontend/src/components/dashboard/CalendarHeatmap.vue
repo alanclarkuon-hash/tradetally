@@ -1,5 +1,5 @@
 <template>
-  <div class="card-dense">
+  <div class="card-dense"><CurrencyToggle v-model="cardCurrency" :currencies="choices" class="float-right m-3" />
     <!-- Header: title + W/L/B summary on top, Win/Loss legend below.
          Stacking these vertically by default keeps everything aligned when
          the card is narrow; on wider screens we push the legend to the right
@@ -82,9 +82,10 @@
 </template>
 
 <script setup>
+import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrency} from '@/composables/useCardCurrency'
 import { computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 
 const props = defineProps({
   dailyPnL: {
@@ -99,7 +100,7 @@ const props = defineProps({
 })
 
 const router = useRouter()
-const { formatSignedCurrency, formatCurrency } = useCurrencyFormatter()
+const {currency:cardCurrency,choices, formatSignedCurrency, formatCurrency } = useCardCurrency(undefined,undefined,'calendarheatmap-1')
 
 // Build a YYYY-MM-DD -> {pnl, count} index from props.dailyPnL.
 const dayIndex = computed(() => {
