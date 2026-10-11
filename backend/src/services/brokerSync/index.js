@@ -15,6 +15,7 @@ const trading212Service = require('./trading212Service');
 const etoroService = require('./etoroService');
 const okxService = require('./okxService');
 const krakenService = require('./krakenService');
+const syncRecovery = require('./syncRecovery');
 const { getUserTimezone } = require('../../utils/timezone');
 
 class BrokerSyncService {
@@ -27,9 +28,14 @@ class BrokerSyncService {
       return {success:false,alreadyRunning:true,imported:0,error:'A sync is already running for this connection.'};
     }
     this.activeSyncs.add(connectionId);
+    let lease;
     try {
+      lease=await syncRecovery.acquire(connectionId);
+      if(!lease)return {success:false,alreadyRunning:true,imported:0,error:'A sync is already running for this connection.'};
+      await syncRecovery.recoverConnection(lease.client,connectionId);
       return await this.runConnectionSync(connectionId,options);
     } finally {
+      if(lease)await lease.release();
       this.activeSyncs.delete(connectionId);
     }
   }
@@ -176,6 +182,7 @@ class BrokerSyncService {
       if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
           result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
         try {
+          await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_history',0);
           result.portfolioHistory = await require('../brokerPortfolioMaintenance').maintain(connection.userId,{broker:connection.brokerType});
           result.warnings = [...(result.warnings||[]),...result.portfolioHistory.warnings];
         } catch {
