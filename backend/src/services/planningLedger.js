@@ -63,13 +63,13 @@ function sourceFills(trade) {
  const counts=new Map();fills.forEach(f=>counts.set(f.key,(counts.get(f.key)||0)+1));
  return fills.filter(f=>counts.get(f.key)===1);
 }
-function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade) {
+function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade,assetSymbols=[]) {
  if(!positive(quantity)||quantity+used>fill.quantity+1e-8)fail('Allocation exceeds the available source-fill quantity',409);
  if(fill.action!==action)fail('Choose a matching entry or exit fill');
  const rows=action==='entry'?plan.definition.entries:plan.definition.exits;
  if(!rows.some(r=>r.key===stageKey)&&!(action==='exit'&&stageKey==='runner'))fail('Ladder row not found');
  const symbol=trade.underlying_symbol||trade.symbol;
- if(String(symbol).toUpperCase()!==plan.definition.symbol.toUpperCase())fail('Trade asset does not match this plan');
+ if(String(symbol).toUpperCase()!==plan.definition.symbol.toUpperCase()&&!(trade.broker==='trading212'&&plan.definition.instrument==='stock'&&assetSymbols.includes(String(symbol).toUpperCase())))fail('Trade asset does not match this plan');
  const expected=plan.definition.instrument;
  if((trade.instrument_type||'stock')!==expected)fail('Trade instrument does not match this plan');
  if(expected!=='option'&&trade.side!==plan.definition.direction)fail('Trade direction does not match this plan');
