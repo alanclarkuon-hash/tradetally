@@ -141,6 +141,7 @@ class Trading212Service extends OAuthBrokerBase {
     const response = await this.requestPage(`${getApiBase(connection.brokerEnvironment || 'live')}/equity/metadata/instruments`,
       {username: connection.trading212ApiKey, password: connection.trading212ApiSecret});
     if (!Array.isArray(response.data)) throw new Error('Invalid Trading 212 instrument catalogue');
+    await require('../brokerInstrumentSymbols').saveCatalogue(connection,response.data);
     return response.data;
   }
 

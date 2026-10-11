@@ -70,14 +70,17 @@ async function readSource(userId,symbol,source,offset=0) {
   let where=`symbol=$1${owned?' AND user_id=$2':''}`;
   const params=owned?[symbol,userId]:[symbol];
   if(table==='trades') {
+    const {cataloguesForUser,catalogueMapping}=require('./brokerInstrumentSymbols');
     const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
-    const snapshots=(await db.query("SELECT positions FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type='trading212'",[userId])).rows;
-    const aliases=[...new Set(snapshots.flatMap(row=>(Array.isArray(row.positions)?row.positions:[])
-      .filter(p=>currentSymbol(p.instrument)===symbol)
-      .map(p=>normalizeTicker(p.instrument?.ticker))).filter(alias=>alias!==symbol))];
-    if(aliases.length) {
-      params.push(aliases);
-      where="(symbol=$1 OR (broker='trading212' AND instrument_type='stock' AND symbol=ANY($3))) AND user_id=$2";
+    const catalogues=await cataloguesForUser(db,userId);
+    const snapshots=(await db.query("SELECT account_identifier,positions FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type='trading212'",[userId])).rows;
+    const scopes=new Map();
+    for(const row of snapshots){if(!row.account_identifier)continue;scopes.set(row.account_identifier,new Map((row.positions||[]).flatMap(p=>[[normalizeTicker(p.instrument?.ticker),currentSymbol(p.instrument)]])))}
+    for(const row of catalogues){const map=scopes.get(row.account_identifier)||new Map();for(const [key,value] of catalogueMapping(row.instruments))map.set(normalizeTicker(key),value);scopes.set(row.account_identifier,map)}
+    const aliases=[...scopes].flatMap(([account_identifier,map])=>[...map].filter(([old,current])=>current===symbol&&old!==symbol).map(([old])=>({account_identifier,symbol:old})));
+    if(aliases.length){
+      params.push(JSON.stringify(aliases));
+      where="(symbol=$1 OR (broker='trading212' AND instrument_type='stock' AND EXISTS (SELECT 1 FROM jsonb_to_recordset($3::jsonb) AS aliases(account_identifier text,symbol text) WHERE aliases.account_identifier=trades.account_identifier AND aliases.symbol=trades.symbol))) AND user_id=$2";
     }
   }
   const [count,records]=await Promise.all([

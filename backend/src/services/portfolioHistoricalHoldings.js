@@ -3,6 +3,7 @@
 const db=require('../config/database');
 const {historySymbol,historySplits,historicalMarketSymbol}=require('./portfolioCorporateActions');
 const {normalizeTicker,currentSymbol}=require('./brokerSync/trading212Instruments');
+const {catalogueForAccount,catalogueMapping,historicalSymbol}=require('./brokerInstrumentSymbols');
 const {assetCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {statementSplits,statementLotMetadata,historicalLotQuantity}=require('./etoroHistoricalSplits');
 const {cfdEquity}=require('./etoroHistoricalCfd');
@@ -96,8 +97,10 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
       const report=ownReports.at(-1);
       const portfolio=portfolios.rows.find(r=>r.account_identifier===identifier);
       const mapping=new Map((portfolio?.positions||[]).map(p=>[p.instrument.ticker,currentSymbol(p.instrument)]));
+      const catalogue=await catalogueForAccount(db,userId,identifier);
+      for(const [key,value] of catalogueMapping(catalogue||[]))mapping.set(key,value);
       const fills=(report?.records||[]).map(r=>{
-        const symbol=historySymbol(mapping.get(r.symbol)||normalizeTicker(r.symbol),r.date);
+        const symbol=historicalSymbol(mapping,r.symbol,r.date);
         const q=Number(r.quantity),rate=fx(account.currency,r.date);
         return {date:r.date,time:r.time,symbol,quantity:q*(r.side==='BUY'?1:-1),price:rate>0&&q>0?Math.abs(Number(r.amount))*rate/q:null};
       });
