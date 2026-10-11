@@ -81,13 +81,13 @@ function defaultDbResponse() {
 function captureValues() {
   expect(db.query).toHaveBeenCalled();
   // All 8 fan-out queries share the same values array. Use the first call.
-  return db.query.mock.calls[0][1];
+  return db.query.mock.calls.find(([sql]) => !String(sql).includes('FROM broker_instrument_catalogues'))[1];
 }
 
 function captureSql() {
   // Use the executionCountQuery (first call) — it's the simplest and contains
   // the WHERE clause only. Other queries embed the same WHERE clause.
-  return db.query.mock.calls[0][0];
+  return db.query.mock.calls.find(([sql]) => !String(sql).includes('FROM broker_instrument_catalogues'))[0];
 }
 
 describe('TradeQueries.getAnalytics characterization', () => {
