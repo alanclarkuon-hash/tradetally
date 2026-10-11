@@ -1,7 +1,7 @@
 const db=require('../config/database');
 const {calculateAccountResult}=require('./accountRealisedPnl');
 const AnalyticsCache=require('./analyticsCache');
-const pending=new Map();
+const pending=new Map(),lastReportingFx=new Map();
 async function refreshAccountResults(userId) {
  if(pending.has(userId))return pending.get(userId);
  const job=(async()=>{
@@ -32,7 +32,7 @@ async function refreshAccountResults(userId) {
 }
 async function reportAccountPnl(req,res,next) {
  try {
-  if(req.user?.id){await refreshAccountResults(req.user.id);const rates=await require('../utils/tradeFx').getUsdRateMap();req.accountFxKey=require('crypto').createHash('sha256').update(JSON.stringify(rates||{})).digest('hex').slice(0,16);req.accountReports=new Map((await db.query('SELECT trade_id,result FROM trade_account_reports WHERE user_id=$1',[req.user.id])).rows.map(r=>[r.trade_id,r.result]));}
+  if(req.user?.id){await refreshAccountResults(req.user.id);const rates=await require('../utils/tradeFx').getUsdRateMap();req.accountFxKey=require('crypto').createHash('sha256').update(JSON.stringify(rates||{})).digest('hex').slice(0,16);if(lastReportingFx.get(req.user.id)!==req.accountFxKey){await AnalyticsCache.invalidate(req.user.id);lastReportingFx.set(req.user.id,req.accountFxKey);}req.accountReports=new Map((await db.query('SELECT trade_id,result FROM trade_account_reports WHERE user_id=$1',[req.user.id])).rows.map(r=>[r.trade_id,r.result]));}
   next();
  }catch(error){next(error);}
 }
