@@ -10,7 +10,7 @@ function projectPlanTrade(source,plan,result) {
  const records=result.records.filter(r=>!r.fill.provisional);
  const groups=new Map();
  for(const r of records){
-  const f=r.fill,key=JSON.stringify([r.action,r.stage_key,f.time,f.price,f.currency,f.multiplier,f.contract]);
+  const f=r.fill,key=JSON.stringify([r.action,r.stage_key,f.time,f.price,f.currency,f.multiplier,f.contract,f.transactionFx?.accountCurrency,f.transactionFx?.rate]);
   if(!groups.has(key))groups.set(key,{id:'plan:'+r.id,action:r.action==='entry'?(f.tradeSide==='short'?'sell':'buy'):(f.tradeSide==='short'?'buy':'sell'),quantity:0,price:f.price,datetime:f.time,commission:0,fees:0,realized_pnl:r.action==='exit'?0:null,accountProfit:r.action==='exit'?0:null,stage_key:r.stage_key,source_trade_ids:[],broker_fx_rate:f.transactionFx?.rate,account_currency:f.transactionFx?.accountCurrency});
   const e=groups.get(key),portion=r.quantity/f.quantity;
   e.quantity+=r.quantity;e.commission+=Number(f.commission||0)*portion;e.fees+=Number(f.fees||0)*portion;
