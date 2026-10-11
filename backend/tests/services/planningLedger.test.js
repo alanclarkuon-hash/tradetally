@@ -39,3 +39,11 @@ test('PostgreSQL JSONB FX property order does not make source evidence unresolve
  for(const f of sourceFills(t))expect(()=>verifyAllocation(p,f,f.quantity,0,f.action,f.action==='entry'?'a':'b',t)).not.toThrow();
  t.instrument_type='stock';const f=sourceFills(t)[0];expect(()=>verifyAllocation(p,f,1,0,'entry','a',t)).toThrow(/instrument/);
  });
+
+test.each([[1,2],[2,1],[2,2]])('one plan aggregates %i entry partitions and %i exit partitions independently of broker trade pairs',(buys,sells)=>{
+ const p=plan();const trades=[];const links=[];
+ for(const [action,count,price,time] of [['buy',buys,100,'2026-01-01T10:00:00Z'],['sell',sells,120,'2026-01-02T10:00:00Z']])for(let i=0;i<count;i++){
+  const t={...trade(),id:action+i,commission:0,fees:0,executions:[{id:action+i,action,quantity:10/count,price,datetime:time,commission:0,fees:0,account_currency:'GBP',broker_fx_rate:1.25}]};trades.push(t);const f=sourceFills(t)[0];links.push({id:t.id,trade_id:t.id,source_key:f.key,action:f.action,stage_key:f.action==='entry'?'a':'b',quantity:f.quantity,source_snapshot:f});
+ }
+ const r=ledger(p,links,trades);expect(r.entered).toBe(10);expect(r.exited).toBe(10);expect(r.openQuantity).toBe(0);expect(r.realisedProfit).toBe(200);expect(r.accountRealisedProfit).toBe(160);expect(r.unresolved).toBe(0);expect(r.economicallyClosed).toBe(true)
+});
