@@ -20,6 +20,9 @@ describe('Net P/L currency and R control',()=>{
   await button.trigger('click');expect(button.text()).toBe('$');expect(w.text()).toContain('+$100.00');expect(w.findComponent({name:'MiniBarChart'}).props('values')).toEqual([37.5,62.5]);
   await button.trigger('click');expect(button.text()).toBe('€');expect(w.text()).toContain('+€90.00');await button.trigger('click');expect(button.text()).toBe('R');expect(w.text()).toContain('+2.00R');expect(w.findComponent({name:'MiniBarChart'}).props('values')).toEqual([.75,1.25]);expect(other.find('button').attributes('aria-label')).not.toContain('R');await button.trigger('click');expect(button.text()).toBe('£');w.unmount();other.unmount();
  });
+ it('distinguishes missing risk from a defined breakeven R result',async()=>{
+  mock.selection.value='gbp';const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,summary:{...analytics.summary,totalRValue:null}}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');expect(w.text()).toContain('R unavailable');expect(w.text()).not.toContain('+0.00R');await w.setProps({analytics:{...analytics,summary:{...analytics.summary,totalRValue:0}}});expect(w.text()).toContain('+0.00R');w.unmount();
+ });
  it('offers R even with only one account currency, remembers selection, then follows changed app display currency',async()=>{
   mock.selection.value='gbp';let w=mount(HeroMetricsRibbon,{props:{analytics},global:{stubs:{MiniBarChart:true}}});await flushPromises();expect(w.find('button').attributes('disabled')).toBeUndefined();await w.find('button').trigger('click');expect(w.find('button').text()).toBe('R');w.unmount();w=mount(HeroMetricsRibbon,{props:{analytics},global:{stubs:{MiniBarChart:true}}});await flushPromises();expect(w.find('button').text()).toBe('R');useAuthStore().user.settings.display_currency='EUR';await flushPromises();expect(w.find('button').text()).toBe('€');w.unmount();
  });

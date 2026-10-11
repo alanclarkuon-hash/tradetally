@@ -181,12 +181,13 @@ const summary = computed(() => props.analytics?.summary || {})
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
 // Total R across trades with a defined stop loss (NULL r_value trades are
 // excluded server-side, matching the analytics performance endpoint).
+const rAvailable = computed(() => (summary.value.totalRValue ?? summary.value.total_r_value) != null)
 const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.value.total_r_value ?? 0) || 0)
 
 // The active hero metric: drives both the displayed string and the sign-based
 // color/size classes so $ and R modes share one code path.
 const heroSign = computed(() => rMode.value ? totalR.value : netPnl.value)
-const heroDisplay = computed(() => rMode.value ? formatSignedR(totalR.value) : formatSignedCurrency(netPnl.value))
+const heroDisplay = computed(() => rMode.value ? (rAvailable.value ? formatSignedR(totalR.value) : 'R unavailable') : formatSignedCurrency(netPnl.value))
 const totalTrades = computed(() => parseInt(summary.value.totalTrades) || 0)
 const winningTrades = computed(() => parseInt(summary.value.winningTrades) || 0)
 const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
@@ -362,7 +363,7 @@ const todayPnlClass = computed(() => {
 // curve below and surfaces recent rhythm and volatility at a glance.
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
-const dailyBarValues = computed(() =>
+const dailyBarValues = computed(() => rMode.value && !rAvailable.value ? [] :
   recentDays.value.map(d => rMode.value
     ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
     : convert(parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0))
