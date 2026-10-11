@@ -13,6 +13,7 @@ const owner=crypto.randomUUID(),a=crypto.randomUUID(),b=crypto.randomUUID(),pb=c
  server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port+'/plans/'+id;
  const call=async(path,method='GET',body)=>{const r=await fetch(base+path,{method,headers:{'content-type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}};
  const version=async()=>(await db.query('SELECT version FROM trade_plans WHERE id=$1',[id])).rows[0].version;
+ const riskResponse=await fetch(base.slice(0,base.lastIndexOf('/'))+'/risk');assert.equal(riskResponse.status,200,'risk coverage API');const risk=await riskResponse.json();assert.equal(risk.accounts.length,2,'risk coverage includes both owned accounts');
  const sources={};for(const tid of [ta,tb])sources[tid]=require(root+'/src/services/planningLedger').sourceFills((await db.query('SELECT * FROM trades WHERE id=$1',[tid])).rows[0]);
  const link=async(tid,index,key)=>call('/allocations','POST',{version:await version(),tradeId:tid,sourceKey:sources[tid][index].key,fingerprint:sources[tid][index].fingerprint,stageKey:key,action:index?'exit':'entry',quantity:5});
  assert.equal((await call('/fills?accountId='+b)).data.fills.every(f=>f.tradeId===tb),true,'finder account scope');
