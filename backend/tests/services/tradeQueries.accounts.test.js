@@ -26,6 +26,7 @@ test.each([['NVTS',true,'LOKB'],['NV',false,'LOKB'],['NEW.L',true,'OLD.L']])('cu
  expect(result.whereClause).toContain("COALESCE(t.instrument_type,'stock')='stock'");
  expect(result.whereClause).toContain('instrument_aliases.account_identifier=t.account_identifier');
  expect(result.whereClause).toContain('instrument_aliases.symbol=UPPER(t.symbol)');
+ expect(result.whereClause).toContain('jsonb_to_recordset($3::jsonb)');
  expect(result.values[1]).toBe(symbol);expect(JSON.parse(result.values[2])).toContainEqual({account_identifier:'selected',symbol:original});
  expect(result.values.slice(3)).toEqual(['selected','A']);
  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('user_id=$1'),['owner']);

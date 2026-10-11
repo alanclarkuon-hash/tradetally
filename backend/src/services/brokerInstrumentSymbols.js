@@ -48,16 +48,18 @@ async function applyTradeMarketSymbols(client,userId,trades){
 async function tradeSymbolAliases(client,userId,search,exact=false){
  const target=String(search||'').trim().toUpperCase(),aliases=[];
  for(const row of await cataloguesForUser(client,userId)){
-  for(const [original,current] of catalogueMapping(row.instruments)){
-   if(original!==current&&(exact?current===target:current.startsWith(target)))
-    aliases.push({account_identifier:row.account_identifier,symbol:original});
+  for(const item of row.instruments){
+   const current=currentSymbol(item),original=normalizeTicker(item.ticker);
+   if(original!==current&&(exact?current===target:current.startsWith(target))&&catalogueSymbols(row.instruments,original).includes(current)){
+    for(const symbol of new Set([item.ticker,original]))aliases.push({account_identifier:row.account_identifier,symbol});
+   }
   }
  }
  return aliases;
 }
 function tradeSymbolAliasSql(parameter,alias='t'){
  return `(${alias}.broker='trading212' AND COALESCE(${alias}.instrument_type,'stock')='stock'
- AND EXISTS (SELECT 1 FROM jsonb_to_recordset(${parameter}::jsonb)
+ AND EXISTS (SELECT 1 FROM jsonb_to_recordset($${parameter}::jsonb)
  AS instrument_aliases(account_identifier text,symbol text)
  WHERE instrument_aliases.account_identifier=${alias}.account_identifier
  AND instrument_aliases.symbol=UPPER(${alias}.symbol)))`;
