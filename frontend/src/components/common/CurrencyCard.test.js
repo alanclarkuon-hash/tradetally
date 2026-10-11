@@ -34,3 +34,15 @@ it('keeps different card identities and signed-in users separate',async()=>{
  auth.user={id:'two',settings:{display_currency:'GBP'}};await flushPromises();expect(first.find('button').text()).toBe('£');
  auth.user={id:'one',settings:{display_currency:'GBP'}};await flushPromises();expect(first.find('button').text()).toBe('$');first.unmount();second.unmount();
 });
+
+it('GBP account trading USD and EUR assets keeps price and profit cards independent',async()=>{
+ mock.accounts.value=[{value:'native',currency:'GBP',instrumentCurrencies:['USD','EUR']}];
+ const price=mount(CurrencyCard,{props:{preferenceKey:'asset-level',sourceCurrency:'USD'},slots:{default:'price'}});
+ const profit=mount(CurrencyCard,{props:{preferenceKey:'account-profit',sourceCurrency:'GBP'},slots:{default:'profit'}});
+ await flushPromises();await price.find('button').trigger('click');expect(price.find('button').text()).toBe('$');expect(profit.find('button').text()).toBe('£');
+ await price.find('button').trigger('click');expect(price.find('button').text()).toBe('€');price.unmount();profit.unmount();
+});
+it('an explicit instrument currency remains available before account metadata loads',async()=>{
+ mock.accounts.value=[{value:'native',currency:'GBP'}];
+ const w=mount(CurrencyCard,{props:{instrumentCurrencies:['EUR'],sourceCurrency:'GBP'}});await flushPromises();expect(w.find('button').attributes('aria-label')).toBe('Showing GBP; switch to EUR');w.unmount();
+});

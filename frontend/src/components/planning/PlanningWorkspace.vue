@@ -177,7 +177,7 @@ const props=defineProps({plan:Object,accounts:Array,playbooks:Array,commitments:
 const managed=ref({entry:[],exit:[]}),plan=ref(props.plan),draft=ref(null),screen=ref(props.plan?.status==='watching'?'Trade & Manage':'Plan'),busy=ref(false),error=ref(''),calculation=ref(null),workflow=ref(null),risk=ref(null)
 const planCommitments=computed(()=>props.commitments.filter(c=>c.plan_id===plan.value.id))
 const screens=['Plan','Trade & Manage','Review','Close'],managing=computed(()=>screen.value==='Trade & Manage'),preparationLocked=computed(()=>!!plan.value.finalised&&!managing.value)
-const planAccountCurrencies=computed(()=>{const currency=props.accounts.find(a=>a.id===draft.value?.accountId)?.currency;return currency?[currency]:[]})
+const planAccountCurrencies=computed(()=>{const currency=props.accounts.find(a=>a.id===draft.value?.accountId)?.currency;return [currency,draft.value?.currency,...(workflow.value?.ledger?.records||[]).map(a=>a.fill?.currency)].filter(Boolean)})
 const {currency:positionCurrency,choices:currencyChoices,displayCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-position')
 const {currency:entryCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-entries')
 const {currency:exitCurrency}=useCardCurrency(undefined,planAccountCurrencies,'planning-exits')
