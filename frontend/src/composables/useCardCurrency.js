@@ -17,13 +17,13 @@ export async function loadCardRates() {
   }).catch(() => { /* Missing conversion is explicitly shown as unavailable. */ }).finally(() => pending = null)
   return pending
 }
-export function useCardCurrency(sourceCurrency, accountCurrencies, preferenceKey, extraChoices = []) {
+export function useCardCurrency(sourceCurrency, accountCurrencies, preferenceKey, extraChoices = [], scoped = false) {
   const auth = useAuthStore()
   const { accounts, selectedAccount, fetchAccounts } = useGlobalAccountFilter()
   const formatter = useCurrencyFormatter()
   const {hideAmounts} = useMonetaryPrivacy()
   const displayCurrency = computed(() => String(auth.user?.settings?.display_currency || 'USD').toUpperCase())
-  const choices = computed(() => [...new Set([...cardCurrencies(displayCurrency.value, accounts.value, selectedAccount.value), ...(unref(accountCurrencies) || []).filter(Boolean).map(c=>String(c).toUpperCase()), ...(unref(extraChoices) || [])])])
+  const choices = computed(() => [...new Set([...cardCurrencies(displayCurrency.value, scoped ? [] : accounts.value, selectedAccount.value), ...(unref(accountCurrencies) || []).filter(Boolean).map(c=>String(c).toUpperCase()), ...(unref(extraChoices) || [])])])
   const currency = preferenceKey ? useCardCurrencyPreference(auth, preferenceKey, choices) : ref(displayCurrency.value)
   if (!preferenceKey) {
     watch(displayCurrency, value => currency.value = value)

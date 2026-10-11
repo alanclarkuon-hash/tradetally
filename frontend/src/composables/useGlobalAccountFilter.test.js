@@ -77,9 +77,9 @@ describe('useGlobalAccountFilter', () => {
     await filter.fetchAccounts()
 
     expect(filter.accounts.value).toEqual([
-      { value: 'A-1111', label: 'Primary Account', secondaryLabel: '****1111', currency:'GBP', instrumentCurrencies: ['USD','EUR'], isPrimary: true },
-      { value: 'B-2222', label: 'Swing Account', secondaryLabel: '****2222', currency:'USD', instrumentCurrencies: [], isPrimary: false },
-      { value: 'Z-9999', label: '****9999', secondaryLabel: null, currency:null, instrumentCurrencies: [], isPrimary: false }
+      { value: 'A-1111', label: 'Primary Account', secondaryLabel: '****1111', currency:'GBP', isPrimary: true },
+      { value: 'B-2222', label: 'Swing Account', secondaryLabel: '****2222', currency:'USD', isPrimary: false },
+      { value: 'Z-9999', label: '****9999', secondaryLabel: null, currency:null, isPrimary: false }
     ])
   })
 

@@ -37,12 +37,23 @@ it('keeps different card identities and signed-in users separate',async()=>{
 
 it('GBP account trading USD and EUR assets keeps price and profit cards independent',async()=>{
  mock.accounts.value=[{value:'native',currency:'GBP',instrumentCurrencies:['USD','EUR']}];
- const price=mount(CurrencyCard,{props:{preferenceKey:'asset-level',sourceCurrency:'USD'},slots:{default:'price'}});
+ const price=mount(CurrencyCard,{props:{preferenceKey:'asset-level',sourceCurrency:'USD',instrumentCurrencies:['USD'],accountCurrencies:['GBP'],scoped:true},slots:{default:'price'}});
  const profit=mount(CurrencyCard,{props:{preferenceKey:'account-profit',sourceCurrency:'GBP'},slots:{default:'profit'}});
  await flushPromises();await price.find('button').trigger('click');expect(price.find('button').text()).toBe('$');expect(profit.find('button').text()).toBe('£');
- await price.find('button').trigger('click');expect(price.find('button').text()).toBe('€');price.unmount();profit.unmount();
+ await price.find('button').trigger('click');expect(price.find('button').text()).toBe('£');price.unmount();profit.unmount();
 });
 it('an explicit instrument currency remains available before account metadata loads',async()=>{
  mock.accounts.value=[{value:'native',currency:'GBP'}];
  const w=mount(CurrencyCard,{props:{instrumentCurrencies:['EUR'],sourceCurrency:'GBP'}});await flushPromises();expect(w.find('button').attributes('aria-label')).toBe('Showing GBP; switch to EUR');w.unmount();
+});
+
+it('individual cards include only their own account and instrument currencies',async()=>{
+ mock.accounts.value=[{value:'other',currency:'JPY',instrumentCurrencies:['CNY','BRL']}];
+ const w=mount(CurrencyCard,{props:{scoped:true,accountCurrencies:['USD'],instrumentCurrencies:['EUR'],preferenceKey:'scoped'}});await flushPromises();
+ expect(w.find('button').attributes('aria-label')).toBe('Showing GBP; switch to USD');await w.find('button').trigger('click');expect(w.find('button').attributes('aria-label')).toBe('Showing USD; switch to EUR');await w.find('button').trigger('click');expect(w.find('button').attributes('aria-label')).toBe('Showing EUR; switch to GBP');w.unmount();
+});
+it('combined cards exclude historical asset currencies and reject an old saved asset choice',async()=>{
+ mock.accounts.value=[{value:'gbp',currency:'GBP',instrumentCurrencies:['JPY','CNY','BRL']}];
+ let w=mount(CurrencyCard,{props:{preferenceKey:'aggregate',instrumentCurrencies:['JPY']}});await flushPromises();await w.find('button').trigger('click');w.unmount();
+ w=mount(CurrencyCard,{props:{preferenceKey:'aggregate'}});await flushPromises();expect(w.find('button').text()).toBe('£');expect(w.find('button').attributes('disabled')).toBeDefined();w.unmount();
 });
