@@ -480,7 +480,7 @@
                     <div v-else class="flex items-center space-x-2">
                       <span class="text-sm text-gray-500 dark:text-gray-400">Not calculated</span>
                       <button
-                        @click="calculateQuality"
+                        v-if="!trade.plan_trade" @click="calculateQuality"
                         :disabled="calculatingQuality"
                         class="text-xs px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
                       >
@@ -628,7 +628,7 @@
             </div>
           </div>
 
-          <div class="card">
+          <div v-if="!trade.plan_trade" class="card">
             <div class="card-body">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
                 <div>
@@ -1000,7 +1000,7 @@
             </div>
           </div>
 
-          <ExitMatching v-if="authStore.user?.id === trade.user_id && trade.broker === 'trading212' && trade.instrument_type === 'stock'" :trade="trade" @changed="loadTrade" />
+          <ExitMatching v-if="isOwner && trade.broker === 'trading212' && trade.instrument_type === 'stock'" :trade="trade" @changed="loadTrade" />
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
             <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
@@ -1287,7 +1287,7 @@
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Shares Held</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
-                      {{ formatNumber(executionSummary.finalPosition, 0) }}
+                      {{ formatNumber(executionSummary.finalPosition, trade.plan_trade ? 6 : 0) }}
                     </div>
                   </div>
                 </div>
@@ -1364,7 +1364,7 @@
           />
 
           <!-- Comments (Collapsible) -->
-          <div class="card">
+          <div v-if="!trade.plan_trade" class="card">
             <div class="card-body">
               <button
                 @click="toggleCommentsSection"
@@ -1521,6 +1521,12 @@
             <CurrencyCard preference-key="tradedetailview-4" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
+                <div v-if="trade.plan_trade">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Net realised P&L</dt>
+                  <dd class="mt-1 text-2xl font-semibold" :class="displayPnl>=0?'text-green-600':'text-red-600'">{{ displayPnl==null?'Unavailable':formatTradeCurrency(displayPnl) }}</dd>
+                  <dt class="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">Realised % gain/loss</dt>
+                  <dd>{{ trade.pnl_percent==null?'Unavailable':formatNumber(trade.pnl_percent)+'%' }}</dd>
+                </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     Net P&L
