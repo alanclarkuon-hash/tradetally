@@ -1197,7 +1197,7 @@ class TradeQueries {
         tradingDays: dailyPnlRows.length,
         avgReturnPercent: parseFloat(analytics.avg_return_pct) || 0,
         avgRValue: parseFloat(analytics.avg_r_value) || 0,
-        totalRValue: parseFloat(analytics.total_r_value) || 0
+        totalRValue: analytics.total_r_value == null ? null : parseFloat(analytics.total_r_value)
       },
       performanceBySymbol: symbolResult.rows,
       dailyPnL: dailyPnlRows,
