@@ -85,7 +85,7 @@ router.get('/risk',run(async(req,res)=>{
   const stops=[...new Set(pos.trades.map(t=>Number(t.stop_loss)).filter(v=>v>0))];
   const stop=stops.length===1?stops[0]:null;
   const rate=cross(pos.currency,currency);
-  let risk=['stock','crypto'].includes(pos.instrumentType)&&stop>0&&rate>0
+  let risk=['stock','cfd','crypto'].includes(pos.instrumentType)&&stop>0&&rate>0
    ?pos.totalQuantity*Math.max(0,pos.side==='short'?stop-pos.avgPrice:pos.avgPrice-stop)*rate:null;
   const matched=planEvidence.filter(e=>identity.startsWith((e.account||'unassigned')+'|')&&e.plan.definition.symbol===pos.symbol&&e.plan.definition.instrument===pos.instrumentType&&e.result.openQuantity>0);
   if(matched.length&&matched.every(e=>e.result.capitalRisk!=null&&e.result.coverageComplete)&&Math.abs(matched.reduce((sum,e)=>sum+e.result.openQuantity,0)-pos.totalQuantity)<1e-8){

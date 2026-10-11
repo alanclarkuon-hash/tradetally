@@ -86,3 +86,12 @@ test('cash uses real USD credit, supports zero, and excludes bonus credit and re
   expect(cashSnapshot({credit:'125.50',bonusCredit:99},'account').amount).toBe(125.5);
   for(const credit of [null,undefined,'',true,'invalid']) expect(()=>cashSnapshot({credit},'account')).toThrow();
 });
+
+ test('preserves confirmed CFD evidence for the same position through sync and partial closes',()=>{
+ const {preserveProductClassification}=require('../../src/services/brokerSync/etoroReconcile');
+ const existing=[{instrument_type:'cfd',executions:[{etoro_position_id:'one',etoro_source_type:'CFD'}]}];
+ const t={positionId:'one',instrumentType:'stock',executions:[{action:'buy'}]};
+ expect(preserveProductClassification(t,null,existing).instrumentType).toBe('cfd');
+ expect(t.executions[0].etoro_source_type).toBe('CFD');
+ expect(preserveProductClassification({positionId:'other',instrumentType:'stock',executions:[]},null,existing).instrumentType).toBe('stock');
+ });

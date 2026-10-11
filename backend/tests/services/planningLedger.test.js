@@ -33,3 +33,9 @@ test('broker rates apply the contract multiplier to option account amounts',()=>
 test('known entry transaction amounts remain available when another record lacks account FX',()=>{const t=trade();t.executions[0].account_currency='GBP';t.executions[0].broker_fx_rate=1.25;const r=ledger(plan(),allocations(t),[t]);expect(r.accountRealisedProfit).toBeNull();expect(r.records[0].accountCurrency).toBe('GBP');expect(r.records[0].accountPositionValue).toBe(800);expect(r.records[1].accountRealisedProfit).toBeNull()});
 
 test('PostgreSQL JSONB FX property order does not make source evidence unresolved',()=>{const t=trade();t.executions.forEach(e=>{e.account_currency='GBP';e.broker_fx_rate=1.25});const a=allocations(t);a.forEach(a=>a.source_snapshot.transactionFx={rate:a.source_snapshot.transactionFx.rate,accountCurrency:a.source_snapshot.transactionFx.accountCurrency});const r=ledger(plan(),a,[t]);expect(r.unresolved).toBe(0);expect(r.accountRealisedProfit).toBeCloseTo(146/1.25);t.executions[0].broker_fx_rate=1.3;expect(ledger(plan(),a,[t]).unresolved).toBe(1)});
+
+ test('CFD plans accept CFD entries and exits but reject underlying share trades',()=>{
+ const t=trade(),p=plan();t.instrument_type='cfd';p.definition.instrument='cfd';
+ for(const f of sourceFills(t))expect(()=>verifyAllocation(p,f,f.quantity,0,f.action,f.action==='entry'?'a':'b',t)).not.toThrow();
+ t.instrument_type='stock';const f=sourceFills(t)[0];expect(()=>verifyAllocation(p,f,1,0,'entry','a',t)).toThrow(/instrument/);
+ });
