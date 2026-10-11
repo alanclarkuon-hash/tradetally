@@ -104,3 +104,5 @@ test('settlement product distinguishes an unleveraged CFD from the underlying st
  p.positions[0].settlementTypeID=1;expect(mapSnapshot(p).trades[0].instrumentType).toBe('stock');
  p.positions[0].settlementTypeID=2;expect(()=>mapSnapshot(p)).toThrow(/settlement/);
 });
+
+test('sync retains source signed fees and identifies verified cash credits separately',()=>{const p=payload();p.history=[{...closed,fees:-.25,netProfit:2.25}];const t=mapSnapshot(p).trades[1];expect(t.fees).toBe(-.25);expect(t.pnl).toBe(2.25);expect(t.executions[1]).toMatchObject({fees:-.25,etoro_cash_credit:.25,etoro_fee_charge:0,etoro_reported_net_profit:2.25})});

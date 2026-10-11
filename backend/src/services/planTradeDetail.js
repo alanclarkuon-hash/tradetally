@@ -23,7 +23,7 @@ function projectPlanTrade(source,plan,result) {
  const accountComplete=result.accountRealisedProfit!=null;
  const closed=result.economicallyClosed||(!result.unresolved&&!result.overExit&&!result.provisionalCount&&Math.abs(result.openQuantity)<1e-8);
  const evidenceWarning=result.costsUnresolved?'Linked quantities and prices are verified. Broker costs are not fully assigned to these fills, so realised profit is unavailable.':null;
- const costs=records.reduce((sum,r)=>sum+r.fill.costs*r.quantity/r.fill.quantity,0);
+ const costs=records.reduce((sum,r)=>sum+(r.fill.netCosts??r.fill.costs)*r.quantity/r.fill.quantity,0);
  const commission=records.reduce((sum,r)=>sum+Number(r.fill.commission||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const fees=records.reduce((sum,r)=>sum+Number(r.fill.fees||0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const report={status:accountComplete?'complete':'unavailable',basis:'plan_allocations',currency:result.accountCurrency,pnl:result.accountRealisedProfit,entryCost:result.accountEntryCost,commission,fees,
