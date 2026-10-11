@@ -28,7 +28,9 @@ function projectPlanTrade(source,plan,result) {
  const fees=records.reduce((sum,r)=>sum+Number(r.fill.netFees??r.fill.fees??0)*r.quantity/r.fill.quantity/(r.fill.transactionFx?.rate||1),0);
  const report={status:accountComplete?'complete':'unavailable',basis:'plan_allocations',currency:result.accountCurrency,pnl:result.accountRealisedProfit,entryCost:result.accountEntryCost,commission,fees,
   events:executions.flatMap((e,index)=>e.realized_pnl==null||e.accountProfit==null?[]:[{sourceIndex:index,pnl:e.accountProfit,gross_pnl:e.accountProfit,time:e.datetime}])};
- const trade={...source,plan_trade:{id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
+ // The plan's asset is the market-data identity; the broker key stays on the
+ // original record and source metadata. Options retain their contract symbol.
+ const trade={...source,symbol:plan.definition.instrument==='option'?source.symbol:(plan.definition.symbol||source.symbol),underlying_symbol:plan.definition.symbol||source.underlying_symbol,plan_trade:{sourceSymbol:source.symbol,id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
   executions,quantity:result.entered,price:average(entries),entry_price:average(entries),exit_price:closed?average(exits):null,entry_time:entries[0]?.fill.time,exit_time:closed?exits.at(-1)?.fill.time:null,
   trade_date:entries[0]?.fill.time,pnl:result.realisedProfit,gross_pnl:result.realisedProfit==null?null:result.realisedProfit+costs,open_average_price:result.averagePrice,pnl_percent:result.percentGain,r_value:result.realisedR,commission:executions.reduce((s,e)=>s+e.commission,0),fees:executions.reduce((s,e)=>s+e.fees,0),
   original_currency:result.currency,original_entry_price_currency:null,account_currency:result.accountCurrency,account_pnl_result:report,
