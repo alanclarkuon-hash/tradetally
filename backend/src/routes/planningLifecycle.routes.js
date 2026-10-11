@@ -4,6 +4,7 @@ const Joi=require('joi');
 const {isDeepStrictEqual}=require('node:util');
 const db=require('../config/database');
 const {fail,calculate}=require('../services/tradePlanning');
+const {accountIds,stageAccount}=require('../services/planningAccounts');
 const {sourceFills,verifyAllocation,ledger}=require('../services/planningLedger');
 const brokerFills=require('../services/planBrokerFills');
 const {resolvePlanningSymbols}=require('../services/planningAssetSymbols');
@@ -29,10 +30,10 @@ async function evidence(c,p){
  const actualCurrencies=new Set(allocations.map(a=>a.source_snapshot.currency));
  const target=actualCurrencies.size===1?[...actualCurrencies][0]:p.definition.currency;
  let fx=null,working=p;
- if(target&&target!==p.definition.currency){
+ if(target&&target!==p.definition.currency||actualCurrencies.size>1||accountIds(p.definition).length>1){
   fx=await require('../services/planningFx').latestPlanningFx();
-  const rates={USD:1,...fx?.rates},from=Number(rates[p.definition.currency]),to=Number(rates[target]);
-  if(from>0&&to>0)working={...p,stopConversion:to/from,...(actualCurrencies.size===1?{provisionalConversion:{currency:target,rate:to/from}}:{})};
+  const rates={USD:1,...fx?.rates};working={...p,marketRates:rates};const from=Number(rates[p.definition.currency]),to=Number(rates[target]);
+  if(from>0&&to>0)working={...working,stopConversion:to/from,...(actualCurrencies.size===1?{provisionalConversion:{currency:target,rate:to/from}}:{})};
  }
  const result=ledger(working,allocations,trades);
  if(fx)result.displayFx=fx;
@@ -66,48 +67,7 @@ router.get('/recommendation',run(async(req,res)=>{
  }));
  res.json(require('../services/planningExposure').recommend(config?.settings?.selectedLevel,events.filter(e=>e.afterCheckpoint)));
 }));
-router.get('/risk',run(async(req,res)=>{
- const [trades,snapshots,plans,settings,fx,manual]=await Promise.all([
-  db.query('SELECT * FROM trades WHERE user_id=$1 AND exit_time IS NULL',[req.user.id]),
-  db.query('SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1',[req.user.id]),
-  db.query("SELECT * FROM trade_plans WHERE user_id=$1 AND status NOT IN ('cancelled','completed')",[req.user.id]),
-  db.query('SELECT settings FROM trade_planning_settings WHERE user_id=$1',[req.user.id]),
-  require('../services/planningFx').latestPlanningFx().then(value=>({rows:value?[value]:[]})),
-  db.query('SELECT COUNT(*) AS count FROM investment_holdings WHERE user_id=$1',[req.user.id])
- ]);
- const ids=[...new Set([...trades.rows.map(t=>t.account_identifier||'unassigned'),...snapshots.rows.map(t=>t.account_identifier)])];
- const groups=Object.fromEntries(ids.flatMap(id=>Object.entries(require('../services/brokerSync/portfolioSnapshot').dashboardPositions(trades.rows.filter(t=>(t.account_identifier||'unassigned')===id),snapshots.rows.filter(t=>t.account_identifier===id))).map(([key,value])=>[id+'|'+key,value])));
- const accountRows=(await db.query('SELECT id,account_identifier FROM user_accounts WHERE user_id=$1',[req.user.id])).rows;
- const planEvidence=await Promise.all(plans.rows.filter(p=>p.baseline).map(async p=>({plan:p,result:await evidence(db,p),account:accountRows.find(a=>a.id===p.definition.accountId)?.account_identifier})));
- const config=settings.rows[0]?.settings||{},currency=config.currency||'GBP',rates={USD:1,...fx.rows[0]?.rates};
- const cross=(from,to)=>rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
- let knownRisk=0,conservativeRisk=0,unknown=0;const positions=[];
- for(const [identity,pos] of Object.entries(groups)){
-  const stops=[...new Set(pos.trades.map(t=>Number(t.stop_loss)).filter(v=>v>0))];
-  const stop=stops.length===1?stops[0]:null;
-  const rate=cross(pos.currency,currency);
-  let risk=['stock','cfd','crypto'].includes(pos.instrumentType)&&stop>0&&rate>0
-   ?pos.totalQuantity*Math.max(0,pos.side==='short'?stop-pos.avgPrice:pos.avgPrice-stop)*rate:null;
-  const matched=planEvidence.filter(e=>identity.startsWith((e.account||'unassigned')+'|')&&e.plan.definition.symbol===pos.symbol&&e.plan.definition.instrument===pos.instrumentType&&e.result.openQuantity>0);
-  if(matched.length&&matched.every(e=>e.result.capitalRisk!=null&&e.result.coverageComplete)&&Math.abs(matched.reduce((sum,e)=>sum+e.result.openQuantity,0)-pos.totalQuantity)<1e-8){
-   risk=matched.reduce((sum,e)=>sum+e.result.capitalRisk*(cross(e.result.currency,currency)||0),0);
-   if(matched.some(e=>!cross(e.result.currency,currency)))risk=null;
-  }
-  let maximumLoss=null;
-  if(pos.instrumentType==='option'&&pos.side==='long'&&rate>0&&Number(pos.contractSize)>0&&Number(pos.avgPrice)>=0)maximumLoss=pos.totalQuantity*pos.avgPrice*Number(pos.contractSize)*rate;
-  if(matched.length&&matched.every(e=>e.result.maximumLoss!=null&&e.result.coverageComplete)&&Math.abs(matched.reduce((sum,e)=>sum+e.result.openQuantity,0)-pos.totalQuantity)<1e-8){
-   maximumLoss=matched.every(e=>cross(e.result.currency,currency))?matched.reduce((s,e)=>s+e.result.maximumLoss*cross(e.result.currency,currency),0):null;
-  }
-  if(maximumLoss!=null)conservativeRisk+=maximumLoss;
-  if(risk==null)unknown++;else knownRisk+=risk;
-  positions.push({accountId:accountRows.find(a=>identity.startsWith(a.account_identifier+'|'))?.id||null,symbol:pos.symbol,quantity:pos.totalQuantity,risk,maximumLoss,source:stop?'recorded stop':'missing stop/FX',asOf:pos.brokerQuote?.asOf||null});
- }
-const commitments=(await db.query("SELECT currency,risk_amount FROM trade_plan_commitments WHERE user_id=$1 AND status='reserved'",[req.user.id])).rows;
- for(const c of commitments){const r=cross(c.currency,currency);if(r)knownRisk+=Number(c.risk_amount)*r;else unknown++;}
- // Manual investments need lot-level stops before they can count as known risk.
- if(Number(manual.rows[0]?.count)>0)unknown+=Number(manual.rows[0].count);
- res.json({knownRisk,conservativeRisk,unknown,positions,currency,limit:config.portfolioLimit||null,fxDate:fx.rows[0]?.rate_date||null,selectedLevel:config.selectedLevel??null});
-}));
+router.get('/risk',run(async(req,res)=>res.json(await require('../services/planningRiskCoverage').load(db,req.user.id,evidence))));
 router.post('/library',run(async(req,res)=>{
  const s=Joi.object({kind:Joi.string().valid('entry','exit','context').required(),name:Joi.string().trim().min(1).max(100).required(),definition:Joi.string().max(2000).allow('').default('')}).validate(req.body);
  if(s.error)fail('Provide a valid tag kind, name and definition');
@@ -116,8 +76,10 @@ router.post('/library',run(async(req,res)=>{
  res.status(201).json({tag:result});
 }));
 router.put('/settings',run(async(req,res)=>{
- const s=Joi.object({portfolioLimit:Joi.number().positive().allow(null).required(),currency:Joi.string().pattern(/^[A-Z]{3}$/).required(),selectedLevel:Joi.number().valid(.05,.1,.2,.3).required(),reason:Joi.string().trim().min(10).max(2000).required()}).validate(req.body);
+ const s=Joi.object({accountLimits:Joi.array().max(50).items(Joi.object({accountId:uuid.required(),limit:Joi.number().positive().allow(null).required(),equity:Joi.number().positive().allow(null).default(null),exposureMultiple:Joi.number().positive().max(20).allow(null).default(null),buyingPower:Joi.number().min(0).allow(null).default(null)})).default([]),tradingAccountIds:Joi.array().max(50).unique().items(uuid).allow(null).default(null),portfolioLimit:Joi.number().positive().allow(null).required(),currency:Joi.string().pattern(/^[A-Z]{3}$/).required(),selectedLevel:Joi.number().valid(.05,.1,.2,.3).required(),reason:Joi.string().trim().min(10).max(2000).required()}).validate(req.body);
  if(s.error)fail('Set the risk limit/currency, exposure level and a reason');
+ const owned=(await db.query('SELECT id FROM user_accounts WHERE user_id=$1 AND is_archived=false',[req.user.id])).rows.map(a=>a.id);
+ if([...(s.value.tradingAccountIds||[]),...s.value.accountLimits.map(a=>a.accountId)].some(id=>!owned.includes(id)))fail('Choose active accounts you own for risk settings');
  await db.query('INSERT INTO trade_planning_settings(user_id,settings) VALUES($1,$2::jsonb) ON CONFLICT(user_id) DO UPDATE SET settings=EXCLUDED.settings,updated_at=NOW()',[req.user.id,JSON.stringify(s.value)]);
  res.json({settings:s.value});
 }));
@@ -158,7 +120,9 @@ router.get('/:id/fills',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
  const roll=req.query.purpose==='roll';if(req.query.purpose&&(!roll||p.definition.instrument!=='option'))fail('Choose a valid trade finder purpose');
- const account=(await db.query('SELECT account_identifier,broker FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,req.user.id])).rows[0];
+ const requestedAccount=req.query.accountId||p.definition.accountId;
+ if(!accountIds(p.definition).includes(requestedAccount))fail('Choose an account selected for this plan');
+ const account=(await db.query('SELECT account_identifier,broker FROM user_accounts WHERE id=$1 AND user_id=$2',[requestedAccount,req.user.id])).rows[0];
  if(!account?.account_identifier)return res.json({fills:[]});
  const assetSymbols=account.broker==='trading212'&&p.definition.instrument==='stock'?await resolvePlanningSymbols(db,req.user.id,account,p.definition.symbol):[p.definition.symbol.toUpperCase()];
  const d=p.definition,o=d.options||{},exactOption=d.instrument==='option'&&!roll;
@@ -199,7 +163,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   const used=allocations.reduce((s,a)=>s+Number(a.quantity),0);
   const assetSymbols=t.broker==='trading212'&&p.definition.instrument==='stock'&&String(t.symbol).toUpperCase()!==p.definition.symbol.toUpperCase()?await resolvePlanningSymbols(c,p.user_id,{broker:t.broker,account_identifier:t.account_identifier},p.definition.symbol):[];
   verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t,assetSymbols);
-  const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[p.definition.accountId,p.user_id])).rows[0];
+  const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[stageAccount(p.definition,b.action,b.stageKey),p.user_id])).rows[0];
   if(!account?.account_identifier||account.account_identifier!==t.account_identifier)fail('Trade account does not match the selected plan account');
   const current=await evidence(c,p);
   if(current.unresolved)fail('Resolve changed source fills before adding allocations',409);
@@ -375,10 +339,11 @@ async function assertEdits(c,p,d){
  const a=(await c.query('SELECT action,stage_key FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
  if(['completed','reviewed'].includes(p.status))fail('Reopen the review before editing a completed plan');
  if(a.length){
-  for(const k of ['symbol','instrument','direction','accountId','currency','options'])if(!require('util').isDeepStrictEqual(d[k],p.definition[k]))fail('Linked trades lock the asset, account, currency and contract');
+  for(const k of ['symbol','instrument','direction','accountId','accountIds','currency','options'])if(!require('util').isDeepStrictEqual(d[k]??(k==='accountIds'?[]:null),p.definition[k]??(k==='accountIds'?[]:null)))fail('Linked trades lock the asset, account, currency and contract');
   if(d.stopPrice!==p.definition.stopPrice)fail('Use the SL change action and record a reason');
-  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key)||(row.action==='exit'&&row.stage_key==='runner'&&p.definition.runnerMode==='legacy'?{key:'runner',label:'Runner',price:p.definition.runnerEstimatePrice,percent:100-p.definition.exits.reduce((s,e)=>s+e.percent,0),units:null,premium:null,marketContext:[],tactics:[]}:undefined);const after=d[k]?.find(e=>e.key===row.stage_key);if(!require('util').isDeepStrictEqual(before,after))fail('Linked ladder rows are locked; correct their allocation first');}
+  for(const row of a){const k=row.action==='entry'?'entries':'exits';const before=p.definition[k].find(e=>e.key===row.stage_key)||(row.action==='exit'&&row.stage_key==='runner'&&p.definition.runnerMode==='legacy'?{key:'runner',label:'Runner',price:p.definition.runnerEstimatePrice,percent:100-p.definition.exits.reduce((s,e)=>s+e.percent,0),units:null,premium:null,marketContext:[],tactics:[]}:undefined);const after=d[k]?.find(e=>e.key===row.stage_key);if(!require('util').isDeepStrictEqual({...before,accountId:before?.accountId||null},{...after,accountId:after?.accountId||null}))fail('Linked ladder rows are locked; correct their allocation first');}
  }
 }
+router.evidence=evidence;
 module.exports=router;
 module.exports.assertEdits=assertEdits;

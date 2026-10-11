@@ -14,6 +14,8 @@ function catalogueMapping(items=[]){
 async function saveCatalogue(connection,items){
  if(!connection.userId||!connection.externalAccountId)return;
  const instruments=items.filter(i=>i&&typeof i==='object').map(i=>Object.fromEntries(['ticker','shortName','isin','name','currencyCode','type'].filter(k=>typeof i[k]==='string').map(k=>[k,i[k]]))).filter(i=>i.ticker);
+ const rawByTicker=new Map(items.filter(i=>i?.ticker).map(i=>[i.ticker,i]));
+ for(const item of instruments){const raw=rawByTicker.get(item.ticker);if(raw?.maxOpenQuantity!=null&&Number.isFinite(Number(raw.maxOpenQuantity))&&Number(raw.maxOpenQuantity)>=0)item.maxOpenQuantity=Number(raw.maxOpenQuantity);}
  await db.query("INSERT INTO broker_instrument_catalogues(user_id,broker_type,account_identifier,instruments) VALUES($1,'trading212',$2,$3::jsonb) ON CONFLICT(user_id,broker_type,account_identifier) DO UPDATE SET instruments=EXCLUDED.instruments,fetched_at=NOW()",[connection.userId,'****'+String(connection.externalAccountId).slice(-4),JSON.stringify(instruments)]);
 }
 async function catalogueForAccount(client,userId,accountIdentifier){
