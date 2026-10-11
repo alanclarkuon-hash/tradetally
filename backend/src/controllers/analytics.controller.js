@@ -214,7 +214,8 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           contract_size,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
@@ -1115,7 +1116,8 @@ const analyticsController = {
           underlying_asset,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND exit_time IS NOT NULL
@@ -1716,7 +1718,8 @@ const analyticsController = {
             ${tableAlias}.executions,
             ${tableAlias}.original_currency,
             ${tableAlias}.exchange_rate,
-            ${tableAlias}.original_entry_price_currency
+            ${tableAlias}.original_entry_price_currency,
+            (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=${tableAlias}.id) AS account_pnl_result
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND (
@@ -1773,7 +1776,8 @@ const analyticsController = {
             ${tableAlias}.underlying_asset,
             ${tableAlias}.original_currency,
             ${tableAlias}.exchange_rate,
-            ${tableAlias}.original_entry_price_currency
+            ${tableAlias}.original_entry_price_currency,
+            (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=${tableAlias}.id) AS account_pnl_result
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND ${tableAlias}.exit_time IS NOT NULL
@@ -1871,7 +1875,8 @@ const analyticsController = {
           t.executions,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1
           AND (

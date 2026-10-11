@@ -1,4 +1,5 @@
 const express = require('express');
+const {reportAccountPnl}=require('../services/accountPnlReporting');
 const router = express.Router();
 const analyticsController = require('../controllers/analytics.controller');
 const { authenticate } = require('../middleware/auth');
@@ -26,7 +27,7 @@ const { authenticate } = require('../middleware/auth');
  *             schema:
  *               $ref: '#/components/schemas/Analytics'
  */
-router.get('/overview', authenticate, analyticsController.getOverview);
+router.get('/overview', authenticate, reportAccountPnl, analyticsController.getOverview);
 
 /**
  * @swagger
@@ -40,8 +41,8 @@ router.get('/overview', authenticate, analyticsController.getOverview);
  *       200:
  *         description: MAE/MFE analysis data
  */
-router.get('/maemfe', authenticate, analyticsController.getMAEMFE);
-router.get('/maemfe/trades', authenticate, analyticsController.getMAEMFETrades);
+router.get('/maemfe', authenticate, reportAccountPnl, analyticsController.getMAEMFE);
+router.get('/maemfe/trades', authenticate, reportAccountPnl, analyticsController.getMAEMFETrades);
 
 /**
  * @swagger
@@ -55,7 +56,7 @@ router.get('/maemfe/trades', authenticate, analyticsController.getMAEMFETrades);
  *       200:
  *         description: Performance metrics
  */
-router.get('/performance', authenticate, analyticsController.getPerformance);
+router.get('/performance', authenticate, reportAccountPnl, analyticsController.getPerformance);
 
 /**
  * @swagger
@@ -69,7 +70,7 @@ router.get('/performance', authenticate, analyticsController.getPerformance);
  *       200:
  *         description: Symbol performance statistics
  */
-router.get('/symbols', authenticate, analyticsController.getSymbolStats);
+router.get('/symbols', authenticate, reportAccountPnl, analyticsController.getSymbolStats);
 
 /**
  * @swagger
@@ -83,7 +84,7 @@ router.get('/symbols', authenticate, analyticsController.getSymbolStats);
  *       200:
  *         description: Tag performance statistics
  */
-router.get('/tags', authenticate, analyticsController.getTagStats);
+router.get('/tags', authenticate, reportAccountPnl, analyticsController.getTagStats);
 
 /**
  * @swagger
@@ -97,7 +98,7 @@ router.get('/tags', authenticate, analyticsController.getTagStats);
  *       200:
  *         description: Strategy performance statistics
  */
-router.get('/strategies', authenticate, analyticsController.getStrategyStats);
+router.get('/strategies', authenticate, reportAccountPnl, analyticsController.getStrategyStats);
 
 /**
  * @swagger
@@ -111,19 +112,19 @@ router.get('/strategies', authenticate, analyticsController.getStrategyStats);
  *       200:
  *         description: Hour of day performance statistics
  */
-router.get('/hours', authenticate, analyticsController.getHourOfDayStats);
+router.get('/hours', authenticate, reportAccountPnl, analyticsController.getHourOfDayStats);
 
-router.get('/calendar', authenticate, analyticsController.getCalendarData);
-router.get('/calendar/day', authenticate, analyticsController.getCalendarDayDetail);
-router.get('/export', authenticate, analyticsController.exportData);
-router.get('/charts', authenticate, analyticsController.getChartData);
-router.get('/drawdown', authenticate, analyticsController.getDrawdownAnalysis);
-router.get('/recommendations', authenticate, analyticsController.getRecommendations);
-router.get('/sectors', authenticate, analyticsController.getSectorPerformance);
-router.get('/sectors/available', authenticate, analyticsController.getAvailableSectors);
-router.get('/brokers/available', authenticate, analyticsController.getAvailableBrokers);
-router.get('/sectors/refresh', authenticate, analyticsController.refreshSectorPerformance);
-router.post('/categorize-symbols', authenticate, analyticsController.categorizeSymbols);
-router.get('/symbol-stats', authenticate, analyticsController.getSymbolCategoryStats);
+router.get('/calendar', authenticate, reportAccountPnl, analyticsController.getCalendarData);
+router.get('/calendar/day', authenticate, reportAccountPnl, analyticsController.getCalendarDayDetail);
+router.get('/export', authenticate, reportAccountPnl, analyticsController.exportData);
+router.get('/charts', authenticate, reportAccountPnl, analyticsController.getChartData);
+router.get('/drawdown', authenticate, reportAccountPnl, analyticsController.getDrawdownAnalysis);
+router.get('/recommendations', authenticate, reportAccountPnl, analyticsController.getRecommendations);
+router.get('/sectors', authenticate, reportAccountPnl, analyticsController.getSectorPerformance);
+router.get('/sectors/available', authenticate, reportAccountPnl, analyticsController.getAvailableSectors);
+router.get('/brokers/available', authenticate, reportAccountPnl, analyticsController.getAvailableBrokers);
+router.get('/sectors/refresh', authenticate, reportAccountPnl, analyticsController.refreshSectorPerformance);
+router.post('/categorize-symbols', authenticate, reportAccountPnl, analyticsController.categorizeSymbols);
+router.get('/symbol-stats', authenticate, reportAccountPnl, analyticsController.getSymbolCategoryStats);
 
 module.exports = router;

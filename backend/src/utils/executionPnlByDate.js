@@ -118,6 +118,13 @@ function getExitEventFromExecution(execution, trade, timezone, computedExecution
 // realized_pnl/exit_date values are authoritative; legacy rows are reconstructed
 // with the canonical P&L engine until every installation has completed backfill.
 function tradeExitEvents(trade, timezone) {
+  if(trade.account_pnl_coverage==='unavailable')return [];
+  if(trade.account_pnl_result && trade.account_pnl_reporting_rate>0) {
+    return (trade.account_pnl_result.events||[]).flatMap(e=>{
+      const date=getExecutionDateString(timezone,e.time);
+      return date&&e.pnl!=null?[{date,pnl:Number(e.pnl)*trade.account_pnl_reporting_rate,gross_pnl:Number(e.gross_pnl)*trade.account_pnl_reporting_rate}]:[];
+    });
+  }
   const executions = Array.isArray(trade.executions) ? trade.executions.filter(Boolean) : [];
   if (executions.length === 0) return [];
 

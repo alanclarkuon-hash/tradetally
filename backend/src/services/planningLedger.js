@@ -10,7 +10,8 @@ function sourceFills(trade) {
   {action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:trade.entry_commission??(Number(trade.commission||0)-Number(trade.exit_commission||0)),fees:trade.fees},
   ...(trade.exit_time?[{action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:trade.exit_commission}]:[])
  ];
- const list=input.flatMap(e=>{
+ const list=input.flatMap((original,sourceIndex)=>{
+  const e={...original,sourceIndex};
   if(e.price!=null&&e.action)return [e];
   if(e.entryPrice==null)return [e];
   const entry={...e,action:trade.side==='short'?'sell':'buy',price:e.entryPrice,datetime:e.entryTime,commission:e.entryCommission??e.commission,fees:e.fees};
@@ -34,7 +35,7 @@ function sourceFills(trade) {
   const accountCurrency=e.account_currency||e.accountCurrency;
   const rawRate=e.broker_fx_rate??e.brokerFxRate;
   const transactionFx=typeof accountCurrency==='string'&&/^[A-Z]{3}$/.test(accountCurrency)?{accountCurrency,rate:accountCurrency===currency?1:positive(rawRate)?Number(rawRate):null}:null;
-  return {...snapshot,transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
+  return {...snapshot,sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
  }).filter(Boolean);
  const totalCosts=fills.reduce((sum,f)=>sum+f.costs,0);
  const aggregateKnown=trade.commission!=null||trade.fees!=null;

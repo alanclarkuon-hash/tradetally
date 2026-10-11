@@ -695,6 +695,7 @@ class TradeQueries {
           MIN(symbol) as symbol,
           MIN(id::text) as trade_group,
           SUM(${fxUsd('pnl')}) as trade_pnl,
+          COUNT(*) FILTER (WHERE ${fxUsd('pnl')} IS NULL) as missing_fx,
           SUM(COALESCE(${fxUsd('commission')}, 0) + COALESCE(${fxUsd('fees')}, 0)) as trade_costs,
           COUNT(*) as execution_count,
           AVG(pnl_percent) as avg_return_pct,
@@ -713,6 +714,7 @@ class TradeQueries {
           symbol,
           id as trade_group,
           ${fxUsd('pnl')} as trade_pnl,
+          CASE WHEN ${fxUsd('pnl')} IS NULL THEN 1 ELSE 0 END as missing_fx,
           (COALESCE(${fxUsd('commission')}, 0) + COALESCE(${fxUsd('fees')}, 0)) as trade_costs,
           tick_size,
           point_value,
@@ -741,6 +743,7 @@ class TradeQueries {
           COUNT(CASE WHEN ${beCte.isNot} AND trade_pnl < 0 THEN 1 END)::integer as losing_trades,
           COUNT(CASE WHEN ${beCte.is} THEN 1 END)::integer as breakeven_trades,
           SUM(trade_pnl) as total_pnl,
+          COALESCE(SUM(missing_fx),0) as account_pnl_missing,
           SUM(trade_costs) as total_costs,
           ${useMedian
             ? `PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY trade_pnl) as avg_pnl,
@@ -926,6 +929,7 @@ class TradeQueries {
           t.original_currency,
           t.exchange_rate,
           t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result,
           ${derivedRValue} AS derived_r_value,
           (${POSITION_GROUP_KEY}) AS position_key
         FROM trades t
@@ -1171,6 +1175,7 @@ class TradeQueries {
         losingTrades: parseInt(analytics.losing_trades) || 0,
         breakevenTrades: parseInt(analytics.breakeven_trades) || 0,
         totalPnL: totalNetPnL,
+        accountPnlMissing: Number(analytics.account_pnl_missing)||0,
         totalNetPnL,
         totalGrossPnL,
         avgPnL: parseFloat(analytics.avg_pnl) || 0,

@@ -1,4 +1,5 @@
 const express = require('express');
+const {reportAccountPnl}=require('../services/accountPnlReporting');
 const router = express.Router();
 const tradeController = require('../controllers/trade.controller');
 const { authenticate, optionalAuth, requireAdmin } = require('../middleware/auth');
@@ -152,7 +153,7 @@ const importLimiter = createRateLimiter({
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/', flexibleAuth, requireApiScope('trades:read'), tradeController.getUserTrades);
+router.get('/', flexibleAuth, reportAccountPnl, requireApiScope('trades:read'), tradeController.getUserTrades);
 
 /**
  * @swagger
@@ -385,7 +386,7 @@ router.get('/public', optionalAuth, tradeController.getPublicTrades);
  *       200:
  *         description: Trade analytics data
  */
-router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeController.getAnalytics);
+router.get('/analytics', flexibleAuth, reportAccountPnl, requireApiScope('trades:read'), tradeController.getAnalytics);
 
 /**
  * @swagger
@@ -405,8 +406,8 @@ router.get('/analytics', flexibleAuth, requireApiScope('trades:read'), tradeCont
  *       200:
  *         description: Monthly performance metrics
  */
-router.get('/analytics/monthly', flexibleAuth, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
-router.get('/analytics/partial-exits', flexibleAuth, requireApiScope('trades:read'), requiresTier('pro'), tradeController.getPartialExitAnalytics);
+router.get('/analytics/monthly', flexibleAuth, reportAccountPnl, requireApiScope('trades:read'), tradeController.getMonthlyPerformance);
+router.get('/analytics/partial-exits', flexibleAuth, reportAccountPnl, requireApiScope('trades:read'), requiresTier('pro'), tradeController.getPartialExitAnalytics);
 
 /**
  * @swagger
@@ -841,7 +842,7 @@ router.get('/:id/chart-data', authenticate, resolveRepairedTrade, tradeControlle
  *       200:
  *         description: Trade deleted successfully
  */
-router.get('/:id', flexibleOptionalAuth, resolveRepairedTrade, tradeController.getTrade);
+router.get('/:id', flexibleOptionalAuth, reportAccountPnl, resolveRepairedTrade, tradeController.getTrade);
 router.put('/:id', flexibleAuth, requireApiScope('trades:write'), validate(schemas.updateTrade), tradeController.updateTrade);
 router.delete('/:id', flexibleAuth, requireApiScope('trades:write'), tradeController.deleteTrade);
 /**

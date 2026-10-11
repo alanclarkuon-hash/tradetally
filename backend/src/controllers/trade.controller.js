@@ -3653,7 +3653,7 @@ const tradeController = {
         }
       }
 
-      const cacheKey = TradeQueries.cacheKey(req.user.id, filters);
+      const cacheKey = TradeQueries.cacheKey(req.user.id, filters)+(req.accountFxKey?':account_reporting_v1:'+req.accountFxKey:'');
 
       const cached = cache.get(cacheKey);
       if (cached) {
