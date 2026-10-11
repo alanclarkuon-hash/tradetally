@@ -10,7 +10,7 @@ const row=(Date,Type,Amount,Balance)=>({Date,Type,Amount,Balance,'Position ID':'
 const original=[row('01/01/2026 12:00:00','Deposit',100,100),row('02/01/2026 12:00:00','Dividend',2,102)];
 const newer=row('03/01/2026 12:00:00','Interest Payment',3,105);
 function base(){return {account:{id:'a',connection_id:'c',account_name:'Synthetic',account_identifier:'synthetic',initial_balance_date:'2026-01-01',currency:'USD',broker_metadata:{}},report:{currency:'USD',from_date:'2026-01-01',to_date:'2026-01-02',starting_cash:0,ending_cash:102,records:prepare({'Account Activity':original,Dividends:[]}).records}};}
-function upload(rows=[original[1],newer]){return {username:'synthetic-user',start:'2026-01-02',end:'2026-01-03',equity:{openingTotalUSD:110,closingTotalUSD:135},statement:{'Account Activity':rows,Dividends:[]}};}
+function upload(rows=[original[1],newer]){return {username:'synthetic-user',start:'2026-01-02',end:'2026-01-03',equity:{openingTotalUSD:110,closingTotalUSD:135},statement:{'Account Activity':rows,Dividends:[],'Closed Positions':[]}};}
 beforeEach(()=>{jest.clearAllMocks();const b=base();db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[b.account]:sql.includes('SELECT * FROM broker_cash_reports')?[b.report]:[],rowCount:1}));db.withTransaction.mockImplementation(fn=>fn(db));workbook.read.mockResolvedValue(upload());backup.createFullSiteBackup.mockResolvedValue({});});
 test('partial statements use the saved opening cash, retain old history and add only new income',()=>{const d=service.combine(base(),upload());expect(d.records).toHaveLength(3);expect(d.added).toHaveLength(1);expect(d.endingCash).toBe(105);expect(d.added[0]).toMatchObject({type:'interest',cash:3,amount:3});});
 test('full history and repeated partial statements add no duplicate financial rows',()=>{const b=base();const d=service.combine(b,upload([...original,newer]));const next={...b,report:{...b.report,records:d.records,to_date:d.end,ending_cash:d.endingCash}};expect(service.combine(next,upload()).added).toHaveLength(0);});
@@ -35,4 +35,11 @@ test('invalid statement totals prevent preview and financial writes',async()=>{
  workbook.read.mockResolvedValue({...upload(),equity:{openingTotalUSD:110,closingTotalUSD:5}});
  await expect(service.preview('bad-total','a',{originalname:'statement.xlsx',buffer:Buffer.from('x')})).rejects.toThrow('equity');
  expect(db.withTransaction).not.toHaveBeenCalled();
+});
+
+test('trades changing after preview prevent classification and cash writes',async()=>{
+ const p=await service.preview('stale-trades','a',{originalname:'statement.xlsx',buffer:Buffer.from('x')});
+ const original=db.query.getMockImplementation();db.query.mockImplementation((sql,...args)=>sql.includes("SELECT * FROM trades")?Promise.resolve({rows:[{id:'new',executions:[]}]}):original(sql,...args));
+ await expect(service.apply('stale-trades',p.token)).rejects.toThrow(/Trades changed/);
+ expect(backup.createFullSiteBackup).not.toHaveBeenCalled();expect(db.withTransaction).not.toHaveBeenCalled();
 });
