@@ -56,6 +56,15 @@ const hkexClosures={
  '2024-09-06':'https://www.hkex.com.hk/News/Market-Communications/2024/2409062news?sc_lang=en'
 };
 calendars.set('HKEX',year=>[...(hkex.years[year]||[]),...Object.keys(hkexClosures).filter(d=>d.startsWith(year+'-'))].map(Date.parse));
+const european=require('./calendars/european-holidays.json').calendars;
+for (const [name,definition] of Object.entries(european)) calendars.set(name,year=>(definition.years[year]||[]).map(Date.parse));
+function coversRange(calendar,from,to) {
+ if(!calendars.has(calendar))return false;
+ const first=new Date(from).getUTCFullYear(),last=new Date(to).getUTCFullYear();
+ if(!Number.isFinite(first)||!Number.isFinite(last)||first<2020)return false;
+ for(let year=first;year<=last;year++)if(european[calendar]&&!european[calendar].years[year]||calendar==='HKEX'&&!hkex.years[year])return false;
+ return true;
+}
 const holidays=new Map(), identities=new Map(), lookupLanes=new Map(), retryAfter=new Map(), verifiedListings=new Set();
 let yahooLane=Promise.resolve(), yahooCooldown=0;
 function isTradingDay(day, calendar) {
@@ -71,6 +80,16 @@ function identify(symbol, exchange='') {
   if(symbol.endsWith('.L')) return 'LSE';
   if(symbol.endsWith('.DE')) return 'XETRA';
   if(symbol.endsWith('.HK')) return 'HKEX';
+  if(/\.(PA|BR|AS|LS)$/.test(symbol)) return 'EURONEXT';
+  if(symbol.endsWith('.OL')) return 'OSLO';
+  if(symbol.endsWith('.MI')) return 'MILAN';
+  if(symbol.endsWith('.ST')) return 'STOCKHOLM';
+  if(symbol.endsWith('.MC')) return 'MADRID';
+  if(/^(PAR|BRU|AMS|LIS|XPAR|XBRU|XAMS|XLIS)$/.test(exchange)) return 'EURONEXT';
+  if(/^(OSL|XOSL|OSLO)$/.test(exchange)) return 'OSLO';
+  if(/^(MIL|XMIL|BORSA ITALIANA)$/.test(exchange)) return 'MILAN';
+  if(/^(STO|XSTO|STOCKHOLM)$/.test(exchange)) return 'STOCKHOLM';
+  if(/^(MCE|XMAD|MADRID)$/.test(exchange)) return 'MADRID';
   // Never apply US holidays just because a ticker has no suffix.
   if(/LONDON|^LSE$|^XLON$|^LSEETF$/.test(exchange)) return 'LSE';
   if(/XETRA|^XET$|^GER$|^XETR$/.test(exchange)) return 'XETRA';
@@ -127,4 +146,4 @@ async function resolve(symbol,{allowLookup=false}={}) {
   try { const known=await value; return known || (allowLookup && !verifiedListings.has(symbol) ? lookup(symbol) : null); }
   catch {identities.delete(symbol);return null;}
 }
-module.exports={resolve,identify,isTradingDay,calendars};
+module.exports={resolve,identify,isTradingDay,calendars,coversRange};
