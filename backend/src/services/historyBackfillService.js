@@ -9,16 +9,28 @@ const fiat = new Set(['USD', 'GBP', 'EUR', 'AUD', 'CAD', 'CHF', 'JPY', 'NZD', 'H
 
 // Persisted queue entries survive restarts. A running job may have one follow-up
 // queued, so a new sync can never silently disappear behind an older plan.
-async function enqueue(userId) {
+function mergeScope(left, right) {
+  if (!left || !right) return null; // Explicit full maintenance dominates.
+  const accounts = { ...left.accounts };
+  for (const [id, from] of Object.entries(right.accounts)) accounts[id] = Object.hasOwn(accounts,id) ? accounts[id] && from ? [accounts[id],from].sort()[0] : null : from;
+  return { accounts };
+}
+async function enqueue(userId, scope = null) {
+  if (scope && !Object.keys(scope.accounts).length) return null;
   const id = await db.withTransaction(async client => {
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`history-backfill:${userId}`]);
-    const old = await client.query("SELECT id FROM job_queue WHERE user_id=$1 AND type=$2 AND status='pending' LIMIT 1", [userId, TYPE]);
-    if (old.rows.length) return old.rows[0].id;
+    // A resumed job already has a price cursor; never replace its task plan.
+    const old = await client.query("SELECT id,data FROM job_queue WHERE user_id=$1 AND type=$2 AND status='pending' AND result IS NULL AND COALESCE(data->>'mode','')='' ORDER BY created_at LIMIT 1 FOR UPDATE", [userId, TYPE]);
+    if (old.rows.length) {
+      const row = old.rows[0], data = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+      const merged = mergeScope(data?.scope, scope);
+      if (data?.scope) await client.query("UPDATE job_queue SET data=$2 WHERE id=$1 AND status='pending'", [row.id, JSON.stringify({version:2,scope:merged})]);
+      return row.id;
+    }
     return (await client.query(`INSERT INTO job_queue(type,user_id,data,status,priority)
-      VALUES($1,$2,$3,'pending',4) RETURNING id`, [TYPE, userId, JSON.stringify({ version: 1 })])).rows[0].id;
+      VALUES($1,$2,$3,'pending',4) RETURNING id`, [TYPE, userId, JSON.stringify({ version: 2, scope })])).rows[0].id;
   });
-  const queue = require('../utils/jobQueue');
-  queue.notifyJobEnqueued([TYPE]);
+  require('../utils/jobQueue').notifyJobEnqueued([TYPE]);
   return id;
 }
 function addTask(map, symbol, type, from, to) {
@@ -29,29 +41,39 @@ function addTask(map, symbol, type, from, to) {
   if (from > to) return;
   map.set(key, { symbol, instrumentType: type, from: old?.from < from ? old.from : from, to: old?.to > to ? old.to : to });
 }
-async function plan(userId) {
+async function plan(userId, scope = null) {
+  const accounts = scope ? Object.keys(scope.accounts) : [];
+  if (scope && !accounts.length) return [];
+  if (accounts.length > 1) {
+    const combined=new Map();
+    for (const id of accounts) for (const task of await plan(userId,{accounts:{[id]:scope.accounts[id]}})) addTask(combined,task.symbol,task.instrumentType,task.from,task.to);
+    return [...combined.values()].sort((a,b)=>a.from.localeCompare(b.from)||a.symbol.localeCompare(b.symbol));
+  }
+  const floor = scope ? Object.values(scope.accounts).filter(Boolean).sort()[0] : null;
+  const scopedTask = (symbol,type,from,to) => addTask(tasks,symbol,type,floor && from < floor ? floor : from,to);
   const end = iso(Date.now() - DAY), tasks = new Map();
-  const trades = (await db.query('SELECT symbol,instrument_type,underlying_symbol,entry_time,exit_time,trade_date FROM trades WHERE user_id=$1', [userId])).rows;
+  const trades = (await db.query('SELECT symbol,instrument_type,underlying_symbol,entry_time,exit_time,trade_date FROM trades WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
   for (const t of trades) {
     const type = t.instrument_type === 'crypto' ? 'crypto' : 'stock';
     const symbol = ['option','future'].includes(t.instrument_type) ? t.underlying_symbol : t.symbol;
     if (!symbol) continue;
     const entered = iso(t.entry_time || t.trade_date);
     const market = historicalMarketSymbol(symbol, type, entered);
-    addTask(tasks, type === 'crypto' ? market.replace(/-USD$/, '') : market, type,
+    scopedTask(type === 'crypto' ? market.replace(/-USD$/, '') : market, type,
       iso(Date.parse(entered) - 30 * DAY), t.exit_time ? [iso(Date.parse(t.exit_time) + 30 * DAY), end].sort()[0] : end);
   }
-  const positions = await require('./portfolioService')._getPositionComponents(userId, []);
+  const positions = await require('./portfolioService')._getPositionComponents(userId, accounts);
   for (const p of positions) {
     if (!p.effectiveDate) continue;
-    addTask(tasks, p.symbol, p.instrumentType === 'crypto' ? 'crypto' : 'stock', iso(p.effectiveDate), end);
+    scopedTask(p.symbol, p.instrumentType === 'crypto' ? 'crypto' : 'stock', iso(p.effectiveDate), end);
   }
   // Closed coins and Earn/stablecoin balances may exist only in native ledgers.
-  const snapshots = (await db.query('SELECT broker_type,payload FROM broker_import_snapshots WHERE user_id=$1', [userId])).rows;
-  for (const s of snapshots) {
+  const snapshots = (await db.query('SELECT broker_type,payload FROM broker_import_snapshots WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
+  for (const s of scope ? [] : snapshots) {
+    // Scoped reconstruction prices native coins actually held in its date window.
     const events = s.broker_type === 'kraken' ? Object.values(s.payload?.ledger || {}).map(r => ({ symbol: assetCode(r.asset), time: Number(r.time) * 1000 }))
       : s.broker_type === 'okx' ? (s.payload?.bills || []).map(r => ({ symbol: r.ccy, time: Number(r.ts) })) : [];
-    for (const e of events) if (e.symbol && !fiat.has(e.symbol) && Number.isFinite(e.time)) addTask(tasks, e.symbol, 'crypto', iso(e.time), end);
+    for (const e of events) if (e.symbol && !fiat.has(e.symbol) && Number.isFinite(e.time)) scopedTask(e.symbol, 'crypto', iso(e.time), end);
   }
   if (tasks.size) {
     const preferences = (await db.query('SELECT default_benchmark_symbol FROM portfolio_preferences WHERE user_id=$1', [userId])).rows[0];
@@ -67,7 +89,7 @@ async function process(job) {
   const data=typeof job.data==='string'?JSON.parse(job.data):job.data;
   if(data?.mode==='broker_refresh')return require('./priceCacheRefreshService').process(job,progress);
   let saved = typeof job.result === 'string' ? JSON.parse(job.result) : job.result;
-  const tasks = saved?.tasks || await plan(job.user_id);
+  const tasks = saved?.tasks || await plan(job.user_id, data?.scope);
   const state = saved?.tasks ? saved : { tasks, processed: 0, complete: 0, gaps: [], stage: 'prices', total: tasks.length };
   // Heartbeat protects a legitimate long backfill from stuck-job recovery.
   const timer = setInterval(() => progress(job.id, state).catch(() => {}), 30000);
@@ -104,7 +126,7 @@ async function process(job) {
     await progress(job.id, state);
     // Reconstruction also needs currency/split-aware closes and dated FX.
     // Its corporate-action rules and statement NAV precedence are preserved.
-    const maintenance = await require('./brokerPortfolioMaintenance').maintain(job.user_id, { fetchPrices: true,
+    const maintenance = await require('./brokerPortfolioMaintenance').maintain(job.user_id, { fetchPrices: true, accountIdentifiers:data?.scope ? Object.keys(data.scope.accounts) : null, fromDates:data?.scope?.accounts,
       onProgress:async detail=>{state.portfolioProgress=detail;state.lastProgressAt=new Date().toISOString();await progress(job.id,state);} });
     state.portfolioWarnings = maintenance.warnings;
     await require('./analyticsCache').invalidate(job.user_id);
@@ -165,4 +187,4 @@ async function poll() {
 function start() { if (!running) { running = true; schedule(0); } }
 function stop() { running = false; clearTimeout(pollTimer); }
 function nudge() { if (running && !busy) schedule(0); }
-module.exports = { enqueue, process, plan, status, addTask, TYPE, claim, start, stop, nudge };
+module.exports = { mergeScope, enqueue, process, plan, status, addTask, TYPE, claim, start, stop, nudge };
