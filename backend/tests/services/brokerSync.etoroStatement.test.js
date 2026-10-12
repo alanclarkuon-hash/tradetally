@@ -56,3 +56,5 @@ test('conflicting overlaps stop before any insert', async () => {
     {'Closed Positions':[row]})).rejects.toThrow('overlapping');
   expect(query).toHaveBeenCalledTimes(2);
 });
+
+test('statement capital is preserved independently of native rates, FX and leverage',()=>{const t=mapClosedPositions([{...row,Amount:50,'Open Rate':50.01,'FX rate at open (USD)':1.25}])[0];expect(t.entryPrice).toBeCloseTo(62.5125);expect(t.executions[0]).toMatchObject({etoro_invested_capital:50,etoro_capital_currency:'USD',etoro_capital_basis:'statement_amount',etoro_leverage:2})});

@@ -22,6 +22,18 @@ function getExecutions(row) {
 function identity(row) { return getExecutions(row)[0]?.etoro_record_key; }
 function positionId(row) { return String(getExecutions(row)[0]?.etoro_position_id); }
 
+// Product evidence belongs to a position, not to the underlying stock/ETF.
+function preserveProductClassification(trade, old, existing) {
+  const evidence = existing.filter(row => positionId(row) === trade.positionId);
+  if (old && !evidence.includes(old)) evidence.push(old);
+  const cfd = evidence.some(row => row.instrument_type === 'cfd' || getExecutions(row).some(e => e.etoro_source_type === 'CFD'));
+  if (cfd) {
+    trade.instrumentType = 'cfd';
+    trade.executions = trade.executions.map(e => ({...e, etoro_source_type:'CFD'}));
+  }
+  return trade;
+}
+
 function cashSnapshot(portfolio, accountIdentifier) {
   const raw = field(portfolio, 'credit');
   if (raw === '' || typeof raw === 'boolean') throw new Error('Invalid eToro cash balance.');
@@ -34,13 +46,15 @@ function cashSnapshot(portfolio, accountIdentifier) {
 function mapSnapshot(payload) {
   const instruments = new Map(payload.instruments.map(i => [String(field(i, 'instrumentId')), i]));
   const types = new Map(payload.instrumentTypes.map(t => [String(field(t, 'instrumentTypeId')), field(t, 'instrumentTypeDescription')]));
-  const instrument = id => {
+  const instrument = (id, row) => {
     const item = instruments.get(String(id));
     const description = String(types.get(String(field(item, 'instrumentTypeId'))) || '').toLowerCase();
     const type = description.includes('crypto') ? 'crypto' : ['stocks', 'stock', 'etf'].includes(description) ? 'stock' : null;
     const symbol = field(item, 'symbolFull');
     if (!type || typeof symbol !== 'string' || !symbol.trim()) throw new Error('Unsupported or unidentified eToro instrument. Import stopped for review.');
-    return { symbol: symbol.trim().toUpperCase(), instrumentType: type };
+    const settlement = field(row, 'settlementTypeID');
+    if (settlement != null && ![0,1].includes(settlement)) throw new Error('Unsupported eToro settlement product. Import stopped for review.');
+    return { symbol: symbol.trim().toUpperCase(), instrumentType: settlement === 0 ? 'cfd' : type };
   };
   const trades = [];
   const positions = [];
@@ -54,7 +68,7 @@ function mapSnapshot(payload) {
       throw new Error('Leveraged or short eToro positions need a separate import review.');
     }
     const id = field(row, 'positionId');
-    const asset = instrument(field(row, 'instrumentId'));
+    const asset = instrument(field(row, 'instrumentId'), row);
     const quantity = number(field(row, 'units'), 'open units', true);
     const rawPrice = number(field(row, 'openRate'), 'opening price', true);
     const fx = number(field(row, 'openConversionRate'), 'opening conversion rate', true);
@@ -67,9 +81,10 @@ function mapSnapshot(payload) {
     const key = `open:${id}`;
     const execution = { type: 'entry', action: 'buy', quantity, price: cost / quantity,
       datetime: entryTime, order_id: String(field(row, 'orderId')), etoro_record_key: key,
-      etoro_position_id: String(id), etoro_native_price: rawPrice, etoro_open_conversion_rate: fx,
+      etoro_position_id: String(id), etoro_invested_capital: cost, etoro_capital_currency: 'USD', etoro_capital_basis: 'broker_remaining_cost', etoro_native_price: rawPrice, etoro_open_conversion_rate: fx,
       etoro_mirror_id: field(row, 'mirrorId') || null,
-      etoro_parent_position_id: field(row, 'parentPositionId') || null };
+      etoro_parent_position_id: field(row, 'parentPositionId') || null,
+      ...(field(row,'settlementTypeID') != null ? {etoro_settlement_type:field(row,'settlementTypeID'),etoro_source_type:asset.instrumentType === 'cfd'?'CFD':asset.instrumentType === 'crypto'?'Crypto':'Stocks'} : {}) };
     add({ ...asset, key, positionId: String(id), side: 'long', quantity,
       entryTime, exitTime: null, entryPrice: cost / quantity, exitPrice: null,
       pnl: null, fees: 0, executions: [execution] });
@@ -79,7 +94,7 @@ function mapSnapshot(payload) {
   }
   for (const row of payload.history) {
     if (Number(row.leverage) !== 1 || typeof row.isBuy !== 'boolean') throw new Error('Leveraged eToro history needs a separate import review.');
-    const asset = instrument(row.instrumentId);
+    const asset = instrument(row.instrumentId, row);
     const quantity = number(row.units, 'closed units', true);
     const entryPrice = number(row.openRate, 'closed opening price', true);
     const exitPrice = number(row.closeRate, 'closing price', true);
@@ -99,16 +114,16 @@ function mapSnapshot(payload) {
     const exitTime = timestamp(row.closeTimestamp);
     if (exitTime < entryTime || row.positionId == null || row.orderId == null) throw new Error('Invalid eToro closing identity or date.');
     const key = `closed:${row.positionId}:${row.orderId}:${exitTime}:${quantity}`;
-    const common = { etoro_record_key: key, etoro_position_id: String(row.positionId),
+    const common = { ...(field(row,'settlementTypeID') != null ? {etoro_settlement_type:field(row,'settlementTypeID')} : {}), etoro_record_key: key, etoro_position_id: String(row.positionId),
       etoro_social_trade_id: row.socialTradeId || null, etoro_parent_position_id: row.parentPositionId || null };
     add({ ...asset, key, positionId: String(row.positionId), side: row.isBuy ? 'long' : 'short',
       quantity, entryTime, exitTime, entryPrice, exitPrice, pnl: netProfit, fees,
       executions: [
-        { ...common, type: 'entry', action: row.isBuy ? 'buy' : 'sell', quantity, price: entryPrice, datetime: entryTime },
+        { ...common, type: 'entry', action: row.isBuy ? 'buy' : 'sell', quantity, price: entryPrice, datetime: entryTime, etoro_invested_capital: investment, etoro_capital_currency: 'USD', etoro_capital_basis: 'broker_investment' },
         { ...common, type: 'exit', action: row.isBuy ? 'sell' : 'buy', quantity, price: exitPrice,
           datetime: exitTime, order_id: String(row.orderId), fees,
           realized_pnl: netProfit, gross_realized_pnl: gross, exit_date: exitTime.slice(0, 10),
-          etoro_reported_net_profit: netProfit }
+          etoro_reported_net_profit: netProfit, etoro_fee_charge: Math.max(0,fees), etoro_cash_credit: Math.max(0,-fees), etoro_adjustment_in_net: Math.abs(gross-fees-netProfit)<Math.abs(gross-netProfit) }
       ] });
   }
   const grouped = new Map();
@@ -175,12 +190,13 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
     const plans = plan(mapped.trades, existing);
     result.imported = plans.filter(p => !p.old).length;
     result.updated = plans.filter(p => p.old).length;
+    for (const {trade,old} of plans) preserveProductClassification(trade,old,existing);
     if (dryRun) return;
     for (const { trade: t, old } of plans) {
       const original = old && getExecutions(old)[0];
       if (original?.etoro_source_type) {
         if (original.etoro_source_type === 'CFD') t.instrumentType = 'cfd';
-        t.executions = t.executions.map(e => ({ ...e, etoro_source_type: original.etoro_source_type,
+        t.executions = t.executions.map(e => ({ ...e, etoro_source_type: t.instrumentType === 'cfd' ? 'CFD' : original.etoro_source_type,
           etoro_copied_from: original.etoro_copied_from || null,
           etoro_leverage: original.etoro_leverage || 1 }));
       }
@@ -202,6 +218,10 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14,$15,$16,'etoro','USD',1,0)`, values);
       }
     }
+    for (const position of mapped.positions) {
+      const lots = plans.filter(p => !p.trade.exitTime && p.trade.symbol === position.symbol);
+      if (lots.length && lots.every(p => p.trade.instrumentType === 'cfd')) position.instrumentType = 'cfd';
+    }
     await client.query(`INSERT INTO broker_portfolio_snapshots(user_id,broker_type,account_identifier,connection_id,positions)
       VALUES($1,'etoro',$2,$3,$4::jsonb) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,positions=EXCLUDED.positions,synced_at=NOW()`,
@@ -214,4 +234,4 @@ async function reconcile(connection, payload, { dryRun = false } = {}) {
   if (!dryRun) await AnalyticsCache.invalidate(connection.userId);
   return result;
 }
-module.exports = { mapSnapshot, plan, reconcile, cashSnapshot };
+module.exports = { mapSnapshot, plan, reconcile, cashSnapshot, preserveProductClassification };

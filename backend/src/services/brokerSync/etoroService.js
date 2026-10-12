@@ -132,6 +132,7 @@ class EtoroService {
     }
     const portfolioResponse = await this.get(connection, '/trading/info/real/pnl');
     const portfolio = field(portfolioResponse, 'clientPortfolio');
+    const portfolioAsOf=new Date().toISOString();
     const positions = flattenPositions(portfolio);
     const history = await this.fetchHistory(connection, startDate);
     const ids = [...new Set([...positions, ...history].map(p => String(field(p, 'instrumentId'))))];
@@ -150,7 +151,7 @@ class EtoroService {
     }
     // Staging is deliberately separate from report holdings and cashflow tables.
     // Keep the full private portfolio/history for currency and copied-trade review.
-    const payload = { version: 1, currency: 'USD', historyStart: historyStart(startDate),
+    const payload = { version: 1, currency: 'USD', asOf:portfolioAsOf, historyStart: historyStart(startDate),
       portfolio, positions, history, instruments, instrumentTypes };
     await db.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload)
       VALUES($1,'etoro',$2,$3,$4::jsonb)

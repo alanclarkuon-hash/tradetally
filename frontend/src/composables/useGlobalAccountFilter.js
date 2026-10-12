@@ -13,6 +13,7 @@ export const UNSORTED_ACCOUNT = '__unsorted__'
 const selectedAccount = ref(null)
 const accounts = ref([])
 const loading = ref(false)
+const error = ref(null)
 const initialized = ref(false)
 
 function normalizeStoredAccount(value) {
@@ -109,6 +110,7 @@ export function useGlobalAccountFilter() {
     if (loading.value) return
     const force = options.force === true
     loading.value = true
+    error.value = null
     try {
       const [tradeAccountsResult, managedAccountsResult] = await Promise.allSettled([
         api.get('/trades/accounts'),
@@ -133,7 +135,7 @@ export function useGlobalAccountFilter() {
         ...managedAccounts.map(getAccountFilterValue).filter(Boolean)
       ])).sort((a, b) => a.localeCompare(b))
 
-      accounts.value = accountIdentifiers.map(identifier => {
+      const nextAccounts = accountIdentifiers.map(identifier => {
         const managedAccount = managedAccountMap.get(identifier)
         const redactedIdentifier = redactAccountId(identifier)
 
@@ -148,7 +150,15 @@ export function useGlobalAccountFilter() {
         }
       })
 
-      const hasAccountData = tradeAccountsResult.status === 'fulfilled' || managedAccountsResult.status === 'fulfilled'
+      const hasAccountData = tradeAccountsResult.status === 'fulfilled' && managedAccountsResult.status === 'fulfilled'
+      if(hasAccountData){accounts.value=nextAccounts}
+      else {
+        // A partial response cannot prove that an account has been deleted.
+        const previous=new Map(accounts.value.map(account=>[account.value,account]))
+        for(const account of nextAccounts){if(managedAccountsResult.status==='fulfilled'||!previous.has(account.value))previous.set(account.value,account)}
+        accounts.value=[...previous.values()].sort((a,b)=>a.value.localeCompare(b.value))
+        error.value='Some accounts could not be loaded. Your selection has been kept. Retry to refresh the list.'
+      }
 
       // Validate stored selection still exists (allow special UNSORTED_ACCOUNT value)
       if (hasAccountData && selectedAccount.value && selectedAccount.value !== EMPTY_ACCOUNTS && selectedAccount.value !== UNSORTED_ACCOUNT && !accounts.value.some(account => account.value === selectedAccount.value)) {
@@ -157,9 +167,9 @@ export function useGlobalAccountFilter() {
         console.log('[GLOBAL ACCOUNT] Stored account no longer exists, clearing filter')
         clearAccount()
       }
-    } catch (error) {
-      console.error('[GLOBAL ACCOUNT] Failed to fetch accounts:', error)
-      accounts.value = []
+    } catch (fetchError) {
+      console.error('[GLOBAL ACCOUNT] Failed to fetch accounts:', fetchError)
+      error.value = 'Accounts could not be loaded. Your selection has been kept. Retry to refresh the list.'
     } finally {
       loading.value = false
     }
@@ -209,6 +219,7 @@ export function useGlobalAccountFilter() {
     selectedAccountLabel,
     accounts,
     loading,
+    error,
     isFiltered,
     fetchAccounts,
     setAccount,

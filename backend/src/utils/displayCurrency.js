@@ -255,6 +255,7 @@ function scaleMoneyInPayload(payload, rate, { maxDepth = 10, rateFor = null, rel
     }
 
     for (const [key, value] of Object.entries(node)) {
+      if (key==='account_pnl_result') continue;
       if (skipKeys && skipKeys.has(key) && value !== null && typeof value === 'object') continue;
       const isMoney = isTradeMoneyKey(key, parentKey);
       const direct = scaleNumeric(value, effRate);
@@ -339,6 +340,13 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
     }
   }
 
+  const visitRows=(node, callback)=>{
+    if(!node||typeof node!=='object')return;
+    if(Array.isArray(node)){node.forEach(n=>visitRows(n,callback));return;}
+    if(node.original_currency!==undefined && (node.entry_price!==undefined||node.entryPrice!==undefined))callback(node);
+    for(const [key,value] of Object.entries(node))if(key!=='account_pnl_result')visitRows(value,callback);
+  };
+  if(rowCurrency&&req.accountReports)visitRows(out,row=>{const result=req.accountReports.get(row.id||row.trade_id);if(result)row.account_pnl_result=result;});
   let rateFor = null;
   let relabel = null;
   if (rowCurrency) {
@@ -390,6 +398,12 @@ async function convertForDisplay(req, payload, { clone = true, raw = false, skip
     labelSymbol: currencySymbolFor(displayCurrency),
     skipKeys
   });
+  if(rowCurrency) {
+    const {applyAccountResult}=require('./tradeFx');
+    const codes=new Set();visitRows(out,row=>{if(row.account_pnl_result)codes.add(row.account_pnl_result.currency);});
+    const accountRates=codes.size?await getRatesToDisplay([...codes],displayCurrency):{};
+    visitRows(out,row=>applyAccountResult(row,code=>code===displayCurrency?1:accountRates[code]));
+  }
   out.display_currency = rate ? displayCurrency : 'USD';
   return out;
 }

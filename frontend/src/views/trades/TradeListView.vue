@@ -1,5 +1,6 @@
 <template>
   <div :class="[isFullWidth ? 'max-w-full px-4 sm:px-6 lg:px-12 mx-auto' : 'content-wrapper', 'py-8 transition-all duration-300']">
+    <p v-if="tradesStore.analytics?.summary?.accountPnlMissing" role="alert" class="mb-4 text-amber-700 dark:text-amber-300">P/L totals are incomplete: {{ tradesStore.analytics.summary.accountPnlMissing }} trades need broker FX or cost reconciliation.</p>
     <!-- Title -->
     <div class="mb-6">
       <h1 class="heading-page">Trades</h1>
@@ -660,7 +661,8 @@
                 <td v-else-if="column.visible && column.key === 'pnl'" 
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div v-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
+                  <div v-if="trade.account_pnl_coverage==='unavailable'" class="text-sm text-amber-700 dark:text-amber-300">FX / costs unavailable</div>
+                  <div v-else-if="!isTradeOpen(trade) && trade.pnl_percent" class="relative min-h-14">
                     <div class="absolute inset-x-0 top-1/2 -translate-y-1/2 text-sm font-medium" :class="[
                       trade.pnl >= 0 ? 'text-green-600' : 'text-red-600'
                     ]">
@@ -682,7 +684,8 @@
                 <td v-else-if="column.visible && column.key === 'grossPnl'"
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  <div v-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
+                  <div v-if="trade.account_pnl_coverage==='unavailable'" class="text-sm text-amber-700 dark:text-amber-300">FX / costs unavailable</div>
+                  <div v-else-if="!isTradeOpen(trade)" class="text-sm font-medium" :class="[
                     getTradeGrossPnl(trade) >= 0 ? 'text-green-600' : 'text-red-600'
                   ]">
                     {{ formatTradeSignedCurrency(getTradeGrossPnl(trade), trade) }}

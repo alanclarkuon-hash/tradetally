@@ -34,3 +34,13 @@ describe('chart display currency contracts', () => {
     expect(JSON.stringify(fixture.chart_data)).toBe(before);
   });
 });
+
+test('mixed-account plan markers retain native quotes rather than cash FX prices',async()=>{
+ User.getSettings.mockResolvedValue({display_currency:'GBP'});
+ converter.getDailyCrossRate.mockImplementation(async from=>({EUR:.9,USD:.8,GBP:1})[from]);
+ const chart={candles:[{open:100,high:101,low:99,close:100,volume:10}],trade:{original_currency:'GBP',currency:'GBP',entryPrice:80,executions:[{price:80,source_price:100,source_price_currency:'EUR'},{price:48,source_price:60,source_price_currency:'USD'}]}};
+ const out=await ChartService.convertTradeChartForDisplay({user:{id:'user'}},chart,'EUR');
+ expect(out.trade.executions.map(e=>e.price)).toEqual([90,48]);
+ expect(out.trade.executions[0].source_price).toBe(100);
+ expect(chart.trade.executions[0].price).toBe(80);
+});

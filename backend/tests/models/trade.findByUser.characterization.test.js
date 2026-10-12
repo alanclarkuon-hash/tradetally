@@ -35,7 +35,7 @@ const TradeQueries = require('../../src/services/tradeQueries');
 // in-process), so the main query is the last non-schema-lookup call.
 function captureQuery() {
   const mainCalls = db.query.mock.calls.filter(
-    ([sql]) => !String(sql).includes('information_schema.columns')
+    ([sql]) => !String(sql).includes('information_schema.columns') && !String(sql).includes('FROM broker_instrument_catalogues')
   );
   expect(mainCalls).toHaveLength(1);
   return {

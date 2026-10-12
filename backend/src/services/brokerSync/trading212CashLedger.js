@@ -53,6 +53,10 @@ async function saveCashReport(connection, history, summary) {
     starting_cash=EXCLUDED.starting_cash,ending_cash=EXCLUDED.ending_cash,records=EXCLUDED.records,updated_at=NOW()`,
   [connection.userId,account.id,dateKey(account.initial_balance_date),new Date().toISOString().slice(0,10),account.currency,
     Number(account.initial_balance || 0),Number(cash.availableToTrade)+Number(cash.reservedForOrders)+Number(cash.inPies),JSON.stringify(records)]);
+  await db.query(`INSERT INTO broker_capacity_evidence(user_id,account_id,broker_type,currency,available_cash,source,as_of)
+    VALUES($1,$2,'trading212',$3,$4,'Trading 212 account summary availableToTrade',NOW())
+    ON CONFLICT(user_id,account_id,broker_type) DO UPDATE SET currency=EXCLUDED.currency,available_cash=EXCLUDED.available_cash,source=EXCLUDED.source,as_of=EXCLUDED.as_of`,[connection.userId,account.id,account.currency,Number(cash.availableToTrade)]);
+
 }
 
 async function loadLedger(userId,account,start,end) {

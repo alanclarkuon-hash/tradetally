@@ -24,6 +24,7 @@ function mapPlaybook(playbook) {
     id: playbook.id,
     name: playbook.name,
     description: playbook.description,
+    planningTemplate: playbook.planning_template || null,
     market: playbook.market,
     timeframe: playbook.timeframe,
     side: playbook.side,

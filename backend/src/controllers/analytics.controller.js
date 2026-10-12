@@ -214,7 +214,8 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
           contract_size,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND entry_price IS NOT NULL
@@ -620,8 +621,8 @@ const analyticsController = {
             (SELECT COUNT(*) FROM completed_trades)::integer as total_trades,
             -- Breakeven = gross P&L within tolerance (exited ~at entry, ignoring
             -- commissions/fees). Wins/losses use NET P&L among the rest.
-            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0)::integer as winning_trades,
-            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0)::integer as losing_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND ${ovPnlRef} > 0)::integer as winning_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND ${ovPnlRef} < 0)::integer as losing_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.is})::integer as breakeven_trades,
             COALESCE(SUM(${ovPnlRef}), 0)::numeric as total_pnl,
             ${useMedian
@@ -629,12 +630,12 @@ const analyticsController = {
               : `COALESCE(AVG(${ovPnlRef}), 0)::numeric as avg_pnl`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
-              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0), 0)::numeric as avg_win`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} > 0), 0)::numeric as avg_win`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} > 0), 0)::numeric as avg_win`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
-              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0), 0)::numeric as avg_loss`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} < 0), 0)::numeric as avg_loss`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} < 0), 0)::numeric as avg_loss`
             },
             ${useMedian
               ? 'COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as avg_r_value'
@@ -643,8 +644,8 @@ const analyticsController = {
             COALESCE(SUM(r_value) FILTER (WHERE r_value IS NOT NULL AND stop_loss IS NOT NULL), 0)::numeric as total_r_value,
             -- R-value specific stats (only trades with stop_loss set)
             (SELECT COUNT(*) FROM completed_trades WHERE stop_loss IS NOT NULL)::integer as r_total_trades,
-            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
-            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND ${ovPnlRef} > 0 AND stop_loss IS NOT NULL)::integer as r_winning_trades,
+            (SELECT COUNT(*) FROM completed_trades WHERE ${be.isNot} AND ${ovPnlRef} < 0 AND stop_loss IS NOT NULL)::integer as r_losing_trades,
             (SELECT COUNT(*) FROM completed_trades WHERE ${be.is} AND stop_loss IS NOT NULL)::integer as r_breakeven_trades,
             COALESCE(SUM(${ovPnlRef}) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_total_pnl,
             ${useMedian
@@ -652,33 +653,33 @@ const analyticsController = {
               : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE stop_loss IS NOT NULL), 0)::numeric as r_avg_pnl`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
-              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} > 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_win`
             },
             ${useMedian
-              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
-              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND pnl < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+              ? `COALESCE(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
+              : `COALESCE(AVG(${ovPnlRef}) FILTER (WHERE ${be.isNot} AND ${ovPnlRef} < 0 AND stop_loss IS NOT NULL), 0)::numeric as r_avg_loss`
             },
             -- Best/worst trades
             (SELECT individual_best_trade FROM individual_trades) as best_trade,
             (SELECT individual_worst_trade FROM individual_trades) as worst_trade,
             (SELECT COUNT(*) FROM completed_trades)::integer as total_executions,
-            COALESCE(SUM(${ovPnlRef}) FILTER (WHERE pnl > 0), 0) as total_gross_wins,
-            COALESCE(ABS(SUM(${ovPnlRef}) FILTER (WHERE pnl < 0)), 0) as total_gross_losses,
+            COALESCE(SUM(${ovPnlRef}) FILTER (WHERE ${ovPnlRef} > 0), 0) as total_gross_wins,
+            COALESCE(ABS(SUM(${ovPnlRef}) FILTER (WHERE ${ovPnlRef} < 0)), 0) as total_gross_losses,
             COALESCE(SUM(${ovCommissionRef}), 0) as total_commissions,
             COALESCE(SUM(${ovFeesRef}), 0) as total_fees,
             COALESCE(STDDEV(${ovPnlRef}), 0) as pnl_stddev,
             COALESCE(SUM(quantity), 0)::numeric as total_volume,
             -- Average hold time (minutes) split by outcome, for the stats table
             COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
-              FILTER (WHERE ${be.isNot} AND pnl > 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_win_minutes,
+              FILTER (WHERE ${be.isNot} AND ${ovPnlRef} > 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_win_minutes,
             COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
-              FILTER (WHERE ${be.isNot} AND pnl < 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_loss_minutes,
+              FILTER (WHERE ${be.isNot} AND ${ovPnlRef} < 0 AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_loss_minutes,
             COALESCE(AVG(EXTRACT(EPOCH FROM (exit_time - entry_time)) / 60.0)
               FILTER (WHERE ${be.is} AND entry_time IS NOT NULL AND exit_time IS NOT NULL), 0)::numeric as avg_hold_scratch_minutes,
             -- Ordered W/L/B sequence for trade-based consecutive win/loss streaks
-            (SELECT array_agg(CASE WHEN ${be.is} THEN 'B' WHEN pnl > 0 THEN 'W' WHEN pnl < 0 THEN 'L' ELSE 'B' END ORDER BY trade_date, entry_time) FROM completed_trades) as result_array,
-            (SELECT array_agg(pnl ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
+            (SELECT array_agg(CASE WHEN ${be.is} THEN 'B' WHEN ${ovPnlRef} > 0 THEN 'W' WHEN ${ovPnlRef} < 0 THEN 'L' ELSE 'B' END ORDER BY trade_date, entry_time) FROM completed_trades) as result_array,
+            (SELECT array_agg(${ovPnlRef} ORDER BY trade_date, entry_time) FROM completed_trades) as pnl_array
           FROM completed_trades
         `;
 
@@ -1115,7 +1116,8 @@ const analyticsController = {
           underlying_asset,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1 ${filterConditions}
           AND exit_time IS NOT NULL
@@ -1716,7 +1718,8 @@ const analyticsController = {
             ${tableAlias}.executions,
             ${tableAlias}.original_currency,
             ${tableAlias}.exchange_rate,
-            ${tableAlias}.original_entry_price_currency
+            ${tableAlias}.original_entry_price_currency,
+            (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=${tableAlias}.id) AS account_pnl_result
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND (
@@ -1773,7 +1776,8 @@ const analyticsController = {
             ${tableAlias}.underlying_asset,
             ${tableAlias}.original_currency,
             ${tableAlias}.exchange_rate,
-            ${tableAlias}.original_entry_price_currency
+            ${tableAlias}.original_entry_price_currency,
+            (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=${tableAlias}.id) AS account_pnl_result
           FROM trades ${tableAlias}
           WHERE ${tableAlias}.user_id = $1
             AND ${tableAlias}.exit_time IS NOT NULL
@@ -1871,7 +1875,8 @@ const analyticsController = {
           t.executions,
           t.original_currency,
           t.exchange_rate,
-          t.original_entry_price_currency
+          t.original_entry_price_currency,
+          (SELECT ar.result FROM trade_account_reports ar WHERE ar.trade_id=t.id) AS account_pnl_result
         FROM trades t
         WHERE t.user_id = $1
           AND (

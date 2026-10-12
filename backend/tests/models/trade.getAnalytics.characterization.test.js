@@ -81,13 +81,13 @@ function defaultDbResponse() {
 function captureValues() {
   expect(db.query).toHaveBeenCalled();
   // All 8 fan-out queries share the same values array. Use the first call.
-  return db.query.mock.calls[0][1];
+  return db.query.mock.calls.find(([sql]) => !String(sql).includes('FROM broker_instrument_catalogues'))[1];
 }
 
 function captureSql() {
   // Use the executionCountQuery (first call) — it's the simplest and contains
   // the WHERE clause only. Other queries embed the same WHERE clause.
-  return db.query.mock.calls[0][0];
+  return db.query.mock.calls.find(([sql]) => !String(sql).includes('FROM broker_instrument_catalogues'))[0];
 }
 
 describe('TradeQueries.getAnalytics characterization', () => {
@@ -100,7 +100,8 @@ describe('TradeQueries.getAnalytics characterization', () => {
     await TradeQueries.getAnalytics('user-1', {});
 
     const analyticsSql = db.query.mock.calls[1][0];
-    expect(analyticsSql).toContain('(COALESCE(trade_amount_usd(t.commission, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0) + COALESCE(trade_amount_usd(t.fees, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0)) as trade_costs');
+    const {fxUsd}=require('../../src/utils/tradeFx');
+    expect(analyticsSql).toContain(`(COALESCE(${fxUsd('commission','t')}, 0) + COALESCE(${fxUsd('fees','t')}, 0)) as trade_costs`);
   });
 
   test('summary returns total R value computed by trade_stats', async () => {

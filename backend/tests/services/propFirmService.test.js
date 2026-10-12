@@ -445,7 +445,8 @@ describe('PropFirmService CRUD', () => {
     const [sql, params] = db.query.mock.calls[0];
     // Daily P&L drives the drawdown rules, so mixed-currency rows are
     // normalized before they are summed.
-    expect(sql).toContain('SUM(trade_amount_usd(pnl, original_currency, exchange_rate, original_entry_price_currency)) AS daily_pnl');
+    expect(sql).toContain("SUM(CASE WHEN EXISTS(SELECT 1 FROM trade_account_reports ar WHERE ar.trade_id=id) THEN trade_account_report_usd(id, 'pnl') ELSE trade_amount_usd(pnl, original_currency, exchange_rate, original_entry_price_currency) END) AS daily_pnl");
+    expect(sql).toContain('user_id = $1');expect(sql).toContain('account_identifier = $2');expect(sql).toContain('trade_date >= $3');
     expect(sql).toContain('GROUP BY trade_date');
     expect(sql).toContain('pnl IS NOT NULL');
     expect(params).toEqual(['user-1', 'APEX-50K-1', '2026-06-01']);

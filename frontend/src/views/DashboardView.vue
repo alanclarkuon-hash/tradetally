@@ -1,8 +1,10 @@
 <template>
   <div class="content-wrapper py-8">
+    <p v-if="analytics?.summary?.accountPnlMissing" role="alert" class="mb-4 text-amber-700 dark:text-amber-300">P/L totals are incomplete: {{ analytics.summary.accountPnlMissing }} trades need broker FX or cost reconciliation.</p>
     <nav class="flex gap-7 mb-7 border-b border-gray-200 dark:border-gray-700" aria-label="Dashboard tabs">
       <RouterLink to="/dashboard" class="pb-3 border-b-2 border-primary-500 text-primary-600 dark:text-primary-400">Trading</RouterLink>
       <RouterLink to="/dashboard/portfolio" class="pb-3 text-gray-500 dark:text-gray-400">Portfolio</RouterLink>
+      <RouterLink to="/dashboard/planning" class="pb-3 text-gray-500 dark:text-gray-400">Planning</RouterLink>
     </nav>
     <!-- Header with Filters -->
     <div class="mb-8">

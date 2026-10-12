@@ -32,7 +32,18 @@ class ChartService {
       rowCurrency: true,
       skipKeys: new Set(['candles'])
     });
-    const rates = await getRatesToDisplay([candles_source], display_currency);
+    const sources = [...new Set([candles_source,...(chart_data.trade?.executions||[]).map(e=>e.source_price_currency).filter(Boolean)])];
+    const rates = await getRatesToDisplay(sources, display_currency);
+    for(const [index,e] of (converted.trade?.executions||[]).entries()){
+      const source=chart_data.trade.executions[index];
+      if(source.source_price_currency && Number.isFinite(source.source_price)){
+        const r=rates[source.source_price_currency];
+        e.source_price=source.source_price;
+        e.source_price_currency=source.source_price_currency;
+        e.price=r ? source.source_price*r : null;
+        e.price_currency=r ? display_currency : source.source_price_currency;
+      }
+    }
     const candle_rate = rates[candles_source];
     converted.candles_currency = candle_rate ? display_currency : candles_source;
     if (candle_rate && Array.isArray(converted.candles)) {
