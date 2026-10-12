@@ -103,6 +103,11 @@ class BrokerSyncService {
       if (opening) startDate = opening instanceof Date ? opening.toISOString().slice(0,10) : String(opening).slice(0,10);
     }
 
+    const historyScope = require('../historySyncScope');
+    let historyBefore;
+    try { historyBefore = await historyScope.capture(connection.userId, connection.brokerType, connectionId); }
+    catch { /* Import still proceeds; a failed comparison is reported after sync. */ }
+
     // Create sync log
     const syncLog = await BrokerConnection.createSyncLog(
       connectionId,
@@ -323,7 +328,11 @@ class BrokerSyncService {
       }
 
       if (latestReportRetrieved && !result.failed && result.reconciliationRequired !== true) {
-        try { result.historyJobId = await require('../historyBackfillService').enqueue(connection.userId); }
+        try {
+          if (!historyBefore) throw new Error('History inputs unavailable');
+          const historyAfter = await historyScope.capture(connection.userId, connection.brokerType, connectionId);
+          result.historyJobId = await require('../historyBackfillService').enqueue(connection.userId, historyScope.difference(historyBefore, historyAfter));
+        }
         catch { result.warnings = [...(result.warnings || []), 'Historical price backfill could not be queued; broker imports were retained.']; }
       }
       publishInBackground('broker_sync.completed', {

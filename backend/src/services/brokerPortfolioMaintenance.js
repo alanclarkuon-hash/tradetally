@@ -3,14 +3,14 @@ const pending=new Map();
 const supported=new Set(['ibkr','trading212','kraken','okx','etoro','ig']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
-async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false,onProgress=async()=>{}}={}) {
+async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false,accountIdentifiers=null,fromDates=null,onProgress=async()=>{}}={}) {
  // Serialize recovery for each user, including scheduler/manual overlap.
  const key=userId,prior=pending.get(key)||Promise.resolve();
  const job=(async()=>{
   await onProgress({stage:'waiting'});
   await prior.catch(()=>{});
   const accounts=(await db.query("SELECT * FROM user_accounts WHERE user_id=$1 AND NOT is_archived AND account_identifier IS NOT NULL",[userId])).rows
-   .filter(a=>supported.has(a.broker)&&(!broker||a.broker===broker));
+   .filter(a=>supported.has(a.broker)&&(!broker||a.broker===broker)&&(!accountIdentifiers||accountIdentifiers.includes(a.account_identifier)));
   const warnings=[],rebuilt=[];
   if(!accounts.length)return {captured:0,rebuilt,warnings};
   for(const [index,account] of accounts.entries()) {
@@ -39,7 +39,7 @@ async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false,o
       MIN(value_date) FILTER (WHERE holdings_usd IS NULL OR issues <> '[]'::jsonb) AS first_gap
       FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0];
     const last=coverage?.latest;
-    const fromDate=fullHistory&&account.initial_balance_date?day(account.initial_balance_date):coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
+    const fromDate=fromDates && Object.hasOwn(fromDates,account.account_identifier) ? fromDates[account.account_identifier]||day(account.initial_balance_date) : (fullHistory&&account.initial_balance_date?day(account.initial_balance_date):coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date));
     const summary=await require('./portfolioReconstructionService').reconstruct(userId,{broker:account.broker,
      accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true,onProgress:report});
     rebuilt.push(...summary.map(s=>({broker:s.broker,days:s.days,gaps:s.gaps})));
