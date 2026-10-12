@@ -19,3 +19,5 @@ test('financial discrepancies, unsupported types and conflicting product evidenc
 test('correcting a linked instrument reports each affected plan and changes source revision',()=>{
  const t=trade(),s={'Closed Positions':[row()]};const a=[{id:'a',trade_id:t.id,plan_id:'p'}];const r=planClassifications(s,[t],a);expect(r.counts).toMatchObject({corrected:1,affectedPlans:1});expect(planClassifications(s,[{...t,pnl:4.01}],a).revision).not.toBe(r.revision);
 });
+
+test('unique broker position identity verifies historical ticker renames without changing stored symbols or profit',()=>{const t=trade(),s={'Closed Positions':[row()]};t.symbol='OLD';const result=planClassifications(s,[t]);expect(result.counts.verified).toBe(1);expect(result.updates[0].executions.every(e=>e.etoro_statement_symbol==='TEST')).toBe(true);expect(t.symbol).toBe('OLD');expect(result.updates[0]).not.toHaveProperty('symbol');expect(()=>planClassifications(s,[t,{...t,id:'duplicate'}])).toThrow(/multiple/);expect(()=>planClassifications(s,[{...t,quantity:999}])).toThrow(/differs/);});
