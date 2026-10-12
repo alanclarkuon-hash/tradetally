@@ -104,7 +104,7 @@ router.get('/:id/workflow',run(async(req,res)=>{
  const history=(await db.query('SELECT event_type,created_at,snapshot FROM trade_plan_events WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at',[p.id,req.user.id])).rows;
  const tradeReviews=(await db.query('SELECT r.trade_id,r.adherence_score,r.review_type,r.reviewed_at,r.followed_plan FROM trade_playbook_reviews r WHERE r.user_id=$1 AND r.trade_id IN (SELECT trade_id FROM trade_plan_allocations WHERE plan_id=$2 AND user_id=$1)',[p.user_id,p.id])).rows;
  const journalAssessments=(await db.query('SELECT * FROM trade_plan_journal_assessments WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at DESC,id',[p.id,p.user_id])).rows;
- res.json({journalAssessments,fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
+ res.json({exitSizing:require('../services/planningExitSizing').state(p,result),journalAssessments,fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
 }));
 function digest(result){const evidence=result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid,...(a.journal_evidence?{journalEvidence:a.journal_evidence}:{})}));if(result.cashflows?.entries?.length)evidence.push({cashflows:result.cashflows.entries.map(e=>({id:e.id,fingerprint:e.fingerprint,status:e.status,fraction:e.fraction,treatment:e.treatment}))});return require('crypto').createHash('sha256').update(JSON.stringify(evidence)).digest('hex')}
 
@@ -120,6 +120,10 @@ router.post('/:id/cashflows',run(async(req,res)=>{
 router.delete('/:id/cashflows/:linkId',run(async(req,res)=>{
  validId(req.params.linkId);if(typeof req.body.reason!=='string'||req.body.reason.trim().length<10||req.body.reason.length>2000)fail('Record why this attribution is being removed');
  await db.withTransaction(async c=>{const p=await lock(c,req);if(['completed','reviewed','cancelled'].includes(p.status))fail('Reopen this plan before changing cashflow attribution');const old=(await c.query('DELETE FROM trade_plan_cashflow_links WHERE id=$1 AND user_id=$2 AND plan_id=$3 RETURNING *',[req.params.linkId,p.user_id,p.id])).rows[0];if(!old)fail('Cashflow attribution not found',404);await c.query('UPDATE trade_plans SET review=NULL,version=version+1,updated_at=NOW() WHERE id=$1',[p.id]);await record(c,p,'cashflow_attribution_removed',{previous:old,reason:req.body.reason.trim()});});res.json({success:true});
+}));
+router.post('/:id/exit-sizing',run(async(req,res)=>{
+ const schema=Joi.object({version:Joi.number().integer().required(),accountId:uuid.required(),entered:Joi.number().positive().required(),rows:Joi.array().max(20).items(Joi.object({key:Joi.string().max(64).required(),units:Joi.number().min(0).required()})).required(),reason:Joi.string().trim().min(10).max(2000).required()}).validate(req.body,{convert:false});if(schema.error)fail('Choose valid remaining exit quantities and a recheck reason');
+ await db.withTransaction(async c=>{const p=await lock(c,req);if(!p.finalised||['completed','reviewed','cancelled'].includes(p.status))fail('Finalise or reopen this plan before revising remaining exits');const update=require('../services/planningExitSizing').confirm(p,await evidence(c,p),schema.value);await c.query('UPDATE trade_plans SET management=$1::jsonb,exit_sizing=$2::jsonb,review=NULL,version=version+1,updated_at=NOW() WHERE id=$3',[JSON.stringify(update.management),JSON.stringify(update.sizing),p.id]);await record(c,p,'exit_quantities_rechecked',update);});res.json({success:true});
 }));
 router.post('/:id/chart',run(async(req,res)=>{
  validId(req.params.id);
@@ -158,12 +162,12 @@ router.get('/:id/fills',run(async(req,res)=>{
  AND account_identifier=$3 AND COALESCE(instrument_type,'stock')=$4 AND side=$5
  AND ($6::boolean OR (strike_price=$7 AND expiration_date::date=$8::date AND option_type=$9 AND contract_size=$10))
  ORDER BY entry_time DESC`,[req.user.id,d.symbol,account.account_identifier,d.instrument,d.instrument==='option'?'long':d.direction,!exactOption,o.strike||null,o.expiry||null,o.type||null,o.multiplier||null,assetSymbols])).rows;
- const used=(await db.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;
+ const used=(await db.query('SELECT plan_id,stage_key,trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;
  const brokerTrades=trades.filter(t=>t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long');
  let originals=[];
  if(brokerTrades.length||(account.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')){const groups=await brokerFills.loadGroups(db,req.user.id,account.account_identifier,d.symbol,false,assetSymbols);originals=brokerFills.availableGroups(groups,used);}
 
- res.json({fills:[...originals,...trades.filter(t=>!(t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')).flatMap(t=>sourceFills(t).filter(f=>!used.some(a=>a.trade_id===t.id&&a.source_key===f.key)).map(f=>({...f,tradeId:t.id,account:t.account_identifier,available:f.quantity})))].filter(f=>f.available>1e-8)});
+ res.json({fills:[...originals,...trades.filter(t=>!(t.broker==='trading212'&&d.instrument==='stock'&&d.direction==='long')).flatMap(t=>sourceFills(t).map(f=>{const matches=used.filter(a=>a.trade_id===t.id&&a.source_key===f.key),allocated=matches.reduce((v,a)=>v+Number(a.quantity),0);return {...f,tradeId:t.id,account:t.account_identifier,allocated,sharedPlans:[...new Set(matches.map(a=>a.plan_id).filter(id=>id&&id!==p.id))],available:Math.max(0,f.quantity-allocated)}}))].filter(f=>f.available>1e-8)});
 }));
 router.post('/:id/allocations',run(async(req,res)=>{
  const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
@@ -174,6 +178,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
  await db.withTransaction(async c=>{
   const p=await lock(c,req);
   if(!p.finalised||['cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
+  const exitSizingBefore=await evidence(c,p);
   const appendingReservedEntry=body.action==='entry'&&(await c.query("SELECT id FROM trade_plan_commitments WHERE plan_id=$1 AND user_id=$2 AND stage_key=$3 AND status='reserved'",[p.id,p.user_id,body.stageKey])).rows.length>0;
   if(body.fills&&!appendingReservedEntry&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
   for(const selected of body.fills||[body]){
@@ -185,10 +190,10 @@ router.post('/:id/allocations',run(async(req,res)=>{
   const t=canonical&&group?{...source,...group.trade,id:source.id,user_id:source.user_id}:source;
   const f=canonical?group?.fill:sourceFills(t).find(f=>f.key===b.sourceKey);if(!f||f.fingerprint!==b.fingerprint)fail('Source fill changed. Reload the trade finder.',409);
   if(canonical&&f.action==='exit'&&brokerFills.originalSettlementReports(groups).canonical.get(group.key)?.status!=='complete')fail('Original broker exit settlement history needs reconciliation before linking',409);
-  if(group){const all=(await c.query('SELECT trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;if(all.some(a=>a.source_key===group.key))fail('This original broker execution is already linked to a plan. Unlink it before linking again.',409);const usedOriginal=brokerFills.usedQuantity(group,all);if(b.quantity+usedOriginal>group.quantity+1e-8)fail('Allocation exceeds the available original broker execution quantity',409);}
+  if(group){const all=(await c.query('SELECT plan_id,stage_key,trade_id,source_key,quantity,source_snapshot FROM trade_plan_allocations WHERE user_id=$1',[req.user.id])).rows;const sameOriginal=all.filter(a=>a.source_key===group.key||a.source_snapshot?.brokerExecution?.key===group.key);if(sameOriginal.some(a=>a.plan_id===p.id&&a.stage_key===b.stageKey))fail('This original fill is already linked to this row. Unlink it to change the allocated quantity.',409);if(sameOriginal.some(a=>a.source_snapshot.fingerprint!==f.fingerprint))fail('Another plan has a changed source link. Resolve it before sharing this fill.',409);const usedOriginal=brokerFills.usedQuantity(group,all);if(b.quantity+usedOriginal>group.quantity+1e-8)fail('Allocation exceeds the available original broker execution quantity',409);}
   const allocations=(await c.query('SELECT * FROM trade_plan_allocations WHERE user_id=$1 AND trade_id=$2 AND source_key=$3',[req.user.id,t.id,f.key])).rows;
   if(allocations.some(a=>a.plan_id===p.id&&a.stage_key===b.stageKey))fail('This fill is already linked to that row',409);
-  if(allocations.length)fail('This fill is already linked to a plan. Unlink it before linking again.',409);
+  if(allocations.some(a=>a.source_snapshot.fingerprint!==f.fingerprint))fail('Another plan has a changed source link. Resolve it before sharing this fill.',409);
   const used=allocations.reduce((s,a)=>s+Number(a.quantity),0);
   const assetSymbols=t.broker==='trading212'&&p.definition.instrument==='stock'&&String(t.symbol).toUpperCase()!==p.definition.symbol.toUpperCase()?await resolvePlanningSymbols(c,p.user_id,{broker:t.broker,account_identifier:t.account_identifier},p.definition.symbol):[];
   verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t,assetSymbols);
@@ -223,7 +228,8 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(b.action==='entry')await require('../services/planningCommitments').reconcileRow(c,p,b.stageKey);
   await record(c,p,'trade_linked',{tradeId:t.id,sourceKey:f.key,stageKey:b.stageKey,action:b.action,quantity:b.quantity,source:f});
   }
-  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(p.baseline),p.id]);
+  const exitSizing=require('../services/planningExitSizing').initialise(p,exitSizingBefore,await evidence(c,p));
+  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW(),exit_sizing=$3::jsonb WHERE id=$2",[JSON.stringify(p.baseline),p.id,JSON.stringify(exitSizing)]);
  });
  res.status(201).json({success:true});
 }));
@@ -268,12 +274,12 @@ router.put('/:id/management',run(async(req,res)=>{
   for(const a of allocated){const r=m[a.action]?.[a.stage_key];if(r)r.executed=true;}
   const canonical=value=>Object.fromEntries(['entry','exit'].map(kind=>[kind,Object.fromEntries(Object.entries(value?.[kind]||{}).map(([key,r])=>[key,{...r,time:new Date(r.time).toISOString(),tactics:r.tactics||[],marketContext:r.marketContext||[]}]))]));
   if(isDeepStrictEqual(canonical(m),canonical(p.management)))return;
-  const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');
+  const before=await evidence(c,p);const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');
   const hasExecuted=Object.values(m.entry).some(r=>r.executed)||allocated.some(a=>a.action==='entry');
   const returnedToWatching=p.status==='entered'&&!hasExecuted;
   const nextStatus=hasExecuted?'entered':returnedToWatching?'watching':p.status;
   const baseline=returnedToWatching&&p.baseline?.source==='user_reported'?null:p.baseline||(hasExecuted?{...p.definition,recordedAt:new Date().toISOString(),source:'user_reported'}:null);
-  await c.query("UPDATE trade_plans SET management=$1::jsonb,baseline=$2::jsonb,status=$3,version=version+1,updated_at=NOW() WHERE id=$4",[JSON.stringify(m),JSON.stringify(baseline),nextStatus,p.id]);
+  await c.query("UPDATE trade_plans SET management=$1::jsonb,baseline=$2::jsonb,status=$3,version=version+1,updated_at=NOW(),exit_sizing=$5::jsonb WHERE id=$4",[JSON.stringify(m),JSON.stringify(baseline),nextStatus,p.id,JSON.stringify(require('../services/planningExitSizing').initialise(p,before,result))]);
   await record(c,p,'management_updated',{previous:p.management,next:m,source:'user_reported',previousStatus:p.status,status:nextStatus});
   if(returnedToWatching)await record(c,p,'watching',{previousStatus:p.status,status:'watching',reason:'All provisional entry marks removed; no entry trades linked'});
  });res.json({success:true});
