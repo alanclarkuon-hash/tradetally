@@ -158,7 +158,8 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
  if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
  await onProgress({stage:'fx'});
- const fx=await loadFx(from,end,{fetchPrices});
+ const priceFrom=fromDate&&fromDate>from?date(Date.parse(fromDate)-7*86400000):from;
+ const fx=await loadFx(priceFrom,end,{fetchPrices});
  const krakenPayload=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' LIMIT 1",[userId])).rows[0]?.payload;
  const publicCryptoRates=krakenPayload?.valuation?.rates||{};
 
@@ -184,7 +185,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');
    native=walletHistory(Object.values(payload?.ledger||{}).map(l=>({wallet:nativeWalletCode(l.asset),time:Number(l.time)*1000,amount:l.amount,fee:l.fee})),start,end);
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(Math.abs(q)>1e-9&&!FIAT.has(s))need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&!FIAT.has(s))need.add(s+'-USD');
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Full native ledger including fees and Earn wallets; dated USD closes';
   }else if(account.broker==='okx') {
@@ -194,7 +195,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    for(const p of payload?.trading?.[0]?.details||[])if(Math.abs((final[p.ccy]||0)-Number(p.cashBal))>1e-8)blockers.push(`Native crypto quantity mismatch: ${p.ccy}`);
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Reconciled Trading-wallet settlement bills; dated USD closes';
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(Math.abs(q)>1e-9&&s!=='USDT')need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&s!=='USDT')need.add(s+'-USD');
   }else {
    const ledgerService={ig:'igCashLedger',ibkr:'ibkrCashLedger',etoro:'etoroCashStatement',trading212:'trading212CashLedger'}[account.broker];
    const ledger=ledgerService?await require('./brokerSync/'+ledgerService).loadLedger(userId,account,start,end):null;
@@ -225,13 +226,13 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});market.set(s,await loadMarket(s,start,end,{fetchPrices,userId}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});market.set(s,await loadMarket(s,priceFrom>start?priceFrom:start,end,{fetchPrices,userId}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   // Retired markets may have disappeared from live pair metadata. Their
   // official daily archive retains actual historical closes.
   if(account.broker==='kraken'&&fetchPrices)for(const s of symbols) {
    const coin=s.slice(0,-4);
-   const missing=native.some(r=>r.date<=cutoff&&r.quantities[coin]>1e-9&&
+   const missing=native.some(r=>r.date>=priceFrom&&r.date<=cutoff&&r.quantities[coin]>1e-9&&
     !(Number(cryptoRates[coin]?.[r.date])||Number(publicCryptoRates[coin]?.[r.date])||stockPrice(s,r.date)));
    if(!missing)continue;
    try {
@@ -247,7 +248,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Sonic launched before Kraken retired FTM. Use its dated market price only
   // where the original FTM close is absent and this import proves a 1:1 swap.
   if(account.broker==='kraken'&&fetchPrices&&[...migrationAliases].some(([key,old])=>key.startsWith('S:')&&old==='FTM')) {
-   const missing=native.filter(r=>r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
+   const missing=native.filter(r=>r.date>=priceFrom&&r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
    if(missing.length)try {
     const candles=(await axios.get('https://data-api.binance.vision/api/v3/klines',{params:{symbol:'SUSDT',interval:'1d',startTime:Date.parse(missing[0].date),endTime:Date.parse(missing.at(-1).date)+86400000-1,limit:1000},timeout:15000,maxRedirects:0,maxContentLength:1024*1024})).data;
     const existing=market.get('FTM-USD'),prices=new Map((existing?.prices||[]).map(p=>[p.date,p.close])),proxyDates=new Set(existing?.proxyDates||[]);
