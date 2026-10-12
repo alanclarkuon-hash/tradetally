@@ -84,21 +84,21 @@
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked" @change="changeStop($event,currencies[kind])"></label></div>
     <ExitSizingRecheck v-if="managing&&kind==='exit'&&workflow?.exitSizing?.accounts?.some(a=>a.entered>0)" :plan="plan" :sizing="workflow.exitSizing" :accounts="accounts" :prepare-save="prepareCashflow" @saved="reload"/><EntryJournalAssessment v-if="managing&&kind==='entry'&&journalStage" :key="journalStage" :plan="plan" :entry="rows('entry').find(e=>e.key===journalStage)" :has-entries="ledger.records?.some(a=>a.action==='entry'&&a.stage_key===journalStage)" @close="journalStage=null" @saved="reload"/><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th v-if="planAccounts.length>1">Account</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target ({{ symbol(currencies[kind]) }})</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
-      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
-      <td v-if="planAccounts.length>1"><select v-model="e.accountId" :aria-label="kind+' '+(i+1)+' account'" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"><option :value="null">{{ accounts.find(a=>a.id===draft.accountId)?.accountName }}</option><option v-for="a in planAccounts.filter(a=>a.id!==draft.accountId)" :key="a.id" :value="a.id">{{ a.accountName }}</option></select></td><td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
-      <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
-      <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
+      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
+      <td v-if="planAccounts.length>1"><select v-model="e.accountId" :aria-label="kind+' '+(i+1)+' account'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><option :value="null">{{ accounts.find(a=>a.id===draft.accountId)?.accountName }}</option><option v-for="a in planAccounts.filter(a=>a.id!==draft.accountId)" :key="a.id" :value="a.id">{{ a.accountName }}</option></select></td><td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
+      <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
+      <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
       <td>{{ rowMoney(kind,e,i) }}</td>
-      <td v-if="kind==='exit'&&draft.instrument==='option'"><input :value="displayValue(e.premium,currencies[kind])" @change="e.premium=priceValue($event,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||linked(kind,e.key)"></td>
-      <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/></td>
-      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||(!managing&&linked(kind,e.key))"/></td>
-      <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
+      <td v-if="kind==='exit'&&draft.instrument==='option'"><input :value="displayValue(e.premium,currencies[kind])" @change="e.premium=priceValue($event,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
+      <td><TagSelect v-model="e.marketContext" :tags="library.context" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"/></td>
+      <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"/></td>
+      <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
       <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="toggleTrade(kind,e.key)">{{ linked(kind,e.key)?'Unlink trade':'Link trade' }}</button><button v-if="kind==='entry'" class="btn-secondary whitespace-nowrap ml-2" @click="journalStage=e.key">Journal evidence</button><button v-if="kind==='entry'&&linked(kind,e.key)&&planCommitments.some(c=>c.stage_key===e.key)" class="btn-secondary whitespace-nowrap ml-2" @click="findFills(kind,e.key)">Link remaining fills</button></td>
-      <td><button class="text-red-400" :disabled="preparationLocked||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
+      <td><button class="text-red-400" :disabled="preparationLocked||busy||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
      </tr>
      </tbody><tfoot>
       <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(managing?rows('entry').reduce((sum,e,i)=>sum+Number(e.units??rowUnits('entry',e,i)??0),0):calculation?.plannedQuantity) }}</td><td>{{ managing?rowTotalMoney('entry'):convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>
-      <tr v-else><th>Total potential profit</th><td>{{ convertedMoney(calculation?.reward?.fixedTargetProfit,draft.currency,currencies.exit) }}</td><th>Total % gain</th><td>{{ number(potentialPercent) }}%</td><th>R:R</th><td>{{ number(calculation?.reward?.fixedTargetRR) }}</td></tr>
+      <tr v-else><th>Total potential profit</th><td>{{ money(potentialProfit,currencies.exit) }}</td><th>Total % gain</th><td>{{ number(potentialPercent) }}%</td><th>R:R</th><td>{{ number(potentialRR) }}</td></tr>
       <tr v-if="kind==='exit'&&managing"><th>Total realised profit</th><td>{{ ledgerMoney('realisedProfit',currencies.exit) }}</td><th>Realised % gain</th><td>{{ percent(ledgerMetric('percentGain',currencies.exit)) }}</td><th>R:R</th><td>{{ number(ledgerMetric('realisedR',currencies.exit)) }}</td></tr>
      </tfoot></table></div>
     <p v-if="kind==='entry'&&managing" class="text-sm text-gray-400 mt-3">Provisional: ticked rows use entered quantities and levels until fills are linked.<span v-if="ledger.fxEstimated"> Amounts use the latest available exchange rate until linked.</span></p>
@@ -154,12 +154,12 @@
   <div v-if="finder" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-5" role="dialog" aria-modal="true" aria-labelledby="fill-title">
    <section class="card p-6 max-w-5xl w-full max-h-[85vh] flex flex-col overflow-hidden gap-4">
     <header class="finder-header shrink-0 space-y-3">
-     <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><div class="flex gap-3"><button class="btn-primary" :disabled="busy||!fills.some(f=>f.selected&&f.allocate>0)" @click="linkSelectedFills">Link selected trades</button><button class="btn-secondary" @click="finder=null">Close</button></div></div>
+     <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><div class="flex gap-3"><button class="btn-primary" :disabled="busy||finderLoading||!fills.some(f=>f.selected&&f.allocate>0)" @click="linkSelectedFills">Link selected trades</button><button class="btn-secondary" @click="closeFinder">Close</button></div></div>
      <p class="text-sm text-gray-400">{{ asset }} · {{ instrumentLabel }} · {{ accounts.find(a=>a.id===rowAccount(rows(finder.action).find(e=>e.key===finder.stageKey)||{}))?.accountName||'Unassigned' }} · {{ draft.direction==='short'?'Short / bearish':'Long / bullish' }}</p>
      <label v-if="finder.action==='entry'" class="block text-sm">Journal evidence for these fills<select v-model="finder.journalAssessmentId" class="input"><option :value="null">No saved entry assessment</option><option v-for="a in (workflow?.journalAssessments||[]).filter(a=>a.stage_key===finder.stageKey)" :key="a.id" :value="a.id">{{ a.snapshot.sessionDate }} · {{ new Date(a.snapshot.recordedAt).toLocaleString() }}{{ a.snapshot.status==='exception'?' · Exception':'' }}</option></select></label><p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
     </header>
     <div class="finder-fills min-h-0 overflow-y-auto">
-     <p v-if="!fills.length">No available {{ finder.action }} fills for this asset, instrument and account.</p>
+     <p v-if="finderLoading" role="status">Loading trades…</p><p v-else-if="!fills.length">No available {{ finder.action }} fills for this asset, instrument and account.</p>
      <div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ executionQuantity(f.quantity) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}<span v-if="f.zeroPriceEvidence" class="block text-sm text-gray-400">Zero value supported by broker cash evidence</span><span v-if="f.available<f.quantity-0.00000001" class="block text-sm text-gray-400">{{ executionQuantity(f.available) }} available to link · {{ executionQuantity(f.allocated??f.quantity-f.available) }} already allocated</span><span v-if="f.sharedPlans?.some(id=>id!==plan.id)" class="block text-sm text-amber-700 dark:text-amber-300">Shared source fill. Link only this plan's quantity; fees and broker results are apportioned.</span></span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
     </div>
    </section>
@@ -205,7 +205,7 @@ watch(constraintAccount,id=>{pendingRules.value=null;if(draft.value&&id&&id!==dr
 async function loadConstraints(){error.value='';try{const d=clean();const id=constraintAccount.value||draft.value.accountId;const r=await api.post('/trade-plans/constraints',{definition:d,accountId:id});const rules=r.data.constraints;constraintFeedback.value=rules.coverage||'Supplied broker rules loaded';pendingRules.value=rules.quantityStep||rules.minimumQuantity!=null||rules.maximumPositionQuantity!=null?{accountId:id,rules}:null;}catch(e){fail(e)}}
 function applyConstraints(){if(!pendingRules.value)return;const {accountId,rules}=pendingRules.value;if(!planAccounts.value.some(a=>a.id===accountId))return;draft.value.accountConstraints[accountId]={...constraintRules.value,...rules};if(accountId===draft.value.accountId)draft.value.constraints={...draft.value.constraints,...rules};pendingRules.value=null}
 const journalStage=ref(null);
-const newTag=ref({kind:'entry',name:'',definition:''}),finder=ref(null),fills=ref([]),review=ref({notes:'',entryAssessment:'',exitAssessment:'',processFollowed:false,journalExceptionReason:''})
+const newTag=ref({kind:'entry',name:'',definition:''}),finder=ref(null),fills=ref([]),finderLoading=ref(false),review=ref({notes:'',entryAssessment:'',exitAssessment:'',processFollowed:false,journalExceptionReason:''})
 const optionMoneyKeys=['strike','premium','atr']
 const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
@@ -251,7 +251,10 @@ function rowUnits(k,e,i){if(k==='entry')return calculation.value?.stages[i]?.qua
 function changeUnits(kind,e,event){if(linked(kind,e.key))return;const value=event.target.value.trim();e.units=value===''?null:Number(value)}
 function resetUnits(kind,e){if(!linked(kind,e.key))e.units=null}
 const runnerPercent=computed(()=>Math.max(0,100-(draft.value?.exits||[]).reduce((s,e)=>s+Number(e.percent||0),0)))
-const potentialPercent=computed(()=>calculation.value?.plannedValue>0&&calculation.value?.reward?.fixedTargetProfit!=null?calculation.value.reward.fixedTargetProfit/calculation.value.plannedValue*100:null)
+// Forecast the visible exit quantities; an unpriced runner contributes no invented target.
+const potentialProfit=computed(()=>{const values=rows('exit').map((e,i)=>({e,i})).filter(({e})=>linked('exit',e.key)||(draft.value.instrument==='option'?e.premium>0:e.price>0)).map(({e,i})=>rowAmount('exit',e,i));return values.some(v=>v==null||!Number.isFinite(v))?null:values.reduce((s,v)=>s+v,0)})
+const potentialPercent=computed(()=>{const basis=managing.value&&ledger.value.entered>0?ledgerMetric('entryCost',currencies.value.exit):calculation.value?.plannedValue*rate(draft.value.currency,currencies.value.exit);return basis>0&&potentialProfit.value!=null?potentialProfit.value/basis*100:null})
+const potentialRR=computed(()=>{const risk=draft.value.riskBudget*rate(draft.value.currency,currencies.value.exit);return potentialProfit.value!=null&&risk>0?potentialProfit.value/risk:null})
 function fillRate(fill,to){if(fill.currency===to)return 1;if(fill.provisional)return rate(fill.currency,to);const fx=fill.transactionFx;return fx?.accountCurrency&&fx.rate>0?(rate(fx.accountCurrency,to)?rate(fx.accountCurrency,to)/fx.rate:null):null}
 function executionMoney(fill,to){const r=fillRate(fill,to);return r?money(fill.price*r,to):'Broker FX unavailable'}
 function rowPrice(kind,e,to){
@@ -262,6 +265,7 @@ function rowPrice(kind,e,to){
  return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
 }
 function ledgerMetric(metric,to){
+ if(metric==='realisedR')return ledger.value.realisedR??null;
  if((ledger.value.accounts||[]).length>1){
   const list=ledger.value.accounts;
   if(list.some(a=>!rate(a.currency,to)||a.positionValue==null||a.realisedProfit==null))return null;
@@ -277,7 +281,7 @@ function ledgerMetric(metric,to){
  const r=rate(ledger.value.accountCurrency,to);
  return accountValue!=null&&r?(['percentGain','realisedR'].includes(metric)?accountValue:accountValue*r):null;
 }
-function ledgerMoney(metric,to){if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
+function ledgerMoney(metric,to){if(metric==='averagePrice'&&ledger.value.openQuantity<=1e-8)return '—';if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
 function rowAmount(kind,e,i){
  const records=managing.value?(ledger.value.records||[]).filter(a=>a.action===kind&&a.stage_key===e.key):[];
  if(records.length){
@@ -299,8 +303,8 @@ function rowMoney(kind,e,i){const value=rowAmount(kind,e,i);return Number.isNaN(
 function rowTotalMoney(kind){const values=rows(kind).map((e,i)=>rowAmount(kind,e,i));return values.some(v=>Number.isNaN(v))?'Broker FX unavailable':values.some(v=>v==null)?'Unavailable':money(values.reduce((sum,v)=>sum+v,0),currencies.value[kind])}
 function exitProfit(e){
  const accountId=rowAccount(e),stages=(calculation.value?.stages||[]).filter(s=>rowAccount(s)===accountId);
- if(planAccounts.value.length>1){const total=stages.reduce((v,s)=>v+s.quantity,0),q=e.units??total*e.percent/100;if(!(total>0)||!(q>=0))return null;if(draft.value.instrument==='option')return e.premium>0?q*(e.premium-draft.value.options.premium)*draft.value.options.multiplier:null;const avg=stages.reduce((v,s)=>v+s.quantity*s.price,0)/total;return e.price>0?q*(draft.value.direction==='short'?avg-e.price:e.price-avg)*(draft.value.instrument==='spread_bet'?1/draft.value.pointSize:1):null;}
- const q=e.units??(calculation.value?.plannedQuantity||0)*e.percent/100;
+ if(planAccounts.value.length>1){const entries=managing.value?(ledger.value.records||[]).filter(a=>a.action==='entry'&&a.accountId===accountId):[],total=entries.length?entries.reduce((v,a)=>v+a.quantity,0):stages.reduce((v,s)=>v+s.quantity,0),q=e.units??rowUnits('exit',e,rows('exit').indexOf(e));if(entries.some(a=>!a.valid||!rate(a.fill.currency,draft.value.currency)))return null;if(!(total>0)||!(q>=0))return null;if(draft.value.instrument==='option')return e.premium>0?q*(e.premium-draft.value.options.premium)*draft.value.options.multiplier:null;const avg=entries.length?entries.reduce((v,a)=>v+a.quantity*a.fill.price*rate(a.fill.currency,draft.value.currency),0)/total:stages.reduce((v,s)=>v+s.quantity*s.price,0)/total;return e.price>0?q*(draft.value.direction==='short'?avg-e.price:e.price-avg)*(draft.value.instrument==='spread_bet'?1/draft.value.pointSize:1):null;}
+ const q=e.units??rowUnits('exit',e,rows('exit').indexOf(e));
  if(!(q>=0))return null;
  let avg;
  if(managing.value&&ledger.value.entered>0){
@@ -329,46 +333,75 @@ function barWidth(v){const scale=risk.value?.limit?risk.value.limit/0.8:Math.max
 function clean(){const d=JSON.parse(JSON.stringify(draft.value));d.symbol=d.symbol.trim().toUpperCase();for(const limits of [d.constraints,...Object.values(d.accountConstraints||{})].filter(Boolean))for(const k of ["quantityStep","maximumPositionQuantity","currentQuantity","minimumQuantity","maximumQuantity","minimumValue"])if(limits[k]==="")limits[k]=null;for(const k of ['riskBudget','stopPrice','runnerEstimatePrice','portfolioAmount','portfolioRiskPercent'])if(d[k]==='')d[k]=null;for(const e of [...d.entries,...d.exits])for(const k of ['price','units','premium'])if(e[k]==='')e[k]=null;for(const k of ['strike','premium','contractDelta','atr','expiry','asOf'])if(d.options[k]==='')d.options[k]=null;return d}
 function fail(e){error.value=e.response?.data?.error||'Request failed. Your edits remain here.'}
 function adopt(p){++sequence;clearTimeout(previewTimer);previewError.value='';const previousStatus=plan.value?.status;if(p.status!==previousStatus){if(p.status==='watching')screen.value='Trade & Manage';else if(p.status==='draft')screen.value='Plan'}hydrating=true;plan.value=p;draft.value=JSON.parse(JSON.stringify(p.definition));draft.value.accountIds??=[];draft.value.accountConstraints??={};draft.value.constraints??={minimumQuantity:null,maximumQuantity:null,minimumValue:null,source:'',asOf:null};materializeRunner(draft.value);for(const e of [...draft.value.entries,...draft.value.exits]){e.marketContext??=[];e.tactics??=[];e.units??=null}draft.value.exposureSystem??=false;draft.value.setup??='';applyPlaybookSetup();draft.value.portfolioAmount??=null;draft.value.portfolioRiskPercent??=null;calculation.value=p.calculation;applySelectedCapital();dirty=false;hydrateManagement();queueMicrotask(()=>hydrating=false)}
-let managementSnapshot=''
+let managementSnapshot='',managementFormSnapshot={entry:[],exit:[]}
 function hydrateManagement(){
  hydrating=true;
  for(const kind of ['entry','exit'])managed.value[kind]=(draft.value?.[kind==='entry'?'entries':'exits']||[]).map(e=>{
   const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
   const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>fillRate(a.fill,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,draft.value.currency),0)/q:null;
-  return {...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price:price??m.price??e.price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()}
+  const next={...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price:price??m.price??e.price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()};
+  // Keep row identity stable while Vue refreshes event handlers after a response.
+  const current=managed.value[kind]?.find(v=>v.key===e.key);return current?Object.assign(current,next):next
  });
  managementSnapshot=JSON.stringify(managementPayload());
+ managementFormSnapshot=JSON.parse(JSON.stringify(managed.value));
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
  const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
  return management
 }
+function mergeNewerManagement(base,local){
+ for(const kind of ['entry','exit']){
+  for(const e of local[kind]){const before=base[kind]?.find(v=>v.key===e.key),current=managed.value[kind].find(v=>v.key===e.key);if(!before){if(!current)managed.value[kind].push(e);continue}if(!current||linked(kind,e.key))continue;for(const key of Object.keys(e))if(JSON.stringify(e[key])!==JSON.stringify(before[key]))current[key]=e[key]}
+  managed.value[kind]=managed.value[kind].filter(e=>!base[kind]?.some(v=>v.key===e.key)||local[kind].some(v=>v.key===e.key));
+ }
+ dirty=JSON.stringify(managementPayload())!==managementSnapshot;
+}
 async function saveManagement(){
  const management=managementPayload();
  if(JSON.stringify(management)===managementSnapshot){dirty=false;return;}
+ const base=JSON.parse(JSON.stringify(managed.value));
  await api.put('/trade-plans/'+plan.value.id+'/management',{version:plan.value.version,management});
- await reload()
+ await reload(base)
 }
 async function loadChart(){try{const r=await api.get('/trade-plans/'+plan.value.id+'/chart',{responseType:'blob'});if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);retainedUrl.value=URL.createObjectURL(r.data)}catch{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);retainedUrl.value=''}}
 async function retainSavedChart(){chartWarning.value='';if(!/^https:\/\/(?:www\.)?tradingview\.com\/x\/([A-Za-z0-9_-]{1,64})\/?$/.test(plan.value.definition.chartUrl||''))return;try{await api.post('/trade-plans/'+plan.value.id+'/chart');await loadChart()}catch{chartWarning.value='Plan saved, but the chart snapshot could not be retained. Save again to retry.'}}
-async function reload(){const r=await api.get('/trade-plans/'+plan.value.id);adopt(r.data.plan);emit('updated',r.data.plan);workflow.value=(await api.get('/trade-plans/'+plan.value.id+'/workflow')).data;if(workflow.value.fx)fx.value=workflow.value.fx;hydrateManagement();const savedReview=workflow.value.review||workflow.value.reviewDraft;if(savedReview)review.value={notes:savedReview.notes,entryAssessment:savedReview.entryAssessment,exitAssessment:savedReview.exitAssessment,processFollowed:savedReview.processFollowed,journalExceptionReason:savedReview.journalExceptionReason||''};risk.value=(await api.get('/trade-plans/risk')).data;await loadChart()}
-async function save(){if(preparationLocked.value)return true;clearTimeout(saveTimer);if(busy.value)return false;busy.value=true;error.value='';try{if(managing.value&&plan.value.id){await saveManagement();return true}const body={definition:clean(),version:plan.value.version};const r=plan.value.id?await api.put('/trade-plans/'+plan.value.id,body):await api.post('/trade-plans',body);adopt(r.data.plan);emit('updated',r.data.plan);await loadChart();await retainSavedChart();return true}catch(e){fail(e);return false}finally{busy.value=false}}
+async function reload(base=JSON.parse(JSON.stringify(managementFormSnapshot))){const r=await api.get('/trade-plans/'+plan.value.id);const nextWorkflow=(await api.get('/trade-plans/'+plan.value.id+'/workflow')).data;if(r.data.plan.id!==plan.value.id||r.data.plan.version<plan.value.version)return;const local=JSON.parse(JSON.stringify(managed.value));workflow.value=nextWorkflow;if(workflow.value.fx)fx.value=workflow.value.fx;adopt(r.data.plan);hydrateManagement();mergeNewerManagement(base,local);emit('updated',r.data.plan);const savedReview=workflow.value.review||workflow.value.reviewDraft;if(savedReview)review.value={notes:savedReview.notes,entryAssessment:savedReview.entryAssessment,exitAssessment:savedReview.exitAssessment,processFollowed:savedReview.processFollowed,journalExceptionReason:savedReview.journalExceptionReason||''};risk.value=(await api.get('/trade-plans/risk')).data;await loadChart()}
+let savePromise=null;
+async function save(){if(savePromise)return savePromise;savePromise=performSave();try{return await savePromise}finally{savePromise=null}}
+async function performSave(){if(preparationLocked.value)return true;clearTimeout(saveTimer);if(busy.value)return false;busy.value=true;error.value='';try{if(managing.value&&plan.value.id){do{await saveManagement()}while(dirty);return true}const body={definition:clean(),version:plan.value.version};const r=plan.value.id?await api.put('/trade-plans/'+plan.value.id,body):await api.post('/trade-plans',body);adopt(r.data.plan);emit('updated',r.data.plan);await loadChart();await retainSavedChart();return true}catch(e){fail(e);return false}finally{busy.value=false}}
 async function moveScreen(s){if(screen.value==='Review'&&!['reviewed','completed'].includes(plan.value.status)&&review.value.notes&&!await saveReviewDraft())return;if(dirty&&plan.value.id&&!await save())return;screen.value=s}
 async function releaseCommitment(c){
  const reason=window.prompt('Why is this unfilled commitment being released?');
  if(!reason||!window.confirm('Confirm that the order was never placed or has been cancelled and is no longer live.'))return;
  await action('commitments/'+c.id+'/release',{externalOrderNotLive:true,reason})
 }
-async function action(name,body={}){if(busy.value)return;busy.value=true;error.value='';try{await api.post('/trade-plans/'+plan.value.id+'/'+name,{version:plan.value.version,...body});await reload()}catch(e){fail(e)}finally{busy.value=false}}
+let actionPromise=null;
+async function action(name,body={}){if(actionPromise)await actionPromise;actionPromise=performAction(name,body);try{return await actionPromise}finally{actionPromise=null}}
+async function performAction(name,body={}){if(savePromise&&!await savePromise)return;if(busy.value){error.value='Another action is still saving. Try again when it finishes.';return;}busy.value=true;error.value='';try{const base=JSON.parse(JSON.stringify(managed.value));await api.post('/trade-plans/'+plan.value.id+'/'+name,{version:plan.value.version,...body});await reload(base)}catch(e){fail(e)}finally{busy.value=false}}
 async function changeFinalisation(event){const wanted=event.target.checked;if(dirty||!plan.value.id){if(!await save()){event.target.checked=!!plan.value.finalised;return}}await action('finalisation',{finalised:wanted});event.target.checked=!!plan.value.finalised}
 async function continueToManage(){if(dirty||!plan.value.id){if(!await save())return}if(plan.value.status==='draft'){await action('status',{status:'watching'});if(!error.value)screen.value='Trade & Manage';return}if(!plan.value.finalised){error.value='Return to Draft and tick Finalised before recording trades';return}screen.value='Trade & Manage'}
 async function toggleTrade(kind,key){if(!linked(kind,key)){await findFills(kind,key);return}if(dirty&&!await save())return;busy.value=true;error.value='';try{await api.delete('/trade-plans/'+plan.value.id+'/row-allocations',{data:{version:plan.value.version,action:kind,stageKey:key}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
-async function findFills(kind,key){if(linked(kind,key)&&!(kind==='entry'&&planCommitments.value.some(c=>c.stage_key===key))){error.value='Unlink the current trade before choosing another';return}if(dirty&&!await save())return;if(!plan.value.id){error.value='Save and finalise the plan before linking a trade';return}error.value='';finder.value={action:kind,stageKey:key,journalAssessmentId:kind==='entry'?(workflow.value?.journalAssessments||[]).find(a=>a.stage_key===key)?.id||null:null};try{fills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{accountId:rowAccount(rows(kind).find(e=>e.key===key)||{})}})).data.fills.filter(f=>f.action===kind).map(f=>({...f,allocate:f.available,selected:false}))}catch(e){fail(e)}}
-async function linkSelectedFills(){if(linked(finder.value.action,finder.value.stageKey)&&!(finder.value.action==='entry'&&planCommitments.value.some(c=>c.stage_key===finder.value.stageKey))){error.value='Unlink the current trade before choosing another';return}const selected=fills.value.filter(f=>f.selected);if(!selected.length||selected.some(f=>!(f.allocate>0)||f.allocate>f.available)){error.value='Choose valid quantities for all selected trades';return}await action('allocations',{stageKey:finder.value.stageKey,action:finder.value.action,journalAssessmentId:finder.value.journalAssessmentId,fills:selected.map(f=>({tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity:f.allocate}))});if(!error.value)finder.value=null}
+let finderSequence=0;
+function closeFinder(){++finderSequence;finder.value=null;fills.value=[];finderLoading.value=false}
+async function findFills(kind,key){
+ if(linked(kind,key)&&!(kind==='entry'&&planCommitments.value.some(c=>c.stage_key===key))){error.value='Unlink the current trade before choosing another';return}
+ error.value='';const request=++finderSequence;fills.value=[];finderLoading.value=true;
+ finder.value={action:kind,stageKey:key,journalAssessmentId:kind==='entry'?(workflow.value?.journalAssessments||[]).find(a=>a.stage_key===key)?.id||null:null};
+ try{
+  if(actionPromise)await actionPromise;
+  if((dirty||savePromise)&&!await save()){if(!error.value)error.value='Save changes before linking trades.';return}
+  if(request!==finderSequence)return;
+  if(!plan.value.id){error.value='Save and finalise the plan before linking a trade';return}
+  const response=await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{accountId:rowAccount(rows(kind).find(e=>e.key===key)||{})}});
+  if(request===finderSequence)fills.value=response.data.fills.filter(f=>f.action===kind).map(f=>({...f,allocate:f.available,selected:false}));
+ }catch(e){if(request===finderSequence)fail(e)}finally{if(request===finderSequence)finderLoading.value=false}
+}
+async function linkSelectedFills(){if(finderLoading.value||!finder.value)return;if(linked(finder.value.action,finder.value.stageKey)&&!(finder.value.action==='entry'&&planCommitments.value.some(c=>c.stage_key===finder.value.stageKey))){error.value='Unlink the current trade before choosing another';return}const selected=fills.value.filter(f=>f.selected);if(!selected.length||selected.some(f=>!(f.allocate>0)||f.allocate>f.available)){error.value='Choose valid quantities for all selected trades';return}await action('allocations',{stageKey:finder.value.stageKey,action:finder.value.action,journalAssessmentId:finder.value.journalAssessmentId,fills:selected.map(f=>({tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity:f.allocate}))});if(!error.value)closeFinder()}
 async function unlink(a){const reason=window.prompt('Why are you correcting this link?');if(!reason)return;busy.value=true;try{await api.delete('/trade-plans/'+plan.value.id+'/allocations/'+a.id,{data:{version:plan.value.version,reason}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
 async function changeStop(e,c){let price;try{price=priceValue(e,c)}catch{return}if(hasLinks.value||managing.value){const reason=window.prompt('Why are you changing the SL invalidation level?');if(!reason){e.target.value=displayValue(draft.value.stopPrice,c);return}if(dirty&&!await save())return;await action('stop',{stopPrice:price,reason})}else draft.value.stopPrice=price}
-async function prepareCashflow(){return !dirty||await save()}
+async function prepareCashflow(){if(actionPromise)await actionPromise;if(savePromise&&!await savePromise)return false;return !dirty||await save()}
 async function loadRollFills(){if(dirty&&!await save())return;try{rollFills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{purpose:'roll'}})).data.fills.filter(f=>f.contract)}catch(e){fail(e)}}
 async function recordRoll(){
  const select=(key,quantity)=>{const f=rollFills.value.find(f=>f.tradeId+'|'+f.key===key);if(!f)throw new Error('Choose both roll fills');return {tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity}}

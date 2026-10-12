@@ -21,7 +21,8 @@ import api from '@/services/api'
 const props=defineProps({plan:Object,sizing:{type:Object,default:()=>({accounts:[]})},accounts:{type:Array,default:()=>[]},prepareSave:Function}),emit=defineEmits(['saved'])
 const expanded=ref(false),forms=ref({}),error=ref(''),saving=ref(false)
 const number=v=>Number(v||0).toLocaleString('en-GB',{maximumFractionDigits:6})
-watch(()=>JSON.stringify(props.sizing),()=>{forms.value=Object.fromEntries((props.sizing.accounts||[]).map(a=>[a.accountId,{units:Object.fromEntries(a.rows.filter(r=>!r.completed).map(r=>[r.key,r.quantity??0])),reason:'Rechecked exits after position quantity changed'}]));if(props.sizing.pending)expanded.value=true},{immediate:true})
+let formPlanId=props.plan.id;
+watch(()=>[props.plan.id,JSON.stringify(props.sizing)],()=>{if(formPlanId!==props.plan.id){forms.value={};formPlanId=props.plan.id}forms.value=Object.fromEntries((props.sizing.accounts||[]).map(a=>[a.accountId,{units:Object.fromEntries(a.rows.filter(r=>!r.completed).map(r=>[r.key,forms.value[a.accountId]?.units[r.key]??r.quantity??0])),reason:forms.value[a.accountId]?.reason??'Rechecked exits after position quantity changed'}]));if(props.sizing.pending)expanded.value=true},{immediate:true})
 const remaining=a=>a.open-Object.values(forms.value[a.accountId].units).reduce((v,q)=>v+Number(q||0),0)
 function suggest(a){for(const r of a.rows.filter(r=>!r.completed))forms.value[a.accountId].units[r.key]=r.suggested}
 function remainder(a,r){const units=forms.value[a.accountId].units;units[r.key]=Math.max(0,a.open-Object.entries(units).filter(([key])=>key!==r.key).reduce((v,[,q])=>v+Number(q||0),0))}
