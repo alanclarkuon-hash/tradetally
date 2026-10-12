@@ -86,6 +86,7 @@ async function getDashboard(userId, query={}, historical=null) {
   // grouped as funds rather than pretending their entire value is one industry.
   const candidates=positions.filter(p=>p.instrumentType!=='crypto');
   const funds=new Map();
+  const yahoo=require('../utils/yahooFinance');
   const metadata=await require('./portfolioDisplayMetadata').getDisplayMetadata(candidates.map(p=>p.symbol));
   for(const p of candidates) {
     const saved=metadata.records.get(p.symbol),profile=saved?.profile;
