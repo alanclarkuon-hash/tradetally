@@ -973,9 +973,9 @@ function syncInterrupted(log) {
 function syncProgressLabel(log) {
   if (!['started','fetching','parsing','importing'].includes(log?.status) && !syncInterrupted(log)) return ''
   const progress = parseSyncDetails(log?.syncDetails || log?.sync_details).progress
-  const labels = { orders: 'Trade history', transactions: 'Cash transactions', dividends: 'Dividends', cash_report: 'Cash reconciliation', portfolio_history: 'Portfolio history' }
+  const labels = { orders: 'Trade history', transactions: 'Cash transactions', dividends: 'Dividends', cash_report: 'Cash reconciliation', portfolio_history: 'Portfolio history', portfolio_capture: 'Current portfolio value' }
   if (!labels[progress?.section] || !Number.isInteger(progress.pages) || progress.pages < 0 || progress.pages > 1000) return ''
-  if (['cash_report','portfolio_history'].includes(progress.section)) return labels[progress.section]
+  if (['cash_report','portfolio_history','portfolio_capture'].includes(progress.section)) return labels[progress.section]
   return `${labels[progress.section]} · ${progress.pages} page${progress.pages === 1 ? '' : 's'}${progress.complete ? ' retrieved' : ' retrieved so far'}`
 }
 function getStatusLabel(log) {
