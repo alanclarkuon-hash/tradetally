@@ -220,7 +220,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))need.add(marketSymbolFor(t));
+    for(const t of trades)if((['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))&&!require('./historyInstrumentIdentity').identity(t,date(t.entry_time||t.trade_date)).unsupported)need.add(marketSymbolFor(t));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
