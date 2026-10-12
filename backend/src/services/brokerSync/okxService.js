@@ -74,8 +74,8 @@ class OkxService {
     }
     throw new Error('OKX history exceeded the maximum supported pages.');
   }
-  async syncTrades(connection) {
-    const [config]=await this.get(connection,'/api/v5/account/config');
+  async collect(connection,config=null) {
+    if(!config)[config]=await this.get(connection,'/api/v5/account/config');
     if(String(config?.uid)!==String(connection.externalAccountId) || config?.perm!=='read_only') throw new Error('OKX account identity or read-only permissions changed.');
     const trading=await this.get(connection,'/api/v5/account/balance');
     if(trading.length!==1 || !Array.isArray(trading[0].details)) throw new Error('Incomplete OKX trading balance.');
@@ -85,10 +85,28 @@ class OkxService {
     const bills=await this.pages(connection,'/api/v5/account/bills-archive');
     const deposits=await this.transferPages(connection,'/api/v5/asset/deposit-history','depId');
     const withdrawals=await this.transferPages(connection,'/api/v5/asset/withdrawal-history','wdId');
-    if(!connection.brokerMetadata?.import_pending_review) {
-      const rates=await this.indexRates(connection,trading);
-      return require('./okxReconcile').reconcile(connection,{trading,funding,positions,fills,bills,deposits,withdrawals,transferHistoryMayBeTruncated:false,asOf:new Date().toISOString()},rates);
+    return {payload:{trading,funding,positions,fills,bills,deposits,withdrawals,verifiedMainUid:config.mainUid||null,verifiedUid:config.uid,transferHistoryMayBeTruncated:false,asOf:new Date().toISOString()},config};
+  }
+  async syncTrades(connection) {
+    const current=await this.collect(connection),{payload,config}=current;
+    const group=[{connection,payload}];
+    // Verify native parent identity live; never infer ownership from labels or amounts.
+    if(config.mainUid) {
+      const siblings=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='okx' AND COALESCE(broker_environment,'global')=$2 AND id<>$3 AND connection_status='active'",[connection.userId,connection.brokerEnvironment||'global',connection.id])).rows;
+      const BrokerConnection=require('../../models/BrokerConnection');
+      for(const row of siblings) {
+        const sibling=await BrokerConnection.findById(row.id,true);
+        const [other]=await this.get(sibling,'/api/v5/account/config');
+        if(!other.mainUid||String(other.mainUid)!==String(config.mainUid))continue;
+        const collected=await this.collect(sibling,other);group.push({connection:sibling,payload:collected.payload});
+      }
     }
+    const established=group.some(a=>!a.connection.brokerMetadata?.import_pending_review);
+    if(established) {
+      for(const a of group)a.rates=await this.indexRates(a.connection,a.payload.trading);
+      return require('./okxReconcile').reconcile(connection,payload,group[0].rates,{accounts:group});
+    }
+    const {trading,funding,positions,fills,bills,deposits,withdrawals}=payload;
     await db.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload,captured_at)
       VALUES($1,'okx',$2,$3,$4::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET connection_id=EXCLUDED.connection_id,payload=EXCLUDED.payload,captured_at=NOW()`,

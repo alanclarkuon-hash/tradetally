@@ -59,3 +59,85 @@ test('outgoing spot coins reduce FIFO holdings without creating a sale or profit
  expect(result.trades.find(t=>!t.exitTime).quantity).toBe(3);
  expect(result.positions.find(p=>p.symbol==='TEST').quantity).toBe(3);
 });
+
+const {transferBasis}=require('../../src/services/brokerSync/okxTransfers');
+function pairedFixture({returned=true,sellInChild=false,stablecoin=false}={}) {
+ const main=fixture(),child={positions:[],funding:[],fills:[],bills:[],trading:[{details:[]}]};
+ const asset=stablecoin?'USDT':'TEST',amount=2;
+ const out={billId:'out-main',type:'1',subType:'12',ccy:asset,balChg:String(-amount),ts:String(ts+1000)};
+ const receipt={...out,billId:'in-child',subType:'11',balChg:String(amount),ts:String(ts+1001)};
+ main.bills.push(out);child.bills.push(receipt);
+ if(returned){child.bills.push({...out,billId:'out-child',ts:String(ts+2000)});main.bills.push({...receipt,billId:'in-main',ts:String(ts+2001)});}
+ else if(sellInChild){
+   const exit={...sell,billId:'child-sell',tradeId:'3',fillSz:'2',fee:'0',fillTime:String(ts+3000)};
+   child.fills.push(exit);child.bills.push({billId:'child-base',type:'2',ccy:'TEST',balChg:'-2',ts:String(ts+3000),instId:exit.instId,tradeId:'3'},
+    {billId:'child-quote',type:'2',ccy:'USDT',balChg:'6',ts:String(ts+3000),instId:exit.instId,tradeId:'3'});
+   child.trading[0].details=[{ccy:'USDT',cashBal:'6',eqUsd:'6.06'}];
+ }else child.trading[0].details=[{ccy:asset,cashBal:'2',eqUsd:'2'}];
+ if(!returned){const balance=main.trading[0].details.find(d=>d.ccy===asset);balance.cashBal=String(Number(balance.cashBal)-2);}
+ const accounts=[{id:'main',payload:{...main,rates}},{id:'child',payload:{...child,rates}}];
+ const receipts=transferBasis(accounts);
+ return accounts.map(a=>prepare(a.payload,rates,receipts.get(a.id),a.id));
+}
+test('verified round-trip preserves original units, acquisition time, cost and FX without a transfer profit',()=>{
+ const [main,child]=pairedFixture(),original=prepare(fixture(),rates);
+ expect(main.trades.map(t=>({quantity:t.quantity,pnl:t.pnl,entryPrice:t.entryPrice,entryTime:t.entryTime}))).toEqual(original.trades.map(t=>({quantity:t.quantity,pnl:t.pnl,entryPrice:t.entryPrice,entryTime:t.entryTime})));
+ expect(main.positions).toEqual(original.positions);expect(child.trades).toEqual([]);expect(child.positions).toEqual([]);
+});
+test('recipient sale uses the sending acquisition cost and FX rather than transfer-date price',()=>{
+ const [main,child]=pairedFixture({returned:false,sellInChild:true});const sale=child.trades[0];
+ expect(sale.quantity).toBe(2);expect(sale.entryTime).toBe(new Date(ts).toISOString());expect(sale.entryPrice).toBeCloseTo(20/9*1.01,12);
+ expect(sale.pnl).toBeCloseTo(6*1.01-2*20/9*1.01,12);expect(sale.origin).toBe('main');
+ expect(main.trades.find(t=>!t.exitTime).quantity).toBe(3);
+});
+test('USDT internal round-trip retains original dollar basis',()=>{
+ const [main,child]=pairedFixture({stablecoin:true});
+ expect(main.positions.find(p=>p.symbol==='USDT').totalCost).toBeCloseTo(prepare(fixture(),rates).positions.find(p=>p.symbol==='USDT').totalCost,12);
+ expect(child.positions).toEqual([]);
+});
+test('ambiguous, duplicate or unverified incoming coin transfers fail closed',()=>{
+ const p=fixture(),out={billId:'out',type:'1',subType:'12',ccy:'TEST',balChg:'-2',ts:String(ts+1000)};
+ p.bills.push(out);
+ const receipt={...out,billId:'in',subType:'11',balChg:'2'};
+ const child={...fixture(),fills:[],bills:[receipt,{...receipt,billId:'in2'}]};
+ expect(()=>transferBasis([{id:'main',payload:{...p,rates}},{id:'child',payload:{...child,rates}}])).toThrow('Ambiguous');
+ expect(()=>prepare({...fixture(),bills:[...fixture().bills,receipt]},rates)).toThrow();
+});
+test('partial transfers retain each acquisition lot and repeated reconstruction is stable',()=>{
+ const p=fixture();const extra={...buy,billId:'buy2',tradeId:'4',fee:'0',fillSz:'3',fillPx:'4',fillTime:String(ts+100)};
+ p.fills.push(extra);p.bills.push({billId:'base2',type:'2',ccy:'TEST',balChg:'3',ts:String(ts+100),tradeId:'4',instId:extra.instId},
+ {billId:'quote2',type:'2',ccy:'USDT',balChg:'-12',ts:String(ts+100),tradeId:'4',instId:extra.instId});
+ p.trading[0].details[0].cashBal='79.5';p.trading[0].details[1].cashBal='1';
+ const out={billId:'out',type:'1',subType:'12',ccy:'TEST',balChg:'-7',ts:String(ts+2*86400000)};p.bills.push(out);
+ const child={positions:[],funding:[],fills:[],bills:[{...out,billId:'in',subType:'11',balChg:'7'}],trading:[{details:[{ccy:'TEST',cashBal:'7',eqUsd:'21'}]}],rates};
+ const accounts=[{id:'main',payload:{...p,rates}},{id:'child',payload:child}];
+ const first=transferBasis(accounts),second=transferBasis(accounts);
+ expect(first).toEqual(second);expect(first.get('child').get('in').lots.map(l=>l.quantity)).toEqual([5,2]);
+ const mapped=prepare(child,rates,first.get('child'),'child');
+ expect(mapped.trades.map(t=>t.entryPrice)).toEqual([20/9*1.01,4*1.01]);
+ expect(mapped.positions[0].totalCost).toBeCloseTo((5*20/9+2*4)*1.01,12);
+});
+
+test('stablecoin fragments keep original FIFO FX after returning past a newer funding lot',()=>{
+ const main={positions:[],funding:[],fills:[],bills:[
+  {billId:'first',type:'1',subType:'11',ccy:'USDT',balChg:'10',ts:String(ts)},
+  {billId:'out',type:'1',subType:'12',ccy:'USDT',balChg:'-8',ts:String(ts+1000)},
+  {billId:'newer',type:'1',subType:'11',ccy:'USDT',balChg:'10',ts:String(ts+86400000)},
+  {billId:'return',type:'1',subType:'11',ccy:'USDT',balChg:'8',ts:String(ts+86400000+2000)},
+  {billId:'spend',type:'1',subType:'12',ccy:'USDT',balChg:'-9',ts:String(ts+86400000+3000)}],
+  trading:[{details:[{ccy:'USDT',cashBal:'11',eqUsd:'10.89'}]}],rates};
+ const child={positions:[],funding:[],fills:[],bills:[
+  {...main.bills[1],billId:'receipt',subType:'11',balChg:'8'},
+  {...main.bills[3],billId:'return-out',subType:'12',balChg:'-8'}],trading:[{details:[]}],rates};
+ const receipt=transferBasis([{id:'main',payload:main},{id:'child',payload:child}]);
+ const result=prepare(main,rates,receipt.get('main'),'main');
+ expect(result.positions[0].totalCost).toBeCloseTo(1*1.01+10*.99,12);
+});
+test('joint reconciliation rejects different native parents before loading or changing journals',async()=>{
+ const db=require('../../src/config/database'),{reconcile}=require('../../src/services/brokerSync/okxReconcile');
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};db.withTransaction.mockImplementation(fn=>fn(client));
+ const connection={id:'main',userId:'owner',externalAccountId:'uid-main'};
+ await expect(reconcile(connection,{},rates,{accounts:[{connection,payload:{verifiedMainUid:'parent',verifiedUid:'uid-main'}},
+ {connection:{id:'child',userId:'owner',externalAccountId:'uid-child'},payload:{verifiedMainUid:'foreign',verifiedUid:'uid-child'}}]})).rejects.toThrow('verified');
+ expect(client.query).toHaveBeenCalledTimes(1);
+});
