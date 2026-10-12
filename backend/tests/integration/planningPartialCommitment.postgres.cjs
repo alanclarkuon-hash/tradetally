@@ -17,21 +17,21 @@ const owner=crypto.randomUUID(),acct=crypto.randomUUID(),pb=crypto.randomUUID(),
  const commitment=async()=>(await db.query('SELECT * FROM trade_plan_commitments WHERE plan_id=$1',[id])).rows[0];
  const choose=(i,action)=>({tradeId:trades[i],sourceKey:sources[i][action==='entry'?0:1].key,fingerprint:sources[i][action==='entry'?0:1].fingerprint,quantity:[2,3,5][i]});
  await db.query('INSERT INTO trade_planning_settings(user_id,settings) VALUES($1,$2::jsonb)',[owner,JSON.stringify({currency:'USD'})]);
- const first=await call('/commitments','POST',{version:await version(),stageKey:'a',checks:{trigger:true,context:true,protection:true,data:true},riskOverrideReason:'Synthetic capacity verification'});assert.equal(first.status,201);
+ const first=await call('/commitments','POST',{version:await version(),stageKey:'a',checks:{trigger:true,context:true,protection:true,data:true},journalExceptionReason:'Synthetic missing journal evidence',riskOverrideReason:'Synthetic capacity verification'});assert.equal(first.status,201);
  const cid=first.data.commitment.id;
  const link=async(i,action)=>call('/allocations','POST',{version:await version(),stageKey:action==='entry'?'a':'x',action,fills:[choose(i,action)]});
  assert.equal((await link(0,'entry')).status,201);let c=await commitment();assert.equal(c.status,'reserved');assert.equal(Number(c.risk_amount),80);assert.equal(c.snapshot.reservation.remainingQuantity,8);
  const riskResponse=await fetch(base.slice(0,base.lastIndexOf('/'))+'/risk');assert.equal(riskResponse.status,200);const risk=await riskResponse.json();assert.equal(risk.accounts[0].reservedCash,800);assert.equal(risk.accounts[0].knownExposure,800);
  const before=JSON.stringify(c);assert.equal((await link(0,'entry')).status,409);assert.equal(JSON.stringify(await commitment()),before,'duplicate retry leaves remainder intact');
  assert.equal((await link(0,'exit')).status,201);
- assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic review',processFollowed:true})).status,409,'closed filled portion cannot review with a live remainder');
+ assert.equal((await call('/review','POST',{version:await version(),notes:'Synthetic review',journalExceptionReason:'Synthetic historical journal exception',processFollowed:true})).status,409,'closed filled portion cannot review with a live remainder');
  assert.equal((await call('/complete','POST',{version:await version()})).status,409,'completion blocked by unresolved order');
  const later=await call('/allocations','POST',{version:await version(),stageKey:'a',action:'entry',fills:[choose(1,'entry'),choose(2,'entry')]});assert.equal(later.status,201,JSON.stringify(later.data));c=await commitment();assert.equal(c.status,'released');assert.equal(c.snapshot.reservation.remainingQuantity,0,'later fills fully replace reservation');
  assert.equal((await call('/workflow')).data.ledger.entered,10);
  // Explicit cancellation releases only a newly reserved unfilled remainder.
  const otherId=crypto.randomUUID();await db.query("INSERT INTO trade_plans(id,user_id,playbook_id,status,finalised,definition) VALUES($1,$2,$3,'watching',true,$4::jsonb)",[otherId,owner,pb,JSON.stringify(d)]);
  const otherBase=base.slice(0,base.lastIndexOf('/'))+'/'+otherId;const request=async(path,body)=>{const r=await fetch(otherBase+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});return {status:r.status,data:await r.json()}};
- const pending=await request('/commitments',{version:1,stageKey:'a',checks:{trigger:true,context:true,protection:true,data:true},riskOverrideReason:'Synthetic verification'});assert.equal(pending.status,201);
+ const pending=await request('/commitments',{version:1,stageKey:'a',checks:{trigger:true,context:true,protection:true,data:true},journalExceptionReason:'Synthetic missing journal evidence',riskOverrideReason:'Synthetic verification'});assert.equal(pending.status,201);
  const pendingId=pending.data.commitment.id;
  const extra=crypto.randomUUID();await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,exit_time,entry_price,exit_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier,executions) SELECT $1,user_id,symbol,trade_date,entry_time,exit_time,entry_price,exit_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier,executions FROM trades WHERE id=$2",[extra,trades[0]]);
  const extraSources=require(root+'/src/services/planningLedger').sourceFills((await db.query('SELECT * FROM trades WHERE id=$1',[extra])).rows[0]);
@@ -42,7 +42,7 @@ const owner=crypto.randomUUID(),acct=crypto.randomUUID(),pb=crypto.randomUUID(),
  assert.equal((await db.query('SELECT status FROM trade_plan_commitments WHERE id=$1',[pendingId])).rows[0].status,'released');
  const extraVersion=async()=>(await db.query('SELECT version FROM trade_plans WHERE id=$1',[otherId])).rows[0].version;
  assert.equal((await request('/allocations',{version:await extraVersion(),stageKey:'x',action:'exit',fills:[{tradeId:extra,sourceKey:extraSources[1].key,fingerprint:extraSources[1].fingerprint,quantity:2}]})).status,201);
- assert.equal((await request('/review',{version:await extraVersion(),notes:'Synthetic review after cancellation',processFollowed:true})).status,200);
+ assert.equal((await request('/review',{version:await extraVersion(),notes:'Synthetic review after cancellation',journalExceptionReason:'Synthetic historical journal exception',processFollowed:true})).status,200);
  assert.equal((await request('/complete',{version:await extraVersion()})).status,200,'resolved cancellation permits review and close');
  assert.equal((await db.query('SELECT count(*)::int AS count FROM trade_plan_allocations WHERE plan_id=$1',[id])).rows[0].count,4,'release never removes linked fills');
  console.log('PASS: TEST partial 2/10 fill retains 8 units and proportional capacity; retries, later batch fills, review/close guards and confirmed cancellation');
