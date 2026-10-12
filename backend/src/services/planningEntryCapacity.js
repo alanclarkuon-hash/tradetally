@@ -9,7 +9,13 @@ function check(coverage,d,stage){
  if(addedRisk!=null){if(account?.limit!=null&&account.knownRisk+addedRisk>account.limit)fail('Account risk limit would be exceeded');if(coverage.limit!=null&&account?.inScope&&coverage.knownRisk+addedRisk>coverage.limit)fail('Combined trading-account risk limit would be exceeded');}
  if(exposure!=null&&account?.exposureLimit!=null&&account.knownExposure+exposure>account.exposureLimit)fail('Account exposure limit would be exceeded');
  if(cash!=null&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')&&account?.buyingPower!=null&&cash+(account.reservedCash||0)>account.buyingPower)fail('Account buying power is insufficient');
+ const quote=d.instrument==='crypto'?String((stageAccount(d,'entry',stage.key)===d.accountId?d.constraints:d.accountConstraints?.[stageAccount(d,'entry',stage.key)])?.pair||'').split(/[-/]/).at(-1):null;
+ const wallet=account?.brokerEvidence?.cash?.find(b=>b.currency===(quote||d.currency));
+ const walletRate=wallet?.currency===d.currency?1:rates[wallet?.currency]>0&&rates[d.currency]>0?rates[wallet.currency]/rates[d.currency]:null;
+ const nativeCost=walletRate&&stage.positionValue!=null?stage.positionValue*walletRate:null;
+ const reservedNative=walletRate&&rate&&account?.reservedCash!=null?account.reservedCash/rate*walletRate:0;
+ if(wallet&&nativeCost!=null&&nativeCost+reservedNative>wallet.amount+1e-8)fail('Broker available funds are insufficient in the trading currency');
  const verified=coverage.unknown===0&&account?.unknown===0&&addedRisk!=null&&account?.limit!=null&&coverage.limit!=null;
- return {addedRisk,exposure,cash,portfolioRiskVerified:verified,exposureVerified:account?.exposureLimit!=null&&account.exposureUnknown===0&&exposure!=null,buyingPowerVerified:cash!=null&&account?.buyingPower!=null&&!account.buyingPowerUnknown&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')};
+ return {brokerFundsVerified:!!wallet&&nativeCost!=null,brokerFunds:wallet?{...wallet,required:nativeCost,quoteCurrency:quote||d.currency}:null,borrowingVerified:false,addedRisk,exposure,cash,portfolioRiskVerified:verified,exposureVerified:account?.exposureLimit!=null&&account.exposureUnknown===0&&exposure!=null,buyingPowerVerified:cash!=null&&account?.buyingPower!=null&&!account.buyingPowerUnknown&&(d.instrument==='option'||['stock','crypto'].includes(d.instrument)&&d.direction==='long')};
 }
 module.exports={check};
