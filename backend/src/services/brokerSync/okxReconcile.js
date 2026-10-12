@@ -172,7 +172,17 @@ async function reconcile(connection,payload,rates,{dryRun=false,accounts=null}={
     await client.query(`INSERT INTO broker_import_snapshots(user_id,broker_type,account_identifier,connection_id,payload,captured_at)
       VALUES($1,'okx',$2,$3,$4::jsonb,NOW()) ON CONFLICT(user_id,broker_type,account_identifier)
       DO UPDATE SET payload=EXCLUDED.payload,connection_id=EXCLUDED.connection_id,captured_at=NOW()`,[connection.userId,identifier,connection.id,JSON.stringify(payload)]);
-    await client.query("UPDATE broker_connections SET broker_metadata=broker_metadata || '{\"import_pending_review\":false}'::jsonb WHERE user_id=$1 AND id=$2",[connection.userId,connection.id]);
+    // An error-state sibling was read live and fully reconciled in this transaction.
+    // Recover it only after all group imports succeed; rollback retains failures.
+    await client.query(`UPDATE broker_connections SET broker_metadata=broker_metadata || '{"import_pending_review":false}'::jsonb,
+      last_sync_status=CASE WHEN connection_status='error' THEN 'success' ELSE last_sync_status END,
+      last_sync_at=CASE WHEN connection_status='error' THEN NOW() ELSE last_sync_at END,
+      last_sync_message=CASE WHEN connection_status='error' THEN 'Verified OKX account history reconciled with its main/subaccount transfers.' ELSE last_sync_message END,
+      consecutive_failures=CASE WHEN connection_status='error' THEN 0 ELSE consecutive_failures END,
+      last_error_at=CASE WHEN connection_status='error' THEN NULL ELSE last_error_at END,
+      last_error_message=CASE WHEN connection_status='error' THEN NULL ELSE last_error_message END,
+      connection_status=CASE WHEN connection_status='error' THEN 'active' ELSE connection_status END,
+      updated_at=NOW() WHERE user_id=$1 AND id=$2`,[connection.userId,connection.id]);
     }
     if(!dryRun)await client.query('DELETE FROM analytics_cache WHERE user_id=$1',[connection.userId]);
   });
