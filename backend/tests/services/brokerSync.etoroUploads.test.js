@@ -43,3 +43,21 @@ test('trades changing after preview prevent classification and cash writes',asyn
  await expect(service.apply('stale-trades',p.token)).rejects.toThrow(/Trades changed/);
  expect(backup.createFullSiteBackup).not.toHaveBeenCalled();expect(db.withTransaction).not.toHaveBeenCalled();
 });
+
+const revisionBase=rows=>({...base(),report:{...base().report,to_date:'2026-01-03',ending_cash:rows.at(-1).Balance,records:prepare({'Account Activity':rows,Dividends:[]}).records}});
+test('revised split identifiers preserve saved references and financial history',()=>{
+ const split={...row('03/01/2026 12:00:00','corp action: Split',0,102),'Position ID':'old-position',Details:'SYN split 2 for 1'};
+ const rows=[...original,split],b=revisionBase(rows),u={...upload([...original,{...split,'Position ID':'replacement-position'}]),start:'2026-01-01'};
+ const result=service.combine(b,u);expect(result.records).toEqual(b.report.records);expect(result.added).toEqual([]);
+ expect(()=>service.combine(b,{...u,statement:{...u.statement,'Account Activity':[...original,{...split,'Position ID':'replacement-position',Details:'SYN split 3 for 1'}]}})).toThrow(/differs/);
+ expect(()=>service.combine(b,{...u,statement:{...u.statement,'Account Activity':[...original,{...split,'Position ID':'replacement-position',Balance:103}]}})).toThrow(/differs/);
+});
+test('same-time withdrawal and conversion fee presentation can reorder without creating duplicate payments',()=>{
+ const withdrawal={...row('03/01/2026 12:00:00','Withdraw Request',-20,82),'Position ID':'-'};
+ const fee={...withdrawal,Type:'Withdrawal Conversion Fee',Amount:-1,'Realized Equity Change':-1};
+ const rows=[...original,withdrawal,fee],b=revisionBase(rows),u={...upload([...original,fee,{...withdrawal,Type:'Transfer: USD > GBP'}]),start:'2026-01-01'};
+ const result=service.combine(b,u);expect(result.records).toEqual(b.report.records);expect(result.added).toEqual([]);expect(result.endingCash).toBe(82);
+ const extra={...newer,Date:'04/01/2026 12:00:00',Balance:85};const extended=service.combine(b,{...u,end:'2026-01-04',statement:{...u.statement,'Account Activity':[...u.statement['Account Activity'],extra]}});
+ expect(extended.records.slice(0,rows.length)).toEqual(b.report.records);expect(extended.added).toHaveLength(1);expect(extended.added[0].amount).toBe(3);
+ for(const mutation of [{Amount:-2},{Balance:81},{'Position ID':'different'},{Date:'03/01/2026 12:01:00'},{Type:'Unknown fee'}])expect(()=>service.combine(b,{...u,statement:{...u.statement,'Account Activity':[...original,{...fee,...mutation},{...withdrawal,Type:'Transfer: USD > GBP'}]}})).toThrow();
+});

@@ -12,7 +12,8 @@ function etoroPoints(account,report,upload) {
  const opening=Number(report.starting_cash)+report.records.slice(0,first).reduce((s,r)=>s+r.cash,0);
  const prepared=prepare(upload.statement,{startingCash:opening});
  const saved=report.records.slice(first).filter(r=>r.date<=upload.end);
- if(saved.length!==prepared.records.length||prepared.records.some((r,i)=>r.reference!==saved[i].reference||Math.abs(r.cash-saved[i].cash)>.00001))throw Error('Statement cash activity differs from saved records');
+ if(saved.length!==prepared.records.length)throw Error('Statement cash activity differs from saved records');
+ try {require('./brokerSync/etoroStatementOverlap').verify(saved,prepared.records);} catch {throw Error('Statement cash activity differs from saved records');}
  const endpoints=[{date:day(Date.parse(upload.start)-86400000),total:upload.equity.openingTotalUSD}, {date:upload.end,total:upload.equity.closingTotalUSD},
   ...(upload.holdingsTotals||[]).map(p=>({date:p.date,holdings:p.holdingsUSD}))];
  return endpoints.filter(p=>p.date>=day(account.initial_balance_date)).map(point=>{

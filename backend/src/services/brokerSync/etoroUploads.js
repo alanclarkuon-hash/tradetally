@@ -35,8 +35,7 @@ function combine(base,upload) {
   const data=prepare(upload.statement,{startingCash:opening});
   const overlap=old.slice(first).filter(r=>r.date<=upload.end);
   if(data.records.length<overlap.length)fail('The statement is missing previously imported activity.');
-  for(let n=0;n<overlap.length;n++)if(['reference','time','sourceType','type','amount','positionId'].some(k=>data.records[n][k]!==overlap[n][k])||Math.abs(data.records[n].cash-overlap[n].cash)>.000001)
-    fail('Previously imported activity differs from this statement. No records have been changed.');
+  require('./etoroStatementOverlap').verify(overlap,data.records);
   const added=data.records.slice(overlap.length);
   if(added.some(r=>r.time<old.at(-1).time))fail('New activity is out of sequence.');
   const known=new Set(old.map(r=>r.sourceType));
