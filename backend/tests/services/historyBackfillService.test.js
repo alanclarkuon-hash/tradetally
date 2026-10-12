@@ -32,7 +32,7 @@ test('resume keeps completed tasks, reports missing dates and runs reconstructio
   expect(portfolio._getDailySeries).toHaveBeenCalledTimes(1);
   expect(portfolio._getDailySeries.mock.calls[0][0]).toBe('ETH');
   expect(result).toMatchObject({ processed: 2, complete: 1, stage: 'finished', gaps: [{ symbol: 'ETH' }] });
-  expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner', { fetchPrices: true });
+  expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner', expect.objectContaining({ fetchPrices: true,onProgress:expect.any(Function) }));
 });
 test('status is scoped to the authenticated user and excludes task plans and credentials', async () => {
   db.query.mockResolvedValue({ rows: [{ id: 'job', status: 'processing', result: { tasks: [{ secret: 'hidden' }], processed: 1, total: 2, gaps: [] } }] });
@@ -60,3 +60,22 @@ test('existing displayed gaps are recalculated without fetching prices; only ful
 });
 
 test('an active job is shown before a newer queued follow-up',async()=>{db.query.mockResolvedValue({rows:[{id:'queued',status:'pending',created_at:'2026-01-02',result:{}},{id:'active',status:'processing',created_at:'2026-01-01',result:{processed:1,total:2}}]});const r=await service.status('owner');expect(r.map(j=>j.id)).toEqual(['active','queued']);expect(db.query.mock.calls[0][0]).toContain("WHEN 'processing' THEN 0");});
+
+test('portfolio activity is persisted separately from worker heartbeat and returned without task plans',async()=>{
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockImplementation(async(_user,{onProgress})=>{
+  await onProgress({stage:'prices',accountName:'Synthetic account',accountProcessed:1,accountTotal:3,processed:4,total:9,currentSymbol:'SYNTH'});
+  return {warnings:[]};
+ });
+ const result=await service.process({id:'job',user_id:'owner',result:{tasks:[],processed:0,total:0,gaps:[],stage:'prices'}});
+ expect(result.lastHeartbeatAt).toBeTruthy();expect(result.lastProgressAt).toBeTruthy();
+ expect(result.portfolioProgress).toMatchObject({accountName:'Synthetic account',processed:4,total:9});
+ db.query.mockResolvedValue({rows:[{id:'job',status:'processing',result}]});
+ const [status]=await service.status('owner');expect(status.lastHeartbeatAt).toBe(result.lastHeartbeatAt);expect(status.portfolioProgress.currentSymbol).toBe('SYNTH');expect(status.tasks).toBeUndefined();
+});
+
+test('restarting during portfolio reconstruction does not repeat completed price or calendar work',async()=>{
+ const calendar=jest.spyOn(require('../../src/services/exchangeCalendar'),'resolve');
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockResolvedValue({warnings:[]});
+ await service.process({id:'job',user_id:'owner',result:{tasks:[{symbol:'SYNTH',instrumentType:'stock'}],processed:1,total:1,gaps:[{symbol:'SYNTH',instrumentType:'stock',calendar:null}],stage:'portfolio'}});
+ expect(portfolio._getDailySeries).not.toHaveBeenCalled();expect(calendar).not.toHaveBeenCalled();calendar.mockRestore();
+});

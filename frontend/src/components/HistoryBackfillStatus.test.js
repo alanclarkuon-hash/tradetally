@@ -35,4 +35,13 @@ it('shows listing-calendar lookup progress separately from price downloads',asyn
  view.unmount()
 })
 
-it('keeps active progress visible when a newer follow-up is queued',async()=>{api.get.mockResolvedValue({data:{data:[{id:'queued',status:'pending',gaps:[],portfolioWarnings:[]},{id:'active',status:'processing',processed:2,total:4,currentSymbol:'SYNTH',gaps:[],portfolioWarnings:[]}]}});const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('Downloading SYNTH');expect(view.text()).toContain('Another history update is queued');view.unmount();});
+it('keeps active progress visible when a newer follow-up is queued',async()=>{api.get.mockResolvedValue({data:{data:[{id:'queued',status:'pending',gaps:[],portfolioWarnings:[]},{id:'active',status:'processing',processed:2,total:4,currentSymbol:'SYNTH',gaps:[],portfolioWarnings:[]}]}});const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('Downloading SYNTH');expect(view.text()).toContain('One history update is waiting');view.unmount();});
+
+it('reports portfolio substeps and uses their counters rather than finished price-task totals',async()=>{
+ const now=new Date().toISOString();api.get.mockResolvedValue({data:{data:[{status:'processing',stage:'portfolio',processed:1279,total:1279,lastHeartbeatAt:now,lastProgressAt:now,portfolioProgress:{stage:'prices',accountName:'Synthetic account',accountProcessed:1,accountTotal:4,currentSymbol:'SYNTH',processed:3,total:20},gaps:[],portfolioWarnings:[]}]}});
+ const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('Synthetic account');expect(view.text()).toContain('3/20 assets');expect(view.text()).toContain('1/4 accounts finished');expect(view.text()).toContain('Worker checked in');expect(view.get('[role=progressbar]').attributes('aria-valuenow')).toBe('3');expect(view.get('[role=progressbar]').attributes('aria-valuemax')).toBe('20');view.unmount();
+});
+it('shows stale heartbeat honestly and keeps unmeasured reconstruction indeterminate',async()=>{
+ api.get.mockResolvedValue({data:{data:[{status:'processing',stage:'portfolio',processed:1279,total:1279,lastHeartbeatAt:new Date(Date.now()-180000).toISOString(),portfolioProgress:{stage:'fx'},gaps:[],portfolioWarnings:[]}]}});
+ const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('No recent worker check-in');expect(view.text()).toContain('Loading historical exchange rates');expect(view.get('[role=progressbar]').attributes('aria-valuenow')).toBeUndefined();view.unmount();
+});

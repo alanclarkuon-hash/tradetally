@@ -157,13 +157,14 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
  const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>(!broker||a.broker===broker)&&(!accountIdentifiers||accountIdentifiers.includes(a.account_identifier)));
  if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
+ await onProgress({stage:'fx'});
  const fx=await loadFx(from,end,{fetchPrices});
  const krakenPayload=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' LIMIT 1",[userId])).rows[0]?.payload;
  const publicCryptoRates=krakenPayload?.valuation?.rates||{};
 
  const summaries=[];
  for(const account of accounts) {
-  onProgress({broker:account.broker,stage:'reconstructing'});
+  await onProgress({broker:account.broker,stage:'reconstructing'});
   const start=date(account.initial_balance_date),identifier=account.account_identifier;
   const snapshot=(await db.query('SELECT * FROM broker_import_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows[0];
   const portfolio=(await db.query('SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows[0];
@@ -224,7 +225,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,end,{fetchPrices,userId}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});market.set(s,await loadMarket(s,start,end,{fetchPrices,userId}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   // Retired markets may have disappeared from live pair metadata. Their
   // official daily archive retains actual historical closes.
@@ -270,7 +271,10 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   }
   const rows=[];
   const writeFrom=fromDate&&fromDate>start?fromDate:start;
-  for(const d of days(writeFrom,end)) {
+  const valuationDays=days(writeFrom,end);
+  await onProgress({stage:'values',processed:0,total:valuationDays.length});
+  for(const [dayIndex,d] of valuationDays.entries()) {
+   if(dayIndex%100===0)await onProgress({stage:'values',processed:dayIndex,total:valuationDays.length,currentDate:d});
    let value={holdings_usd:0,cash_usd:0,stablecoins_usd:0,issues:[...blockers]};
    if(d>cutoff)value.issues.push('Beyond saved statement or sync coverage');
    if(['kraken','okx'].includes(account.broker)) {
@@ -331,6 +335,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    if(blocksValue(value.issues))value.holdings_usd=value.cash_usd=value.stablecoins_usd=null;
    rows.push({...value,date:d,gbp_per_usd:fx('GBP',d)>0?1/fx('GBP',d):null});
   }
+  await onProgress({stage:'saving',processed:rows.length,total:rows.length});
   if(apply)await db.withTransaction(async client=>{
    const previous=(await client.query('SELECT * FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3 FOR UPDATE',[userId,identifier,writeFrom])).rows;
    for(const r of rows){const prior=previous.find(p=>date(p.value_date)===r.date);if(prior&&prior.holdings_usd!=null&&(r.holdings_usd==null||(r.issues.some(i=>i.startsWith(estimatePrefix))&&!prior.issues?.some(i=>i.startsWith(estimatePrefix))))){Object.assign(r,{holdings_usd:Number(prior.holdings_usd),cash_usd:prior.cash_usd==null?null:Number(prior.cash_usd),stablecoins_usd:prior.stablecoins_usd==null?null:Number(prior.stablecoins_usd),gbp_per_usd:prior.gbp_per_usd==null?null:Number(prior.gbp_per_usd),issues:[...new Set([...(prior.issues||[]),...r.issues,'Existing history retained while missing coverage is retried'])]});}}
@@ -338,7 +343,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   });
   const valid=rows.filter(r=>r.holdings_usd!=null);
   summaries.push({broker:account.broker,days:valid.length,estimatedDays:valid.filter(r=>r.issues.length).length,first:valid[0]?.date,last:valid.at(-1)?.date,gaps:rows.length-valid.length,issues:[...new Set(rows.flatMap(r=>r.issues))]});
-  onProgress({broker:account.broker,stage:'complete',days:valid.length,gaps:rows.length-valid.length});
+  await onProgress({broker:account.broker,stage:'complete',days:valid.length,gaps:rows.length-valid.length});
  }
  return summaries;
 }
