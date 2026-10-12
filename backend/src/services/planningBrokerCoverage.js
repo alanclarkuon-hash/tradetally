@@ -2,9 +2,11 @@ const {fresh}=require('./planningBrokerEvidence');
 const field=(o,k)=>o?.[Object.keys(o||{}).find(x=>x.toLowerCase()===k.toLowerCase())];
 const num=v=>v!==null&&v!==undefined&&v!==''&&typeof v!=='boolean'&&Number.isFinite(Number(v))?Number(v):null;
 function parse(broker,payload,asOf){
- const recent=fresh(payload.asOf||asOf,15),cash=[],stops=[];let note='Current buying power, borrowing and working stops are not supplied by this integration';
+ const recent=fresh(payload.asOf||asOf,15),cash=[],stops=[];let note='Manual broker verification required: live buying power, borrowing and working stops are not supplied by this integration';
  const add=(currency,amount)=>{if(recent&&amount!=null&&amount>=0&&/^[A-Z]{3,8}$/.test(currency))cash.push({currency,amount,asOf:payload.asOf||asOf,source:broker+' broker available funds'})};
- if(broker==='etoro'){
+ if(broker==='trading212'){
+  note='Account cash uses a separate fresh broker snapshot; live working stops and borrowing are not supplied by this integration';
+ }else if(broker==='etoro'){
   const portfolio=payload.portfolio,keys=['orders','entryOrders','stockOrders','ordersForOpen'];
   const noOrders=keys.every(k=>Array.isArray(field(portfolio,k))&&field(portfolio,k).length===0)&&Array.isArray(field(portfolio,'mirrors'))&&field(portfolio,'mirrors').length===0;
   if(noOrders)add('USD',num(field(portfolio,'credit')));

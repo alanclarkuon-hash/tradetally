@@ -11,12 +11,13 @@ async function load(client,userId,evidence){
  const groups=Object.fromEntries(ids.flatMap(id=>Object.entries(require('../services/brokerSync/portfolioSnapshot').dashboardPositions(trades.rows.filter(t=>(t.account_identifier||'unassigned')===id),snapshots.rows.filter(t=>t.account_identifier===id))).map(([key,value])=>[id+'|'+key,value])));
  const accountRows=(await client.query('SELECT id,account_identifier,currency,account_name,broker FROM user_accounts WHERE user_id=$1',[userId])).rows;
  const brokerCoverage=await require('./planningBrokerCoverage').load(client,userId,accountRows);
+ const stopChanges=(await client.query("SELECT plan_id,MAX(created_at) AS as_of FROM trade_plan_events WHERE user_id=$1 AND event_type='stop_changed' GROUP BY plan_id",[userId])).rows;
  const planEvidence=(await Promise.all(plans.rows.filter(p=>p.baseline).map(async p=>{
   const result=await evidence(client,p);
-  return require('./planningAccounts').accountIds(p.definition).map(id=>{const own=result.accounts?.find(a=>a.accountId===id);return {plan:p,account:accountRows.find(a=>a.id===id)?.account_identifier,result:own?{...result,openQuantity:own.openQuantity,capitalRisk:own.capitalRisk,capitalRiskCurrency:own.capitalRiskCurrency,maximumLoss:own.maximumLoss,maximumLossCurrency:own.maximumLossCurrency}:result}});
+  return require('./planningAccounts').accountIds(p.definition).map(id=>{const own=result.accounts?.find(a=>a.accountId===id);return {plan:p,stopAsOf:stopChanges.find(e=>e.plan_id===p.id)?.as_of||p.baseline.recordedAt||null,account:accountRows.find(a=>a.id===id)?.account_identifier,result:own?{...result,openQuantity:own.openQuantity,capitalRisk:own.capitalRisk,capitalRiskCurrency:own.capitalRiskCurrency,maximumLoss:own.maximumLoss,maximumLossCurrency:own.maximumLossCurrency}:result}});
  }))).flat();
  const config=settings.rows[0]?.settings||{},currency=config.currency||'GBP',rates={USD:1,...fx.rows[0]?.rates};
- const cross=(from,to)=>rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
+ const cross=(from,to)=>from&&from===to?1:rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null;
  let knownRisk=0,conservativeRisk=0,unknown=0;const positions=[];
  for(const [identity,pos] of Object.entries(groups)){
   const stops=[...new Set(pos.trades.map(t=>Number(t.stop_loss)).filter(v=>v>0))];
@@ -27,7 +28,7 @@ async function load(client,userId,evidence){
   let stopEvidence={source:recorded.source,coveredQuantity:recorded.coveredQuantity,asOf:recorded.asOf,brokerConfirmed:false};
   const matched=planEvidence.filter(e=>identity.startsWith((e.account||'unassigned')+'|')&&e.plan.definition.symbol===pos.symbol&&e.plan.definition.instrument===pos.instrumentType&&e.plan.definition.direction===pos.side&&e.result.openQuantity>0);
   if(matched.length&&matched.every(e=>e.result.capitalRisk!=null&&e.result.coverageComplete)&&Math.abs(matched.reduce((sum,e)=>sum+e.result.openQuantity,0)-pos.totalQuantity)<1e-8){
-   stopEvidence={source:'Manual plan invalidation levels',coveredQuantity:pos.totalQuantity,asOf:matched.map(e=>e.plan.updated_at).filter(Boolean).sort().at(-1)||null,brokerConfirmed:false};
+   stopEvidence={source:'Manual plan invalidation levels',coveredQuantity:pos.totalQuantity,asOf:matched.map(e=>e.stopAsOf).filter(Boolean).sort().at(-1)||null,brokerConfirmed:false};
    risk=matched.reduce((sum,e)=>sum+e.result.capitalRisk*(cross(e.result.capitalRiskCurrency||e.result.currency,currency)||0),0);
    if(matched.some(e=>!cross(e.result.capitalRiskCurrency||e.result.currency,currency)))risk=null;
   }

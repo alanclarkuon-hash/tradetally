@@ -47,7 +47,7 @@ const calculatedQuantity=validDirection&&denominator>0&&cashRisk>0?floorQuantity
 const quantity=e.units!=null?floorQuantity(e.units,d.instrument==='option'?1:limits.quantityStep||d.quantityStep):calculatedQuantity;
 const positionValue=quantity==null?null:d.instrument==='option'?(d.options.premium?quantity*d.options.premium*d.options.multiplier:null):d.instrument==='spread_bet'?null:quantity*e.price;
 const constraints=limits,constraintBreaches=[];
-if(quantity!=null&&constraints.maximumPositionQuantity!=null&&constraints.currentQuantity!=null&&quantity+constraints.currentQuantity>constraints.maximumPositionQuantity)constraintBreaches.push('Above broker maximum holding quantity');
+if(quantity!=null&&constraints.maximumPositionQuantity!=null&&quantity+(constraints.currentQuantity??0)>constraints.maximumPositionQuantity+1e-8)constraintBreaches.push('Above broker maximum holding quantity');
 if(quantity!=null&&constraints.minimumQuantity!=null&&quantity<constraints.minimumQuantity)constraintBreaches.push('Below minimum quantity');
 if(quantity!=null&&constraints.maximumQuantity!=null&&quantity>constraints.maximumQuantity)constraintBreaches.push('Above maximum quantity');
 if(positionValue!=null&&constraints.minimumValue!=null&&positionValue<constraints.minimumValue)constraintBreaches.push('Below minimum trade value');
