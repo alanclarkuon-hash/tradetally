@@ -15,3 +15,6 @@ Spot fills and regular archived bills cover three months. Quarterly bill archive
 All authenticated requests are fixed GET endpoints with HMAC-SHA256 signatures over the timestamp, GET method and exact encoded request path. Error messages discard Axios request data and arbitrary broker messages to avoid exposing credentials. History pagination is bounded and uses stable bill IDs.
 
 Reference: [official OKX API documentation](https://www.okx.com/docs-v5).
+
+
+Main accounts and subaccounts use separate read-only keys and validated native UIDs. Connections are unique by owner, region and UID, so adding a subaccount does not replace the main connection. Connecting it does not invent acquisition cost: inbound coin transfers still require verified sending-lot evidence before profit reporting is complete. Failed/error syncs appear in the global login banner with their account label, failure message and link to Broker Sync; the warning persists until the connection completes a successful sync.
