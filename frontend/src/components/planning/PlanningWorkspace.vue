@@ -67,7 +67,8 @@
       </div>
       <p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Source fills changed. Correct their links before completing review.</p>
      </section>
-    </aside>
+     <PlanningCashflows v-if="managing" :plan="plan" :cashflows="ledger.cashflows||{}" v-model:currency="positionCurrency" :currencies="currencyChoices" :rates="fx?.rates" :editable="!['completed','reviewed','cancelled'].includes(plan.status)" :prepare-save="prepareCashflow" @saved="reload"/>
+   </aside>
    </div>
    <section v-if="draft.instrument==='option'" class="card p-5">
     <div class="flex justify-between mb-4"><h2 class="font-semibold text-lg">Option contract and sizing</h2><CurrencyToggle v-model="optionCurrency" :currencies="currencyChoices" /></div>
@@ -168,6 +169,7 @@
 <script setup>
 import EntryJournalAssessment from './EntryJournalAssessment.vue'
 import EntryJournalHistory from './EntryJournalHistory.vue'
+import PlanningCashflows from './PlanningCashflows.vue'
 
 import {planMilestones,planStatusLabel} from './planningStages'
 import {describeManagementEvent} from './managementTimeline'
@@ -207,7 +209,7 @@ const optionMoneyKeys=['strike','premium','atr']
 const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
 const linkedTradesExpanded=ref(false),timelineExpanded=ref(false)
-const managementTypes=new Set(['trade_linked','trade_unlinked','management_updated','stop_changed','option_rolled','entry_committed','commitment_released','commitment_fill_reconciled','entry_journal_assessed'])
+const managementTypes=new Set(['trade_linked','trade_unlinked','management_updated','stop_changed','option_rolled','entry_committed','commitment_released','commitment_fill_reconciled','entry_journal_assessed','cashflow_attributed','cashflow_attribution_removed'])
 const newest=(a,b)=>Date.parse(b.created_at||b.fill?.time||'')-Date.parse(a.created_at||a.fill?.time||'')
 const managementEvents=computed(()=>(workflow.value?.history||[]).filter(e=>managementTypes.has(e.event_type)).slice().sort(newest).flatMap(e=>describeManagementEvent(e, draft.value).map(action=>({...e,...action}))))
 const linkedTrades=computed(()=>(ledger.value.records||[]).filter(a=>!a.fill?.provisional).slice().sort(newest))
@@ -263,7 +265,7 @@ function ledgerMetric(metric,to){
   const list=ledger.value.accounts;
   if(list.some(a=>!rate(a.currency,to)||a.positionValue==null||a.realisedProfit==null))return null;
   const sum=key=>list.reduce((v,a)=>v+a[key]*rate(a.currency,to),0);
-  if(['positionValue','realisedProfit','entryCost'].includes(metric))return sum(metric);
+  if(['positionValue','realisedProfit','entryCost','cashflowProfit','tradeRealisedProfit'].includes(metric))return sum(metric);
   if(metric==='averagePrice')return ledger.value.openQuantity>0?sum('positionValue')/ledger.value.openQuantity/(draft.value.instrument==='option'?draft.value.options.multiplier:1):null;
   if(metric==='percentGain')return sum('entryCost')>0?sum('realisedProfit')/sum('entryCost')*100:null;
   if(metric==='realisedR')return draft.value.riskBudget>0&&rate(draft.value.currency,to)?sum('realisedProfit')/(draft.value.riskBudget*rate(draft.value.currency,to)):null;
@@ -365,6 +367,7 @@ async function findFills(kind,key){if(linked(kind,key)&&!(kind==='entry'&&planCo
 async function linkSelectedFills(){if(linked(finder.value.action,finder.value.stageKey)&&!(finder.value.action==='entry'&&planCommitments.value.some(c=>c.stage_key===finder.value.stageKey))){error.value='Unlink the current trade before choosing another';return}const selected=fills.value.filter(f=>f.selected);if(!selected.length||selected.some(f=>!(f.allocate>0)||f.allocate>f.available)){error.value='Choose valid quantities for all selected trades';return}await action('allocations',{stageKey:finder.value.stageKey,action:finder.value.action,journalAssessmentId:finder.value.journalAssessmentId,fills:selected.map(f=>({tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity:f.allocate}))});if(!error.value)finder.value=null}
 async function unlink(a){const reason=window.prompt('Why are you correcting this link?');if(!reason)return;busy.value=true;try{await api.delete('/trade-plans/'+plan.value.id+'/allocations/'+a.id,{data:{version:plan.value.version,reason}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
 async function changeStop(e,c){let price;try{price=priceValue(e,c)}catch{return}if(hasLinks.value||managing.value){const reason=window.prompt('Why are you changing the SL invalidation level?');if(!reason){e.target.value=displayValue(draft.value.stopPrice,c);return}if(dirty&&!await save())return;await action('stop',{stopPrice:price,reason})}else draft.value.stopPrice=price}
+async function prepareCashflow(){return !dirty||await save()}
 async function loadRollFills(){if(dirty&&!await save())return;try{rollFills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{purpose:'roll'}})).data.fills.filter(f=>f.contract)}catch(e){fail(e)}}
 async function recordRoll(){
  const select=(key,quantity)=>{const f=rollFills.value.find(f=>f.tradeId+'|'+f.key===key);if(!f)throw new Error('Choose both roll fills');return {tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity}}
