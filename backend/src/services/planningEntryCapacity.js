@@ -1,7 +1,7 @@
 const {fail}=require('./tradePlanning'),{stageAccount}=require('./planningAccounts');
 function check(coverage,d,stage){
  const account=coverage.accounts?.find(a=>a.accountId===stageAccount(d,'entry',stage.key)),rates={USD:1,...coverage.rates};
- const rate=rates[coverage.currency]>0&&rates[d.currency]>0?rates[coverage.currency]/rates[d.currency]:null;
+ const rate=coverage.currency===d.currency?1:rates[coverage.currency]>0&&rates[d.currency]>0?rates[coverage.currency]/rates[d.currency]:null;
  const addedRisk=rate&&stage.estimatedRisk!=null?stage.estimatedRisk*rate:null;
  const multiplier=d.instrument==='option'?d.options.contractDelta:d.instrument==='spread_bet'?1/d.pointSize:1;
  const exposure=rate&&multiplier>0&&stage.price>0?stage.quantity*stage.price*multiplier*rate:null;
