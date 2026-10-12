@@ -18,3 +18,12 @@ test('public connection responses expose no credential values',()=>{
   for(const key of ['okxApiKey','okxApiSecret','okxPassphrase'])expect(result).not.toHaveProperty(key);
   expect(BrokerConnection.formatConnection(row,true)).toMatchObject({okxApiKey:'key',okxApiSecret:'secret',okxPassphrase:'passphrase'});
 });
+
+
+test('upserts credentials only for the same validated account and region',async()=>{
+ db.query.mockClear();db.query.mockResolvedValue({rows:[row]});
+ await BrokerConnection.create('owner',{brokerType:'okx',okxApiKey:'key',okxApiSecret:'secret',okxPassphrase:'passphrase',externalAccountId:'child-5678'});
+ const [sql,params]=db.query.mock.calls[0];
+ expect(sql).toContain("ON CONFLICT(user_id,(COALESCE(broker_environment,'global')),external_account_id) WHERE broker_type='okx'");
+ expect(params).toContain('child-5678');
+});

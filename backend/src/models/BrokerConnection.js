@@ -182,7 +182,7 @@ class BrokerConnection {
       query = `INSERT INTO broker_connections(user_id,broker_type,connection_status,okx_api_key,okx_api_secret,okx_passphrase,
         external_account_id,broker_environment,broker_metadata,account_label,auto_sync_enabled,sync_frequency,sync_time)
         VALUES($1,'okx','pending',$2,$3,$4,$5,$6,$7,$8,false,'manual',$9)
-        ON CONFLICT(user_id,(COALESCE(broker_environment,'global'))) WHERE broker_type='okx'
+        ON CONFLICT(user_id,(COALESCE(broker_environment,'global')),external_account_id) WHERE broker_type='okx'
         DO UPDATE SET okx_api_key=EXCLUDED.okx_api_key,okx_api_secret=EXCLUDED.okx_api_secret,
         okx_passphrase=EXCLUDED.okx_passphrase,external_account_id=EXCLUDED.external_account_id,
         broker_metadata=EXCLUDED.broker_metadata,account_label=EXCLUDED.account_label,connection_status='pending',
