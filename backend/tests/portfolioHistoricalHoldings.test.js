@@ -79,3 +79,22 @@ test('historical EUR display conversion uses EUR instead of GBP',async()=>{
 });
 
 test('closed Trading 212 instruments use saved catalogue identity without current holdings or broker requests',async()=>{fixture({catalogues:[{instruments:[{ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'}]}],reports:[{account_id:'a',broker_type:'trading212',records:[{symbol:'LOKB_US_EQ',side:'BUY',date:'2023-01-01',quantity:10,amount:-50},{symbol:'LOKB_US_EQ',side:'SELL',date:'2024-03-01',quantity:10,amount:100}]}],prices:[{symbol:'NVTS',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});const r=await getHistoricalHoldings('owner',[{...account,broker:'trading212'}],range);expect(r.positions).toHaveLength(1);expect(r.positions[0]).toMatchObject({symbol:'NVTS',totalShares:10,currentValue:120,periodResult:{pnl:20,basis:100}});expect(db.query).toHaveBeenCalledWith(expect.stringContaining('broker_instrument_catalogues'),['owner','one']);expect(db.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true)});
+
+
+test('combined account holdings never treat a partial period basis as complete',async()=>{
+ const accounts=[{...account,broker:'kraken'},{...account,id:'b',account_identifier:'two',broker:'kraken'}];
+ fixture({snapshots:accounts.map((a,i)=>({broker_type:'kraken',account_identifier:a.account_identifier,payload:{ledger:{deposit:{asset:'XBT',amount:'2',fee:'0',time:Date.parse(i?'2024-01-15':'2023-01-01')/1000}},valuation:{rates:{BTC:{'2023-12-31':10,'2024-02-01':12}}}}}))});
+ const result=await getHistoricalHoldings('u',accounts,range);
+ expect(result.positions[0]).toMatchObject({totalShares:4,currentValue:48,periodResult:{basis:null,pnl:null,percent:null}});
+ const {currentRangeResult}=require('../src/services/portfolioDashboardService');
+ expect(currentRangeResult({instrumentType:'crypto',totalShares:4,currentValue:52},range,result.positions[0])).toEqual({pnl:null,percent:null});
+});
+
+test('combined complete bases remain usable with a current quote when historical ending prices are missing',async()=>{
+ const accounts=[account,{...account,id:'b',account_identifier:'two'}];
+ fixture({trades:accounts.map(a=>({symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:a.account_identifier})),prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10}]}}]});
+ const result=await getHistoricalHoldings('u',accounts,range);
+ expect(result.positions[0].periodResult).toEqual({basis:200,pnl:null,percent:null});
+ const {currentRangeResult}=require('../src/services/portfolioDashboardService');
+ expect(currentRangeResult({instrumentType:'stock',totalShares:20,currentValue:240},range,result.positions[0])).toEqual({pnl:40,percent:20,basis:200});
+});

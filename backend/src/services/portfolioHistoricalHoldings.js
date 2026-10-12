@@ -176,7 +176,12 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     existing.totalShares+=p.totalShares;existing.currentValue+=p.currentValue;existing.totalCostBasis+=p.totalCostBasis;
     existing.accountIdentifiers=[...new Set([...existing.accountIdentifiers,...p.accountIdentifiers])];
     existing.historicalWarnings=[...new Set([...existing.historicalWarnings,...p.historicalWarnings])];
-    const known=existing.periodResult.pnl!=null&&p.periodResult.pnl!=null,basis=existing.periodResult.basis+p.periodResult.basis;
+    // A missing account basis cannot be replaced with zero. Keep basis
+    // completeness independent of ending-price availability so fresh quotes
+    // can still value holdings whose complete opening basis is known.
+    const completeBasis=existing.periodResult.basis>0&&p.periodResult.basis>0;
+    const basis=completeBasis?existing.periodResult.basis+p.periodResult.basis:null;
+    const known=completeBasis&&existing.periodResult.pnl!=null&&p.periodResult.pnl!=null;
     existing.periodResult={pnl:known?existing.periodResult.pnl+p.periodResult.pnl:null,percent:known&&basis>0?(existing.currentValue-basis)/basis*100:null,basis};
   }
   return {positions:[...combined.values()],warnings,displayRates:{USD:currency==='USD'?1:(fx(currency,range.end_date)>0?1/fx(currency,range.end_date):null)}};
