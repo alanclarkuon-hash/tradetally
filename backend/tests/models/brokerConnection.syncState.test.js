@@ -107,3 +107,15 @@ describe('BrokerConnection sync state updates', () => {
     expect(params).toBeUndefined();
   });
 });
+
+
+test('current portfolio capture is valid bounded sync progress',async()=>{
+ db.query.mockClear();db.query.mockResolvedValue({rows:[]});
+ await BrokerConnection.updateSyncProgress('log','portfolio_capture',0);
+ const [sql,params]=db.query.mock.calls[0];expect(sql).toContain('completed_at IS NULL');
+ expect(JSON.parse(params[1])).toMatchObject({section:'portfolio_capture',pages:0,complete:false});
+ db.query.mockClear();
+ for(const section of ['unknown','private-response'])await expect(BrokerConnection.updateSyncProgress('log',section,0)).rejects.toThrow('Invalid sync progress');
+ for(const pages of [-1,1001,1.5])await expect(BrokerConnection.updateSyncProgress('log','portfolio_capture',pages)).rejects.toThrow('Invalid sync progress');
+ expect(db.query).not.toHaveBeenCalled();
+});
