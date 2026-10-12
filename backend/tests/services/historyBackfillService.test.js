@@ -79,3 +79,35 @@ test('restarting during portfolio reconstruction does not repeat completed price
  await service.process({id:'job',user_id:'owner',result:{tasks:[{symbol:'SYNTH',instrumentType:'stock'}],processed:1,total:1,gaps:[{symbol:'SYNTH',instrumentType:'stock',calendar:null}],stage:'portfolio'}});
  expect(portfolio._getDailySeries).not.toHaveBeenCalled();expect(calendar).not.toHaveBeenCalled();calendar.mockRestore();
 });
+
+
+test('pending scoped requests union accounts and use earliest dates while full maintenance dominates',async()=>{
+ const client={query:jest.fn().mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[{id:'pending',data:{scope:{accounts:{a:'2026-10-01'}}}}]}).mockResolvedValue({rows:[]})};
+ db.withTransaction.mockImplementation(fn=>fn(client));
+ expect(await service.enqueue('owner',{accounts:{a:'2026-09-01',b:'2026-10-02'}})).toBe('pending');
+ expect(JSON.parse(client.query.mock.calls[2][1][1]).scope).toEqual({accounts:{a:'2026-09-01',b:'2026-10-02'}});
+ expect(service.mergeScope({accounts:{a:'2026-01-01'}},null)).toBeNull();
+ expect(service.mergeScope({accounts:{a:null}},{accounts:{a:'2026-01-01'}})).toEqual({accounts:{a:null}});
+});
+test('empty sync changes enqueue nothing and resumed cursors are excluded from merge candidates',async()=>{
+ expect(await service.enqueue('owner',{accounts:{}})).toBeNull();expect(db.withTransaction).not.toHaveBeenCalled();
+ const client={query:jest.fn().mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[{id:'followup'}]})};
+ db.withTransaction.mockImplementation(fn=>fn(client));
+ expect(await service.enqueue('owner',{accounts:{a:'2026-10-01'}})).toBe('followup');
+ expect(client.query.mock.calls[1][0]).toContain('result IS NULL');
+ expect(JSON.parse(client.query.mock.calls[2][1][2]).scope).toEqual({accounts:{a:'2026-10-01'}});
+});
+test('scoped price planning queries only affected accounts and clamps old holdings to changed dates',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM trades')?[{symbol:'AAA',instrument_type:'stock',entry_time:'2020-01-01'}]:sql.includes('broker_import_snapshots')?[{broker_type:'kraken',payload:{ledger:{old:{asset:'OLD',time:1577836800}}}}]:[]}));
+ portfolio._getPositionComponents.mockResolvedValue([{symbol:'BTC',instrumentType:'crypto',effectiveDate:'2020-01-01'}]);
+ const tasks=await service.plan('owner',{accounts:{a:'2026-10-01'}});
+ expect(tasks.every(t=>t.from==='2026-10-01')).toBe(true);
+ expect(tasks.map(t=>t.symbol)).not.toContain('OLD');
+ expect(portfolio._getPositionComponents).toHaveBeenCalledWith('owner',['a']);
+ expect(db.query.mock.calls[0][1]).toEqual(['owner',['a']]);
+});
+test('processing a persisted scope keeps reconstruction within those accounts and dates',async()=>{
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockResolvedValue({warnings:[]});
+ await service.process({id:'job',user_id:'owner',data:{scope:{accounts:{a:'2026-10-01'}}},result:{tasks:[],processed:0,total:0,gaps:[],stage:'portfolio'}});
+ expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner',expect.objectContaining({accountIdentifiers:['a'],fromDates:{a:'2026-10-01'}}));
+});

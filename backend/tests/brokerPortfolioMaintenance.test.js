@@ -74,3 +74,12 @@ test('sync capture stays scoped to the imported broker and skips missing account
  expect(await captureCurrent('owner',{broker:'ibkr'})).toEqual({captured:0,rebuilt:[],warnings:[]});
  expect(capture.captureToday).not.toHaveBeenCalled();
 });
+
+
+test('routine scoped maintenance excludes untouched accounts and does not restart from old gaps',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[account,{...account,broker:'etoro',account_identifier:'untouched'}]:[{latest:'2026-10-01',first_gap:'2020-01-01'}]}));
+ await maintain('owner',{accountIdentifiers:['owned'],fromDates:{owned:'2026-10-02'}});
+ expect(reconstruction.reconstruct).toHaveBeenCalledTimes(1);
+ expect(reconstruction.reconstruct).toHaveBeenCalledWith('owner',expect.objectContaining({accountIdentifiers:['owned'],fromDate:'2026-10-02'}));
+ expect(capture.captureToday).toHaveBeenCalledWith('owner',{accounts:'owned'});
+});
