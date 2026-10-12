@@ -114,15 +114,28 @@ const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested
 const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.coverage??{})
 const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
 const quoteClock=ref(Date.now())
-let quoteClockTimer
+let quoteClockTimer,metadataTimer
 onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now()},30000)})
-onUnmounted(()=>clearInterval(quoteClockTimer))
+onUnmounted(()=>{clearInterval(quoteClockTimer);clearTimeout(metadataTimer);request++})
 const isDelayedQuote=holding=>{
   const asOf=holding.priceAsOf ? Date.parse(holding.priceAsOf) : NaN
   return Number.isFinite(asOf) && quoteClock.value-asOf>15*60000
 }
 const groups=computed(()=>holdingGroups(data.value?.heatmapHoldings??data.value?.holdings??[]))
+function refreshMetadata(id,params,attempt=0){
+  if(!data.value?.metadataUpdating || attempt>=12)return
+  metadataTimer=setTimeout(async()=>{
+    if(id!==request)return
+    try{
+      const response=await api.get('/investments/portfolio/dashboard',{params,timeout:30000})
+      if(id!==request)return
+      data.value=response.data
+      refreshMetadata(id,params,attempt+1)
+    }catch{ /* Keep the displayed balances and labels if refresh fails. */ }
+  },5000)
+}
 async function load(){
+  clearTimeout(metadataTimer)
   if(period.value==='custom' && (!start.value || !end.value || start.value>end.value))return
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''
   if(!hasAccountSelection.value){data.value=null;loading.value=false;historyLoading.value=false;return}
@@ -130,7 +143,7 @@ async function load(){
   if(period.value!=='all'){
     Object.assign(params,period.value==='custom'?{start_date:start.value,end_date:end.value}:resolveDatePreset(period.value,new Date(),authStore.user?.timezone||'UTC'))
   }
-  try{const response=await api.get('/investments/portfolio/dashboard',{params,timeout:180000});if(id===request)data.value=response.data}
+  try{const response=await api.get('/investments/portfolio/dashboard',{params,timeout:180000});if(id===request){data.value=response.data;refreshMetadata(id,params)}}
   catch(e){if(id===request){error.value=e.response?.data?.error||'Could not load portfolio';data.value=null}}
   finally{if(id===request)loading.value=false}
   if(id!==request)return
