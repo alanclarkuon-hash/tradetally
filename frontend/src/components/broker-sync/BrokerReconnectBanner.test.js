@@ -72,3 +72,33 @@ describe('BrokerReconnectBanner', () => {
     expect(wrapper.get('button').text()).toBe('Reauthorize Schwab')
   })
 })
+
+
+describe('Broker sync failure notices',()=>{
+  it('shows failed reconciliation after login and clears only after successful sync',async()=>{
+    mocks.store=reactive({connections:[{id:'okx-main',brokerType:'okx',accountLabel:'Main account',connectionStatus:'error',lastSyncStatus:'failed',lastErrorMessage:'Holdings do not match reconstructed lots'}],fetchConnections:vi.fn(),initSchwabOAuth:vi.fn()})
+    const wrapper=shallowMount(BrokerReconnectBanner,{global:{stubs:{RouterLink:{name:'RouterLink',props:['to'],template:'<a :href="to"><slot /></a>'}}}})
+    await flushPromises()
+    expect(mocks.store.fetchConnections).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[role="alert"]').text()).toContain('Broker sync failed')
+    expect(wrapper.text()).toContain('OKX · Main account')
+    expect(wrapper.text()).toContain('Holdings do not match reconstructed lots')
+    expect(wrapper.findComponent({name:'RouterLink'}).props('to')).toBe('/broker-sync')
+    mocks.store.connections[0].connectionStatus='active'
+    await flushPromises()
+    expect(wrapper.text()).toContain('Broker sync failed')
+    mocks.store.connections[0].lastSyncStatus='success'
+    await flushPromises()
+    expect(wrapper.text()).toBe('')
+    wrapper.unmount()
+  })
+  it('lists multiple broker failures without offering an unrelated Schwab reconnect',async()=>{
+    mocks.store=reactive({connections:[{id:'a',brokerType:'okx',connectionStatus:'error'},{id:'b',brokerType:'trading212',connectionStatus:'active',lastSyncStatus:'failed',lastSyncMessage:'Incomplete broker history'}],fetchConnections:vi.fn(),initSchwabOAuth:vi.fn()})
+    const wrapper=shallowMount(BrokerReconnectBanner);await flushPromises()
+    expect(wrapper.findAll('li')).toHaveLength(2)
+    expect(wrapper.text()).toContain('Trading 212')
+    expect(wrapper.text()).toContain('Incomplete broker history')
+    expect(wrapper.find('button').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})

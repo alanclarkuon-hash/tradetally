@@ -83,3 +83,20 @@ test('transfer pagination fails closed on a repeating boundary or conflicting id
   await expect(service.transferPages(connection,'/api/v5/asset/withdrawal-history','wdId')).rejects.toThrow('conflicting');
  }finally{spy.mockRestore();}
 });
+
+test('joint reconciliation only collects siblings with a matching live native main UID',async()=>{
+ const BC=require('../../src/models/BrokerConnection');const rec=require('../../src/services/brokerSync/okxReconcile');
+ const lookup=jest.spyOn(BC,'findById').mockImplementation(async id=>({...connection,id,externalAccountId:id,brokerMetadata:{import_pending_review:false}}));
+ const read=jest.spyOn(service,'get').mockImplementation(async(c,path)=>{
+   if(path.endsWith('/config'))return [{uid:c.externalAccountId,mainUid:c.id==='foreign'?'other-parent':'parent',perm:'read_only'}];
+   if(path.endsWith('/balance'))return [{details:[]}];return [];
+ });
+ const reconcile=jest.spyOn(rec,'reconcile').mockResolvedValue({imported:0});const rates=jest.spyOn(service,'indexRates').mockResolvedValue({});
+ db.query.mockResolvedValue({rows:[{id:'child'},{id:'foreign'}]});
+ try {
+   await service.syncTrades({...connection,brokerMetadata:{import_pending_review:false}});
+   const group=reconcile.mock.calls[0][3].accounts;
+   expect(group.map(a=>a.connection.id)).toEqual(['connection','child']);
+   expect(read.mock.calls.filter(([c,path])=>c.id==='foreign'&&path.endsWith('/balance'))).toHaveLength(0);
+ }finally{lookup.mockRestore();read.mockRestore();reconcile.mockRestore();rates.mockRestore();}
+});
