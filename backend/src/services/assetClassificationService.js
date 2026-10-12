@@ -8,6 +8,8 @@ const US = ['NMS','NYQ','NGM','NCM','ASE','PCX','BTS','PNK','OBB','OQB','OQX','O
 const EXCHANGES = {L:['LSE'],DE:['GER'],F:['FRA'],AS:['AMS'],PA:['PAR'],MI:['MIL'],SW:['EBS'],TO:['TOR'],V:['VAN'],AX:['ASX'],HK:['HKG'],T:['JPX'],ST:['STO'],OL:['OSL'],CO:['CPH'],HE:['HEL'],BR:['BRU'],MC:['MCE'],LS:['LIS'],SI:['SES'],NZ:['NZE'],SA:['SAO']};
 const datasets = new Map();
 const pending = new Map();
+const displayRefreshes = new Map();
+const retryAfter = new Map();
 const normalize = value => String(value || '').toLowerCase().replace(/&/g,'and').replace(/[^a-z0-9]/g,'');
 
 function exchangesFor(symbol) {
@@ -42,12 +44,24 @@ async function readExchange(exchange) {
   catch(error) { datasets.delete(exchange); throw error; }
 }
 
-async function getClassifications(symbols, {refresh=false}={}) {
+async function getClassifications(symbols, {refresh=false,background=false}={}) {
   const wanted=[...new Set(symbols.map(s=>String(s).trim().toUpperCase()).filter(s=>/^[A-Z0-9.^=_/-]{1,30}$/.test(s)))];
   if(!wanted.length) return new Map();
   const stored=(await db.query('SELECT * FROM asset_reference_classifications WHERE symbol=ANY($1)',[wanted])).rows;
   const result=new Map(stored.map(row=>[row.symbol,row]));
   const stale=wanted.filter(s=>refresh || !result.has(s) || Date.now()-new Date(result.get(s).fetched_at).getTime()>30*DAY);
+  if(background) {
+    const key=[...stale].sort().join('|');
+    if(stale.length && !displayRefreshes.has(key) && Date.now()>=(retryAfter.get(key)||0)) {
+      const task=Promise.resolve().then(()=>getClassifications(stale)).catch(()=>null).finally(()=>{
+        displayRefreshes.delete(key);retryAfter.set(key,Date.now()+60000);
+      });
+      displayRefreshes.set(key,task);
+    }
+    const saved=require('./classificationOverrides').applyOverrides(wanted,result);
+    saved.refreshing=stale.length>0 && displayRefreshes.has(key);
+    return saved;
+  }
   // Sequential symbols share one download per exchange. Concurrent callers
   // coalesce each symbol to avoid overlapping writes and upstream requests.
   for(const symbol of stale) {

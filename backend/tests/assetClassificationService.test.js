@@ -34,3 +34,13 @@ test('enrichment writes only the separate reference table',async()=>{
   expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT INTO asset_reference_classifications'))).toBe(true);
   expect(db.query.mock.calls.some(([sql])=>sql.includes('symbol_categories'))).toBe(false);
 });
+
+
+test('background display reads preserve stale classification without waiting for provider downloads',async()=>{
+ const stored={symbol:'SLOW.HK',fetched_at:'2020-01-01',industry_code:'451030',status:'matched'};
+ db.query.mockResolvedValue({rows:[stored]});let finish;axios.get.mockImplementation(()=>new Promise(resolve=>{finish=resolve}));
+ const result=await getClassifications(['SLOW.HK'],{background:true});
+ expect(result.get('SLOW.HK')).toEqual(stored);expect(result.refreshing).toBe(true);
+ await new Promise(resolve=>setImmediate(resolve));finish({data:'symbol,sector,industry_group,industry,exchange\nSLOW.HK,Information Technology,Software & Services,Software,HKG\n'});
+ await new Promise(resolve=>setImmediate(resolve));
+});

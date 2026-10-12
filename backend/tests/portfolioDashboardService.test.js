@@ -1,3 +1,4 @@
+jest.mock('../src/services/portfolioDisplayMetadata',()=>({getDisplayMetadata:jest.fn()}));
 jest.mock('../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn()}));
 jest.mock('../src/models/Account',()=>({getCashflow:jest.fn()}));
@@ -11,7 +12,7 @@ const db=require('../src/config/database'),Portfolio=require('../src/services/po
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
 const position={symbol:'USDT',instrumentType:'crypto',totalShares:100,currentValue:100,totalCostBasis:100,unrealizedPnL:0,unrealizedPnLPercent:0};
-beforeEach(()=>{jest.resetAllMocks();require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+beforeEach(()=>{jest.resetAllMocks();require('../src/services/portfolioDisplayMetadata').getDisplayMetadata.mockImplementation(async symbols=>({records:new Map(await Promise.all(symbols.map(async symbol=>{const profile=await require('../src/utils/yahooFinance').getSymbolProfile(symbol);return [symbol,{profile,fund_categories:['ETF','MUTUALFUND'].includes(profile?.quoteType)?await require('../src/services/fundCategoriesService').getCategories(symbol):null}]}))),updating:false}));require('../src/services/exchangeCalendar').resolve.mockResolvedValue('US');Portfolio._getDailySeries.mockResolvedValue([]);require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
 test('current ticker uses original account lots for period P&L and current market symbol for charts',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEW',name:'Current company',sourceSymbols:['OLD'],accountIdentifiers:['demo'],instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
