@@ -22,3 +22,15 @@ test('only explicit broker refresh may replace finalized rows, then fills gaps t
  expect(require('../../src/utils/historicalPriceCache').insertCandles).toHaveBeenCalledWith('MSFT',[expect.objectContaining({close:10,currency:'USD'})],'broker:example',{currency:'USD',replaceFinal:true});
  expect(require('../../src/services/portfolioService')._getDailySeries).toHaveBeenCalled();
 });
+
+
+test('saved native broker keys never enter stock history or quote refresh',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM historical_prices')?[{symbol:'IX.D.SYNTH.DAILY',data_source:'yahoo',first:'2026-01-01',last:'2026-01-02'}]:sql.includes('FROM price_monitoring')?[{symbol:'IX.D.SYNTH.DAILY',data_source:'yahoo'}]:sql.includes('FROM trades')?[{symbol:'IX.D.SYNTH.DAILY',instrument_type:'spread_bet'}]:[]}));
+ const tasks=await service.plan();expect(tasks[0]).toMatchObject({unsupported:true,instrumentType:'spread_bet'});
+ const quote=jest.spyOn(require('../../src/services/currentQuoteService'),'getQuote');
+ const maintenance=jest.spyOn(require('../../src/services/brokerPortfolioMaintenance'),'maintain').mockResolvedValue({warnings:[]});
+ const invalidation=jest.spyOn(require('../../src/services/analyticsCache'),'invalidate').mockResolvedValue();
+ try {const result=await service.process({id:'job',user_id:'owner',result:{tasks,processed:0,complete:0,gaps:[],stage:'broker_refresh',brokerRows:0,quotesRefreshed:0}},async()=>{});
+ expect(result.gaps[0].unsupported).toBe(true);expect(result.complete).toBe(0);expect(quote).not.toHaveBeenCalled();expect(require('../../src/services/portfolioService')._getDailySeries).not.toHaveBeenCalled();}
+ finally {quote.mockRestore();maintenance.mockRestore();invalidation.mockRestore();}
+});

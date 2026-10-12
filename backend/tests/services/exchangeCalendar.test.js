@@ -69,3 +69,27 @@ test('Hong Kong identity works for suffix and verified exchange',async()=>{
  expect(missingRanges([],'2021-10-12','2021-10-15',false,'HKEX')).toEqual([{from:'2021-10-12',to:'2021-10-15'}]);
  expect(missingRanges([],'2021-10-13','2021-10-14',true,'HKEX')).toHaveLength(1);
 });
+
+
+test.each([['AAA.PA','EURONEXT'],['AAA.BR','EURONEXT'],['AAA.AS','EURONEXT'],['AAA.OL','OSLO'],['AAA.MI','MILAN'],['AAA.ST','STOCKHOLM'],['AAA.MC','MADRID']])('verified European suffix %s selects its own venue', (symbol,venue)=>expect(calendar.identify(symbol)).toBe(venue));
+test.each([['PAR','EURONEXT'],['BRU','EURONEXT'],['OSL','OSLO'],['MIL','MILAN'],['STO','STOCKHOLM'],['MCE','MADRID']])('saved European exchange %s selects its own venue',(exchange,venue)=>expect(calendar.identify('NO_SUFFIX',exchange)).toBe(venue));
+test('reviewed full closures are excluded but half days and other venues remain required',()=>{
+ expect(missingRanges([],'2025-04-18','2025-04-21',false,'EURONEXT')).toEqual([]);
+ expect(calendar.isTradingDay('2025-12-24','EURONEXT')).toBe(true);
+ expect(calendar.isTradingDay('2025-12-24','MILAN')).toBe(false);
+ expect(calendar.isTradingDay('2025-04-17','OSLO')).toBe(false);
+ expect(calendar.isTradingDay('2025-04-16','OSLO')).toBe(true);
+ expect(calendar.isTradingDay('2026-06-19','STOCKHOLM')).toBe(false);
+ expect(calendar.isTradingDay('2026-04-02','STOCKHOLM')).toBe(true);
+ expect(calendar.isTradingDay('2026-12-24','MADRID')).toBe(true);
+ expect(calendar.isTradingDay('2023-01-02','EURONEXT')).toBe(true);
+ expect(calendar.identify('UNKNOWN','PNK')).toBeNull();
+});
+test('calendar years outside published evidence keep weekday gaps and report incomplete calendar coverage',()=>{
+ expect(calendar.coversRange('EURONEXT','2020-01-01','2026-12-31')).toBe(true);
+ expect(calendar.coversRange('STOCKHOLM','2020-01-01','2026-12-31')).toBe(false);
+ expect(calendar.isTradingDay('2023-01-06','STOCKHOLM')).toBe(true);
+ expect(calendar.coversRange('MADRID','2026-01-01','2026-12-31')).toBe(true);
+ expect(calendar.coversRange('OSLO','2020-01-01','2021-12-31')).toBe(false);
+ expect(calendar.coversRange('EURONEXT','2027-01-01','2027-12-31')).toBe(false);
+});

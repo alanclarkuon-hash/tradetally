@@ -11,8 +11,8 @@
           <template v-else-if="job?.status === 'processing' && job.stage === 'calendars'">Checking exchange calendar for {{ job.currentSymbol }} · {{ job.calendarProcessed }}/{{ job.calendarTotal }} listings checked</template>
           <template v-else-if="job?.status === 'processing'">Downloading {{ job.currentSymbol || 'missing prices' }} · {{ job.processed }}/{{ job.total }} assets checked</template>
           <template v-else-if="job?.status === 'failed'">History update needs attention. Saved prices are retained; the next sync retries missing dates.</template>
-          <template v-else-if="job?.mode==='broker_refresh'">Price refresh finished · {{ job.processed }}/{{ job.total }} assets checked · {{ job.brokerRows }} broker closes saved · {{ job.gaps.length }} with dates to review</template>
-          <template v-else-if="job">Download finished · {{ job.complete }}/{{ job.total }} assets have daily coverage · {{ job.gaps.length }} with dates to review</template>
+          <template v-else-if="job?.mode==='broker_refresh'">Price refresh finished · {{ job.processed }}/{{ job.total }} assets checked · {{ job.brokerRows }} broker closes saved · {{ job.gaps.filter(g => !g.unsupported).length }} with dates to review<span v-if="job.gaps.some(g => g.unsupported)"> · {{ job.gaps.filter(g => g.unsupported).length }} unsupported instruments</span></template>
+          <template v-else-if="job">Download finished · {{ job.complete }}/{{ job.total }} assets have daily coverage · {{ job.gaps.filter(g => !g.unsupported).length }} with dates to review<span v-if="job.gaps.some(g => g.unsupported)"> · {{ job.gaps.filter(g => g.unsupported).length }} unsupported instruments</span></template>
           <template v-else>Missing history will download after the next broker sync.</template>
         </p>
       </div>
@@ -30,7 +30,7 @@
       <summary class="cursor-pointer">Remaining dates and coverage notes</summary>
       <div class="mt-2 max-h-64 overflow-auto">
         <ul class="space-y-2">
-          <li v-for="gap in job.gaps" :key="`${gap.instrumentType}:${gap.symbol}`"><strong>{{ gap.symbol }}</strong> · {{ gap.ranges[0]?.from }} to {{ gap.ranges[0]?.to }}<p>{{ gap.reason }}</p><details v-if="gap.ranges.length>1"><summary class="cursor-pointer">All {{ gap.ranges.length }} unreturned date ranges</summary><p v-for="range in gap.ranges" :key="range.from">{{ range.from }} to {{ range.to }}</p></details></li>
+          <li v-for="gap in job.gaps" :key="`${gap.instrumentType}:${gap.symbol}`"><strong>{{ gap.symbol }}</strong><template v-if="!gap.unsupported"> · {{ gap.ranges[0]?.from }} to {{ gap.ranges[0]?.to }}</template><p>{{ gap.reason }}</p><details v-if="gap.ranges.length>1"><summary class="cursor-pointer">All {{ gap.ranges.length }} unreturned date ranges</summary><p v-for="range in gap.ranges" :key="range.from">{{ range.from }} to {{ range.to }}</p></details></li>
           <li v-for="warning in job.portfolioWarnings" :key="warning">{{ warning }}</li>
         </ul>
       </div>

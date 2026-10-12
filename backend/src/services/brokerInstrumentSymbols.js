@@ -46,6 +46,13 @@ async function applyTradeMarketSymbols(client,userId,trades){
   if(symbol!==(t.plan_trade?.sourceSymbol||raw)){t.current_price=null;t.currentPrice=null;}
  }
 }
+async function applyTradeHistoricalSymbols(client,userId,trades) {
+ const stocks=trades.filter(t=>t.broker==='trading212'&&(t.instrument_type||'stock')==='stock');
+ if(!stocks.length)return;
+ const catalogues=await cataloguesForUser(client,userId);
+ const maps=new Map(catalogues.map(r=>[r.account_identifier,catalogueMapping(r.instruments)]));
+ for(const t of stocks)t.history_market_symbol=historicalSymbol(maps.get(t.account_identifier)||new Map(),t.underlying_symbol||t.symbol,new Date(t.entry_time||t.trade_date).toISOString().slice(0,10));
+}
 // The same verified aliases are used for list rows, counts and analytics.
 async function tradeSymbolAliases(client,userId,search,exact=false){
  const target=String(search||'').trim().toUpperCase(),aliases=[];
@@ -66,4 +73,4 @@ function tradeSymbolAliasSql(parameter,alias='t'){
  WHERE instrument_aliases.account_identifier=${alias}.account_identifier
  AND instrument_aliases.symbol=UPPER(${alias}.symbol)))`;
 }
-module.exports={tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols};
+module.exports={applyTradeHistoricalSymbols,tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols};
