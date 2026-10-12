@@ -15,7 +15,7 @@ const owner=crypto.randomUUID(),a=crypto.randomUUID(),b=crypto.randomUUID(),pb=c
  const version=async()=>(await db.query('SELECT version FROM trade_plans WHERE id=$1',[id])).rows[0].version;
  const riskResponse=await fetch(base.slice(0,base.lastIndexOf('/'))+'/risk');assert.equal(riskResponse.status,200,'risk coverage API');const risk=await riskResponse.json();assert.equal(risk.accounts.length,2,'risk coverage includes both owned accounts');
  await db.query('INSERT INTO trade_planning_settings(user_id,settings) VALUES($1,$2::jsonb)',[owner,JSON.stringify({currency:'USD',portfolioLimit:75,accountLimits:[{accountId:a,limit:40},{accountId:b,limit:100}]})]);
- const commitBody=async key=>({version:await version(),stageKey:key,checks:{trigger:true,context:true,protection:true,data:true},riskOverrideReason:'Synthetic capacity verification'});
+ const commitBody=async key=>({version:await version(),stageKey:key,checks:{trigger:true,context:true,protection:true,data:true},journalExceptionReason:'Synthetic missing journal evidence',riskOverrideReason:'Synthetic capacity verification'});
  const rejected=await call('/commitments','POST',await commitBody('a'));assert.equal(rejected.status,422);assert.match(rejected.data.error,/Account risk limit/,'known account limit cannot be overridden');
  await db.query("UPDATE trade_planning_settings SET settings=jsonb_set(settings,'{accountLimits,0,limit}','100'::jsonb) WHERE user_id=$1",[owner]);
  const firstCommit=await call('/commitments','POST',await commitBody('a'));assert.equal(firstCommit.status,201,'verified first-account commitment: '+JSON.stringify(firstCommit.data));

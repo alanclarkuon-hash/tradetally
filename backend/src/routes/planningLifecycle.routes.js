@@ -83,15 +83,30 @@ router.put('/settings',run(async(req,res)=>{
  await db.query('INSERT INTO trade_planning_settings(user_id,settings) VALUES($1,$2::jsonb) ON CONFLICT(user_id) DO UPDATE SET settings=EXCLUDED.settings,updated_at=NOW()',[req.user.id,JSON.stringify(s.value)]);
  res.json({settings:s.value});
 }));
+router.get('/journal-candidates',run(async(req,res)=>{
+ const journal=require('../services/planningJournal'),today=await journal.sessionToday(db,req.user.id),date=req.query.date||today;
+ if(typeof date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isFinite(new Date(date+'T00:00:00Z').getTime())||new Date(date+'T00:00:00Z').toISOString().slice(0,10)!==date)fail('Choose a valid session date');
+ const entries=(await db.query("SELECT * FROM diary_entries WHERE user_id=$1 AND entry_type='diary' AND entry_date=$2::date ORDER BY created_at DESC LIMIT 100",[req.user.id,date])).rows.map(r=>({id:r.id,date:journal.dateOnly(r.entry_date),title:r.title,updatedAt:new Date(r.updated_at).toISOString(),revision:journal.revision(r),marketBias:r.market_bias}));
+ res.json({today,date,entries});
+}));
+router.post('/:id/journal-assessments',run(async(req,res)=>{
+ const journal=require('../services/planningJournal'),validated=journal.schema.validate(req.body,{convert:false});if(validated.error)fail(validated.error.details[0].message);
+ let assessment;await db.withTransaction(async c=>{const p=await lock(c,req);if(!p.finalised||['completed','reviewed','cancelled'].includes(p.status))fail('Finalise or reopen this plan before recording journal evidence');
+ assessment=await journal.capture(c,p,validated.value);const linked=[];
+ if(validated.value.attachToExisting){const allocations=(await c.query("SELECT id,source_snapshot FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND stage_key=$3 AND action='entry' AND journal_evidence IS NULL FOR UPDATE",[p.id,p.user_id,validated.value.stageKey])).rows;for(const a of allocations){await c.query('UPDATE trade_plan_allocations SET journal_evidence=$1::jsonb WHERE id=$2',[JSON.stringify(journal.association(assessment,a.source_snapshot.time)),a.id]);linked.push(a.id)}}
+ await c.query('UPDATE trade_plans SET review=NULL,version=version+1,updated_at=NOW() WHERE id=$1',[p.id]);await record(c,p,'entry_journal_assessed',{assessment,linkedAllocationIds:linked});
+ });res.status(201).json({assessment});
+}));
 router.get('/:id/workflow',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
  const result=await evidence(db,p);
  const history=(await db.query('SELECT event_type,created_at,snapshot FROM trade_plan_events WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at',[p.id,req.user.id])).rows;
  const tradeReviews=(await db.query('SELECT r.trade_id,r.adherence_score,r.review_type,r.reviewed_at,r.followed_plan FROM trade_playbook_reviews r WHERE r.user_id=$1 AND r.trade_id IN (SELECT trade_id FROM trade_plan_allocations WHERE plan_id=$2 AND user_id=$1)',[p.user_id,p.id])).rows;
- res.json({fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
+ const journalAssessments=(await db.query('SELECT * FROM trade_plan_journal_assessments WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at DESC,id',[p.id,p.user_id])).rows;
+ res.json({journalAssessments,fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
 }));
-function digest(result){return require('crypto').createHash('sha256').update(JSON.stringify(result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid})))).digest('hex')}
+function digest(result){return require('crypto').createHash('sha256').update(JSON.stringify(result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid,...(a.journal_evidence?{journalEvidence:a.journal_evidence}:{})})))).digest('hex')}
 
 router.post('/:id/chart',run(async(req,res)=>{
  validId(req.params.id);
@@ -139,8 +154,8 @@ router.get('/:id/fills',run(async(req,res)=>{
 }));
 router.post('/:id/allocations',run(async(req,res)=>{
  const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
- const single=fillSchema.keys({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required()});
- const batch=Joi.object({version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
+ const single=fillSchema.keys({journalAssessmentId:uuid.allow(null).default(null),version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required()});
+ const batch=Joi.object({journalAssessmentId:uuid.allow(null).default(null),version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
  const schema=(req.body.fills?batch:single).validate(req.body);
  if(schema.error)fail('Provide a valid fill allocation');const body=schema.value;
  await db.withTransaction(async c=>{
@@ -175,7 +190,8 @@ router.post('/:id/allocations',run(async(req,res)=>{
   let allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
   if(canonical||existing.some(a=>a.source_snapshot?.brokerExecution))allTrades=brokerFills.attachSources(allTrades,[...existing,candidate],await brokerFills.loadGroups(c,p.user_id));
   if(ledger(p,[...existing,candidate],allTrades).overExit)fail('Exit exceeds linked entries in this account/contract or precedes them',409);
-  await c.query('INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb)',[p.user_id,p.id,t.id,f.key,b.stageKey,b.action,b.quantity,JSON.stringify(f)]);
+  const journalEvidence=b.action==='entry'?await require('../services/planningJournal').forAllocation(c,p,b.stageKey,f.time,body.journalAssessmentId):null;
+  await c.query('INSERT INTO trade_plan_allocations(user_id,plan_id,trade_id,source_key,stage_key,action,quantity,source_snapshot,journal_evidence) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)',[p.user_id,p.id,t.id,f.key,b.stageKey,b.action,b.quantity,JSON.stringify(f),journalEvidence?JSON.stringify(journalEvidence):null]);
   let baseline=p.baseline;
   if(!baseline||baseline.originalRisk==null){
    let rate=1,rateDate=null,fxSource='same_currency';
@@ -301,7 +317,7 @@ router.post('/:id/roll',run(async(req,res)=>{
 }));
 
 router.put('/:id/review-draft',run(async(req,res)=>{
- const schema=Joi.object({version:Joi.number().integer().required(),notes:Joi.string().max(10000).allow('').required(),entryAssessment:Joi.string().max(5000).allow('').required(),exitAssessment:Joi.string().max(5000).allow('').required(),processFollowed:Joi.boolean().required()}).validate(req.body);
+ const schema=Joi.object({version:Joi.number().integer().required(),notes:Joi.string().max(10000).allow('').required(),entryAssessment:Joi.string().max(5000).allow('').required(),exitAssessment:Joi.string().max(5000).allow('').required(),journalExceptionReason:Joi.string().max(2000).allow('').default(''),processFollowed:Joi.boolean().required()}).validate(req.body);
  if(schema.error)fail('Provide valid review notes and assessments');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(['completed','cancelled'].includes(p.status))fail('Reopen this plan before editing its review');
@@ -311,12 +327,13 @@ router.put('/:id/review-draft',run(async(req,res)=>{
  });res.json({success:true});
 }));
 router.post('/:id/review',run(async(req,res)=>{
- const schema=Joi.object({version:Joi.number().integer().required(),notes:Joi.string().trim().min(3).max(10000).required(),entryAssessment:Joi.string().max(5000).allow('').default(''),exitAssessment:Joi.string().max(5000).allow('').default(''),processFollowed:Joi.boolean().required()}).validate(req.body);
+ const schema=Joi.object({version:Joi.number().integer().required(),notes:Joi.string().trim().min(3).max(10000).required(),entryAssessment:Joi.string().max(5000).allow('').default(''),exitAssessment:Joi.string().max(5000).allow('').default(''),journalExceptionReason:Joi.string().max(2000).allow('').default(''),processFollowed:Joi.boolean().required()}).validate(req.body);
  if(schema.error)fail('Complete the review notes and process assessment');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.status==='completed')fail('Reopen this completed review first');
   await require('../services/planningCommitments').requireResolved(c,p);const result=await evidence(c,p);if(!result.economicallyClosed)fail('Review completion requires all linked exposure to be exited and source evidence reconciled');
-  const review={...schema.value,evidenceDigest:digest(result),result,completedAt:new Date().toISOString()};
+  const missingJournal=result.records.filter(a=>a.action==='entry'&&!a.fill.provisional&&!a.journal_evidence);if(missingJournal.length&&schema.value.journalExceptionReason.trim().length<10)fail('Record why entry journal evidence is missing before completing review');
+  const review={...schema.value,missingJournalEntryIds:missingJournal.map(a=>a.id),evidenceDigest:digest(result),result,completedAt:new Date().toISOString()};
   await c.query("UPDATE trade_plans SET review=$1::jsonb,status='reviewed',version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(review),p.id]);
   await record(c,p,'reviewed',review);
  });res.json({success:true});
