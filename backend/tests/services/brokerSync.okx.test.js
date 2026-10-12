@@ -86,7 +86,7 @@ test('transfer pagination fails closed on a repeating boundary or conflicting id
 
 test('joint reconciliation only collects siblings with a matching live native main UID',async()=>{
  const BC=require('../../src/models/BrokerConnection');const rec=require('../../src/services/brokerSync/okxReconcile');
- const lookup=jest.spyOn(BC,'findById').mockImplementation(async id=>({...connection,id,externalAccountId:id,brokerMetadata:{import_pending_review:false}}));
+ const lookup=jest.spyOn(BC,'findById').mockImplementation(async id=>({...connection,id,externalAccountId:id,connectionStatus:'error',brokerMetadata:{import_pending_review:false}}));
  const read=jest.spyOn(service,'get').mockImplementation(async(c,path)=>{
    if(path.endsWith('/config'))return [{uid:c.externalAccountId,mainUid:c.id==='foreign'?'other-parent':'parent',perm:'read_only'}];
    if(path.endsWith('/balance'))return [{details:[]}];return [];
@@ -97,6 +97,8 @@ test('joint reconciliation only collects siblings with a matching live native ma
    await service.syncTrades({...connection,brokerMetadata:{import_pending_review:false}});
    const group=reconcile.mock.calls[0][3].accounts;
    expect(group.map(a=>a.connection.id)).toEqual(['connection','child']);
+   expect(db.query.mock.calls[0][0]).toContain("connection_status IN ('active','error')");
+   expect(group[1].connection.connectionStatus).toBe('error');
    expect(read.mock.calls.filter(([c,path])=>c.id==='foreign'&&path.endsWith('/balance'))).toHaveLength(0);
  }finally{lookup.mockRestore();read.mockRestore();reconcile.mockRestore();rates.mockRestore();}
 });
