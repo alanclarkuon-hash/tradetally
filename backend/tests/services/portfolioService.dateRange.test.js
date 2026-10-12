@@ -36,13 +36,14 @@ test('completed month totals exclude candles outside both boundaries', async () 
   jest.spyOn(PortfolioService, '_getPositionComponents').mockResolvedValue([
     { symbol: 'AAPL', shares: 1, valueMultiplier: 1, effectiveDate: '2026-01-01' }
   ]);
+  const calendarDays=Array.from({length:31},(_,i)=>'2026-08-'+String(i+1).padStart(2,'0'));
   const candles = [
-    ['2026-07-31', 50], ['2026-08-01', 100], ['2026-08-31', 110], ['2026-09-01', 200]
+    ['2026-07-31',50], ...calendarDays.map(d=>[d,d==='2026-08-31'?110:100]), ['2026-09-01',200]
   ].map(([date, close]) => ({ time: new Date(`${date}T00:00:00Z`).getTime() / 1000, close }));
   jest.spyOn(PortfolioService, '_getDailySeries').mockResolvedValue(candles);
   jest.spyOn(PortfolioService, '_getPriceSeriesMap').mockResolvedValue(new Map([['AAPL', candles]]));
   const result = await PortfolioService._getPerformance('owner', { start_date: '2026-08-01', end_date: '2026-08-31' });
-  expect(result.series.map(point => point.date)).toEqual(['2026-08-01', '2026-08-31']);
+  expect(result.series.map(point => point.date)).toEqual(calendarDays);
   expect(result.metrics.totalReturnPercent).toBe(10);
 });
 
@@ -73,3 +74,5 @@ test('history requests start when the earliest retained holding was acquired', a
   expect(requests.mock.calls[0][0]).toEqual(['NEWETF']);
   expect(requests.mock.calls[0][4].historyStarts.get('NEWETF')).toBe('2026-06-15');
 });
+
+test('ordinary Holdings summary remains independent of comparison coverage',async()=>{jest.spyOn(PortfolioService,'getPositions').mockResolvedValue([]);const r=await PortfolioService.getOverview('owner');expect(r.totalValue).toBe(0);expect(r.totalReturnPercent).toBe(0);expect(r.positionCount).toBe(0);});

@@ -21,6 +21,7 @@
     <div v-if="active" class="mt-3 h-2 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700" role="progressbar" aria-label="Assets checked" :aria-valuenow="progressNow" :aria-valuemax="progressTotal || 1" aria-valuemin="0">
       <div class="h-full bg-primary-500 transition-all" :class="{'animate-pulse': !progressTotal || job.stage === 'portfolio'}" :style="{width: `${progressTotal ? Math.max(3,progressNow/progressTotal*100) : 8}%`}"></div>
     </div>
+    <p v-if="followUp" class="mt-2 text-sm text-gray-600 dark:text-gray-400">Another history update is queued after this one.</p>
     <p v-if="error" role="alert" class="mt-2 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
     <details v-if="job?.gaps.length || job?.portfolioWarnings.length" class="mt-3 text-sm text-gray-600 dark:text-gray-400">
       <summary class="cursor-pointer">Remaining dates and coverage notes</summary>
@@ -38,6 +39,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useVisibilityPolling } from '@/composables/useVisibilityPolling'
 import api from '@/services/api'
 defineProps({ allowUpdate: { type: Boolean, default: false } })
+const followUp = ref(null)
 const job = ref(null), error = ref(''), requesting = ref(false)
 const active = computed(() => ['pending','processing'].includes(job.value?.status))
 const progressNow=computed(()=>job.value?.stage==='quotes'?job.value.quoteProcessed:job.value?.processed||0)
@@ -46,7 +48,7 @@ let mounted = false
 async function poll() {
   try {
     const response = await api.get('/broker-sync/history/status')
-    if (mounted) job.value = response.data.data?.[0] || null
+    if (mounted) {const jobs=response.data.data||[];job.value=jobs.find(j=>j.status==='processing')||jobs[0]||null;followUp.value=jobs.find(j=>j.status==='pending'&&j.id!==job.value?.id)||null;}
   } catch { /* Do not turn an optional progress poll into a page error. */ }
 }
 const polling = useVisibilityPolling(poll, computed(() => active.value ? 5000 : 30000), { immediate: true })

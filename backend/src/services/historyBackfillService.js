@@ -113,7 +113,8 @@ async function process(job) {
 }
 async function status(userId) {
   const rows = (await db.query(`SELECT id,status,result,data,created_at,completed_at FROM job_queue
-    WHERE user_id=$1 AND type=$2 ORDER BY CASE WHEN status IN ('pending','processing') THEN 0 ELSE 1 END,created_at DESC LIMIT 2`, [userId, TYPE])).rows;
+    WHERE user_id=$1 AND type=$2 ORDER BY CASE status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,created_at DESC LIMIT 2`, [userId, TYPE])).rows;
+  rows.sort((a,b)=>({processing:0,pending:1}[a.status]??2)-({processing:0,pending:1}[b.status]??2)||new Date(b.created_at)-new Date(a.created_at));
   return Promise.all(rows.map(async row => {
     const result = typeof row.result === 'string' ? JSON.parse(row.result) : row.result || {};
     const gaps = await Promise.all((result.gaps || []).map(async gap => {

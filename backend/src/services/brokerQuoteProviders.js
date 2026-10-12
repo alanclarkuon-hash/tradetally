@@ -32,13 +32,14 @@ async function trading212Quote({ symbol, instrumentType, connection }) {
   if (matches.length !== 1) return null;
   const p = matches[0];
   const converted = await require('../utils/quoteCurrency').convertQuoteCurrency({ c: Number(p.currentPrice), currency: p.instrument?.currency }, 'USD');
-  return quote(converted.c, 'broker:trading212', saved.asOf);
+  const result=quote(converted.c, 'broker:trading212', saved.asOf);return result?{...result,timestampKind:'observed'}:null;
 }
 
-function quote(price, source, asOf = new Date().toISOString()) {
+function quote(price, source, asOf = null) {
+  const timestampKind=asOf?'trade':'observed';asOf ||= new Date().toISOString();
   const c = Number(price), time = Date.parse(asOf);
   return Number.isFinite(c) && c > 0 && Number.isFinite(time) && time <= Date.now() + 60000
-    ? { c, currency: 'USD', source, asOf: new Date(time).toISOString() } : null;
+    ? { c, currency: 'USD', source, timestampKind, asOf: new Date(time).toISOString() } : null;
 }
 async function etoroQuote({ symbol, instrumentType, connection }) {
   const payload = (await db.query(`SELECT payload FROM broker_import_snapshots

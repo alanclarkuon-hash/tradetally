@@ -527,6 +527,17 @@ class PortfolioService {
         cryptoSymbols, historyStarts })
     ]);
 
+    // Partial baskets and missing sessions cannot support return comparisons.
+    const {missingRanges}=require('./holdingsHistoryProvider');
+    const calendarService=require('./exchangeCalendar');
+    let metricCoverageIncomplete=components.length===0||components.some(c=>c.effectiveDate>startDate||!['stock','crypto'].includes(c.instrumentType||'stock'));
+    const benchmarkCalendar=await calendarService.resolve(benchmark);
+    metricCoverageIncomplete ||= missingRanges(benchmarkCandles,startDate,endDate,false,benchmarkCalendar).length>0;
+    for(const symbol of symbols){
+      const crypto=cryptoSymbols.has(symbol),calendar=crypto?null:await calendarService.resolve(symbol);
+      metricCoverageIncomplete ||= missingRanges(priceSeriesMap.get(symbol)||[],startDate,endDate,crypto,calendar).length>0;
+    }
+
     const canonicalDates = (benchmarkCandles.length > 0
       ? benchmarkCandles.map(candle => this._toDateString(candle.time))
       : this._buildDateUnion(priceSeriesMap))
@@ -639,20 +650,21 @@ class PortfolioService {
         inFlightPortfolioComputations.has(trackedHistoryKey(symbol)) ||
         (historyRefreshAfter.get(trackedHistoryKey(symbol)) || 0) - HISTORY_RETRY_MS >= historyRequestedAt),
       historyMissingSymbols: symbols.filter(symbol => !(priceSeriesMap.get(symbol)?.length)),
-      historyIncomplete: trackedHistorySymbols.some(symbol => incompleteHistory.has(trackedHistoryKey(symbol))),
+      historyIncomplete: metricCoverageIncomplete || trackedHistorySymbols.some(symbol => incompleteHistory.has(trackedHistoryKey(symbol))),
+      metricsAvailable: !metricCoverageIncomplete,
       metrics: {
-        totalReturnPercent: round(totalReturnDecimal * 100),
-        benchmarkReturnPercent: round(benchmarkReturnDecimal * 100),
-        annualizedReturnPercent: round(annualizedReturn * 100),
-        benchmarkAnnualizedReturnPercent: round(benchmarkAnnualizedReturn * 100),
-        volatilityPercent: round(volatility * 100),
-        benchmarkVolatilityPercent: round(benchmarkVolatility * 100),
-        sharpeRatio: round(sharpeRatio, 3),
-        beta: round(beta, 3),
-        alphaPercent: round(alpha * 100),
-        maxDrawdownPercent: round(maxDrawdown * 100)
+        totalReturnPercent: metricCoverageIncomplete ? null : round(totalReturnDecimal * 100),
+        benchmarkReturnPercent: metricCoverageIncomplete ? null : round(benchmarkReturnDecimal * 100),
+        annualizedReturnPercent: metricCoverageIncomplete ? null : round(annualizedReturn * 100),
+        benchmarkAnnualizedReturnPercent: metricCoverageIncomplete ? null : round(benchmarkAnnualizedReturn * 100),
+        volatilityPercent: metricCoverageIncomplete ? null : round(volatility * 100),
+        benchmarkVolatilityPercent: metricCoverageIncomplete ? null : round(benchmarkVolatility * 100),
+        sharpeRatio: metricCoverageIncomplete ? null : round(sharpeRatio, 3),
+        beta: metricCoverageIncomplete ? null : round(beta, 3),
+        alphaPercent: metricCoverageIncomplete ? null : round(alpha * 100),
+        maxDrawdownPercent: metricCoverageIncomplete ? null : round(maxDrawdown * 100)
       },
-      series
+      series: metricCoverageIncomplete ? [] : series
     };
   }
 
@@ -1353,7 +1365,7 @@ class PortfolioService {
 
     const symbols = [...new Set(positions.flatMap(position => [position.symbol, priceCacheKey(position.symbol, position.instrumentType)]))];
     const cacheResult = await db.query(
-      `SELECT symbol, current_price, last_updated, data_source, quote_session
+      `SELECT symbol, current_price, last_updated, data_source, quote_session, timestamp_kind
        FROM price_monitoring
        WHERE symbol = ANY($1)`,
       [symbols]
@@ -1411,6 +1423,7 @@ class PortfolioService {
         : position.dividendYieldOnCost;
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
       position.quoteSession = useBroker ? null : cached?.quote_session || null;
+      position.quoteTimestampKind=useBroker?'observed':cached?.timestamp_kind||'observed';
       position.priceStale = priceStale;
     }
 

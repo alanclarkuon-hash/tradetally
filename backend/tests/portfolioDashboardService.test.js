@@ -149,3 +149,5 @@ test('EUR dashboard converts native USD holdings to EUR',async()=>{
  expect(result.currency).toBe('EUR');expect(result.totals.stablecoinValue).toBe(90);
  expect(getRatesToDisplay).toHaveBeenCalledWith(['USD'],'EUR');
 });
+
+test('current-range P&L uses remaining native lots after partial sales, reconciled to the broker holding',()=>{const {currentRangeResult}=require('../src/services/portfolioDashboardService');const p={instrumentType:'stock',totalShares:5,currentValue:600};const native={totalShares:5,periodResult:{basis:500}};expect(currentRangeResult(p,{start_date:'2026-01-01',end_date:'2026-01-02'},native)).toMatchObject({pnl:100,percent:20,basis:500});expect(currentRangeResult({...p,totalShares:6},{},native).pnl).toBeNull();expect(currentRangeResult(p,{}, {...native,periodResult:{basis:null}}).pnl).toBeNull();});

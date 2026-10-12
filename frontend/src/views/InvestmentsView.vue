@@ -421,7 +421,7 @@
                                 Downloading missing historical prices in the background. This comparison is incomplete and will update automatically.
                             </p>
                             <p v-else-if="investmentsStore.portfolioPerformance?.historyIncomplete" class="mb-4 text-sm text-gray-500 dark:text-gray-400">
-                                Historical price coverage is incomplete. This comparison uses available prices; drawdown alerts are paused until coverage is complete.
+                                Historical price coverage is incomplete. Performance comparisons and drawdown alerts are unavailable until coverage is complete.
                             </p>
                             <div
                                 v-if="

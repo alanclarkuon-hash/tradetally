@@ -7,7 +7,7 @@ beforeEach(()=>{jest.clearAllMocks();db.query.mockResolvedValue({rowCount:1,rows
 test('all writers use atomic provider timestamps and a crypto identity',async()=>{
   const asOf=new Date().toISOString();await save('SUI','crypto',{c:2,source:'broker:kraken',asOf});
   expect(db.query.mock.calls[0][0]).toContain('price_monitoring.last_updated<EXCLUDED.last_updated');
-  expect(db.query.mock.calls[0][1]).toEqual(['crypto:SUI',2,null,null,null,null,null,null,null,'broker:kraken:crypto',asOf,'continuous']);
+  expect(db.query.mock.calls[0][1]).toEqual(['crypto:SUI',2,null,null,null,null,null,null,null,'broker:kraken:crypto',asOf,'continuous','observed']);
   expect(history.upsertToday).toHaveBeenCalledWith('crypto:SUI',expect.objectContaining({asOf}),'broker:kraken:crypto');
 });
 test('a rejected stale quote does not contaminate the provisional daily cache',async()=>{
@@ -30,3 +30,5 @@ test('session metadata follows the accepted quote and clears unknown sessions',a
   await save('MSFT','stock',{c:10,session:'invalid'});
   expect(db.query.mock.calls[1][1][11]).toBeNull();
 });
+
+test('missing previous close leaves daily movement unavailable and supplied zeros survive',async()=>{await save('MSFT','stock',{c:100});const args=db.query.mock.calls[0][1];expect(args[3]).toBeNull();expect(args[4]).toBeNull();expect(args[12]).toBe('observed');await save('MSFT','stock',{c:100,pc:100,d:0,dp:0,t:Date.parse('2026-01-05')/1000});expect(db.query.mock.calls[1][1].slice(3,5)).toEqual([0,0]);expect(db.query.mock.calls[1][1][12]).toBe('trade');});

@@ -40,6 +40,16 @@ function periodResult(position, range, rates, lots) {
   return basis>0 ? {pnl:value-basis,percent:(value-basis)/basis*100,basis} : {pnl:null,percent:null};
 }
 
+function currentRangeResult(position,range,native,manualLots=[],rates) {
+ const manualQuantity=manualLots.reduce((n,l)=>n+Number(l.quantity),0);
+ const quantity=(native?.totalShares||0)+manualQuantity;
+ if(Math.abs(quantity-position.totalShares)>Math.max(1e-8,position.totalShares*1e-7))return {pnl:null,percent:null};
+ let basis=0;
+ if(native?.totalShares>0){if(!(native.periodResult?.basis>0))return {pnl:null,percent:null};basis+=native.periodResult.basis;}
+ if(manualQuantity>0){const price=position.currentValue/position.totalShares;const manual=periodResult({...position,totalShares:manualQuantity,currentValue:manualQuantity*price},range,rates,manualLots);if(!(manual.basis>0))return {pnl:null,percent:null};basis+=manual.basis;}
+ return basis>0&&position.currentValue!=null?{pnl:position.currentValue-basis,percent:(position.currentValue-basis)/basis*100,basis}:{pnl:null,percent:null};
+}
+
 async function getDashboard(userId, query={}, historical=null) {
   const range=parseReportDateRange(query);
   const currency=String(query.currency || 'GBP').toUpperCase();
@@ -64,6 +74,7 @@ async function getDashboard(userId, query={}, historical=null) {
       WHERE l.user_id=$1 AND h.symbol=ANY($2) AND ($3::text[]='{}' OR l.account_identifier=ANY($3))`,[userId,symbols,selected]) : {rows:[]}
   ]);
   const managed=accounts.rows.filter(a=>!selected.length||selected.includes(a.account_identifier));
+  const nativeCurrent=range&&!historical&&managed.length?await require('./portfolioHistoricalHoldings').getHistoricalHoldings(userId,managed,range,'USD'):null;
   const fx=historical?.displayRates || await getRatesToDisplay(['USD',...managed.map(a=>a.currency)],currency);
   if(!(fx.USD>0))throw Error('Display currency conversion is unavailable');
   const cashRows=await Promise.all(managed.map(async a=>{
@@ -146,7 +157,9 @@ async function getDashboard(userId, query={}, historical=null) {
   let missingPrices=0;
   for(const p of positions) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
-    const result=historical ? p.periodResult : periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
+    const native=nativeCurrent?.positions.find(n=>n.symbol===p.symbol&&n.instrumentType===p.instrumentType);
+    const hasManaged=nativeCurrent&&p.accountIdentifiers?.some(id=>managed.some(a=>a.account_identifier===id));
+    const result=historical ? p.periodResult : hasManaged?currentRangeResult(p,range,native,manualLots.rows.filter(l=>l.symbol===p.symbol),cryptoRates[p.symbol]):periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
     const categoryKind=p.instrumentType==='crypto'?'crypto':funds.has(p.symbol)?'fund':null;
     const providerMetadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
     const metadata=categoryKind?require('./categoryOverrides').applyCategoryOverride(p.symbol,categoryKind,providerMetadata):providerMetadata;
@@ -156,7 +169,7 @@ async function getDashboard(userId, query={}, historical=null) {
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
-      quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,accounts:p.accountIdentifiers,
+      quantity:p.totalShares,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
       historicalWarnings:p.historicalWarnings || []};
     if(p.instrumentType==='stock' && !funds.has(p.symbol)) {
       const reference=stockClassifications.get(p.symbol);
@@ -193,4 +206,4 @@ async function getDashboard(userId, query={}, historical=null) {
   }
   return dashboard;
 }
-module.exports={getDashboard,periodResult,STABLE,FIAT};
+module.exports={getDashboard,periodResult,currentRangeResult,STABLE,FIAT};
