@@ -60,6 +60,7 @@ async function plan(userId) {
   return [...tasks.values()].sort((a,b) => a.from.localeCompare(b.from) || a.symbol.localeCompare(b.symbol));
 }
 async function progress(jobId, value) {
+  value.lastHeartbeatAt=new Date().toISOString();
   await db.query("UPDATE job_queue SET result=$2, started_at=NOW() WHERE id=$1 AND status='processing'", [jobId, JSON.stringify(value)]);
 }
 async function process(job) {
@@ -75,7 +76,7 @@ async function process(job) {
     await progress(job.id, state);
     // Restarted jobs may carry gaps saved before their listing venue was known.
     // Resolve these in the worker, never in a status/page request.
-    const pendingCalendars=state.gaps.filter(g=>g.instrumentType!=='crypto'&&!g.calendar);
+    const pendingCalendars=state.stage==='portfolio'?[]:state.gaps.filter(g=>g.instrumentType!=='crypto'&&!g.calendar);
     for(let i=0;i<pendingCalendars.length;i++) {
       state.stage='calendars'; state.currentSymbol=pendingCalendars[i].symbol;
       state.calendarProcessed=i; state.calendarTotal=pendingCalendars.length;
@@ -96,14 +97,15 @@ async function process(job) {
       } catch {
         state.gaps.push({ ...task, ranges: [{ from: task.from, to: task.to }], reason: 'History download unavailable; next sync will retry missing dates' });
       }
-      state.processed = i + 1;
+      state.processed = i + 1; state.lastProgressAt=new Date().toISOString();
       await progress(job.id, state);
     }
     state.stage = 'portfolio'; state.currentSymbol = null;
     await progress(job.id, state);
     // Reconstruction also needs currency/split-aware closes and dated FX.
     // Its corporate-action rules and statement NAV precedence are preserved.
-    const maintenance = await require('./brokerPortfolioMaintenance').maintain(job.user_id, { fetchPrices: true });
+    const maintenance = await require('./brokerPortfolioMaintenance').maintain(job.user_id, { fetchPrices: true,
+      onProgress:async detail=>{state.portfolioProgress=detail;state.lastProgressAt=new Date().toISOString();await progress(job.id,state);} });
     state.portfolioWarnings = maintenance.warnings;
     await require('./analyticsCache').invalidate(job.user_id);
     state.stage = 'finished';
@@ -112,7 +114,7 @@ async function process(job) {
   } finally { clearInterval(timer); }
 }
 async function status(userId) {
-  const rows = (await db.query(`SELECT id,status,result,data,created_at,completed_at FROM job_queue
+  const rows = (await db.query(`SELECT id,status,result,data,created_at,started_at,completed_at FROM job_queue
     WHERE user_id=$1 AND type=$2 ORDER BY CASE status WHEN 'processing' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END,created_at DESC LIMIT 2`, [userId, TYPE])).rows;
   rows.sort((a,b)=>({processing:0,pending:1}[a.status]??2)-({processing:0,pending:1}[b.status]??2)||new Date(b.created_at)-new Date(a.created_at));
   return Promise.all(rows.map(async row => {
@@ -126,6 +128,8 @@ async function status(userId) {
     const remaining=gaps.filter(Boolean);
     return { id: row.id, status: row.status, stage: result.stage || 'queued', processed: result.processed || 0,
       total: result.total || 0, complete: (result.complete || 0)+(gaps.length-remaining.length), currentSymbol: result.currentSymbol || null,
+      lastHeartbeatAt:result.lastHeartbeatAt||row.started_at||null,lastProgressAt:result.lastProgressAt||null,
+      portfolioProgress:result.portfolioProgress||null,
       calendarProcessed:result.calendarProcessed||0,calendarTotal:result.calendarTotal||0,
       mode:result.mode||(typeof row.data==='string'?JSON.parse(row.data):row.data)?.mode||null,
       quoteProcessed:result.quoteProcessed||0,quoteTotal:result.quoteTotal||0,

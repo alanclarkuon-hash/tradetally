@@ -3,21 +3,25 @@ const pending=new Map();
 const supported=new Set(['ibkr','trading212','kraken','okx','etoro','ig']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
-async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false}={}) {
+async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false,onProgress=async()=>{}}={}) {
  // Serialize recovery for each user, including scheduler/manual overlap.
  const key=userId,prior=pending.get(key)||Promise.resolve();
  const job=(async()=>{
+  await onProgress({stage:'waiting'});
   await prior.catch(()=>{});
   const accounts=(await db.query("SELECT * FROM user_accounts WHERE user_id=$1 AND NOT is_archived AND account_identifier IS NOT NULL",[userId])).rows
    .filter(a=>supported.has(a.broker)&&(!broker||a.broker===broker));
   const warnings=[],rebuilt=[];
   if(!accounts.length)return {captured:0,rebuilt,warnings};
-  for(const account of accounts) {
+  for(const [index,account] of accounts.entries()) {
+   const report=detail=>onProgress({accountName:account.account_name,accountProcessed:index,accountTotal:accounts.length,...detail});
+   await report({stage:'account'});
    if(account.broker==='ibkr') {
      // Dated NAV remains authoritative. Only closed-market weekend days can
      // use the documented prior-close estimate, with ledger cash movements.
      try {await require('./brokerSync/ibkrNavHistory').backfillTrailingWeekends(userId,account);}
      catch {warnings.push('ibkr: weekend portfolio history could not be updated; dated NAV values were retained.');}
+     await report({stage:'account_complete',accountProcessed:index+1});
      continue;
    }
    try {
@@ -37,11 +41,13 @@ async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false}=
     const last=coverage?.latest;
     const fromDate=fullHistory&&account.initial_balance_date?day(account.initial_balance_date):coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
     const summary=await require('./portfolioReconstructionService').reconstruct(userId,{broker:account.broker,
-     accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true});
+     accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true,onProgress:report});
     rebuilt.push(...summary.map(s=>({broker:s.broker,days:s.days,gaps:s.gaps})));
     if(summary.some(s=>s.gaps))warnings.push(`${account.broker}: some historical portfolio dates remain unavailable; review chart coverage.`);
    } catch {warnings.push(`${account.broker}: portfolio history backfill could not finish; imported broker records were retained.`);}
+   finally {await report({stage:'account_complete',accountProcessed:index+1});}
   }
+  await onProgress({stage:'capture',accountProcessed:accounts.length,accountTotal:accounts.length});
   const capture=await require('./portfolioValueHistoryService').captureToday(userId,{accounts:accounts.map(a=>a.account_identifier).join(',')});
   warnings.push(...(capture.warnings||[]));
   return {captured:capture.captured,rebuilt,warnings};
