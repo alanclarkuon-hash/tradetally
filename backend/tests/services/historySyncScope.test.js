@@ -38,3 +38,9 @@ test('capture uses connection accounts, ignores live quotes and row ordering, an
  expect([...before.keys()]).toEqual(['a']);
  expect(db.query.mock.calls.filter(([s])=>s.includes('FROM trades')).every(([,args])=>args[2]==='a')).toBe(true);
 });
+
+
+test('legacy snapshot identifiers cannot silently exclude the synced broker account',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('broker_import_snapshots')?[{account_identifier:'old-native',connection_id:'connection',payload:{}}]:sql.includes('user_accounts')?[{id:'id',account_identifier:'current',initial_balance_date:'2020-01-01'}]:sql.includes('MAX(value_date)')?[{latest:'2026-10-11'}]:[]}));
+ expect([...(await capture('user','etoro','connection')).keys()]).toEqual(['current']);
+});

@@ -14,7 +14,11 @@ function add(rows, value, date, fallback) {
 async function capture(userId, broker, connectionId) {
  const snapshots=(await db.query('SELECT account_identifier,connection_id,payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type=$2',[userId,broker])).rows;
  const own=snapshots.filter(s=>s.connection_id===connectionId).map(s=>s.account_identifier);
- const accounts=(await db.query('SELECT id,account_identifier,initial_balance_date,initial_balance,currency FROM user_accounts WHERE user_id=$1 AND broker=$2 AND NOT is_archived AND account_identifier IS NOT NULL',[userId,broker])).rows.filter(a=>!own.length||own.includes(a.account_identifier));
+ const brokerAccounts=(await db.query('SELECT id,account_identifier,initial_balance_date,initial_balance,currency FROM user_accounts WHERE user_id=$1 AND broker=$2 AND NOT is_archived AND account_identifier IS NOT NULL',[userId,broker])).rows;
+ // Legacy snapshots may retain a broker-native identifier after an account
+ // rename. Fall back to this broker's accounts rather than silently skipping it.
+ const matched=brokerAccounts.filter(a=>own.includes(a.account_identifier));
+ const accounts=matched.length?matched:brokerAccounts;
  const result=new Map();
  for(const a of accounts) {
   const rows=new Map(), fallback=day(a.initial_balance_date);
