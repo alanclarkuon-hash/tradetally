@@ -92,7 +92,7 @@ class OkxService {
     const group=[{connection,payload}];
     // Verify native parent identity live; never infer ownership from labels or amounts.
     if(config.mainUid) {
-      const siblings=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='okx' AND COALESCE(broker_environment,'global')=$2 AND id<>$3 AND connection_status='active'",[connection.userId,connection.brokerEnvironment||'global',connection.id])).rows;
+      const siblings=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='okx' AND COALESCE(broker_environment,'global')=$2 AND id<>$3 AND connection_status IN ('active','error')",[connection.userId,connection.brokerEnvironment||'global',connection.id])).rows;
       const BrokerConnection=require('../../models/BrokerConnection');
       for(const row of siblings) {
         const sibling=await BrokerConnection.findById(row.id,true);
