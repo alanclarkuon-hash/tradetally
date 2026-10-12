@@ -1,6 +1,6 @@
 jest.mock('../../src/services/brokerSync/syncRecovery',()=>({acquire:jest.fn(),recoverConnection:jest.fn().mockResolvedValue(0)}));
 jest.mock('../../src/services/historyBackfillService',()=>({enqueue:jest.fn().mockResolvedValue('history-job')}));
-jest.mock('../../src/services/brokerPortfolioMaintenance',()=>({maintain:jest.fn()}));
+jest.mock('../../src/services/brokerPortfolioMaintenance',()=>({maintain:jest.fn(),captureCurrent:jest.fn().mockResolvedValue({captured:1,rebuilt:[],warnings:[]})}));
 jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn(),createSyncLog:jest.fn(),updateSyncLog:jest.fn(),updateSyncProgress:jest.fn(),updateAfterFailure:jest.fn(),scheduleTransientRetry:jest.fn(),updateAfterSync:jest.fn()}));
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/tierService',()=>({canSyncBrokerConnection:jest.fn().mockResolvedValue({allowed:true})}));
@@ -46,6 +46,8 @@ test('an unconfigured IBKR date floor uses the owner managed-account opening dat
 
 test('successful imports commit before history is queued and do not wait for chart reconstruction',async()=>{
  const events=[];
+ // A running history job may remain blocked on provider downloads indefinitely.
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockImplementation(()=>new Promise(()=>{}));
  BC.updateSyncLog.mockImplementation(async(_id,status)=>events.push(status));
  require('../../src/services/historyBackfillService').enqueue.mockImplementation(async()=>{events.push('history');return 'history-job';});
  ibkr.syncTrades.mockResolvedValue({imported:0,skipped:0,failed:0,duplicates:0,outcome:'success',warnings:[]});
@@ -53,7 +55,8 @@ test('successful imports commit before history is queued and do not wait for cha
  const result=await service.syncConnection('connection');
  expect(result.success).toBe(true);expect(result.historyJobId).toBe('history-job');
  expect(events.indexOf('completed')).toBeLessThan(events.indexOf('history'));
- expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner',{broker:'ibkr'});
+ expect(require('../../src/services/brokerPortfolioMaintenance').captureCurrent).toHaveBeenCalledWith('owner',{broker:'ibkr'});
+ expect(require('../../src/services/brokerPortfolioMaintenance').maintain).not.toHaveBeenCalled();
  expect(ibkr.syncTrades).toHaveBeenCalledTimes(1);
 });
 

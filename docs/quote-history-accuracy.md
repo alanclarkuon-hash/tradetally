@@ -6,7 +6,7 @@ Current quotes use connected broker capabilities before supported provider fallb
 
 Daily closes are finalized independently of live quotes. Reconstruction detects actual session gaps and atomically merges dated history while retaining existing dates, native currency and split evidence. Conflicting or unavailable metadata retains previous coverage. Confirmed derived history is retained when a retry cannot verify values; its coverage note remains visible. Statement values keep precedence.
 
-Committed broker syncs and statement imports queue durable history independently of synchronous reconstruction. The dedicated worker checkpoints its cursor and renews its lease. An active job remains visible ahead of a queued follow-up. UI polling does not download prices.
+Broker syncs capture the current broker portfolio value without joining the historical maintenance queue. They commit their results and then enqueue durable history; the worker performs historical reconstruction and missing-price downloads independently. Statement imports likewise queue durable history. The dedicated worker checkpoints its cursor and renews its lease. An active job remains visible ahead of a queued follow-up. UI polling does not download prices.
 
 Current-range heatmap basis uses native replayed lots and must reconcile with current broker quantities. Opening basis uses the strictly preceding completed exchange session, or purchase price for acquisitions inside the range. Missing open-session prices remain unavailable. Incomplete Holdings baskets suppress all performance metrics and the comparison series, including late acquisitions without cashflow-adjusted comparison evidence.
 

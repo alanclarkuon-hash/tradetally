@@ -177,13 +177,15 @@ class BrokerSyncService {
       const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
+      // Capture current broker values only. Historical reconstruction/downloads
+      // run in the durable history lane after the broker sync is committed.
       // Broker imports remain successful if chart maintenance needs attention.
       // Do not retry private broker requests for a public-price/history problem.
       if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
           result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
         try {
-          await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_history',0);
-          result.portfolioHistory = await require('../brokerPortfolioMaintenance').maintain(connection.userId,{broker:connection.brokerType});
+          await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_capture',0);
+          result.portfolioHistory = await require('../brokerPortfolioMaintenance').captureCurrent(connection.userId,{broker:connection.brokerType});
           result.warnings = [...(result.warnings||[]),...result.portfolioHistory.warnings];
         } catch {
           result.warnings = [...(result.warnings||[]),'Portfolio chart maintenance needs attention; broker records were imported successfully.'];

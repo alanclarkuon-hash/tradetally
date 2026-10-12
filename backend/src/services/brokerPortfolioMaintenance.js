@@ -49,7 +49,17 @@ async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false}=
  pending.set(key,job);
  try{return await job;}finally{if(pending.get(key)===job)pending.delete(key);}
 }
+// Sync completion must not join the serialized historical maintenance lane.
+// Capture only the fresh broker snapshot; the durable worker rebuilds past dates.
+async function captureCurrent(userId,{broker}={}) {
+ const accounts=(await db.query("SELECT account_identifier,broker FROM user_accounts WHERE user_id=$1 AND NOT is_archived AND account_identifier IS NOT NULL",[userId])).rows
+  .filter(a=>supported.has(a.broker)&&a.broker===broker);
+ if(!accounts.length)return {captured:0,rebuilt:[],warnings:[]};
+ const result=await require('./portfolioValueHistoryService').captureToday(userId,{accounts:accounts.map(a=>a.account_identifier).join(',')});
+ return {captured:result.captured,rebuilt:[],warnings:result.warnings||[]};
+}
+
 async function maintainAllUsers() {
  for(const user of (await db.query('SELECT id FROM users')).rows)await require('./historyBackfillService').enqueue(user.id);
 }
-module.exports={maintain,maintainAllUsers};
+module.exports={maintain,captureCurrent,maintainAllUsers};
