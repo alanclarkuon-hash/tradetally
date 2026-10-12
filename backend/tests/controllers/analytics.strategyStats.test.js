@@ -78,7 +78,10 @@ describe('analyticsController.getStrategyStats', () => {
 
     expect(next).not.toHaveBeenCalled();
     const [query] = db.query.mock.calls[0];
-    expect(query).toContain('SUM(trade_amount_usd(t.pnl, t.original_currency, t.exchange_rate, t.original_entry_price_currency) + COALESCE(trade_amount_usd(t.commission, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0) + COALESCE(trade_amount_usd(t.fees, t.original_currency, t.exchange_rate, t.original_entry_price_currency), 0)) as gross_pnl');
+    const amount=field=>`CASE WHEN EXISTS(SELECT 1 FROM trade_account_reports ar WHERE ar.trade_id=t.id) THEN trade_account_report_usd(t.id, '${field}') ELSE trade_amount_usd(t.${field}, t.original_currency, t.exchange_rate, t.original_entry_price_currency) END`;
+    expect(query).toContain(`SUM(${amount('pnl')} + COALESCE(${amount('commission')}, 0) + COALESCE(${amount('fees')}, 0)) as gross_pnl`);
+    expect(query).toContain('WHERE t.user_id = $1');
+    expect(query).toContain('GROUP BY position_group_id');
     expect(query).toContain('ABS(gross_pnl) <= (10)');
   });
 });

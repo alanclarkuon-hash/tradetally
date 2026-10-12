@@ -2,12 +2,13 @@ const db=require('../../config/database');
 const crypto=require('crypto');
 const workbook=require('./etoroWorkbook');
 const {prepare}=require('./etoroCashStatement');
+const {loadClassifications}=require('./etoroClassifications');
 const previews=new Map(),active=new Set();
 const fail=message=>{throw Error(`eToro upload: ${message}`);};
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 async function saved(userId,accountId,client=db) {
-  const accounts=(await client.query(`SELECT a.*,c.id AS connection_id,c.broker_metadata FROM user_accounts a
+  const accounts=(await client.query(`SELECT a.*,c.id AS connection_id,c.external_account_id,c.broker_metadata FROM user_accounts a
     JOIN broker_connections c ON c.user_id=a.user_id AND c.broker_type='etoro' AND a.account_identifier=('eToro ****'||RIGHT(c.external_account_id,4))
     WHERE a.user_id=$1 AND a.broker='etoro' AND NOT a.is_archived ORDER BY a.account_name`,[userId])).rows;
   const account=accounts.find(a=>a.id===accountId);if(!account)fail('Select your managed eToro account.');
@@ -51,14 +52,15 @@ async function preview(userId,accountId,file) {
   try {
     if(!file?.buffer||!file.originalname?.toLowerCase().endsWith('.xlsx'))fail('Upload the XLSX account statement downloaded from eToro.');
     const base=await saved(userId,accountId),upload=await workbook.read(file.buffer),data=combine(base,upload);
+    const classifications=await loadClassifications(db,userId,base.account,upload.statement);
     const {etoroPoints}=require('../portfolioStatementHistoryService');
     const points=etoroPoints({...base.account,broker_metadata:{statement_identity_hash:data.identity}},
       {...base.report,to_date:data.end,records:data.records},upload);
     for(const [key,p] of previews)if(p.userId===userId||p.expires<Date.now())previews.delete(key);
     if(previews.size>=10)fail('Statement previews are busy. Please try again shortly.');
-    const token=crypto.randomBytes(32).toString('hex');previews.set(token,{userId,accountId,revision:base.revision,data,points,expires:Date.now()+15*60000});
+    const token=crypto.randomBytes(32).toString('hex');previews.set(token,{userId,accountId,revision:base.revision,data,points,statement:upload.statement,classifications,expires:Date.now()+15*60000});
     const sum=types=>data.added.filter(r=>types.includes(r.type)).reduce((s,r)=>s+r.amount,0);
-    return {token,account:base.account.account_name,from:upload.start,through:data.end,newRecords:data.added.length,
+    return {token,classifications:classifications.counts,account:base.account.account_name,from:upload.start,through:data.end,newRecords:data.added.length,
       matchedRecords:upload.statement['Account Activity'].length-data.added.length,newIncome:sum(['interest','dividend']),
       newDeposits:sum(['deposit']),newWithdrawals:-sum(['withdrawal']),newFees:-sum(['account_fee','tax']),
       portfolioDates:points.length,previousCash:Number(base.report.ending_cash),closingCash:data.endingCash,cashChange:data.endingCash-Number(base.report.ending_cash)};
@@ -69,10 +71,17 @@ async function apply(userId,token) {
   if(active.has(userId))fail('A statement update is already running.');active.add(userId);
   try {
     if((await saved(userId,p.accountId)).revision!==p.revision)fail('The account changed after preview. Preview again.');
+    const current=await saved(userId,p.accountId);
+    if((await loadClassifications(db,userId,current.account,p.statement)).revision!==p.classifications.revision)fail('Trades changed after preview. Preview again.');
     await require('../backup.service').createFullSiteBackup(userId);
     const result=await db.withTransaction(async client=>{
       await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`etoro-statement:${p.accountId}`]);
       const base=await saved(userId,p.accountId,client);if(base.revision!==p.revision)fail('The account changed after preview. Preview again.');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',[`etoro:${userId}:${base.account.external_account_id}`]);
+      const classifications=await loadClassifications(client,userId,base.account,p.statement,true);
+      if(classifications.revision!==p.classifications.revision)fail('Trades changed after preview. Preview again.');
+      for(const t of classifications.updates)await client.query('UPDATE trades SET instrument_type=$1,executions=$2::jsonb,updated_at=NOW() WHERE id=$3 AND user_id=$4',[t.instrument,JSON.stringify(t.executions),t.id,userId]);
+      if(classifications.updates.length)await client.query('DELETE FROM analytics_cache WHERE user_id=$1',[userId]);
       let events=0;
       for(const e of p.data.added.filter(r=>r.type)){
         const r=await client.query(`INSERT INTO broker_cash_events(user_id,account_id,broker_type,reference_id,event_type,event_date,amount,currency,amount_usd,description)
@@ -86,7 +95,7 @@ async function apply(userId,token) {
       await client.query(`UPDATE broker_connections SET broker_metadata=COALESCE(broker_metadata,'{}'::jsonb)||jsonb_build_object('statement_identity_hash',$1::text)
         WHERE id=$2 AND user_id=$3`,[p.data.identity,base.account.connection_id,userId]);
       const history=await require('../portfolioStatementHistoryService').saveEtoroPoints(client,userId,base.account.account_identifier,p.points);
-      return {newRecords:p.data.added.length,newEvents:events,closingCash:p.data.endingCash,through:p.data.end,portfolioDates:history.captured,identifier:base.account.account_identifier};
+      return {classifications:classifications.counts,newRecords:p.data.added.length,newEvents:events,closingCash:p.data.endingCash,through:p.data.end,portfolioDates:history.captured,identifier:base.account.account_identifier};
     });previews.delete(token);
     const {identifier,...publicResult}=result;
     return {...publicResult,portfolioHistory:await require('../manualPortfolioMaintenance').rebuild(userId,'etoro',[identifier],p.points.map(r=>r.date).sort()[0])};

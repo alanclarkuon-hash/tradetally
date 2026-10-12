@@ -587,4 +587,9 @@ describe('KLineTradeChart', () => {
 
     wrapper.unmount()
   })
+ it('plots every plan entry and partial exit even when a position overlay is present',async()=>{
+ const wrapper=mount(KLineTradeChart,{props:{chartData:{...chartData,trade:{...chartData.trade,plan_trade:{id:'p'},stop_loss:90,take_profit:120,exitTime:null,executions:[{action:'buy',quantity:5,price:100,datetime:'2023-11-14T22:13:20.000Z'},{action:'buy',quantity:5,price:104,datetime:'2023-11-15T22:13:20.000Z'},{action:'sell',quantity:4,price:107,datetime:'2023-11-15T22:13:20.000Z'}]}}}});
+ await vi.waitFor(()=>expect(chartMock.setDataLoader).toHaveBeenCalled());const markers=chartMock.createOverlay.mock.calls.map(([o])=>o).filter(o=>o.groupId==='trade-executions');expect(markers).toHaveLength(3);expect(markers.map(o=>o.extendData.kind)).toEqual(['entry','entry','exit']);wrapper.unmount();
+ })
+
 })

@@ -37,4 +37,15 @@ function enrichPositions(positions, instruments) {
   });
 }
 
-module.exports = {normalizeTicker, currentSymbol, enrichPositions};
+function catalogueSymbols(catalogue,symbol){
+ const target=String(symbol||'').trim().toUpperCase();
+ const matches=catalogue.filter(i=>[normalizeTicker(i.ticker),currentSymbol(i)].includes(target));
+ const isins=new Set(matches.map(i=>i.isin));
+ // An alias requires one identified security; never merge similarly named listings.
+ if(!matches.length||isins.size!==1||!matches.every(i=>/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(i.isin||'')))return [target];
+ const aliases=[...new Set(matches.flatMap(i=>[normalizeTicker(i.ticker),currentSymbol(i)]))];
+ if(catalogue.some(i=>aliases.includes(normalizeTicker(i.ticker))&&!isins.has(i.isin)))return [target];
+ return [...new Set([target,...aliases])];
+}
+
+module.exports = {normalizeTicker, currentSymbol, enrichPositions,catalogueSymbols};

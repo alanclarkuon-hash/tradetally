@@ -1,3 +1,4 @@
+const {accountPredicate}=require('../utils/accountFilter');
 const db = require('../config/database');
 const { fxUsd } = require('../utils/tradeFx');
 
@@ -376,7 +377,10 @@ class Playbook {
     // Global account filter: when set, adherence and P&L stats only count
     // reviews whose trade belongs to the selected account(s). Playbooks stay
     // listed either way (LEFT JOIN), just with zeroed stats.
-    const accountsParam = Array.isArray(accounts) && accounts.length > 0 ? accounts : null;
+    const reviewParams=[userId],recentParams=[userId];
+    const reviewAccount=accountPredicate(accounts,reviewParams,'tt.account_identifier');
+    const recentAccount=accountPredicate(accounts,recentParams,'t.account_identifier');
+    const reviewScope=reviewAccount==='TRUE'?'TRUE':`EXISTS (SELECT 1 FROM trades tt WHERE tt.id=r.trade_id AND tt.user_id=$1 AND ${reviewAccount})`;
 
     const summaryResult = await db.query(
       `
@@ -397,10 +401,7 @@ class Playbook {
           LEFT JOIN trade_playbook_reviews r
             ON r.playbook_id = p.id AND r.user_id = $1
             AND r.review_type = 'adherence'
-            AND ($2::text[] IS NULL OR EXISTS (
-              SELECT 1 FROM trades tt
-              WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
-            ))
+            AND (${reviewScope})
           LEFT JOIN trades t
             ON t.id = r.trade_id AND t.user_id = $1
           WHERE p.user_id = $1
@@ -439,7 +440,7 @@ class Playbook {
         GROUP BY id, name, side, timeframe, is_active
         ORDER BY LOWER(name)
       `,
-      [userId, accountsParam]
+      reviewParams
     );
 
     const recentTradesResult = await db.query(
@@ -457,11 +458,11 @@ class Playbook {
         INNER JOIN trades t ON t.id = r.trade_id
         WHERE r.user_id = $1
           AND r.review_type = 'adherence'
-          AND ($2::text[] IS NULL OR t.account_identifier = ANY($2::text[]))
+          AND (${recentAccount})
         ORDER BY r.reviewed_at DESC
         LIMIT 20
       `,
-      [userId, accountsParam]
+      recentParams
     );
 
     const overviewResult = await db.query(
@@ -485,12 +486,9 @@ class Playbook {
         FROM trade_playbook_reviews r
         WHERE r.user_id = $1
           AND r.review_type = 'adherence'
-          AND ($2::text[] IS NULL OR EXISTS (
-            SELECT 1 FROM trades tt
-            WHERE tt.id = r.trade_id AND tt.account_identifier = ANY($2::text[])
-          ))
+          AND (${reviewScope})
       `,
-      [userId, accountsParam]
+      reviewParams
     );
 
     return {

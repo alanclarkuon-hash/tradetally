@@ -28,7 +28,7 @@ test('total cash includes uninvested pie cash as well as available cash and orde
     .mockResolvedValueOnce({rows:[]}).mockResolvedValueOnce({rows:[]});
   await saveCashReport({userId:'owner',externalAccountId:'1234'},[item('b','BUY',10)],
     {id:1234,currency:'GBP',cash:{availableToTrade:10,reservedForOrders:2,inPies:1}});
-  expect(db.query.mock.calls[2][1][6]).toBe(13);
+  expect(db.query.mock.calls[2][1][6]).toBe(13);expect(db.query.mock.calls[3][1]).toEqual(['owner','account','GBP',10]);
 });
 test('native cash reconciles without double-subtracting fees and date filters carry the opening cash',async()=>{
   const report={currency:'GBP',to_date:'2024-01-03',ending_cash:102,records:walletRows([item('b','BUY',10),item('s','SELL',12,'2024-01-03')],'GBP')};

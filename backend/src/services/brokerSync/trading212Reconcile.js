@@ -21,14 +21,14 @@ function entryIdentity(row) {
 // closing slice. Preserve existing IDs, notes and attached user content.
 function planSnapshot(desired, existing) {
   const byIdentity = new Map();
-  for (const row of existing) {
+  for (const row of existing.filter(r=>!r.matching_baseline)) {
     const key = identity(row);
     if (byIdentity.has(key)) throw new Error('Ambiguous existing Trading 212 execution identity');
     byIdentity.set(key, row);
   }
   const used = new Set();
   const plans = desired.map(trade => {
-    const old = byIdentity.get(identity(trade));
+    const old = trade.matchingTradeId ? existing.find(r=>r.id===trade.matchingTradeId) : byIdentity.get(identity(trade));
     if (old) used.add(old.id);
     return { trade, old };
   });
@@ -81,7 +81,13 @@ async function reconcileSnapshot(connection, raw, trades, { dryRun = false, back
     AND broker='trading212' AND (broker_connection_id=$2
       OR (broker_connection_id IS NULL AND account_identifier=$3))`,
   [connection.userId, connection.id, account])).rows;
-  const plans = planSnapshot(trades, existing);
+  const {preserveCorrections}=require('../exitMatching');
+  const corrected=preserveCorrections(trades,existing);
+  const detached=(await db.query(`SELECT d.execution FROM detached_trade_exits d JOIN trades t ON t.id=d.origin_trade_id
+    WHERE d.user_id=$1 AND d.assigned_trade_id IS NULL AND (t.broker_connection_id=$2
+      OR (t.broker_connection_id IS NULL AND t.account_identifier=$3))`,[connection.userId,connection.id,account])).rows;
+  validateCoverage(raw,[...corrected,...detached.map(r=>({executions:[r.execution]}))]);
+  const plans = planSnapshot(corrected, existing);
   const result = { imported: plans.filter(p => !p.old).length, updated: existing.length,
     duplicates: 0, skipped: 0, failed: 0, fills: raw.length, trades: trades.length };
   if (dryRun) return result;

@@ -9,11 +9,11 @@ test('symbols are exact and preserve their exchange suffix',()=>{
   expect(()=>validateSymbol("ABC';DROP TABLE trades")).toThrow('valid asset symbol');
 });
 test('current Trading 212 ticker finds broker metadata and original stock trades without rewriting records',async()=>{
-  const snapshot={positions:[{instrument:{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'}}]};
-  db.query.mockImplementation((sql)=>Promise.resolve({rows:sql.includes('SELECT positions FROM broker_portfolio_snapshots')?[snapshot]:sql.includes('count(*)')?[{count:1}]:[{symbol:'OLD',broker:'trading212',instrument_type:'stock'}]}));
+  const snapshot={account_identifier:'selected',positions:[{instrument:{ticker:'OLD_US_EQ',shortName:'NEW',name:'Current company'}}]};
+  db.query.mockImplementation((sql)=>Promise.resolve({rows:sql.includes('SELECT account_identifier,positions FROM broker_portfolio_snapshots')?[snapshot]:sql.includes('count(*)')?[{count:1}]:[{symbol:'OLD',broker:'trading212',instrument_type:'stock'}]}));
   const result=await getDetails('owner','NEW',{source:'trades'});
   expect(result.records[0].symbol).toBe('OLD');
-  expect(db.query).toHaveBeenCalledWith(expect.stringContaining("broker='trading212' AND instrument_type='stock' AND symbol=ANY($3)"),['NEW','owner',['OLD']]);
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('aliases.account_identifier=trades.account_identifier'),['NEW','owner',JSON.stringify([{account_identifier:'selected',symbol:'OLD'}])]);
 });
 test('private asset records require the signed-in owner on every page',async()=>{
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('count(*)')?[{count:26}]:[{symbol:'EXAMPLE.L',user_id:'owner',broker_connection_id:'private-link',quantity:2}]}));
@@ -44,3 +44,5 @@ test('stock classification labels include stored industry',async()=>{
   const result=await getDetails('owner','EXAMPLE');
   expect(result.name).toBe('Example company');expect(result.labels).toContain('industry: Semiconductors');
 });
+
+test('closed renamed asset finds original trades through saved account-scoped catalogue without open snapshot positions',async()=>{const item={ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'};db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('broker_instrument_catalogues')?[{account_identifier:'selected',instruments:[item]}]:sql.includes('broker_portfolio_snapshots')?[]:sql.includes('count(*)')?[{count:1}]:[{symbol:'LOKB',broker:'trading212'}]}));const r=await getDetails('owner','NVTS',{source:'trades'});expect(r.records[0].symbol).toBe('LOKB');expect(db.query).toHaveBeenCalledWith(expect.stringContaining('aliases.account_identifier=trades.account_identifier'),['NVTS','owner',JSON.stringify([{account_identifier:'selected',symbol:'LOKB'}])]);});

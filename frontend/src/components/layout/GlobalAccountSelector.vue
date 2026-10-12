@@ -71,6 +71,10 @@
           <!-- Divider -->
           <div class="border-t border-gray-100 dark:border-gray-700 my-1"></div>
 
+          <div v-if="error" role="status" class="px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            {{ error }}
+            <button type="button" class="underline ml-2" :disabled="loading" @click="fetchAccounts({ force: true })">Retry</button>
+          </div>
           <!-- Loading state -->
           <div v-if="loading" class="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
             Loading accounts...
@@ -132,6 +136,7 @@ const {
   selectedAccountLabel,
   accounts,
   loading,
+  error,
   isFiltered,
   fetchAccounts,
   setAccounts,

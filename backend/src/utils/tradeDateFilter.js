@@ -28,6 +28,17 @@ function buildTradeDateRangeClause(filters, startParamIndex, alias = 't') {
     params.push(filters.endDate);
   }
 
+  if (clause) {
+    // Broker settlement dates are independent of automatic buy/sell pairing.
+    // A sell paired with a later buy must not move realised cash to that year.
+    const bounds = filters.startDate && filters.endDate
+      ? `(event->>'time')::timestamptz::date >= $${p} AND (event->>'time')::timestamptz::date <= $${p + 1}`
+      : filters.startDate ? `(event->>'time')::timestamptz::date >= $${p}`
+      : `(event->>'time')::timestamptz::date <= $${p}`;
+    clause = ` AND CASE WHEN EXISTS (SELECT 1 FROM trade_account_reports ar WHERE ar.trade_id=${alias}.id AND ar.result->>'basis'='original_broker_execution' AND jsonb_array_length(ar.result->'events')>0)
+      THEN EXISTS (SELECT 1 FROM trade_account_reports ar CROSS JOIN LATERAL jsonb_array_elements(ar.result->'events') event WHERE ar.trade_id=${alias}.id AND (${bounds}))
+      ELSE ${clause.slice(5)} END`;
+  }
   return { clause, params };
 }
 

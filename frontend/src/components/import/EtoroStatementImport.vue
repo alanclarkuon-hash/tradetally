@@ -4,7 +4,7 @@
       <p class="text-xs font-semibold uppercase tracking-widest text-primary-600 dark:text-primary-400">eToro · USD investment account</p>
       <h2 id="etoro-statement-heading" class="mt-1 text-lg font-medium text-gray-900 dark:text-white">Update cashflow &amp; income</h2>
       <p class="mt-2 max-w-2xl text-sm text-gray-600 dark:text-gray-400">Download your account statement from eToro as XLSX. Choose a start date on or before your last imported statement date so we can match the overlap.</p>
-      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Trades and current holdings continue through Broker Sync. This upload updates cash movements, dividends, interest, fees, taxes and dated portfolio values.</p>
+      <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Trades and current holdings continue through Broker Sync. This upload updates cash movements, dividends, interest, fees, taxes and dated portfolio values, and verifies existing trade classifications from Closed Positions.</p>
     </div>
     <p v-if="loading" role="status" class="text-sm text-gray-500">Loading your eToro accounts…</p>
     <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ error }}</p>
@@ -36,6 +36,8 @@
         <div><dt class="text-sm text-gray-500">New dividends &amp; interest</dt><dd class="mt-1 text-lg font-medium tabular-nums">{{ money(preview.newIncome) }}</dd></div>
       </dl>
       <p class="text-sm text-gray-600 dark:text-gray-400">{{ preview.newRecords }} new activity entries · {{ preview.matchedRecords }} already recorded.</p>
+      <p v-if="preview.classifications" class="text-sm text-gray-600 dark:text-gray-400">Trade classifications: {{ preview.classifications.verified }} verified · {{ preview.classifications.corrected }} to correct · {{ preview.classifications.unmatched }} statement positions not yet synced.</p>
+      <p v-if="preview.classifications?.affectedPlans" class="text-sm text-amber-700 dark:text-amber-300">{{ preview.classifications.affectedPlans }} linked plans will need source reconciliation after their instrument classification changes.</p>
       <p v-if="preview.portfolioDates" class="text-sm text-gray-600 dark:text-gray-400">{{ preview.portfolioDates }} dated portfolio values checked for the chart.</p>
       <p class="text-sm text-gray-600 dark:text-gray-400">New deposits {{ money(preview.newDeposits) }} · withdrawals {{ money(preview.newWithdrawals) }} · fees &amp; taxes {{ money(preview.newFees) }}.</p>
       <p class="text-xs text-gray-500 dark:text-gray-400">Existing matching entries are retained. A private database backup is taken before applying. This preview expires after 15 minutes.</p>
@@ -61,7 +63,7 @@ async function apply(){
   if(!preview.value||busy.value)return
   busy.value='apply';error.value=''
   try{const r=(await api.post('/broker-sync/etoro-statements/apply',{token:preview.value.token},{timeout:180000})).data.data
-    success.value=`Updated through ${r.through}: ${r.newRecords} new activity entries. Closing cash ${money(r.closingCash)}. ${r.portfolioDates || 0} dated portfolio values saved for the chart. No trade records were added. ${(r.portfolioHistory?.warnings||[]).join(' ')}`
+    success.value=`Updated through ${r.through}: ${r.newRecords} new activity entries. Closing cash ${money(r.closingCash)}. ${r.portfolioDates || 0} dated portfolio values saved for the chart. ${r.classifications?.verified || 0} trade classifications verified; ${r.classifications?.corrected || 0} corrected. No trade records were added. ${(r.portfolioHistory?.warnings||[]).join(' ')}`
     const a=accounts.value.find(a=>a.id===accountId.value);if(a)a.through=r.through;preview.value=null
   }catch(e){error.value=message(e)}finally{busy.value=''}
 }

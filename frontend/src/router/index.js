@@ -80,6 +80,9 @@ const router = createRouter({
       meta: { requiresAuth: true }
     },
     {
+      path: '/dashboard/planning/:id?', name: 'trade-planning', component: () => import('@/views/PlanningView.vue'), meta: { requiresAuth: true }
+    },
+    {
       path: '/trades',
       name: 'trades',
       component: () => import('@/views/trades/TradeListView.vue'),

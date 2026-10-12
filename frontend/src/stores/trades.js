@@ -412,7 +412,7 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
-  async function fetchTrade(id, { raw = false } = {}) {
+  async function fetchTrade(id, { raw = false, planId, source } = {}) {
     loading.value = true
     error.value = null
 
@@ -420,7 +420,7 @@ export const useTradesStore = defineStore('trades', () => {
       // raw=true returns unconverted USD values for the edit-form prefill so
       // a display-converted number can never be saved back as USD.
       const response = await api.get(`/trades/${id}`, {
-        params: raw ? { raw_currency: 1 } : undefined
+        params: { ...(raw ? {raw_currency:1} : {}), ...(planId ? {planId} : {}), ...(source ? {source:1} : {}) }
       })
       currentTrade.value = response.data.trade
       if (!raw && response.data.display_currency) {

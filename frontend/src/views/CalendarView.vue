@@ -55,6 +55,7 @@
       </div>
     </div>
 
+    <PlanningCalendarActivity :year="currentYear"/>
     <!-- Full page spinner only on initial load -->
     <div v-if="initialLoading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
@@ -310,6 +311,7 @@
 
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
+import PlanningCalendarActivity from "@/components/planning/PlanningCalendarActivity.vue"
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import OnboardingCard from '@/components/onboarding/OnboardingCard.vue'

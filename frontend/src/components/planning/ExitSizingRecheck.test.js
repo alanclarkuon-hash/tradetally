@@ -1,0 +1,13 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {it,expect,vi} from 'vitest'
+import Recheck from './ExitSizingRecheck.vue'
+const {post}=vi.hoisted(()=>({post:vi.fn()}))
+vi.mock('@/services/api',()=>({default:{post}}))
+const props={plan:{id:'p',version:4},sizing:{pending:true,accounts:[{accountId:'a',entered:15,exited:2,open:13,basis:10,pending:true,rows:[{key:'tp',label:'TP',completed:true,quantity:2,suggested:2},{key:'runner',label:'Runner',completed:false,quantity:8,suggested:12}]}]}}
+const button=(w,t)=>w.findAll('button').find(b=>b.text()===t)
+it('preserves completed exits and offers suggestions without saving until confirmation',async()=>{post.mockResolvedValue({});const w=mount(Recheck,{props});expect(w.findAll('input[type=number]')).toHaveLength(1);expect(w.find('input[type=number]').element.value).toBe('8');await button(w,'Use suggested quantities').trigger('click');expect(w.find('input[type=number]').element.value).toBe('12');expect(post).not.toHaveBeenCalled();await button(w,'Close remainder').trigger('click');expect(w.find('input[type=number]').element.value).toBe('13');await button(w,'Confirm remaining exits').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/p/exit-sizing',expect.objectContaining({version:4,entered:15,accountId:'a',rows:[{key:'runner',units:13}]}));expect(w.emitted('saved')).toHaveLength(1);w.unmount()});
+it('rejects quantities above open units and preserves input after a source-version rejection',async()=>{const w=mount(Recheck,{props});await w.find('input[type=number]').setValue(14);expect(button(w,'Confirm remaining exits').attributes('disabled')).toBeDefined();await w.find('input[type=number]').setValue(12);post.mockRejectedValue({response:{data:{error:'Entered quantity changed'}}});await button(w,'Confirm remaining exits').trigger('click');await flushPromises();expect(w.get('[role=alert]').text()).toBe('Entered quantity changed');expect(w.find('input[type=number]').element.value).toBe('12');w.unmount()});
+
+it('keeps revised quantities while prepare-save refreshes sizing and uses the refreshed version',async()=>{
+ post.mockResolvedValue({});let finish;const pending=new Promise(r=>finish=r);const w=mount(Recheck,{props:{...props,prepareSave:()=>pending}});await button(w,'Close remainder').trigger('click');await button(w,'Confirm remaining exits').trigger('click');await w.setProps({plan:{id:'p',version:5},sizing:{...props.sizing,accounts:props.sizing.accounts.map(a=>({...a,basis:11}))}});expect(w.find('input[type=number]').element.value).toBe('13');finish(true);await flushPromises();expect(post).toHaveBeenLastCalledWith('/trade-plans/p/exit-sizing',expect.objectContaining({version:5,rows:[{key:'runner',units:13}]}));w.unmount();
+});

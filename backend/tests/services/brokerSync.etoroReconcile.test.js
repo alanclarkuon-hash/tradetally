@@ -86,3 +86,23 @@ test('cash uses real USD credit, supports zero, and excludes bonus credit and re
   expect(cashSnapshot({credit:'125.50',bonusCredit:99},'account').amount).toBe(125.5);
   for(const credit of [null,undefined,'',true,'invalid']) expect(()=>cashSnapshot({credit},'account')).toThrow();
 });
+
+ test('preserves confirmed CFD evidence for the same position through sync and partial closes',()=>{
+ const {preserveProductClassification}=require('../../src/services/brokerSync/etoroReconcile');
+ const existing=[{instrument_type:'cfd',executions:[{etoro_position_id:'one',etoro_source_type:'CFD'}]}];
+ const t={positionId:'one',instrumentType:'stock',executions:[{action:'buy'}]};
+ expect(preserveProductClassification(t,null,existing).instrumentType).toBe('cfd');
+ expect(t.executions[0].etoro_source_type).toBe('CFD');
+ expect(preserveProductClassification({positionId:'other',instrumentType:'stock',executions:[]},null,existing).instrumentType).toBe('stock');
+ });
+
+test('settlement product distinguishes an unleveraged CFD from the underlying stock',()=>{
+ const p=payload();p.positions[0]={...p.positions[0],settlementTypeID:0};
+ const result=mapSnapshot(p);expect(result.trades[0].instrumentType).toBe('cfd');
+ expect(result.trades[0].executions[0]).toMatchObject({etoro_settlement_type:0,etoro_source_type:'CFD'});
+ expect(result.positions[0].instrumentType).toBe('cfd');
+ p.positions[0].settlementTypeID=1;expect(mapSnapshot(p).trades[0].instrumentType).toBe('stock');
+ p.positions[0].settlementTypeID=2;expect(()=>mapSnapshot(p)).toThrow(/settlement/);
+});
+
+test('sync retains source signed fees and identifies verified cash credits separately',()=>{const p=payload();p.history=[{...closed,fees:-.25,netProfit:2.25}];const t=mapSnapshot(p).trades[1];expect(t.fees).toBe(-.25);expect(t.pnl).toBe(2.25);expect(t.executions[1]).toMatchObject({fees:-.25,etoro_cash_credit:.25,etoro_fee_charge:0,etoro_reported_net_profit:2.25})});

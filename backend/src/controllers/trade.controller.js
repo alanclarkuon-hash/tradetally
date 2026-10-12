@@ -343,7 +343,7 @@ function enrichOpenTradePnL(trade) {
     return;
   }
 
-  const entryPrice = Number(trade.entry_price || 0);
+  const entryPrice = Number(trade.open_average_price ?? trade.entry_price ?? 0);
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return;
   }
@@ -426,6 +426,7 @@ async function persistTradeListQuote(symbol, quote, instrumentType='stock') {
 }
 
 async function hydrateOpenTradePrices(trades, userId) {
+  await require('../services/brokerInstrumentSymbols').applyTradeMarketSymbols(db,userId,trades);
   const openTrades = trades.filter(isOpenTradeForQuoteHydration);
   if (openTrades.length === 0) return;
 
@@ -435,7 +436,7 @@ async function hydrateOpenTradePrices(trades, userId) {
 
     // Do not let stale price_monitoring rows drive current unrealized P&L.
     trade.current_price = null;
-    const symbol = trade.underlying_symbol || trade.symbol;
+    const symbol = trade.market_symbol || trade.underlying_symbol || trade.symbol;
     if (symbol) {
       const type = trade.instrument_type || trade.instrumentType || 'stock';
       symbolsToFetch.set(priceCacheKey(symbol,type), {symbol:String(symbol).toUpperCase(),type});
@@ -467,15 +468,18 @@ async function hydrateOpenTradePrices(trades, userId) {
 
     const persistJobs = [];
     for (const trade of openTrades) {
-      const symbol = String(trade.underlying_symbol || trade.symbol || '').toUpperCase();
+      const symbol = String(trade.market_symbol || trade.underlying_symbol || trade.symbol || '').toUpperCase();
       const type=trade.instrument_type || trade.instrumentType || 'stock';
       const quote = quotes?.[priceCacheKey(symbol,type)];
       const price = Number(quote?.c);
       if (!Number.isFinite(price) || price <= 0) continue;
 
-      trade.current_price = price;
-      trade.currentPrice = price;
-      if(type!=='crypto') persistJobs.push(persistTradeListQuote(symbol, quote, type));
+      const nativeQuote={...quote,currency:quote.currency||trade.market_currency||'USD'};
+      const converted=await convertQuoteCurrency(nativeQuote,storedCurrency(trade));
+      if(!(Number(converted?.c)>0))continue;
+      trade.current_price = Number(converted.c);
+      trade.currentPrice = Number(converted.c);
+      if(type!=='crypto'){const usd=await convertQuoteCurrency(nativeQuote,'USD');persistJobs.push(persistTradeListQuote(symbol,usd,type));}
     }
 
     await Promise.allSettled(persistJobs);
@@ -488,7 +492,7 @@ async function hydrateOpenTradePrices(trades, userId) {
 // same sources as the dashboard Open Positions table: the price_monitoring cache
 // (kept warm by the price monitor) first, then a single Finnhub quote. Never
 // throws - an open trade just keeps showing "Open" if no price is available.
-async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD', host, instrumentType='stock') {
+async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD', host, instrumentType='stock',quoteCurrency=null) {
   if (!symbol) return null;
   try {
     const cached = await db.query(
@@ -499,7 +503,7 @@ async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD'
       [priceCacheKey(symbol,instrumentType),instrumentType]
     );
     const cachedPrice = cached.rows[0] ? parseFloat(cached.rows[0].current_price) : null;
-    if (targetCurrency === 'USD' && Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
+    if (targetCurrency === 'USD' && (!quoteCurrency||quoteCurrency==='USD') && Number.isFinite(cachedPrice) && cachedPrice > 0) return cachedPrice;
 
     if(instrumentType==='crypto') {
       const quote=await withTimeout(finnhub.getCryptoQuote(symbol),TRADE_DETAIL_QUOTE_TIMEOUT_MS,'Crypto quote');
@@ -521,7 +525,7 @@ async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD'
       'Trade detail Finnhub quote'
     );
     const converted = quote && targetCurrency
-      ? await convertQuoteCurrency({ ...quote, currency: quote.currency || 'USD' }, targetCurrency)
+      ? await convertQuoteCurrency({ ...quote, currency: quote.currency || quoteCurrency || 'USD' }, targetCurrency)
       : null;
     const price = converted && Number.isFinite(Number(converted.c)) ? Number(converted.c) : null;
     return Number.isFinite(price) && price > 0 ? price : null;
@@ -956,6 +960,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found' });
       }
 
+      trade = await require('../services/planTradeDetail').resolvePlanTrade(req,trade);
       const isOwner = req.user?.id === trade.user_id;
       if (!isOwner) {
         trade = sanitizePublicTrade(trade);
@@ -1014,7 +1019,7 @@ const tradeController = {
       if (trade.quality_score !== undefined) trade.qualityScore = trade.quality_score;
       if (trade.quality_metrics !== undefined) trade.qualityMetrics = trade.quality_metrics;
 
-      if (isOwner) {
+      if (isOwner && !trade.plan_trade) {
         const [reviews, suggestionCandidates] = await Promise.all([
           Playbook.getTradeReviewsByTradeId(tradeId, req.user.id),
           Playbook.listAutoAssignableByUser(req.user.id)
@@ -1053,6 +1058,7 @@ const tradeController = {
         trade.suggestedManualGradingProfileId = null;
       }
 
+      await require('../services/brokerInstrumentSymbols').applyTradeMarketSymbols(db,req.user?.id,[trade]);
       trade.setupQuality = buildSetupQuality(trade);
 
       // Surface live unrealized P&L for open positions the same way the dashboard's
@@ -1061,8 +1067,8 @@ const tradeController = {
       const isOpenPosition = !trade.exit_price && !trade.exit_time;
       if (isOpenPosition && trade.instrument_type !== 'option') {
         const price = await fetchCurrentPriceForSymbol(
-          trade.underlying_symbol || trade.symbol, req.user?.id,
-          storedCurrency(trade), req.headers.host, trade.instrument_type
+          trade.market_symbol || trade.underlying_symbol || trade.symbol, req.user?.id,
+          storedCurrency(trade), req.headers.host, trade.instrument_type,trade.market_currency
         );
         if (price != null) trade.current_price = price;
       }
@@ -1207,6 +1213,7 @@ const tradeController = {
         return res.status(404).json({ error: 'Trade not found or access denied' });
       }
 
+      if (trade.matching_baseline) return res.status(409).json({error:'Use exit correction on this manually matched trade before splitting'});
       // Parse executions if stored as string
       let executions = trade.executions;
       if (typeof executions === 'string') {
@@ -3652,7 +3659,7 @@ const tradeController = {
         }
       }
 
-      const cacheKey = TradeQueries.cacheKey(req.user.id, filters);
+      const cacheKey = TradeQueries.cacheKey(req.user.id, filters)+(req.accountFxKey?':account_reporting_v1:'+req.accountFxKey:'');
 
       const cached = cache.get(cacheKey);
       if (cached) {
@@ -4328,10 +4335,12 @@ const tradeController = {
       }
 
       // First, get the trade to verify ownership and get symbol/dates
-      const trade = await Trade.findById(tradeId, userId);
+      let trade = await Trade.findById(tradeId, userId);
       if (!trade) {
         return res.status(404).json({ error: 'Trade not found' });
       }
+
+      trade = await require('../services/planTradeDetail').resolvePlanTrade(req,trade);
 
       // Debug: Log what fields we actually get from the database
       console.log('=== TRADE RECORD DEBUG ===');
@@ -4347,7 +4356,8 @@ const tradeController = {
       });
 
       // Extract symbol and dates from the trade
-      const symbol = trade.symbol;
+      await require('../services/brokerInstrumentSymbols').applyTradeMarketSymbols(db,userId,[trade]);
+      const symbol = trade.market_symbol || trade.symbol;
       
       // Use the actual entry_time and exit_time from the database directly for chart data
       // These are already in UTC and the chart service will handle timezone conversion
@@ -4364,11 +4374,12 @@ const tradeController = {
 
       // Get chart data using the ChartService (for both stocks and options)
       // For options, this fetches the underlying stock's candlestick data (e.g., SPY)
+      const chartEndDate = trade.plan_trade && !exitDate ? new Date().toISOString() : exitDate;
       const chartData = await ChartService.getTradeChartData(
         userId,
         symbol,
         entryDate,
-        exitDate,
+        chartEndDate,
         req.headers.host,
         resolution,
         trade
@@ -4377,6 +4388,8 @@ const tradeController = {
       // Add trade information to the response
       chartData.trade = {
         id: trade.id,
+        plan_trade: trade.plan_trade,
+        account_pnl_result: trade.account_pnl_result,
         symbol: symbol,
         entryDate: entryDate,
         exitDate: exitDate,

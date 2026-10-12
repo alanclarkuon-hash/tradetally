@@ -18,6 +18,12 @@
     </div>
 
     <div v-else-if="trade" class="space-y-8">
+      <div v-if="trade.plan_trade" class="card p-4 flex flex-wrap items-center justify-between gap-3">
+        <span>{{ trade.plan_trade.title }} · All linked entries and exits</span>
+        <RouterLink :to="'/dashboard/planning/'+trade.plan_trade.id" class="btn-secondary">Manage plan</RouterLink>
+        <RouterLink :to="{path:'/trades/'+trade.id,query:{source:'1'}}" class="text-primary-500">Open original broker record</RouterLink>
+      </div>
+      <p v-if="trade.plan_trade?.evidenceWarning" role="status" class="card p-4 text-amber-700 dark:text-amber-300">{{ trade.plan_trade.evidenceWarning }}</p>
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
@@ -96,7 +102,7 @@
         v-if="allocationEnabled && tradeAllocations.length > 0"
         class="card"
       >
-        <CurrencyCard preference-key="tradedetailview-1" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+        <CurrencyCard preference-key="tradedetailview-1" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">Trade allocation</h2>
@@ -269,7 +275,7 @@
         <!-- Main Details -->
         <div class="lg:col-span-2 space-y-6">
           <div class="card">
-            <CurrencyCard preference-key="tradedetailview-2" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-2" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Trade Details</h3>
               <dl class="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-x-4 sm:gap-y-6">
                 <div>
@@ -475,7 +481,7 @@
                     <div v-else class="flex items-center space-x-2">
                       <span class="text-sm text-gray-500 dark:text-gray-400">Not calculated</span>
                       <button
-                        @click="calculateQuality"
+                        v-if="!trade.plan_trade" @click="calculateQuality"
                         :disabled="calculatingQuality"
                         class="text-xs px-3 py-1 bg-primary-600 text-white rounded hover:bg-primary-700 disabled:opacity-50"
                       >
@@ -623,7 +629,7 @@
             </div>
           </div>
 
-          <div class="card">
+          <div v-if="!trade.plan_trade" class="card">
             <div class="card-body">
               <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-5">
                 <div>
@@ -997,12 +1003,12 @@
 
           <!-- Executions -->
           <div v-if="processedExecutions && processedExecutions.length > 0" class="card">
-            <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-3" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="text-lg font-medium text-gray-900 dark:text-white">
                   Executions ({{ processedExecutions.length }})
                 </h3>
-                <div v-if="processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
+                <div v-if="isOwner && processedExecutions.length >= 2 && trade.exit_price && trade.exit_time" class="flex items-center space-x-2">
                   <template v-if="splitMode">
                     <span class="text-sm text-gray-600 dark:text-gray-400">{{ selectedExecutions.size }} selected</span>
                     <button
@@ -1281,7 +1287,7 @@
                   <div>
                     <div class="text-gray-500 dark:text-gray-400 text-xs">Shares Held</div>
                     <div class="font-semibold font-mono text-gray-900 dark:text-white">
-                      {{ formatNumber(executionSummary.finalPosition, 0) }}
+                      {{ formatNumber(executionSummary.finalPosition, trade.plan_trade ? 6 : 0) }}
                     </div>
                   </div>
                 </div>
@@ -1327,7 +1333,7 @@
                 </svg>
               </button>
               <div v-show="!chartSectionCollapsed" class="mt-4">
-                <TradeChartVisualization :trade-id="trade.id" />
+                <TradeChartVisualization :key="route.fullPath" :trade-id="trade.id" :plan-id="trade.plan_trade?.id" :source="route.query.source==='1'" />
               </div>
             </div>
           </div>
@@ -1358,7 +1364,7 @@
           />
 
           <!-- Comments (Collapsible) -->
-          <div class="card">
+          <div v-if="!trade.plan_trade" class="card">
             <div class="card-body">
               <button
                 @click="toggleCommentsSection"
@@ -1512,9 +1518,15 @@
         <!-- Performance Summary -->
         <div class="space-y-6">
           <div class="card">
-            <CurrencyCard preference-key="tradedetailview-4" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
+            <CurrencyCard preference-key="tradedetailview-4" :source-currency="getTradeCurrency()" :instrument-currencies="[trade?.instrument_currency || trade?.original_currency].filter(Boolean)" :account-currencies="[trade?.account_pnl_result?.currency,trade?.account_currency].filter(Boolean)" scoped v-slot="{formatCurrency,formatSignedCurrency,formatTradeCurrency,formatTradeSignedCurrency}"><div class="card-body">
               <h3 class="text-lg font-medium text-gray-900 dark:text-white mb-4">Performance</h3>
               <dl class="space-y-4">
+                <div v-if="trade.plan_trade">
+                  <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Net realised P&L</dt>
+                  <dd class="mt-1 text-2xl font-semibold" :class="displayPnl>=0?'text-green-600':'text-red-600'">{{ displayPnl==null?'Unavailable':formatTradeCurrency(displayPnl) }}</dd>
+                  <dt class="mt-3 text-sm font-medium text-gray-500 dark:text-gray-400">Realised % gain/loss</dt>
+                  <dd>{{ trade.pnl_percent==null?'Unavailable':formatNumber(trade.pnl_percent)+'%' }}</dd>
+                </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     Net P&L
@@ -1546,7 +1558,7 @@
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Value</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white">
-                    {{ formatTradeCurrency(trade.entry_price * trade.quantity) }}
+                    {{ formatTradeCurrency(trade.account_entry_cost ?? trade.entry_price * trade.quantity) }}
                   </dd>
                 </div>
               </dl>
@@ -1667,7 +1679,7 @@
 
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -1793,7 +1805,7 @@ const symbolCompanyName = computed(() => {
 
 // True only for the trade's owner. Guests/other users viewing a public trade get
 // a read-only view: owner actions and owner-only data fetches are skipped.
-const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id)
+const isOwner = computed(() => !!authStore.user && !!trade.value && trade.value.user_id === authStore.user.id && !trade.value.plan_trade)
 const allocationModalGroups = computed(() => {
   const byId = new Map(allocationGroups.value.map((group) => [group.id, group]))
   for (const allocation of tradeAllocations.value) {
@@ -2930,11 +2942,13 @@ async function calculateQuality() {
   }
 }
 
+watch(()=>route.fullPath,()=>loadTrade())
+
 async function loadTrade() {
   try {
     loading.value = true
     chartImageFailed.value = false // Reset chart image state for new trade
-    trade.value = await tradesStore.fetchTrade(route.params.id)
+    trade.value = await tradesStore.fetchTrade(route.params.id,{planId:route.query.planId,source:route.query.source==='1'})
     if (!trade.value.setupQuality) {
       trade.value.setupQuality = {
         grade: trade.value.qualityGrade || null,
@@ -2944,7 +2958,7 @@ async function loadTrade() {
     }
     // Owner-only data (playbooks, comments, AI analyses) require auth - skip it for
     // guests viewing a public trade so their requests don't 401 and bounce them to login.
-    if (trade.value && authStore.isAuthenticated) {
+    if (trade.value && authStore.isAuthenticated && !trade.value.plan_trade) {
       await loadPlaybooks()
       loadComments()
       loadStoredAIAnalyses()

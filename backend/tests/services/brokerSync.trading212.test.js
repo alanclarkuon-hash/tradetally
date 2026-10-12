@@ -264,6 +264,16 @@ describe('Trading 212 broker sync', () => {
     expect(()=>buildRepair(edited,new Map([['40',entry],['41',exit]]),'UTC')).toThrow('Price edited');
   });
 });
+
+ test('preserves account-currency broker gross Result proportionally on split closing executions',()=>{
+ const item=historyItem({id:999,side:'SELL',quantity:4,price:120});
+ item.fill.walletImpact.realisedProfitLoss=20;item.fill.walletImpact.currency='GBP';item.fill.walletImpact.fxRate=1.25;
+ const fill=trading212Service.mapExecutionToFill(item);
+ const part=trading212Service.toExecutionData({...fill,quantity:1},'exit');
+ expect(part.broker_result).toBe(5);expect(part.broker_result_currency).toBe('GBP');
+ item.fill.walletImpact.realisedProfitLoss=0;expect(trading212Service.toExecutionData(trading212Service.mapExecutionToFill(item),'exit').broker_result).toBe(0);
+ });
+
 test('cash section progress contains page counts only and retains imported history',async()=>{
  const BC=require('../../src/models/BrokerConnection');const connection={trading212ApiKey:'key',trading212ApiSecret:'secret'};
  axios.get.mockResolvedValueOnce({data:{items:[{id:'private-event',amount:123}],nextPagePath:'/api/v0/equity/history/transactions?cursor=private'},headers:{'x-ratelimit-remaining':1}}).mockResolvedValueOnce({data:{items:[]},headers:{}});

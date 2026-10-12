@@ -259,3 +259,14 @@ describe('cached eight-pillars analysis currency round trip (issue 3)', () => {
     expect(analysis.tradingCurrency).toBe('USD');
   });
 });
+
+test('GBP account cash result is not converted again while USD-account results are converted once',async()=>{
+ User.getSettings.mockResolvedValue({display_currency:'GBP'});
+ currencyConverter.getDailyCrossRate.mockImplementation(async(from,to)=>from===to?1:from==='USD'&&to==='GBP'?.8:1);
+ const gbp={id:'gbp',original_currency:'USD',entry_price:100,pnl:260,pnl_percent:26,executions:[]};
+ const usd={id:'usd',original_currency:'USD',entry_price:100,pnl:100,executions:[]};
+ const resultFor=(currency,pnl)=>({status:'complete',currency,pnl,entryCost:800,commission:0,fees:0,events:[]});
+ const req={user:{id:'synthetic'},accountReports:new Map([['gbp',resultFor('GBP',200)],['usd',resultFor('USD',100)]])};
+ const out=await convertForDisplay(req,{trades:[gbp,usd]},{rowCurrency:true});
+ expect(out.trades.map(t=>t.pnl)).toEqual([200,80]);expect(out.trades[0].entry_price).toBe(80);expect(out.trades[0].account_pnl_result.pnl).toBe(200);expect(gbp.pnl).toBe(260);
+});
