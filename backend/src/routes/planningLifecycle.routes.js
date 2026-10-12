@@ -35,7 +35,7 @@ async function evidence(c,p){
   const rates={USD:1,...fx?.rates};working={...p,marketRates:rates};const from=Number(rates[p.definition.currency]),to=Number(rates[target]);
   if(from>0&&to>0)working={...working,stopConversion:to/from,...(actualCurrencies.size===1?{provisionalConversion:{currency:target,rate:to/from}}:{})};
  }
- const result=ledger(working,allocations,trades);
+ const result=await require('../services/planningCashflows').enrich(c,working,ledger(working,allocations,trades),trades);
  if(fx)result.displayFx=fx;
  return result;
 }
@@ -106,8 +106,21 @@ router.get('/:id/workflow',run(async(req,res)=>{
  const journalAssessments=(await db.query('SELECT * FROM trade_plan_journal_assessments WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at DESC,id',[p.id,p.user_id])).rows;
  res.json({journalAssessments,fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
 }));
-function digest(result){return require('crypto').createHash('sha256').update(JSON.stringify(result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid,...(a.journal_evidence?{journalEvidence:a.journal_evidence}:{})})))).digest('hex')}
+function digest(result){const evidence=result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid,...(a.journal_evidence?{journalEvidence:a.journal_evidence}:{})}));if(result.cashflows?.entries?.length)evidence.push({cashflows:result.cashflows.entries.map(e=>({id:e.id,fingerprint:e.fingerprint,status:e.status,fraction:e.fraction,treatment:e.treatment}))});return require('crypto').createHash('sha256').update(JSON.stringify(evidence)).digest('hex')}
 
+router.post('/:id/cashflows',run(async(req,res)=>{
+ const input=Joi.object({version:Joi.number().integer().required(),cashEventId:uuid.required(),fingerprint:Joi.string().hex().length(64).required(),fraction:Joi.number().positive().max(1).required(),treatment:Joi.string().valid('include','already_included','exclude').required(),reason:Joi.string().trim().min(10).max(2000).required()}).validate(req.body,{convert:false});if(input.error)fail('Choose the cashflow, allocated percentage, treatment and reason');
+ await db.withTransaction(async c=>{const p=await lock(c,req);if(['completed','reviewed','cancelled'].includes(p.status))fail('Reopen this plan before changing cashflow attribution');
+ const event=(await c.query('SELECT id FROM broker_cash_events WHERE id=$1 AND user_id=$2 FOR UPDATE',[input.value.cashEventId,p.user_id])).rows[0];if(!event)fail('Cashflow not found',404);
+ const result=await evidence(c,p),trades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,[...new Set(result.records.map(r=>r.trade_id).filter(id=>id!=='provisional'))]])).rows;
+ const saved=await require('../services/planningCashflows').save(c,p,result,trades,input.value);
+ await c.query('UPDATE trade_plans SET review=NULL,version=version+1,updated_at=NOW() WHERE id=$1',[p.id]);await record(c,p,'cashflow_attributed',saved);
+ });res.json({success:true});
+}));
+router.delete('/:id/cashflows/:linkId',run(async(req,res)=>{
+ validId(req.params.linkId);if(typeof req.body.reason!=='string'||req.body.reason.trim().length<10||req.body.reason.length>2000)fail('Record why this attribution is being removed');
+ await db.withTransaction(async c=>{const p=await lock(c,req);if(['completed','reviewed','cancelled'].includes(p.status))fail('Reopen this plan before changing cashflow attribution');const old=(await c.query('DELETE FROM trade_plan_cashflow_links WHERE id=$1 AND user_id=$2 AND plan_id=$3 RETURNING *',[req.params.linkId,p.user_id,p.id])).rows[0];if(!old)fail('Cashflow attribution not found',404);await c.query('UPDATE trade_plans SET review=NULL,version=version+1,updated_at=NOW() WHERE id=$1',[p.id]);await record(c,p,'cashflow_attribution_removed',{previous:old,reason:req.body.reason.trim()});});res.json({success:true});
+}));
 router.post('/:id/chart',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
@@ -331,7 +344,7 @@ router.post('/:id/review',run(async(req,res)=>{
  if(schema.error)fail('Complete the review notes and process assessment');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.status==='completed')fail('Reopen this completed review first');
-  await require('../services/planningCommitments').requireResolved(c,p);const result=await evidence(c,p);if(!result.economicallyClosed)fail('Review completion requires all linked exposure to be exited and source evidence reconciled');
+  await require('../services/planningCommitments').requireResolved(c,p);const result=await evidence(c,p);if(result.cashflows?.unresolved)fail('Resolve changed cashflow sources or missing transaction-date FX before completing review');if(!result.economicallyClosed)fail('Review completion requires all linked exposure to be exited and source evidence reconciled');
   const missingJournal=result.records.filter(a=>a.action==='entry'&&!a.fill.provisional&&!a.journal_evidence);if(missingJournal.length&&schema.value.journalExceptionReason.trim().length<10)fail('Record why entry journal evidence is missing before completing review');
   const review={...schema.value,missingJournalEntryIds:missingJournal.map(a=>a.id),evidenceDigest:digest(result),result,completedAt:new Date().toISOString()};
   await c.query("UPDATE trade_plans SET review=$1::jsonb,status='reviewed',version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(review),p.id]);

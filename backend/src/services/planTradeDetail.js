@@ -31,7 +31,7 @@ function projectPlanTrade(source,plan,result,fx=null) {
   events:executions.flatMap((e,index)=>e.realized_pnl==null||e.accountProfit==null?[]:[{sourceIndex:index,pnl:e.accountProfit,gross_pnl:e.accountProfit,time:e.datetime}])};
  // The plan's asset is the market-data identity; the broker key stays on the
  // original record and source metadata. Options retain their contract symbol.
- const trade={...source,symbol:plan.definition.instrument==='option'?source.symbol:(plan.definition.symbol||source.symbol),underlying_symbol:plan.definition.symbol||source.underlying_symbol,plan_trade:{displayConversion:!!result.displayConversion,sourceSymbol:source.symbol,id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
+ const trade={...source,symbol:plan.definition.instrument==='option'?source.symbol:(plan.definition.symbol||source.symbol),underlying_symbol:plan.definition.symbol||source.underlying_symbol,plan_trade:{displayConversion:!!result.displayConversion,sourceSymbol:source.symbol,id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,cashflows:result.cashflows,tradeRealisedProfit:result.tradeRealisedProfit,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
   executions,quantity:result.entered,price:average(entries),entry_price:average(entries),exit_price:closed?average(exits):null,entry_time:entries[0]?.fill.time,exit_time:closed?exits.at(-1)?.fill.time:null,
   trade_date:entries[0]?.fill.time,pnl:result.realisedProfit,gross_pnl:result.realisedProfit==null?null:result.realisedProfit+costs,open_average_price:result.averagePrice,pnl_percent:result.percentGain,r_value:result.realisedR,commission:executions.reduce((s,e)=>s+e.commission,0),fees:executions.reduce((s,e)=>s+e.fees,0),
   original_currency:result.currency,original_entry_price_currency:null,account_currency:result.accountCurrency,account_pnl_result:report,
@@ -51,7 +51,7 @@ async function resolvePlanTrade(req,source){
  const allocations=(await db.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[plan.id,req.user.id])).rows;
  let trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[req.user.id,[...new Set(allocations.map(a=>a.trade_id))]])).rows;
  if(trades.some(t=>t.broker==='trading212')){const sources=require('./planBrokerFills');trades=sources.attachSources(trades,allocations,await sources.loadGroups(db,req.user.id));}
- const result=ledger({...plan,management:{}},allocations,trades);
+ const result=await require('./planningCashflows').enrich(db,plan,ledger({...plan,management:{}},allocations,trades),trades);
  const fx=result.accounts?.length>1?await require('./planningFx').latestPlanningFx():null;
  const trade=projectPlanTrade(source,plan,result,fx);
  if(plan.definition.currency!==result.currency){const fx=await require('./planningFx').latestPlanningFx();const rates={USD:1,...fx?.rates};trade.stop_loss=rates[result.currency]>0&&rates[plan.definition.currency]>0?plan.definition.stopPrice*rates[result.currency]/rates[plan.definition.currency]:null;}
