@@ -20,6 +20,7 @@ const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
 const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
 const upload = require('../middleware/upload');
+const { normalizeCsvBuffer, stripNullCharacters } = require('../utils/csv/encoding');
 const currencyConverter = require('../utils/currencyConverter');
 const path = require('path');
 const fs = require('fs').promises;
@@ -35,6 +36,8 @@ const Account = require('../models/Account');
 const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
+const { publishInBackground } = require('../events/domainEvents');
+const { publishEnrichmentCompleted } = require('../events/enrichmentEvents');
 const {
   detectImportAccounts,
   resolveAccountMode,
@@ -213,6 +216,7 @@ function getPositiveIntEnv(name, fallback) {
 
 const OPEN_POSITIONS_ALPACA_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_ALPACA_TIMEOUT_MS', 3000);
 const OPEN_POSITIONS_FINNHUB_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_FINNHUB_TIMEOUT_MS', 3000);
+const OPEN_POSITIONS_RANGE_TIMEOUT_MS = getPositiveIntEnv('OPEN_POSITIONS_RANGE_TIMEOUT_MS', 5000);
 const TRADE_LIST_PRICE_FRESH_MS = getPositiveIntEnv('TRADE_LIST_PRICE_FRESH_MS', 2 * 60 * 1000);
 
 const { resolvePostExitWindow } = require('../utils/postExitWindow');
@@ -505,6 +509,18 @@ async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD'
   }
 }
 
+// Webhook events for trades changed through these handlers. The v1 API wraps
+// some of them and publishes its own events (with bulk/index detail), so it
+// sets skipTradeEvents on the requests it delegates to avoid sending twice.
+function publishTradeEvent(eventType, req, payload) {
+  if (req.skipTradeEvents) return;
+  publishInBackground(eventType, payload, {
+    source: 'app.trades',
+    userId: req.user.id,
+    requestId: req.requestId || req.headers?.['x-request-id'] || null
+  });
+}
+
 const tradeController = {
   async getUserTrades(req, res, next) {
     const requestStartTime = Date.now();
@@ -696,6 +712,12 @@ const tradeController = {
           if (!date) return '';
           return new Date(date).toISOString().split('T')[0]; // YYYY-MM-DD
         };
+        // Full UTC timestamps so a re-import keeps entry/exit times.
+        const formatDateTime = (date) => {
+          if (!date) return '';
+          const parsed = new Date(date);
+          return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString();
+        };
 
         return [
           escapeCsv(trade.symbol),
@@ -703,8 +725,8 @@ const tradeController = {
           escapeCsv(trade.quantity),
           escapeCsv(trade.entry_price),
           escapeCsv(trade.exit_price),
-          formatDate(trade.entry_date),
-          formatDate(trade.exit_date),
+          formatDateTime(trade.entry_time) || formatDate(trade.trade_date),
+          formatDateTime(trade.exit_time),
           escapeCsv(trade.pnl),
           escapeCsv(trade.fees),
           escapeCsv(trade.commission),
@@ -840,6 +862,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+      publishTradeEvent('trade.created', req, { tradeId: trade.id, trade });
 
       // Fire-and-forget: fetch company metadata for new symbols created outside CSV import.
       ensureSymbolMetadata(trade.symbol).catch(() => {});
@@ -884,6 +907,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(201).json({ trade });
+      publishTradeEvent('trade.created', req, { tradeId: trade.id, trade });
     } catch (error) {
       next(error);
     }
@@ -905,6 +929,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.status(200).json({ trade });
+      publishTradeEvent('trade.updated', req, { tradeId, trade });
     } catch (error) {
       if (error.status) {
         return res.status(error.status).json({ error: error.message });
@@ -1120,6 +1145,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ trade });
+      publishTradeEvent('trade.updated', req, { tradeId: trade.id, trade });
 
       // Fire-and-forget: auto-calculate MAE/MFE if not manually provided (Pro only).
       // Skip per-field when the user supplied the value manually (e.g., futures, where free APIs have no candle data).
@@ -1165,6 +1191,7 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
       res.json({ message: 'Trade deleted successfully' });
+      publishTradeEvent('trade.deleted', req, { tradeId: req.params.id });
     } catch (error) {
       next(error);
     }
@@ -1373,6 +1400,14 @@ const tradeController = {
         });
       }
 
+      for (const newTradeId of newTradeIds) {
+        publishTradeEvent('trade.created', req, { tradeId: newTradeId, splitFromTradeId: req.params.id });
+      }
+      publishTradeEvent(isPartialSplit ? 'trade.updated' : 'trade.deleted', req, {
+        tradeId: req.params.id,
+        splitIntoTradeIds: newTradeIds
+      });
+
       res.json({
         message: isPartialSplit
           ? `Split ${newTradeIds.length} entry fill(s) into new trades, original trade updated`
@@ -1456,6 +1491,9 @@ const tradeController = {
           });
 
           deletedCount = deletedRows.length;
+          for (const row of deletedRows) {
+            publishTradeEvent('trade.deleted', req, { tradeId: row.id, bulk: true });
+          }
 
           // Any trade that vanished between the ownership check and the delete
           if (deletedRows.length < idsToDelete.length) {
@@ -1567,6 +1605,10 @@ const tradeController = {
 
         // Invalidate analytics cache once for this trade mutation
         await AnalyticsCache.invalidate(req.user.id);
+
+        for (const tradeId of idsToUpdate) {
+          publishTradeEvent('trade.updated', req, { tradeId, bulk: true, changedFields: ['tags'] });
+        }
       }
 
       res.json({
@@ -1588,6 +1630,13 @@ const tradeController = {
         req.body?.updates
       );
       res.json(result);
+
+      // The service rejects the whole batch unless every id is owned, so all were updated
+      const { ids, updates } = BulkTradeMetadataService.normalizeRequest(req.body?.trade_ids, req.body?.updates);
+      const changedFields = Object.keys(updates);
+      for (const tradeId of ids) {
+        publishTradeEvent('trade.updated', req, { tradeId, bulk: true, changedFields });
+      }
     } catch (error) {
       next(error);
     }
@@ -1595,12 +1644,20 @@ const tradeController = {
 
   async bulkUpdateStops(req, res, next) {
     try {
-      res.json(await BulkTradeStopsService.update(
+      const result = await BulkTradeStopsService.update(
         req.user.id,
         req.body?.trade_ids,
         req.body?.stops,
         req.body?.apply_default_to_missing
-      ));
+      );
+      res.json(result);
+      for (const change of result.changes) {
+        publishTradeEvent('trade.updated', req, {
+          tradeId: change.trade_id,
+          bulk: true,
+          changedFields: ['stop_loss', 'r_value']
+        });
+      }
     } catch (error) { next(error); }
   },
 
@@ -1907,7 +1964,7 @@ const tradeController = {
       }
 
       const { broker = 'auto' } = req.body;
-      const fileBuffer = req.file.buffer;
+      const fileBuffer = normalizeCsvBuffer(req.file.buffer);
 
       console.log('Selected broker:', broker);
       console.log('File name:', req.file.originalname);
@@ -1984,13 +2041,19 @@ const tradeController = {
         account_mode: accountModeInput = null,
         strategy: importStrategy = null,
         strategy_mode: strategyMode = 'auto',
-        include_notes: includeNotes = 'true'
+        include_notes: includeNotes = 'true',
+        source_timezone: source_timezone_input = null,
+        sourceTimezone: legacy_source_timezone = null
       } = req.body;
       const defaultImportStrategy = importStrategy && String(importStrategy).trim()
         ? String(importStrategy).trim()
         : null;
       const leaveImportedStrategyBlank = strategyMode === 'blank';
       const includeImportedNotes = String(includeNotes).toLowerCase() === 'true';
+      const requestedSourceTimezone = source_timezone_input ?? legacy_source_timezone;
+      const sourceTimezone = requestedSourceTimezone && String(requestedSourceTimezone).trim()
+        ? String(requestedSourceTimezone).trim()
+        : null;
       const accountMode = resolveAccountMode(accountModeInput, accountId);
       let selectedImportAccountIdentifier = null;
 
@@ -2018,6 +2081,14 @@ const tradeController = {
         }
       }
 
+      if (sourceTimezone) {
+        try {
+          new Intl.DateTimeFormat('en-US', { timeZone: sourceTimezone }).format();
+        } catch (_) {
+          return res.status(400).json({ error: 'Invalid source timezone' });
+        }
+      }
+
       console.log('Selected broker:', broker);
       console.log('Mapping ID:', mappingId);
       console.log('Account ID:', accountId);
@@ -2038,7 +2109,9 @@ const tradeController = {
       ]);
 
       // Copy file buffer and metadata to prevent issues if request is cleaned up
-      const fileBuffer = Buffer.from(req.file.buffer);
+      // UTF-16 exports are converted to UTF-8 so detection, parsing and the
+      // diagnostics we store all see the same text.
+      const fileBuffer = normalizeCsvBuffer(Buffer.from(req.file.buffer));
       const fileName = req.file.originalname;
       const fileUserId = req.user.id;
 
@@ -2253,6 +2326,7 @@ const tradeController = {
             fileName,
             importId,
             userTimezone,
+            sourceTimezone,
             tradeGroupingSettings: {
               enabled: userSettings.enable_trade_grouping ?? true,
               timeGapMinutes: userSettings.trade_grouping_time_gap_minutes ?? 60
@@ -2833,6 +2907,16 @@ const tradeController = {
             WHERE id = $3
           `, [imported, failed, importId, errorDetails]);
 
+          publishInBackground('import.completed', {
+            importId,
+            status: 'completed',
+            broker,
+            fileName,
+            imported,
+            failed,
+            duplicates
+          }, { source: 'app.import', userId: fileUserId });
+
           if (imported > 0) {
             await OptionStrategyGroupingService.rebuildUserGroupsSafe(fileUserId, 'CSV import');
           }
@@ -2922,7 +3006,7 @@ const tradeController = {
                 fileName,
                 detectedBroker,
                 broker,
-                JSON.stringify({ error: error.message }),
+                JSON.stringify(stripNullCharacters({ error: error.message })),
                 sampleData?.substring(0, 10000) || null
               ]);
             } catch (recordErr) {
@@ -2935,7 +3019,15 @@ const tradeController = {
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
             WHERE id = $2
-          `, [{ error: error.message, stack: error.stack }, importId]);
+          `, [stripNullCharacters({ error: error.message, stack: error.stack }), importId]);
+
+          publishInBackground('import.completed', {
+            importId,
+            status: 'failed',
+            broker,
+            fileName,
+            error: error.message
+          }, { source: 'app.import', userId: fileUserId });
         }
       });
 
@@ -3421,6 +3513,58 @@ const tradeController = {
     } catch (error) {
       console.log('[PERF] getOpenPositionsWithQuotes total time before error:', Date.now() - requestStartedAt, 'ms');
       console.error('Failed to get open positions:', error);
+      next(error);
+    }
+  },
+
+  // 52-week high/low per symbol for the open positions range view. Kept off
+  // the polled quotes endpoint: the values move once a day (getBasicFinancials
+  // caches them for 24h) and only users who open the range view pay for them.
+  async getOpenPositionRanges(req, res, next) {
+    try {
+      const symbols = [...new Set(
+        ensureString(req.query.symbols || '')
+          .split(',')
+          .map(symbol => symbol.trim().toUpperCase())
+          .filter(symbol => /^[A-Z0-9.\-]{1,20}$/.test(symbol))
+      )].slice(0, 50);
+
+      const ranges = {};
+      if (symbols.length === 0 || !finnhub.isConfigured()) {
+        return res.json({ ranges });
+      }
+
+      const finite = (value) => {
+        const number = Number(value);
+        return Number.isFinite(number) && number > 0 ? number : null;
+      };
+
+      await Promise.all(symbols.map(async (symbol) => {
+        try {
+          const data = await withTimeout(
+            finnhub.getBasicFinancials(symbol, {
+              source: 'open_positions_ranges',
+              priority: 0,
+              background: false,
+              userId: req.user.id,
+              maxQueueWaitMs: OPEN_POSITIONS_RANGE_TIMEOUT_MS
+            }),
+            OPEN_POSITIONS_RANGE_TIMEOUT_MS,
+            'Open positions 52-week range fetch'
+          );
+          const week_52_high = finite(data?.metric?.['52WeekHigh']);
+          const week_52_low = finite(data?.metric?.['52WeekLow']);
+          ranges[symbol] = week_52_high && week_52_low && week_52_high > week_52_low
+            ? { week_52_high, week_52_low }
+            : null;
+        } catch (rangeError) {
+          console.warn(`[RANGES] No 52-week range for ${symbol}: ${rangeError.message}`);
+          ranges[symbol] = null;
+        }
+      }));
+
+      res.json({ ranges });
+    } catch (error) {
       next(error);
     }
   },
@@ -4999,6 +5143,7 @@ const tradeController = {
       `;
 
       const result = await db.query(updateQuery, [userId]);
+      publishEnrichmentCompleted(userId, result.rows.map(row => row.id), 'force_completed', 'app.enrichment');
 
       // Clear any pending jobs from the job queue for this user
       const clearJobsQuery = `

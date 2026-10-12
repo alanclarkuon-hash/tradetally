@@ -130,3 +130,22 @@ test('a known exchange closure does not trigger any price download',async()=>{
 });
 
 test('flat holdings with missing early prices cannot publish fabricated return metrics',async()=>{const days=['2026-01-05','2026-01-06','2026-01-07'],row=d=>({time:Date.parse(d)/1000,close:100});const spies=[jest.spyOn(PortfolioService,'getPreferences').mockResolvedValue({defaultBenchmarkSymbol:'SPY'}),jest.spyOn(PortfolioService,'_getPositionComponents').mockResolvedValue(['AAA','BBB'].map(symbol=>({symbol,instrumentType:'stock',shares:1,valueMultiplier:1,effectiveDate:'2025-01-01'}))),jest.spyOn(PortfolioService,'_getDailySeries').mockResolvedValue(days.map(row)),jest.spyOn(PortfolioService,'_getPriceSeriesMap').mockResolvedValue(new Map([['AAA',days.map(row)],['BBB',[row(days[2])]]]))];try{const r=await PortfolioService._getPerformance('synthetic',{start_date:days[0],end_date:days[2]});expect(r.historyIncomplete).toBe(true);expect(Object.values(r.metrics).every(v=>v===null)).toBe(true);expect(r.series).toEqual([]);}finally{spies.forEach(s=>s.mockRestore());}});
+
+
+test('new nightly warmup shares the currency-safe pipeline rather than writing native foreign candles',async()=>{
+ const db=require('../../src/config/database');
+ db.query.mockImplementation(async sql=>({rows:sql.includes('MIN(eff)')?[{symbol:'SYNTH.L',earliest:'2026-08-01'}]:[]}));
+ cache.getUnavailableSymbols=jest.fn().mockResolvedValue(new Set());
+ cache.markUnavailable=jest.fn();
+ cache.clearUnavailable=jest.fn().mockResolvedValue();
+ const daily=jest.spyOn(PortfolioService,'_getDailySeries').mockResolvedValue([candle]);
+ const raw=jest.spyOn(PortfolioService,'_fetchRangeFromProvider');
+ try {
+  const result=await PortfolioService.refreshHeldSymbolHistory('2026-08-31');
+  expect(result.backfilled).toBeGreaterThan(0);
+  expect(daily).toHaveBeenCalledWith('SYNTH.L',expect.any(String),'2026-08-31',null,{instrumentType:'stock'});
+  expect(raw).not.toHaveBeenCalled();
+  expect(cache.insertCandles).not.toHaveBeenCalled();
+  expect(cache.markUnavailable).not.toHaveBeenCalled();
+ } finally {daily.mockRestore();raw.mockRestore();}
+});
