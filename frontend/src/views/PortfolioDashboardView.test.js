@@ -45,6 +45,22 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('shows the selected price timestamp and source beneath the heatmap',async()=>{
+    useAuthStore().user.timezone='Europe/London'
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
+      {symbol:'AAA',value:80,pnlPercent:1,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:'2026-10-12T12:34:56Z',quoteSource:'yahoo',quoteTimestampKind:'trade'},
+      {symbol:'BBB',value:70,pnlPercent:0,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:null,quoteSource:null}
+    ]}:{change:25}}))
+    const view=create();await flushPromises()
+    await view.findAll('.holding-tile')[0].trigger('click')
+    expect(view.find('.saved-quote').text()).toContain('12/10/2026, 13:34:56 BST')
+    expect(view.find('.saved-quote').text()).toContain('Source Yahoo Finance')
+    await view.findAll('.holding-tile')[1].trigger('click')
+    expect(view.find('.saved-quote').text()).toBe('Saved market quote Unavailable · Source Unavailable')
+    view.unmount()
+  })
+
+
   it('uses crypto identities for heatmap logos and omits logos from tiny holdings',async()=>{
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
       {symbol:'SUI',value:80,assetClass:'Crypto assets',category:'Layer 1'},

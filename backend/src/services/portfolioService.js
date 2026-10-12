@@ -1424,6 +1424,7 @@ class PortfolioService {
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
       position.quoteSession = useBroker ? null : cached?.quote_session || null;
       position.quoteTimestampKind=useBroker?'observed':cached?.timestamp_kind||'observed';
+      position.quoteSource = useBroker ? `Broker snapshot (${position.brokers || 'unknown'})` : cached?.data_source || null;
       position.priceStale = priceStale;
     }
 

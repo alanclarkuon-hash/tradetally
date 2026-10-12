@@ -47,7 +47,7 @@
             </button>
           </div></div>
         </div><p v-else class="empty">No priced holdings for these accounts.</p>
-        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span v-if="focus.name">{{ focus.name }}</span><span>{{ focus.sector ? `${focus.sector} → ` : '' }}{{ focus.industry }}</span><span>Value <b>{{ formatCurrency(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ formatSignedCurrency(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
+        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span v-if="focus.name">{{ focus.name }}</span><span>{{ focus.sector ? `${focus.sector} → ` : '' }}{{ focus.industry }}</span><span>Value <b>{{ formatCurrency(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ formatSignedCurrency(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span><span class="saved-quote">Saved market quote <b>{{ quoteDateTime(focus) }}</b> · Source <b>{{ quoteSourceLabel(focus.quoteSource) }}</b><span v-if="focus.quoteTimestampKind==='observed' && !data.heatmapDate"> · observation time</span></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
         <details v-if="focus?.categories?.length" class="coverage"><summary>{{ focus.categorySource }} labels for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
         <p v-if="focus?.categoryOverride" class="coverage">Manual grouping correction: {{ focus.categoryOverride.override_reason }} <a :href="focus.categoryOverride.source_url" target="_blank" rel="noopener noreferrer" class="underline">Review source</a></p>
         <p class="scope-note">Stocks use FinanceDatabase sector and industry classifications, which are community reference data and may be outdated or incorrect. Funds & ETFs use Yahoo Finance categories; crypto uses CoinGecko themes with AI taking priority. Your correction files take precedence for all three asset classes.</p>
@@ -116,6 +116,15 @@ const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
 const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.coverage??{})
 const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
+const quoteSourceLabel=source=>({trading212:'Trading 212',etoro:'eToro',okx:'OKX',kraken:'Kraken',ig:'IG',schwab:'Schwab',yahoo:'Yahoo Finance',finnhub:'Finnhub',coingecko:'CoinGecko',alpaca:'Alpaca'})[source] || source || 'Unavailable'
+const quoteDateTime=holding=>{
+  const value=holding.priceAsOf
+  if(!value)return 'Unavailable'
+  if(/^\d{4}-\d{2}-\d{2}$/.test(value))return `${value} · time unavailable`
+  const date=new Date(value)
+  if(!Number.isFinite(date.getTime()))return 'Unavailable'
+  return new Intl.DateTimeFormat('en-GB',{timeZone:authStore.user?.timezone||'UTC',dateStyle:'short',timeStyle:'long'}).format(date)
+}
 const quoteClock=ref(Date.now())
 let quoteClockTimer
 onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now()},30000)})
