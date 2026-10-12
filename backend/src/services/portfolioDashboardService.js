@@ -87,17 +87,16 @@ async function getDashboard(userId, query={}, historical=null) {
   const candidates=positions.filter(p=>p.instrumentType!=='crypto');
   const funds=new Map();
   const yahoo=require('../utils/yahooFinance');
-  for(let i=0;i<candidates.length;i+=4) {
-    await Promise.all(candidates.slice(i,i+4).map(async p=>{
-      const profile=await yahoo.getSymbolProfile(p.symbol);
-      if(['ETF','MUTUALFUND'].includes(profile?.quoteType)) {
-        industriesBySymbol.set(p.symbol,'Funds & ETFs');
-        funds.set(p.symbol,await require('./fundCategoriesService').getCategories(p.symbol));
-      } else if(profile?.industry)industriesBySymbol.set(p.symbol,profile.industry);
-    }));
+  const metadata=await require('./portfolioDisplayMetadata').getDisplayMetadata(candidates.map(p=>p.symbol));
+  for(const p of candidates) {
+    const saved=metadata.records.get(p.symbol),profile=saved?.profile;
+    if(['ETF','MUTUALFUND'].includes(profile?.quoteType)) {
+      industriesBySymbol.set(p.symbol,'Funds & ETFs');
+      funds.set(p.symbol,saved.fund_categories || null);
+    } else if(profile?.industry)industriesBySymbol.set(p.symbol,profile.industry);
   }
   const stockClassifications=await require('./assetClassificationService').getClassifications(
-    candidates.filter(p=>p.instrumentType==='stock' && !funds.has(p.symbol)).map(p=>p.symbol));
+    candidates.filter(p=>p.instrumentType==='stock' && !funds.has(p.symbol)).map(p=>p.symbol),{background:true});
   const cryptoRates={};
   for(const row of snapshots.rows)Object.assign(cryptoRates,row.payload.valuation?.rates || {});
   const lotMap=new Map();
@@ -176,7 +175,7 @@ async function getDashboard(userId, query={}, historical=null) {
   const cashValue=cashRows.reduce((s,a)=>s+(a.amount??0),0);
   const completePnl=holdings.every(p=>p.pnl!=null);
   const basis=holdings.reduce((s,p)=>s+(p.pnlBasis??0),0);
-  const dashboard={currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
+  const dashboard={metadataUpdating:metadata.updating || stockClassifications.refreshing === true,currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
       knownPnl:holdings.some(p=>p.pnl!=null)?holdings.reduce((s,p)=>s+(p.pnl??0),0):null,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},

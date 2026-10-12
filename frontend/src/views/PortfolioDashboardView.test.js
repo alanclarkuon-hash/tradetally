@@ -45,6 +45,19 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('refreshes background metadata without recapturing history and stops after completion',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
+    let calls=0
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,metadataUpdating:++calls===1}:{change:25}}))
+    const view=create();await flushPromises()
+    expect(calls).toBe(1)
+    const captures=mock.post.mock.calls.length
+    await vi.advanceTimersByTimeAsync(5000);await flushPromises()
+    expect(calls).toBe(2);expect(mock.post.mock.calls.length).toBe(captures)
+    await vi.advanceTimersByTimeAsync(10000);expect(calls).toBe(2)
+    view.unmount();vi.useRealTimers()
+  })
+
   it('uses crypto identities for heatmap logos and omits logos from tiny holdings',async()=>{
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
       {symbol:'SUI',value:80,assetClass:'Crypto assets',category:'Layer 1'},
