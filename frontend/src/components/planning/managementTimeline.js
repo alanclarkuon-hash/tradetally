@@ -22,6 +22,7 @@ export function describeManagementEvent(event,definition={}){
  if(event.event_type==='stop_changed')return [{title:'SL invalidation level changed',detail:money(s.previous,currency)+' → '+money(s.next,currency)+(s.reason?' · '+s.reason:'')}]
  if(event.event_type==='option_rolled')return [{title:'Option rolled for credit',detail:(s.netCredit!=null?money(s.netCredit,currency)+' · ':'')+(s.reason||'')}]
  if(event.event_type==='entry_committed')return [{title:'Entry committed · '+(s.stage?.label||'Awaiting execution'),detail:s.reason||''}]
+ if(event.event_type==='commitment_fill_reconciled')return [{title:s.status==='released'?'Entry order fully filled':'Entry order partially filled',detail:quantity(s.remainingQuantity)+' units unfilled · '+money(s.remainingRisk,currency)+' reserved'}]
  if(event.event_type==='commitment_released')return [{title:'Unfilled entry commitment released',detail:s.reason||''}]
  return []
 }
