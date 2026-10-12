@@ -119,7 +119,7 @@ const executions=[{id:'a',action:'buy',quantity:10,price:100,datetime:'2026-01-0
   assert.equal(grouped.openQuantity,1.5,'combined entry quantity');
   assert.equal(grouped.averagePrice,100,'weighted entry price');assert.equal(grouped.unresolved,0,'grouped FX links survive JSONB property ordering');assert.equal(grouped.accountPositionValue,120,'grouped broker FX entry cost');assert.equal(grouped.records.reduce((sum,r)=>sum+r.positionValue,0),150,'grouped entry cost');
   const available=await fetch(unlinkBase+'/fills').then(r=>r.json());
-  assert.equal(available.fills.some(f=>unlinkTrades.slice(0,2).includes(f.tradeId)),false,'fully and partially allocated fills are hidden');
+  assert.equal(available.fills.find(f=>f.tradeId===unlinkTrades[0]).available,.5,'remaining partial fill stays available');assert.equal(available.fills.some(f=>f.tradeId===unlinkTrades[1]),false,'fully allocated fill is hidden');
   assert.equal((await linkRow(0,'a')).status,409,'used fill cannot be linked again');
 
   assert.equal((await linkRow(2,'b')).status,201,'exit linked');

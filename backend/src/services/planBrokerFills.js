@@ -39,7 +39,7 @@ function usedQuantity(group,allocations){
  return allocations.reduce((sum,a)=>sum+(a.source_snapshot?.brokerExecution?.key===group.key||a.source_key===group.key||group.parts.some(p=>p.key&&p.tradeId===a.trade_id&&p.key===a.source_key)?Number(a.quantity):0),0);
 }
 function availableGroups(groups,allocations){
- return groups.filter(g=>g.valid&&!allocations.some(a=>a.source_snapshot?.brokerExecution?.key===g.key||a.source_key===g.key)).map(g=>({...g.fill,available:stableNumber(Math.max(0,g.quantity-usedQuantity(g,allocations)))})).filter(f=>f.available>1e-8).sort((a,b)=>b.time.localeCompare(a.time)||a.key.localeCompare(b.key));
+ return groups.filter(g=>g.valid).map(g=>({...g.fill,allocated:usedQuantity(g,allocations),sharedPlans:[...new Set(allocations.filter(a=>a.source_snapshot?.brokerExecution?.key===g.key||a.source_key===g.key||g.parts.some(p=>p.key&&p.tradeId===a.trade_id&&p.key===a.source_key)).map(a=>a.plan_id).filter(Boolean))],available:stableNumber(Math.max(0,g.quantity-usedQuantity(g,allocations)))})).filter(f=>f.available>1e-8).sort((a,b)=>b.time.localeCompare(a.time)||a.key.localeCompare(b.key));
 }
 async function loadGroups(client,userId,account=null,symbol=null,locked=false,aliases=[]){
  const params=[userId,account,symbol,aliases];

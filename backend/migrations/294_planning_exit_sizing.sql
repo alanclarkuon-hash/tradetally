@@ -1,0 +1,1 @@
+ALTER TABLE trade_plans ADD COLUMN IF NOT EXISTS exit_sizing JSONB NOT NULL DEFAULT '{}'::jsonb;
