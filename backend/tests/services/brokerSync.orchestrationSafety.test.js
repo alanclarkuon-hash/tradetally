@@ -53,7 +53,7 @@ test('successful imports commit before history is queued and do not wait for cha
  const result=await service.syncConnection('connection');
  expect(result.success).toBe(true);expect(result.historyJobId).toBe('history-job');
  expect(events.indexOf('completed')).toBeLessThan(events.indexOf('history'));
- expect(require('../../src/services/brokerPortfolioMaintenance').maintain).not.toHaveBeenCalled();
+ expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner',{broker:'ibkr'});
  expect(ibkr.syncTrades).toHaveBeenCalledTimes(1);
 });
 

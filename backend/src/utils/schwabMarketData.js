@@ -205,11 +205,12 @@ class SchwabMarketData {
         l: quote.lowPrice,            // Day low (LOD)
         o: quote.openPrice,           // Open price
         pc: quote.closePrice,         // Previous close
-        t: Date.now() / 1000,         // Timestamp
+        t: require('./quoteTimestamp').tradeTimestamp(quote.tradeTime),         // Timestamp
         // Additional Schwab-specific fields
         bid: quote.bidPrice,
         ask: quote.askPrice,
         volume: quote.totalVolume,
+        timestampKind: require('./quoteTimestamp').tradeTimestamp(quote.tradeTime)?'trade':'observed',
         source: 'schwab'
       };
 
@@ -282,7 +283,7 @@ class SchwabMarketData {
             l: quote.lowPrice,
             o: quote.openPrice,
             pc: quote.closePrice,
-            t: Date.now() / 1000,
+            t: require('./quoteTimestamp').tradeTimestamp(quote.tradeTime),
             source: 'schwab'
           };
         }

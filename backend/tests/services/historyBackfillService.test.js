@@ -58,3 +58,5 @@ test('existing displayed gaps are recalculated without fetching prices; only ful
  expect(result.complete).toBe(1); expect(result.gaps).toHaveLength(1); expect(result.gaps[0].symbol).toBe('BTC');
  expect(portfolio._getDailySeries).not.toHaveBeenCalled();
 });
+
+test('an active job is shown before a newer queued follow-up',async()=>{db.query.mockResolvedValue({rows:[{id:'queued',status:'pending',created_at:'2026-01-02',result:{}},{id:'active',status:'processing',created_at:'2026-01-01',result:{processed:1,total:2}}]});const r=await service.status('owner');expect(r.map(j=>j.id)).toEqual(['active','queued']);expect(db.query.mock.calls[0][0]).toContain("WHEN 'processing' THEN 0");});

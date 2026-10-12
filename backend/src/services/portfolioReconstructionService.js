@@ -80,29 +80,55 @@ function parseYahoo(result) {
  return {currency:unit.code,prices,splits,source:'Yahoo daily close; later splits reversed; minor units normalized'};
 }
 
+// Merge only verified missing sessions; failed downloads retain earlier history.
 async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
- if(symbol.endsWith('-USD')) {
-  const coin=symbol.slice(0,-4);
-  const rows=fetchPrices&&userId?await require('./portfolioService')._getDailySeries(coin,from,to,userId,{instrumentType:'crypto'}):await require('../utils/historicalPriceCache').getRange('CRYPTO:'+coin,from,to);
-  const prices=new Map((cached?.prices||[]).map(p=>[p.date,p]));
-  for(const c of rows){const d=date(c.time*1000);if(!prices.has(d))prices.set(d,{date:d,close:c.close});}
-  if(prices.size){const payload={...cached,currency:'USD',prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),splits:[],from:cached?.from<from?cached.from:from,to:cached?.to>to?cached.to:to,source:'Shared broker/provider historical USD prices'};
-   if(fetchPrices)await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[symbol,payload]);
-   return payload;
-  }
-  return cached||null;
- }
- if(cached&&cached.from<=from&&cached.to>=to)return cached;
  if(!fetchPrices)return cached||null;
+ const crypto=symbol.endsWith('-USD'),ticker=crypto?symbol.slice(0,-4):symbol;
+ const calendar=crypto?null:await require('./exchangeCalendar').resolve(ticker,{allowLookup:true});
+ const candles=(cached?.prices||[]).map(p=>({time:Date.parse(p.date)/1000,close:p.close}));
+ const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
+ if(!gaps.length)return cached;
+ let currency=cached?.currency||(crypto?'USD':null),splits=[...(cached?.splits||[])];
+ const incoming=new Map();
  try {
-  const response=await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,{
-   params:{interval:'1d',period1:Math.floor(Date.parse(from)/1000)-7*86400,period2:Math.floor(Date.parse(to)/1000)+86400,events:'splits'},
-   timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally portfolio history'}});
-  const payload={...parseYahoo(response.data.chart.result[0]),from,to};
-  await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[symbol,payload]);
-  return payload;
- }catch{return null;} // Do not print request objects or broker credentials.
+  for(const gap of gaps){
+   // Shared finalized daily prices use broker-first routing and USD units.
+   const shared=userId?await require('./portfolioService')._getDailySeries(ticker,gap.from,gap.to,userId,{instrumentType:crypto?'crypto':'stock',background:false}):[];
+   let native=null;
+   if(!crypto){
+    try {
+     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(ticker),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
+     const result=response.data?.chart?.result?.[0];
+     if(result?.meta?.symbol&&result.meta.symbol.toUpperCase()!==ticker.toUpperCase())throw Error('Different listing');
+     native=parseYahoo(result);
+    } catch { /* Cached native metadata remains usable; do not invent currencies. */ }
+    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;
+     for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
+    }
+   }
+   if(!currency)continue;
+   const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
+   for(const row of rows){
+    if(row.date<gap.from||row.date>gap.to||!(row.close>0))continue;
+    const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
+    if(!(factor>0))continue;
+    const later=row.adjusted?splits.filter(s=>s.date>row.date):splits.filter(s=>s.date>row.date&&!native?.splits.some(n=>n.date===s.date));
+    incoming.set(row.date,{date:row.date,close:row.close*factor*later.reduce((v,s)=>v*s.ratio,1)});
+   }
+  }
+  if(!incoming.size)return cached||null;
+  return await db.withTransaction(async client=>{
+   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['reconstruction-prices:'+symbol]);
+   const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[symbol])).rows[0]?.payload;
+   const old=current||cached;
+   if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
+   const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
+   const prices=new Map((old?.prices||[]).map(p=>[p.date,p]));for(const [d,p] of incoming)if(!prices.has(d))prices.set(d,p);
+   const payload={...old,currency,splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
+   await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[symbol,payload]);return payload;
+  });
+ }catch{return cached||null;}
 }
 
 async function loadFx(from,to,{fetchPrices=false}={}) {
@@ -306,8 +332,9 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    rows.push({...value,date:d,gbp_per_usd:fx('GBP',d)>0?1/fx('GBP',d):null});
   }
   if(apply)await db.withTransaction(async client=>{
-   await client.query('DELETE FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3',[userId,identifier,writeFrom]);
-   for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
+   const previous=(await client.query('SELECT * FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3 FOR UPDATE',[userId,identifier,writeFrom])).rows;
+   for(const r of rows){const prior=previous.find(p=>date(p.value_date)===r.date);if(prior&&prior.holdings_usd!=null&&(r.holdings_usd==null||(r.issues.some(i=>i.startsWith(estimatePrefix))&&!prior.issues?.some(i=>i.startsWith(estimatePrefix))))){Object.assign(r,{holdings_usd:Number(prior.holdings_usd),cash_usd:prior.cash_usd==null?null:Number(prior.cash_usd),stablecoins_usd:prior.stablecoins_usd==null?null:Number(prior.stablecoins_usd),gbp_per_usd:prior.gbp_per_usd==null?null:Number(prior.gbp_per_usd),issues:[...new Set([...(prior.issues||[]),...r.issues,'Existing history retained while missing coverage is retried'])]});}} 
+   for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(user_id,account_identifier,value_date) DO UPDATE SET holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,stablecoins_usd=EXCLUDED.stablecoins_usd,gbp_per_usd=EXCLUDED.gbp_per_usd,issues=EXCLUDED.issues,method=EXCLUDED.method,reconstructed_at=NOW()`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
   });
   const valid=rows.filter(r=>r.holdings_usd!=null);
   summaries.push({broker:account.broker,days:valid.length,estimatedDays:valid.filter(r=>r.issues.length).length,first:valid[0]?.date,last:valid.at(-1)?.date,gaps:rows.length-valid.length,issues:[...new Set(rows.flatMap(r=>r.issues))]});
@@ -315,4 +342,4 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
  }
  return summaries;
 }
-module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares,migrationPriceAliases};
+module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares,migrationPriceAliases,loadMarket};

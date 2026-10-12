@@ -25,5 +25,10 @@ test('reconstruction uses CFD equity and keeps commodity stock collisions as zer
  await reconstruct('synthetic-owner',{broker:'etoro',zeroMissingPrices:true,apply:true});
  expect(persisted.map(args=>args[3])).toEqual([40,60,50]);
  expect(persisted.map(args=>args[4])).toEqual([100,100,100]);
+ persisted.length=0;
+ db.withTransaction=async fn=>fn({query:async(sql,args)=>{if(sql.startsWith('SELECT * FROM portfolio_reconstructed_values'))return {rows:[{value_date:'2024-01-01',holdings_usd:99,cash_usd:88,stablecoins_usd:0,gbp_per_usd:.8,issues:[]}]};if(sql.startsWith('INSERT INTO portfolio_reconstructed_values'))persisted.push(args);return {rows:[]};}});
+ await reconstruct('synthetic-owner',{broker:'etoro',zeroMissingPrices:true,apply:true});
+ expect(persisted[0].slice(3,5)).toEqual([99,88]);
+ expect(persisted[0][7]).toContain('Existing history retained');
  jest.useRealTimers();
 });

@@ -34,3 +34,5 @@ it('shows listing-calendar lookup progress separately from price downloads',asyn
  expect(view.text()).toContain('Checking exchange calendar for ETF · 3/8 listings checked')
  view.unmount()
 })
+
+it('keeps active progress visible when a newer follow-up is queued',async()=>{api.get.mockResolvedValue({data:{data:[{id:'queued',status:'pending',gaps:[],portfolioWarnings:[]},{id:'active',status:'processing',processed:2,total:4,currentSymbol:'SYNTH',gaps:[],portfolioWarnings:[]}]}});const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('Downloading SYNTH');expect(view.text()).toContain('Another history update is queued');view.unmount();});
