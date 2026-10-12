@@ -8,7 +8,7 @@ const hash=require('crypto').createHash('sha256').update(JSON.stringify('synthet
 beforeEach(()=>{
  jest.resetAllMocks();
  read.mockResolvedValue({username:'synthetic',start:'2025-01-02',end:'2025-01-03',equity:{openingTotalUSD:110,closingTotalUSD:150},statement:{'Account Activity':[{Date:'02/01/2025 00:00:00'}]}});
- prepare.mockReturnValue({records:[{reference:'two',cash:20}]});
+ prepare.mockReturnValue({records:[{reference:'two',time:'2025-01-02T00:00:00.000Z',cash:20}]});
  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('broker_connections')?[{account_identifier:'owned',currency:'USD',initial_balance_date:'2025-01-01',broker_metadata:{statement_identity_hash:hash}}]:[{to_date:'2025-01-03',starting_cash:0,records:[{date:'2025-01-01',time:'2025-01-01T00:00:00.000Z',reference:'one',cash:100},{date:'2025-01-02',time:'2025-01-02T00:00:00.000Z',reference:'two',cash:20}]}]}));
 });
 test('captures broker statement total minus independently reconciled cash, without importing payments',async()=>{
@@ -50,4 +50,17 @@ test('unavailable FX prevents an incomplete confirmed GBP value from being writt
  require('../src/utils/currencyConverter').getRateMap.mockResolvedValue({GBP:null});
  await expect(captureEtoroStatement('owner','account',Buffer.alloc(0))).rejects.toThrow('Dated GBP conversion');
  expect(client.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
+});
+
+test('accepts verified split reference revisions while valuing original saved cash',()=>{
+ const {etoroPoints}=require('../src/services/portfolioStatementHistoryService');
+ const row={date:'2025-01-02',time:'2025-01-02T00:00:00.000Z',reference:'old',sourceType:'corp action: Split',type:null,amount:0,cash:0,details:'Example split',positionId:'old-position'};
+ prepare.mockReturnValue({records:[{...row,reference:'revised',positionId:'new-position'}]});
+ const account={currency:'USD',initial_balance_date:'2025-01-01',broker_metadata:{statement_identity_hash:hash}};
+ const report={to_date:'2025-01-03',starting_cash:100,records:[row]};
+ const upload={username:'synthetic',start:'2025-01-02',end:'2025-01-03',equity:{openingTotalUSD:110,closingTotalUSD:150},statement:{'Account Activity':[{Date:'02/01/2025 00:00:00'}]}};
+ expect(etoroPoints(account,report,upload)).toEqual([{date:'2025-01-01',cash:100,holdings:10},{date:'2025-01-03',cash:100,holdings:50}]);
+ expect(report.records[0]).toEqual(row);
+ prepare.mockReturnValue({records:[{...row,cash:1}]});
+ expect(()=>etoroPoints(account,report,upload)).toThrow('differs');
 });
