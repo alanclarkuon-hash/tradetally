@@ -18,3 +18,5 @@ describe('management action descriptions',()=>{
 })
 
 it('describes a quantity override reset as returning to calculated sizing',()=>{expect(describeManagementEvent(event({entry:{a:{executed:false,units:0}}},{entry:{a:{executed:false,units:null}}}),definition)).toEqual([{title:'Entry quantity changed · Fib 0.616',detail:'0 → Calculated'}])})
+
+it('describes partial and completed order reservation replacement',()=>{expect(describeManagementEvent({event_type:'commitment_fill_reconciled',snapshot:{status:'reserved',remainingQuantity:8,remainingRisk:80,currency:'USD'}})[0]).toEqual({title:'Entry order partially filled',detail:'8 units unfilled · US$80.00 reserved'});expect(describeManagementEvent({event_type:'commitment_fill_reconciled',snapshot:{status:'released',remainingQuantity:0,remainingRisk:0,currency:'USD'}})[0].title).toBe('Entry order fully filled')});

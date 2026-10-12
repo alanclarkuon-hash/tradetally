@@ -146,7 +146,8 @@ router.post('/:id/allocations',run(async(req,res)=>{
  await db.withTransaction(async c=>{
   const p=await lock(c,req);
   if(!p.finalised||['cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
-  if(body.fills&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
+  const appendingReservedEntry=body.action==='entry'&&(await c.query("SELECT id FROM trade_plan_commitments WHERE plan_id=$1 AND user_id=$2 AND stage_key=$3 AND status='reserved'",[p.id,p.user_id,body.stageKey])).rows.length>0;
+  if(body.fills&&!appendingReservedEntry&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
   for(const selected of body.fills||[body]){
   const b={...body,...selected};
   const source=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!source)fail('Trade not found',404);
@@ -169,7 +170,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(current.unresolved)fail('Resolve changed source fills before adding allocations',409);
   const candidate={id:'pending',trade_id:t.id,source_key:f.key,stage_key:b.stageKey,action:b.action,quantity:b.quantity,source_snapshot:f};
   const existing=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
-  if(!body.fills&&existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
+  if(!body.fills&&!appendingReservedEntry&&existing.some(a=>a.action===b.action&&a.stage_key===b.stageKey&&a.trade_id!==t.id))fail('Unlink the current trade before linking another trade to this row',409);
   const tradeIds=[...new Set([...existing.map(a=>a.trade_id),t.id])];
   let allTrades=(await c.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[p.user_id,tradeIds])).rows;
   if(canonical||existing.some(a=>a.source_snapshot?.brokerExecution))allTrades=brokerFills.attachSources(allTrades,[...existing,candidate],await brokerFills.loadGroups(c,p.user_id));
@@ -190,7 +191,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   }
   p.baseline=baseline;
   // Reconcile an unfilled reservation when its actual entry is allocated.
-  if(b.action==='entry')await c.query("UPDATE trade_plan_commitments SET status='released',released_at=NOW(),release_reason='Reconciled with linked source fill' WHERE plan_id=$1 AND stage_key=$2 AND status='reserved'",[p.id,b.stageKey]);
+  if(b.action==='entry')await require('../services/planningCommitments').reconcileRow(c,p,b.stageKey);
   await record(c,p,'trade_linked',{tradeId:t.id,sourceKey:f.key,stageKey:b.stageKey,action:b.action,quantity:b.quantity,source:f});
   }
   await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(p.baseline),p.id]);
@@ -314,7 +315,7 @@ router.post('/:id/review',run(async(req,res)=>{
  if(schema.error)fail('Complete the review notes and process assessment');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.status==='completed')fail('Reopen this completed review first');
-  const result=await evidence(c,p);if(!result.economicallyClosed)fail('Review completion requires all linked exposure to be exited and source evidence reconciled');
+  await require('../services/planningCommitments').requireResolved(c,p);const result=await evidence(c,p);if(!result.economicallyClosed)fail('Review completion requires all linked exposure to be exited and source evidence reconciled');
   const review={...schema.value,evidenceDigest:digest(result),result,completedAt:new Date().toISOString()};
   await c.query("UPDATE trade_plans SET review=$1::jsonb,status='reviewed',version=version+1,updated_at=NOW() WHERE id=$2",[JSON.stringify(review),p.id]);
   await record(c,p,'reviewed',review);
@@ -322,7 +323,7 @@ router.post('/:id/review',run(async(req,res)=>{
 }));
 router.post('/:id/complete',run(async(req,res)=>{
  await db.withTransaction(async c=>{
-  const p=await lock(c,req);const result=await evidence(c,p);
+  const p=await lock(c,req);await require('../services/planningCommitments').requireResolved(c,p);const result=await evidence(c,p);
   if(p.status!=='reviewed'||!p.review||!result.economicallyClosed||p.review.evidenceDigest!==digest(result))fail('Finish an up-to-date review before closing the plan');
   await c.query("UPDATE trade_plans SET status='completed',version=version+1,updated_at=NOW() WHERE id=$1",[p.id]);
   await record(c,p,'completed',{reviewedAt:p.review.completedAt});
