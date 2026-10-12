@@ -1,3 +1,4 @@
+jest.mock('../src/services/portfolioDisplayMetadata',()=>({getDisplayMetadata:jest.fn()}));
 jest.mock('../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn(),_getDailySeries:jest.fn()}));
 jest.mock('../src/services/exchangeCalendar',()=>({...jest.requireActual('../src/services/exchangeCalendar'),resolve:jest.fn()}));
@@ -33,7 +34,7 @@ test('Today compares the current quote with previous close and keeps new purchas
  expect(periodResult(p,{start_date:today,end_date:today},rates,[{quantity:100,price:102,acquired:today}]).percent).toBeCloseTo(100*2/102);
  expect(periodResult(p,{start_date:today,end_date:today},{[today]:104.5},[{quantity:100,price:80,acquired:'2020-01-01'}]).pnl).toBeNull();
 });
-beforeEach(()=>{jest.resetAllMocks();require('../src/services/exchangeCalendar').resolve.mockResolvedValue('US');Portfolio._getDailySeries.mockResolvedValue([]);require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+beforeEach(()=>{jest.resetAllMocks();require('../src/services/portfolioDisplayMetadata').getDisplayMetadata.mockImplementation(async symbols=>({records:new Map(await Promise.all(symbols.map(async symbol=>{const profile=await require('../src/utils/yahooFinance').getSymbolProfile(symbol);return [symbol,{profile,fund_categories:['ETF','MUTUALFUND'].includes(profile?.quoteType)?await require('../src/services/fundCategoriesService').getCategories(symbol):null}]}))),updating:false}));require('../src/services/exchangeCalendar').resolve.mockResolvedValue('US');Portfolio._getDailySeries.mockResolvedValue([]);require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
 test('a missing prior open-session close stays unavailable instead of falling back to Friday',async()=>{
  jest.useFakeTimers().setSystemTime(new Date('2026-10-06T12:00:00Z'));
  try{
