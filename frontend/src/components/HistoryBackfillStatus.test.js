@@ -45,3 +45,11 @@ it('shows stale heartbeat honestly and keeps unmeasured reconstruction indetermi
  api.get.mockResolvedValue({data:{data:[{status:'processing',stage:'portfolio',processed:1279,total:1279,lastHeartbeatAt:new Date(Date.now()-180000).toISOString(),portfolioProgress:{stage:'fx'},gaps:[],portfolioWarnings:[]}]}});
  const view=mount(HistoryBackfillStatus);await flushPromises();expect(view.text()).toContain('No recent worker check-in');expect(view.text()).toContain('Loading historical exchange rates');expect(view.get('[role=progressbar]').attributes('aria-valuenow')).toBeUndefined();view.unmount();
 });
+
+
+it('distinguishes unsupported broker contracts from missing daily-price ranges',async()=>{
+ api.get.mockResolvedValue({data:{data:[{status:'completed',complete:0,total:1,gaps:[{symbol:'IX.D.SYNTH.DAILY',instrumentType:'spread_bet',unsupported:true,ranges:[],reason:'No verified underlying ticker is recorded'}],portfolioWarnings:[]}]}});
+ const view=mount(HistoryBackfillStatus);await flushPromises();
+ expect(view.text()).toContain('0 with dates to review');expect(view.text()).toContain('1 unsupported instruments');
+ expect(view.text()).toContain('No verified underlying ticker');expect(view.text()).not.toContain('·  to ');view.unmount();
+});

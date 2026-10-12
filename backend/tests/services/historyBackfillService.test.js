@@ -111,3 +111,18 @@ test('processing a persisted scope keeps reconstruction within those accounts an
  await service.process({id:'job',user_id:'owner',data:{scope:{accounts:{a:'2026-10-01'}}},result:{tasks:[],processed:0,total:0,gaps:[],stage:'portfolio'}});
  expect(require('../../src/services/brokerPortfolioMaintenance').maintain).toHaveBeenCalledWith('owner',expect.objectContaining({accountIdentifiers:['a'],fromDates:{a:'2026-10-01'}}));
 });
+
+
+test('native contracts remain explicit coverage limitations without stock downloads or listing lookups',async()=>{
+ portfolio._getPositionComponents.mockResolvedValue([]);
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM trades')?[{symbol:'IX.D.SYNTH.DAILY',instrument_type:'spread_bet',entry_time:'2026-01-01'}]:[]}));
+ const tasks=await service.plan('owner');
+ expect(tasks).toHaveLength(1);expect(tasks[0]).toMatchObject({unsupported:true,instrumentType:'spread_bet'});
+ portfolio._getDailySeries.mockClear();const calendar=jest.spyOn(require('../../src/services/exchangeCalendar'),'resolve');
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockResolvedValue({warnings:[]});
+ const result=await service.process({id:'job',user_id:'owner',result:{tasks,processed:0,complete:0,gaps:[],total:1,stage:'prices'}});
+ expect(portfolio._getDailySeries).not.toHaveBeenCalled();expect(calendar).not.toHaveBeenCalled();
+ expect(result).toMatchObject({processed:1,complete:0,gaps:[{unsupported:true,ranges:[]}]});
+ db.query.mockResolvedValue({rows:[{id:'job',status:'completed',result}]});
+ expect((await service.status('owner'))[0].gaps[0].unsupported).toBe(true);calendar.mockRestore();
+});

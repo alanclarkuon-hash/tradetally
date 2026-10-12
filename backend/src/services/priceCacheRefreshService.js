@@ -14,12 +14,14 @@ async function plan() {
  const rows=(await db.query('SELECT symbol,data_source,MIN(price_date) AS first,MAX(price_date) AS last FROM historical_prices GROUP BY symbol,data_source')).rows;
  const quotes=(await db.query('SELECT symbol,data_source FROM price_monitoring')).rows;
  const reconstructed=(await db.query("SELECT symbol,payload->'prices'->0->>'date' AS first,payload->'prices'->-1->>'date' AS last FROM portfolio_reconstruction_prices WHERE jsonb_array_length(COALESCE(payload->'prices','[]'::jsonb))>0")).rows;
+ const unsupported=await require('./historyInstrumentIdentity').unsupportedSymbols(db);
  const yesterday=day(Date.now()-86400000);
  for(const row of [...rows,...quotes,...reconstructed.map(r=>r.symbol.endsWith('-USD')?{...r,symbol:'crypto:'+r.symbol.slice(0,-4)}:r)]) {
   const instrumentType=kind(row.symbol,row.data_source),symbol=row.symbol.replace(/^crypto:/i,''),key=priceCacheKey(symbol,instrumentType);
   const old=tasks.get(key)||{symbol,instrumentType,key,quote:false};
   if(row.first){const from=day(row.first),to=day(row.last)>yesterday?yesterday:day(row.last);if(from<=to){old.from=!old.from||from<old.from?from:old.from;old.to=!old.to||to>old.to?to:old.to;}}
   else old.quote=true;
+  if(instrumentType!=='crypto'&&unsupported.has(symbol))Object.assign(old,unsupported.get(symbol));
   tasks.set(key,old);
  }
  return [...tasks.values()].sort((a,b)=>Number(b.quote)-Number(a.quote)||a.symbol.localeCompare(b.symbol));
@@ -61,11 +63,12 @@ async function updateReconstruction(task,prices) {
 async function process(job,progress) {
  let state=typeof job.result==='string'?JSON.parse(job.result):job.result;
  state=state?.tasks?state:{tasks:await plan(),processed:0,complete:0,gaps:[],stage:'broker_refresh',brokerRows:0,quotesRefreshed:0,mode:'broker_refresh'};
+ await require('./historyInstrumentIdentity').classifySavedTasks(db,job.user_id,state);
  state.total=state.tasks.length;
  const timer=setInterval(()=>progress(job.id,state).catch(()=>{}),30000);timer.unref?.();
  try {
   state.stage='quotes';
-  const quoteTasks=state.tasks.filter(t=>t.quote);
+  const quoteTasks=state.tasks.filter(t=>t.quote&&!t.unsupported);
   state.quoteTotal=quoteTasks.length;
   for(let i=state.quoteProcessed||0;i<quoteTasks.length;i++) {
    const task=quoteTasks[i];state.currentSymbol=task.symbol;await progress(job.id,state);
@@ -77,6 +80,7 @@ async function process(job,progress) {
   state.stage='broker_refresh';
   for(let i=state.processed;i<state.tasks.length;i++) {
    const task=state.tasks[i];state.currentSymbol=task.symbol;await progress(job.id,state);
+   if(task.unsupported){state.gaps.push({...task,ranges:[]});state.processed=i+1;await progress(job.id,state);continue;}
    try {
     const result=await refreshHistory(job.user_id,task);state.brokerRows+=result.brokerRows;
     if(result.gaps?.length)state.gaps.push({...task,calendar:result.calendar,ranges:result.gaps,reason:'No finalized broker/provider prices for expected sessions'});
