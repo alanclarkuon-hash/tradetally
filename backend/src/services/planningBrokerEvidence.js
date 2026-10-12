@@ -4,6 +4,7 @@ async function recheck(client,userId,d,stage){
  const id=require('./planningAccounts').stageAccount(d,'entry',stage.key);
  const account=(await client.query('SELECT account_identifier,broker FROM user_accounts WHERE id=$1 AND user_id=$2',[id,userId])).rows[0];
  if(!account)fail('Selected broker account is unavailable');
+ if(d.direction==='short'&&(account.broker==='trading212'&&d.instrument==='stock'||['okx','kraken'].includes(account.broker)&&d.instrument==='crypto'))fail('This broker integration supports owned spot holdings, not borrowed short entries');
  const saved=(id===d.accountId?d.constraints:d.accountConstraints?.[id])||{};
  let broker;try{broker=await require('./planningConstraints').resolve(client,userId,account,{...d,pair:saved.pair})}catch{broker={source:account.broker,coverage:'Broker evidence unavailable; current verification required'}};
  const rules={...saved,...broker};
