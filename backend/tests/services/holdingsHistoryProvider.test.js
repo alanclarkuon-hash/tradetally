@@ -119,3 +119,10 @@ test.each(require('../../src/services/calendars/verified-yahoo-aliases.json').li
 });
 test.each(['ABB.ST','SOBI.ST','UNKNOWNB.ST','HUSQ-B.ST','OTHERB.CO'])('unregistered Nordic symbol %s is never guessed',symbol=>expect(provider.yahooTicker(symbol)).toBe(symbol));
 test.each([{symbol:'HUSQ-A.ST',currency:'SEK',exchangeName:'STO'},{symbol:'HUSQ-B.ST',currency:'DKK',exchangeName:'STO'},{symbol:'HUSQ-B.ST',currency:'SEK',exchangeName:'CPH'},{symbol:'HUSQ-B.ST',currency:'SEK'}])('Nordic alias rejects wrong class, currency or venue %#',meta=>expect(()=>provider.verifyYahooListing('HUSQB.ST',meta)).toThrow(/listing/i));
+
+test.each(require('../../src/services/calendars/verified-yahoo-aliases.json').listings)('source-backed listing $symbol rejects mismatched native metadata',listing=>{
+ const meta={symbol:listing.ticker,currency:listing.currency,exchangeName:listing.venue};
+ expect(()=>provider.verifyYahooListing(listing.symbol,{...meta,currency:listing.currency==='USD'?'EUR':'USD'})).toThrow(/listing/i);
+ expect(()=>provider.verifyYahooListing(listing.symbol,{...meta,exchangeName:'WRONG'})).toThrow(/listing/i);
+ expect(()=>provider.verifyYahooListing(listing.symbol,{...meta,symbol:'WRONG'})).toThrow(/listing/i);
+});

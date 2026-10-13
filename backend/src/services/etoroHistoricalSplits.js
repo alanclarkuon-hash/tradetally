@@ -45,7 +45,7 @@ function statementLotMetadata(trades,records,splits) {
  // Compare documented broker listing representations within statement evidence.
  // The full statement symbol remains the returned historical listing; account
  // settlement currency never supplies a market suffix or an alias.
- const suffixes={GBX:['L'],EUR:['DE','NV','AS','PA','BR','MI','MC','LS'],CHF:['ZU','SW'],SEK:['ST'],DKK:['CO'],AUD:['ASX','AX'],USD:['US'],HKD:['HK']};
+ const suffixes={GBX:['L'],EUR:['DE','NV','AS','PA','BR','MI','MC','LS'],CHF:['ZU','SW'],SEK:['ST'],DKK:['CO'],NOK:['OL'],AUD:['ASX','AX'],USD:['US'],HKD:['HK']};
  const canonical=(symbol,currency)=>{
   const upper=String(symbol).toUpperCase(),match=/^(.+)\.([A-Z]+)$/.exec(upper);
   return match&&suffixes[currency]?.includes(match[2])?match[1]:upper;

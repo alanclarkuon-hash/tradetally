@@ -25,6 +25,54 @@
       "isin": "DK0010274414",
       "directoryPage": 36,
       "source": "https://www.etoro.com/da-dk/markets/danske.co"
+    },
+    {
+      "symbol": "UBSG",
+      "currency": "CHF",
+      "marketSymbol": "UBSG.ZU",
+      "isin": "CH0244767585",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/ubsg.zu"
+    },
+    {
+      "symbol": "NHY",
+      "currency": "NOK",
+      "marketSymbol": "NHY.OL",
+      "isin": "NO0005052605",
+      "directoryPage": 34,
+      "source": "https://www.etoro.com/markets/nhy.ol"
+    },
+    {
+      "symbol": "BOL",
+      "currency": "SEK",
+      "marketSymbol": "BOL.ST",
+      "isin": "SE0012455673",
+      "directoryPage": 35,
+      "source": "https://www.etoro.com/markets/bol.st"
+    },
+    {
+      "symbol": "SWED-A",
+      "currency": "SEK",
+      "marketSymbol": "SWED-A.ST",
+      "isin": "SE0000242455",
+      "directoryPage": 35,
+      "source": "https://www.etoro.com/markets/swed-a.st"
+    },
+    {
+      "symbol": "NOVO-B",
+      "currency": "DKK",
+      "marketSymbol": "NOVO-B.CO",
+      "isin": "DK0060534915",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/markets/novo-b.co"
+    },
+    {
+      "symbol": "ORSTED",
+      "currency": "DKK",
+      "marketSymbol": "ORSTED.CO",
+      "isin": "DK0060094928",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/markets/orsted.co"
     }
   ]
 }

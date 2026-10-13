@@ -42,6 +42,41 @@
       "currency": "DKK",
       "venue": "CPH",
       "source": "https://www.etoro.com/da-dk/markets/danske.co"
+    },
+    {
+      "symbol": "NHY.OL",
+      "ticker": "NHY.OL",
+      "currency": "NOK",
+      "venue": "OSL",
+      "source": "https://www.etoro.com/markets/nhy.ol"
+    },
+    {
+      "symbol": "BOL.ST",
+      "ticker": "BOL.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/bol.st"
+    },
+    {
+      "symbol": "SWED-A.ST",
+      "ticker": "SWED-A.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/swed-a.st"
+    },
+    {
+      "symbol": "NOVO-B.CO",
+      "ticker": "NOVO-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/novo-b.co"
+    },
+    {
+      "symbol": "ORSTED.CO",
+      "ticker": "ORSTED.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/orsted.co"
     }
   ]
 }

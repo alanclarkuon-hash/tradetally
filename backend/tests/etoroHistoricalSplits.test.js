@@ -104,7 +104,7 @@ test('an unproven same-time opening cannot supply an alias without cost or posit
 });
 
 describe('source-backed legacy eToro listing evidence',()=>{
- const cases=[['NESN','CHF','NESN.ZU'],['ADEN','CHF','ADEN.ZU'],['DANSKE','DKK','DANSKE.CO']];
+ const cases=require('../src/services/calendars/etoro-legacy-listings.json').listings.map(l=>[l.symbol,l.currency,l.marketSymbol]);
  const metadata=(symbol,currency,{broker='etoro',authority=true}={})=>{
   const lot={broker,symbol,entry_time:'2022-01-04T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:authority?'source':'different'}]};
   const opening={sourceType:'Open Position',positionId:'source',details:symbol+'/'+currency,time:lot.entry_time,units:2,amount:authority?20:40};
