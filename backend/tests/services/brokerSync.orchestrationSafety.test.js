@@ -5,6 +5,7 @@ jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn(),createSyn
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/tierService',()=>({canSyncBrokerConnection:jest.fn().mockResolvedValue({allowed:true})}));
 jest.mock('../../src/services/brokerSync/ibkrService',()=>({syncTrades:jest.fn()}));
+jest.mock('../../src/services/brokerSync/etoroService',()=>({syncTrades:jest.fn()}));
 jest.mock('../../src/services/brokerSync/schwabService',()=>({}));
 jest.mock('../../src/services/brokerSync/trading212Service',()=>({}));
 jest.mock('../../src/services/brokerSync/tradestationService',()=>({}));
@@ -80,3 +81,18 @@ test('a retry recovers abandoned logs before starting and releases the database 
  const run=jest.spyOn(service,'runConnectionSync').mockResolvedValue({success:true});await service.syncConnection('connection');
  expect(recovery.recoverConnection).toHaveBeenCalledWith(lease.client,'connection');expect(recovery.recoverConnection.mock.invocationCallOrder[0]).toBeLessThan(run.mock.invocationCallOrder[0]);expect(lease.release).toHaveBeenCalled();
 });
+
+ test.each([false,true])('eToro post-sync capture runs without waiting for historical maintenance; capture failure=%s',async fails=>{
+ const maintenance=require('../../src/services/brokerPortfolioMaintenance');
+ BC.findById.mockResolvedValue({id:'connection',userId:'owner',brokerType:'etoro',connectionStatus:'active',syncStartDate:'2024-01-01'});
+ db.query.mockResolvedValue({rows:[]});
+ require('../../src/services/brokerSync/etoroService').syncTrades.mockResolvedValue({imported:0,skipped:0,failed:0,duplicates:0,warnings:[]});
+ require('../../src/services/historyBackfillService').enqueue.mockResolvedValue('history-job');
+ if(fails)maintenance.captureCurrent.mockRejectedValueOnce(Error('private capture failure'));
+ else maintenance.captureCurrent.mockResolvedValueOnce({captured:1,rebuilt:[],warnings:[]});
+ const r=await service.syncConnection('connection');
+ expect(r.success).toBe(true);expect(maintenance.captureCurrent).toHaveBeenCalledWith('owner',{broker:'etoro'});
+ expect(maintenance.maintain).not.toHaveBeenCalled();expect(BC.updateAfterFailure).not.toHaveBeenCalled();
+ if(fails){expect(r.warnings.join(' ')).toContain('chart maintenance');expect(r.warnings.join(' ')).not.toContain('private capture failure')}
+ else expect(r.portfolioHistory.captured).toBe(1);
+ });
