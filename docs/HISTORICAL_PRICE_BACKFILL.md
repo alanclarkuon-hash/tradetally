@@ -68,3 +68,8 @@ Current chart capture uses the owner/account-scoped eToro broker portfolio snaps
 ### Hong Kong provider stock-code formatting
 
 The Yahoo daily-history adapter removes one representational leading zero from five-digit numeric broker codes ending `.HK` (for example `00257.HK` requests `0257.HK`). Genuine five-digit codes, nonnumeric identities and other markets are unchanged. The returned symbol must match the formatted request, with verified Hong Kong venue and HKD pricing. Requested/listing date guards still apply. Cache identities and broker financial records retain their original codes; this is provider formatting, not a security substitution. An unavailable/delisted listing remains a gap.
+
+
+### Verified broker namespaces at provider boundaries
+
+Shared daily history, exchange metadata lookup and reconstruction metadata translate broker listing suffixes `.US` to US symbols, `.NV` to `.AS`, `.ZU` to `.SW`, and `.ASX` to `.AX`. Statement native currencies and public provider responses verify these namespace conventions. Each translated response requires matching symbol, venue and native currency (USD, EUR, CHF or AUD respectively); unknown suffixes are unchanged. Dates before the returned listing's first-trade date are excluded in reconstruction too. Metadata is saved under the original broker/cache identity. A reused or unavailable listing cannot provide pre-listing coverage. Swiss/Australian calendar coverage is still explicitly unavailable until separately reviewed calendars are supplied.

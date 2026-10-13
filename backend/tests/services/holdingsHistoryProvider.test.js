@@ -70,3 +70,24 @@ test('formatted HK listing retains date/lifetime bounds',async()=>{
  axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'0257.HK',currency:'HKD',exchangeName:'HKG',firstTradeDate:Date.parse('2022-03-02')/1000},timestamp:['2022-03-01','2022-03-02','2022-03-03'].map(d=>Date.parse(d)/1000),indicators:{quote:[{close:[10,11,12]}]}}]}}});
  expect(await provider.yahoo('00257.HK','2022-03-01','2022-03-02')).toEqual([expect.objectContaining({close:11})]);
 });
+
+
+test.each([
+ ['EXAMPLE.US','EXAMPLE','USD','NYQ'],['EXAMPLE.NV','EXAMPLE.AS','EUR','AMS'],
+ ['EXAMPLE.ZU','EXAMPLE.SW','CHF','EBS'],['EXAMPLE.ASX','EXAMPLE.AX','AUD','ASX'],
+ ['EXAMPLE.B.US','EXAMPLE-B','USD','NMS']
+])('broker namespace %s requests verified provider listing %s',async(symbol,ticker,currency,exchangeName)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:ticker,currency,exchangeName},timestamp:[Date.parse('2022-03-01')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ expect(await provider.yahoo(symbol,'2022-03-01','2022-03-01')).toEqual([expect.objectContaining({close:10,currency})]);
+ expect(axios.get.mock.calls[0][0]).toContain('/'+ticker);
+});
+test.each([
+ ['EXAMPLE.US',{symbol:'EXAMPLE',currency:'USD',exchangeName:'AMS'}],
+ ['EXAMPLE.NV',{symbol:'EXAMPLE.AS',currency:'USD',exchangeName:'AMS'}],
+ ['EXAMPLE.ZU',{symbol:'EXAMPLE.SW',currency:'CHF',exchangeName:'GER'}],
+ ['EXAMPLE.ASX',{symbol:'OTHER.AX',currency:'AUD',exchangeName:'ASX'}]
+])('mapped namespace %s rejects wrong currency, venue or symbol',async(symbol,meta)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta,timestamp:[],indicators:{quote:[{}]}}]}}});
+ await expect(provider.yahoo(symbol,'2022-03-01','2022-03-01')).rejects.toThrow(/listing/);
+});
+test.each(['EXAMPLE.DE','EXAMPLE.L','EXAMPLE.AS','EXAMPLE.SW','EXAMPLE.AX','EXAMPLE.CO','EXAMPLE.UNKNOWN'])('normal/unknown provider suffix %s stays unchanged',symbol=>expect(provider.yahooTicker(symbol)).toBe(symbol));

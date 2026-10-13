@@ -124,3 +124,18 @@ test('archived Madrid closures preserve actual half sessions and Milan daytime t
  expect(await calendar.resolve('SYNTHETIC_OTC_CACHED')).toBe('US');
  expect(axios.get.mock.calls.length).toBe(before);
  });
+
+
+test('broker namespace venue lookup persists evidence under original key without rewriting identities',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');db.query.mockResolvedValue({rows:[]});
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'CALENDARSYNTH',currency:'USD',exchangeName:'NYQ'}}]}}});
+ expect(await calendar.resolve('CALENDARSYNTH.US',{allowLookup:true})).toBe('US');
+ expect(axios.get.mock.calls.at(-1)[0]).toContain('/CALENDARSYNTH');
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO exchange_calendar_listings'),['CALENDARSYNTH.US','NYQ']);
+});
+test('a namespace with conflicting venue is not saved or assigned a calendar',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');db.query.mockResolvedValue({rows:[]});
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'BADNAMESPACE',currency:'USD',exchangeName:'AMS'}}]}}});
+ expect(await calendar.resolve('BADNAMESPACE.US',{allowLookup:true})).toBeNull();
+ expect(db.query.mock.calls.some(([sql,params])=>sql.includes('INSERT INTO exchange_calendar_listings')&&params[0]==='BADNAMESPACE.US')).toBe(false);
+});
