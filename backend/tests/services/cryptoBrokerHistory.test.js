@@ -36,3 +36,9 @@ test('broker-native SHIBXM candles already use lot units and are not rescaled',(
  const rows=provider.etoroDaily({time:'2021-01-01T00:00:00Z',open:10,high:30,low:5,close:20,volume:2},'crypto','USD',null);
  expect(rows.close).toBe(20);expect(rows.volume).toBe(2);
 });
+test('pre-launch archive recovers predecessor without spilling into successor days',async()=>{
+ market.read.mockResolvedValueOnce({result:{SUSD:{wsname:'S/USD'}}}).mockResolvedValueOnce({result:{SUSD:[]}});
+ archive.dailyPrices.mockImplementation(async pair=>({candles:(pair==='FTMUSD'?['2024-12-17','2024-12-18']:['2024-12-17','2024-12-18']).map(d=>({time:day(d),open:1,high:1,low:1,close:pair==='FTMUSD'?1:2,volume:1}))}));
+ const rows=await provider.kraken({symbol:'S',instrumentType:'crypto',from:'2024-12-17',to:'2024-12-18'});
+ expect(rows.map(c=>c.close)).toEqual([1,2]);expect(archive.dailyPrices.mock.calls.map(x=>x[0])).toEqual(['FTMUSD','SUSD']);
+});
