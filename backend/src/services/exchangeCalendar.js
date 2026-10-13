@@ -56,13 +56,15 @@ const hkexClosures={
  '2024-09-06':'https://www.hkex.com.hk/News/Market-Communications/2024/2409062news?sc_lang=en'
 };
 calendars.set('HKEX',year=>[...(hkex.years[year]||[]),...Object.keys(hkexClosures).filter(d=>d.startsWith(year+'-'))].map(Date.parse));
+const asx=require('./calendars/asx-holidays.json');
+calendars.set('ASX',year=>(asx.years[year]||[]).map(Date.parse));
 const european=require('./calendars/european-holidays.json').calendars;
 for (const [name,definition] of Object.entries(european)) calendars.set(name,year=>(definition.years[year]||[]).map(Date.parse));
 function coversRange(calendar,from,to) {
  if(!calendars.has(calendar))return false;
  const first=new Date(from).getUTCFullYear(),last=new Date(to).getUTCFullYear();
  if(!Number.isFinite(first)||!Number.isFinite(last)||first<2020)return false;
- for(let year=first;year<=last;year++)if(european[calendar]&&!european[calendar].years[year]||calendar==='HKEX'&&!hkex.years[year])return false;
+ for(let year=first;year<=last;year++)if(european[calendar]&&!european[calendar].years[year]||calendar==='HKEX'&&!hkex.years[year]||calendar==='ASX'&&!asx.years[year])return false;
  return true;
 }
 const holidays=new Map(), identities=new Map(), lookupLanes=new Map(), retryAfter=new Map(), verifiedListings=new Set();
@@ -80,6 +82,7 @@ function identify(symbol, exchange='') {
   if(symbol.endsWith('.L')) return 'LSE';
   if(symbol.endsWith('.DE')) return 'XETRA';
   if(symbol.endsWith('.HK')) return 'HKEX';
+  if(/\.(AX|ASX)$/.test(symbol)) return 'ASX';
   if(/\.(PA|BR|AS|LS)$/.test(symbol)) return 'EURONEXT';
   if(symbol.endsWith('.OL')) return 'OSLO';
   if(symbol.endsWith('.MI')) return 'MILAN';
@@ -90,6 +93,7 @@ function identify(symbol, exchange='') {
   if(/^(MIL|XMIL|BORSA ITALIANA)$/.test(exchange)) return 'MILAN';
   if(/^(STO|XSTO|STOCKHOLM)$/.test(exchange)) return 'STOCKHOLM';
   if(/^(MCE|XMAD|MADRID)$/.test(exchange)) return 'MADRID';
+  if(/^(ASX|XASX|AUSTRALIAN SECURITIES EXCHANGE)$/.test(exchange)) return 'ASX';
   // Verified US OTC equity venues use the US equity holiday schedule.
   // OTC Markets' market-hours calendar retains shortened sessions:
   // https://www.otcmarkets.com/market-hours

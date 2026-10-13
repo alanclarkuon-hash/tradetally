@@ -139,3 +139,19 @@ test('a namespace with conflicting venue is not saved or assigned a calendar',as
  expect(await calendar.resolve('BADNAMESPACE.US',{allowLookup:true})).toBeNull();
  expect(db.query.mock.calls.some(([sql,params])=>sql.includes('INSERT INTO exchange_calendar_listings')&&params[0]==='BADNAMESPACE.US')).toBe(false);
 });
+
+
+test.each(['EXAMPLE.AX','EXAMPLE.ASX'])('Australian stock suffix %s uses ASX cash sessions',symbol=>expect(calendar.identify(symbol,'NYSE')).toBe('ASX'));
+test.each(['ASX','XASX','Australian Securities Exchange'])('verified Australian venue %s uses cash sessions',exchange=>expect(calendar.identify('EXAMPLE',exchange)).toBe('ASX'));
+test.each(['2022-01-03','2022-04-25','2022-09-22','2022-12-27','2023-06-12','2024-04-01','2025-01-27','2026-12-28','2027-12-27','2027-12-28'])('sourced ASX full closure %s is not missing history',d=>expect(missingRanges([],d,d,false,'ASX')).toEqual([]));
+test.each(['2022-12-23','2022-12-30','2023-12-22','2023-12-29','2024-12-24','2024-12-31','2025-12-24','2025-12-31','2026-04-27','2027-04-26'])('ASX ordinary/shortened session %s still requires a candle',d=>expect(calendar.isTradingDay(d,'ASX')).toBe(true));
+test('ASX exceptional closure does not hide another venue, crypto or adjacent missing session',()=>{
+ expect(calendar.isTradingDay('2022-09-22','US')).toBe(true);
+ expect(missingRanges([],'2022-09-22','2022-09-22',true,'ASX')).toHaveLength(1);
+ expect(missingRanges([],'2022-09-22','2022-09-23',false,'ASX')).toEqual([{from:'2022-09-23',to:'2022-09-23'}]);
+ expect(calendar.coversRange('ASX','2022-01-01','2027-12-31')).toBe(true);
+ expect(calendar.coversRange('ASX','2021-01-01','2027-12-31')).toBe(false);
+ expect(calendar.coversRange('ASX','2027-01-01','2028-12-31')).toBe(false);
+ expect(calendar.isTradingDay('2021-01-26','ASX')).toBe(true);
+ expect(calendar.identify('EXAMPLE','ASX24')).toBeNull();
+});
