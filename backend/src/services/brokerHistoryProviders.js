@@ -40,13 +40,15 @@ async function kraken({ symbol, instrumentType, from, to }) {
   const live=bounded(rows.slice(0,-1).map(r => candle(Number(r[0]) * 1000, [r[1], r[2], r[3], r[4], r[6]])), from, to);
   const archiveTo=to<'2026-06-30'?to:'2026-06-30';
   const missing=from<=archiveTo&&require('./holdingsHistoryProvider').missingRanges(live,from,archiveTo,true).length;
-  if(missing)try {
-    const pair=String(candidates[0][1].wsname).replace('/','');
-    const archive=await directory('kraken-ohlcvt:'+pair,()=>require('./brokerSync/krakenArchivePrices').dailyPrices(pair));
+  if(missing) {
     const combined=new Map(live.map(c=>[c.time,c]));
-    for(const c of bounded(archive.candles||[],from,archiveTo))if(!combined.has(c.time))combined.set(c.time,c);
+    for(const segment of cryptoUnits.archiveSegments(symbol,from,archiveTo))try {
+      const pair=segment.symbol===quote.symbol?String(candidates[0][1].wsname).replace('/',''):segment.symbol+'USD';
+      const archive=await directory('kraken-ohlcvt:'+pair,()=>require('./brokerSync/krakenArchivePrices').dailyPrices(pair));
+      for(const c of bounded(archive.candles||[],segment.from,segment.to))if(!combined.has(c.time))combined.set(c.time,c);
+    }catch{/* A missing predecessor archive cannot remove other valid coverage. */}
     return cryptoUnits.scale([...combined.values()].sort((a,b)=>a.time-b.time),quote.units);
-  }catch{/* Missing/invalid archive data leaves live coverage intact. */}
+  }
   return cryptoUnits.scale(live,quote.units);
 }
 async function okxPages(origin, path, params, from, to) {
