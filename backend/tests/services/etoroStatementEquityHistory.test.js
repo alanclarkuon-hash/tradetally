@@ -52,3 +52,12 @@ test('statement anchors do not override a contradictory detailed close inside th
  const result=corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[{time:'2023-05-03T00:00:00Z',close:100}]);
  expect(result.some(c=>c.time===Date.parse('2023-05-03')/1000)).toBe(false);
 });
+
+test('verified London USD receipts use LSE holidays rather than US holidays',()=>{
+ const d=payload(),f=fixture();
+ const result=corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[],{calendar:'LSE'});
+ expect(result.some(c=>c.time===Date.parse('2023-05-01')/1000)).toBe(false);
+ expect(result.some(c=>c.time===Date.parse('2023-05-08')/1000)).toBe(false);
+ expect(result.some(c=>c.time===Date.parse('2023-05-09')/1000)).toBe(true);
+ expect(corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[],{calendar:'UNKNOWN'})).toEqual([]);
+});
