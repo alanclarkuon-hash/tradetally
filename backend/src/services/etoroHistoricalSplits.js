@@ -91,6 +91,9 @@ function statementLotMetadata(trades,records,splits) {
   if(currency==='GBX'&&marketSymbol&&!marketSymbol.includes('.'))marketSymbol+='.L';
   const unchanged=candidates.length&&candidates.every(o=>near(ratioFor(o),1));
   const authority=original.length>0||!!chosen?.length||unchanged;
+  // An older bare statement label must not discard a fuller broker listing.
+  if(!authority)marketSymbol=null;
+  else if(marketSymbol&&!marketSymbol.includes('.')&&canonical(t.symbol,currency)===marketSymbol&&canonical(t.symbol,currency)!==t.symbol.toUpperCase())marketSymbol=t.symbol.toUpperCase();
   // A mapped statement profile replaces the provider or differently named
   // broker profile, rather than applying both to the same lot.
   result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority});
