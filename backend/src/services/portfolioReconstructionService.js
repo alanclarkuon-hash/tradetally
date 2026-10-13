@@ -98,9 +98,9 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    let native=null;
    if(!crypto){
     try {
-     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(ticker),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
+     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
      const result=response.data?.chart?.result?.[0];
-     if(result?.meta?.symbol&&result.meta.symbol.toUpperCase()!==ticker.toUpperCase())throw Error('Different listing');
+     if(result?.meta?.symbol || /^0[0-9]{4}\.HK$/i.test(ticker))require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
      native=parseYahoo(result);
     } catch { /* Cached native metadata remains usable; do not invent currencies. */ }
     if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;
