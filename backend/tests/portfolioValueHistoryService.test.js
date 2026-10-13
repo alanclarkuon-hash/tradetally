@@ -163,3 +163,33 @@ test('funding uses same-day or prior rates within seven days, never future rates
  expect(combineValues([row('one','2026-01-01',100,20)], [accounts[0]],'EUR',fx)[0].value).toBe(108);
  expect(combineValues([row('one','2026-01-01',100,20)], [accounts[0]],'EUR')[0].value).toBeNull();
  });
+
+ test('eToro captures broker-observed frozen holdings and CFD equity without replacing them with live quotes',async()=>{
+ const now=new Date().toISOString(),a={...accounts[0],broker:'etoro',currency:'USD'};
+ const snapshot={broker_type:'etoro',account_identifier:'one',synced_at:now,positions:[
+ {symbol:'FROZEN',quantity:2,totalCost:100,currentValue:0,instrumentType:'stock'},
+ {symbol:'CFD_EXAMPLE',quantity:5,totalCost:100,currentValue:125,instrumentType:'cfd'}]};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[a]:sql.includes('broker_portfolio_snapshots')?[snapshot]:[]}));
+ getRatesToDisplay.mockResolvedValue({USD:1});
+ Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'etoro_statement',currentBalance:10,liveCashBalance:{amount:20,currency:'USD',asOf:now},reconciliation:{matched:true}}});
+ const result=await captureToday('owner');expect(result.captured).toBe(1);expect(result.warnings).toEqual([]);
+ expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ expect(db.query).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO portfolio_value_history'),['owner','one',now.slice(0,10),125,20,0,1,0]);
+ });
+ test.each(['missing','yesterday','foreign','future'])('eToro capture rejects %s broker cash evidence',async mode=>{
+ const now=new Date().toISOString(),a={...accounts[0],broker:'etoro',currency:'USD'};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[a]:sql.includes('broker_portfolio_snapshots')?[{broker_type:'etoro',account_identifier:'one',synced_at:now,positions:[]}]:[]}));
+ getRatesToDisplay.mockResolvedValue({USD:1,GBP:1.25});
+ const asOf=mode==='yesterday'?new Date(Date.now()-86400000).toISOString():mode==='future'?new Date(Date.now()+3600000).toISOString():now;
+ Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'etoro_statement',currentBalance:10,liveCashBalance:mode==='missing'?null:{amount:20,currency:mode==='foreign'?'GBP':'USD',asOf},reconciliation:{matched:true}}});
+ const result=await captureToday('owner');expect(result.captured).toBe(0);expect(result.warnings[0]).toContain('cash and holdings dates');
+ expect(db.query.mock.calls.some(([sql])=>sql.includes('INSERT'))).toBe(false);
+ });
+ test('eToro rejects stale holdings even with fresh cash instead of labelling them current',async()=>{
+ const now=new Date().toISOString(),a={...accounts[0],broker:'etoro',currency:'USD'};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[a]:sql.includes('broker_portfolio_snapshots')?[{broker_type:'etoro',account_identifier:'one',synced_at:'2020-01-01',positions:[]}]:[]}));
+ getRatesToDisplay.mockResolvedValue({USD:1});
+ Account.getCashflow.mockResolvedValue({summary:{cashflowSource:'etoro_statement',liveCashBalance:{amount:20,currency:'USD',asOf:now}}});
+ const result=await captureToday('owner');expect(result.captured).toBe(0);expect(result.warnings[0]).toContain('older than 36 hours');
+ expect(Portfolio.getPositions).not.toHaveBeenCalled();
+ });
