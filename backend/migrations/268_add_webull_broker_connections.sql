@@ -5,7 +5,7 @@ DROP CONSTRAINT IF EXISTS broker_connections_broker_type_check;
 
 ALTER TABLE broker_connections
 ADD CONSTRAINT broker_connections_broker_type_check
-CHECK (broker_type IN ('ibkr', 'schwab', 'tradestation', 'alpaca', 'trading212', 'webull'));
+CHECK (broker_type IN ('ibkr', 'schwab', 'tradestation', 'alpaca', 'trading212', 'etoro', 'okx', 'kraken', 'webull'));
 
 -- One Webull connection per user (upsert target for BrokerConnection.create).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_broker_connections_user_webull
