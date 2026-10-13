@@ -67,3 +67,27 @@ test('does not adjust lots already closed or unrelated positions; missing proof 
  expect(historicalLotQuantity(trade,'2024-07-01','2024-01-01',null,[],market)).toBe(20);
  expect(historicalLotQuantity({...trade,executions:[]},'2024-05-01','2024-01-01',null,statementSplits(records),market)).toBeNull();
 });
+
+test.each([['de','EUR'],['NV','EUR'],['PA','EUR'],['MI','EUR'],['MC','EUR'],['ZU','CHF'],['SW','CHF'],['ST','SEK'],['CO','DKK'],['ASX','AUD'],['US','USD'],['HK','HKD']])('same-position bare and full %s listing match only with native %s evidence',(suffix,currency)=>{
+ const lot={symbol:'SYNTH',instrument_type:'stock',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic-lot'}]};
+ const opening={sourceType:'Open Position',positionId:'synthetic-lot',details:'SYNTH.'+suffix+'/'+currency,time:lot.entry_time,units:2,amount:20};
+ const original=JSON.stringify(lot),meta=statementLotMetadata([lot],[opening],[]).get(lot);
+ expect(meta).toMatchObject({currency,marketSymbol:('SYNTH.'+suffix).toUpperCase(),statementAuthority:true});
+ expect(JSON.stringify(lot)).toBe(original);
+});
+test.each([['DE','USD'],['ZU','EUR'],['ST','EUR'],['CO','SEK'],['UNKNOWN','EUR']])('currency-conflicting or unverified suffix %s/%s is not stripped',(suffix,currency)=>{
+ const lot={symbol:'SYNTH',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+ const opening={sourceType:'Open Position',positionId:'synthetic',details:'SYNTH.'+suffix+'/'+currency,time:lot.entry_time,units:2,amount:20};
+ expect(statementLotMetadata([lot],[opening],[]).get(lot)).toMatchObject({currency:null,marketSymbol:null});
+});
+test('same-time ticker collisions across native venues never select a listing arbitrarily',()=>{
+ const lot={symbol:'SYNTH',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'unmatched-child'}]};
+ const openings=['DE/EUR','US/USD'].map((suffix,i)=>({sourceType:'Open Position',positionId:'other-'+i,details:'SYNTH.'+suffix,time:lot.entry_time,units:2,amount:20}));
+ expect(statementLotMetadata([lot],openings,[]).get(lot)).toMatchObject({currency:null,marketSymbol:null});
+});
+test('a different full listing or wrong opening time cannot become historical market identity',()=>{
+ const lot={symbol:'SYNTH',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'unmatched-child'}]};
+ const opening={sourceType:'Open Position',positionId:'other',details:'SYNTH.DE/EUR',time:'2024-01-03T10:00:00Z',units:2,amount:20};
+ expect(statementLotMetadata([lot],[opening],[]).get(lot).marketSymbol).toBeNull();
+ expect(statementLotMetadata([lot],[{...opening,positionId:'unmatched-child',details:'DIFFERENT.DE/EUR'}],[]).get(lot).marketSymbol).toBeNull();
+});
