@@ -97,3 +97,9 @@ Copenhagen (.CO / verified CPH/XCSE cash-equity venues) uses the same reviewed 2
 ### Statement-scoped bare/full listing matches
 
 Statement position IDs and the existing opening time/invested-cost checks can match a saved bare symbol to its full documented exchange representation only with compatible native quote currency. The full statement listing is retained for history; no suffix is invented from account settlement currency. Currency-conflicting or unsupported suffixes and ambiguous same-time listings stay unresolved. This normalization is confined to eToro statement evidence and does not globally redirect a bare ticker used by another broker or rename any source trade.
+
+### Statement-proven legacy eToro listings
+
+`calendars/etoro-legacy-listings.json` retains public broker source references, original security identifiers and native currencies for exact older bare names. These names select a full historical listing only for eToro and only after existing account-scoped statement position/cost authority. Account settlement currency, an unknown bare ticker or an unproven simultaneous opening never supplies a venue. A more specific recorded listing takes precedence. Source trades, statement records and original price-cache identities remain unchanged.
+
+Full provider names additionally retain exact returned symbol/native-currency/venue guards. Listing lifetime, split handling and calendar coverage checks still apply. Verified identity repairs missing history; it cannot recreate unavailable delisted prices or substitute an equity close for a derivative contract. The public [eToro 2019 directory](https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf) and current broker listing pages are recorded alongside the registry entries.
