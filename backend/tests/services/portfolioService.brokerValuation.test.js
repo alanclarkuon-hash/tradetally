@@ -65,3 +65,25 @@ test('same ticker crypto and stock keep independent quantities and cached values
  expect(positions.find(p=>p.instrumentType==='crypto').currentValue).toBe(2);
  expect(positions.find(p=>p.instrumentType==='stock').currentValue).toBe(300);
 });
+
+ test.each(['long','short'])('CFD %s equity is preserved despite a newer underlying quote', async side=>{
+  const p={...position(2,55,'2026-10-03T09:00:00Z'),instrumentType:'cfd',side,totalCostBasis:100,brokers:'etoro'};
+  db.query.mockResolvedValueOnce({rows:[{symbol:'TEST',current_price:300,data_source:'finnhub',last_updated:'2026-10-03T11:00:00Z'}]});
+  const refresh=jest.spyOn(Portfolio,'_refreshPricesInBackground').mockImplementation(()=>{});
+  await Portfolio._applyCurrentPrices('owner',[p]);
+  expect(p).toMatchObject({currentValue:110,unrealizedPnL:10,unrealizedPnLPercent:10,quoteSource:'Broker snapshot (etoro)',priceAsOf:'2026-10-03T09:00:00.000Z',priceStale:true});
+  expect(refresh).not.toHaveBeenCalled();
+ });
+ test.each([null,undefined])('CFD missing broker equity remains unavailable (%s)',async brokerCurrentPrice=>{
+  const p={...position(2,brokerCurrentPrice,null),instrumentType:'cfd'};
+  db.query.mockResolvedValueOnce({rows:[{symbol:'TEST',current_price:300,data_source:'finnhub',last_updated:new Date().toISOString()}]});
+  jest.spyOn(Portfolio,'_refreshPricesInBackground').mockImplementation(()=>{});
+  await Portfolio._applyCurrentPrices('owner',[p]);
+  expect(p).toMatchObject({currentValue:null,unrealizedPnL:null,priceAsOf:null,quoteSource:null});
+ });
+ test('zero CFD equity is valid and is not replaced by an underlying quote',async()=>{
+  const p={...position(2,0,new Date().toISOString()),instrumentType:'cfd',totalCostBasis:100};
+  db.query.mockResolvedValueOnce({rows:[{symbol:'TEST',current_price:300,data_source:'finnhub',last_updated:new Date().toISOString()}]});
+  await Portfolio._applyCurrentPrices('owner',[p]);
+  expect(p.currentValue).toBe(0);expect(p.unrealizedPnL).toBe(-100);
+ });

@@ -101,7 +101,18 @@ function dashboardPositions(openTrades, snapshots, accounts = []) {
       if(t.instrument_type==='spread_bet'&&position.brokerQuote) {
         if(Math.abs(position.brokerQuote.c-quote.c)>0.000001||position.brokerQuote.asOf!==quote.asOf)throw Error('IG spread-bet quote dates or levels differ');
         position.brokerQuote={...quote,unrealizedPnL:position.brokerQuote.unrealizedPnL+quote.unrealizedPnL};
-      } else position.brokerQuote=quote;
+      } else if(position.brokerQuote) {
+        // Grouped broker lots can carry different equity-per-unit valuations.
+        const prior=position.brokerQuote, quantity=Number(t.quantity);
+        const priorQuantity=position.brokerQuoteQuantity;
+        const total=priorQuantity+quantity;
+        position.brokerQuote={...quote,c:(prior.c*priorQuantity+quote.c*quantity)/total,
+          asOf:new Date(Math.min(Date.parse(prior.asOf),Date.parse(quote.asOf))).toISOString()};
+        position.brokerQuoteQuantity=total;
+      } else {
+        position.brokerQuote=quote;
+        position.brokerQuoteQuantity=Number(t.quantity);
+      }
     }
   }
   for (const position of Object.values(grouped)) {
