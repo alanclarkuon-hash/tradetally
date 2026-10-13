@@ -96,4 +96,5 @@ function tradeSymbolAliasSql(parameter,alias='t'){
  WHERE instrument_aliases.account_identifier=${alias}.account_identifier
  AND instrument_aliases.symbol=UPPER(${alias}.symbol)))`;
 }
-module.exports={applyTradeHistoricalSymbols,tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols};
+module.exports={applyTradeHistoricalSymbols,tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols,cataloguesForUser};
+

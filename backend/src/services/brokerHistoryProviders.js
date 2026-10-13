@@ -214,16 +214,18 @@ function etoroLegacyDaily(data,id,currency,reference,from,to) {
   const date=day(c.time*1000),raw=known.get(date);
   if(raw>0){
    const split=splits.filter(s=>s.date>date).reduce((n,s)=>n*s.ratio,1),target=raw/split;
-   if(!(target>0)||!Number.isFinite(target)||Math.abs(normalized.close/target-1)>.01)return [];
-   anchors.push(c.time);
+   if(!(target>0)||!Number.isFinite(target))return [];
+   anchors.push({time:c.time,matched:Math.abs(normalized.close/target-1)<=.01});
   }
  }
- const unique=[...new Set(anchors)].sort((a,b)=>a-b);
- if(unique.length<3)return [];
- // Never extend an inferred basis into older unproven history or across an
- // unbounded tail. A small recent tail supports the next finalized sessions.
- const first=unique[0],last=unique.at(-1)+7*DAY/1000;
- return bounded([...rows.values()].filter(c=>c.time>=first&&c.time<=last),from,to).sort((a,b)=>a.time-b.time);
+ const unique=[...new Map(anchors.map(a=>[a.time,a])).values()].sort((a,b)=>a.time-b.time),windows=[];
+ let consecutive=[];
+ const finish=limit=>{if(consecutive.length>=3){const last=consecutive.at(-1).time,nextSplit=splits.map(s=>Date.parse(s.date)/1000).filter(t=>t>last).sort((a,b)=>a-b)[0]??Infinity;windows.push({first:consecutive[0].time,last:Math.min(last+7*DAY/1000,limit,nextSplit-1)});}consecutive=[];};
+ for(const anchor of unique){if(anchor.matched)consecutive.push(anchor);else finish(anchor.time-1);}
+ finish(Infinity);
+ // Contradictory reference evidence terminates a segment. Recovery never
+ // crosses it, enters older unproven history, or extends an unbounded tail.
+ return bounded([...rows.values()].filter(c=>windows.some(w=>c.time>=w.first&&c.time<=w.last)),from,to).sort((a,b)=>a.time-b.time);
 }
 function etoroQuoteSymbol(symbol,quote,metadata) {
  if(typeof quote!=='string')return false;
@@ -304,5 +306,7 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
   }
 }
 module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities, etoroQuoteSymbol, etoroLegacyDaily };
+
+
 
 
