@@ -200,3 +200,14 @@ test('unsupported positions obey the scope floor and combined accounts retain ea
   expect(tasks[0]).toMatchObject({unsupported:true,from:'2026-01-01',to:'2026-10-12'});
  } finally {jest.useRealTimers();}
 });
+
+test('portfolio coverage does not require optional pre-entry chart warmup',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-13T12:00:00Z'));
+ portfolio._getPositionComponents.mockResolvedValue([]);
+ db.query.mockImplementation(async sql=>({rows:sql.startsWith('SELECT symbol,instrument_type')?[
+  {symbol:'SYNTH',instrument_type:'stock',entry_time:'2026-09-03',exit_time:'2026-09-30'}
+ ]:[]}));
+ try {
+  expect((await service.plan('owner')).find(t=>t.symbol==='SYNTH')).toMatchObject({from:'2026-09-03',to:'2026-09-29'});
+ } finally {jest.useRealTimers();}
+});
