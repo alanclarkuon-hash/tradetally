@@ -209,7 +209,7 @@ class BrokerSyncService {
       // run in the durable history lane after the broker sync is committed.
       // Broker imports remain successful if chart maintenance needs attention.
       // Do not retry private broker requests for a public-price/history problem.
-      if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
+      if (['ibkr','trading212','kraken','okx','etoro'].includes(connection.brokerType) && !result.failed &&
           result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
         try {
           await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_capture',0);
