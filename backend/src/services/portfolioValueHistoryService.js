@@ -56,7 +56,7 @@ async function captureToday(userId,query={}) {
         continue;
       }
       let brokerSnapshot=null;
-      if(['trading212','kraken','okx'].includes(account.broker)) {
+      if(['trading212','kraken','okx','etoro'].includes(account.broker)) {
         brokerSnapshot=(await db.query(`SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3`,[userId,account.broker,account.account_identifier])).rows[0];
         const age=brokerSnapshot?Date.now()-new Date(brokerSnapshot.synced_at).getTime():Infinity;
         if(!Number.isFinite(age)||age< -300000||age>36*3600000) {
@@ -87,6 +87,12 @@ async function captureToday(userId,query={}) {
       const cash=account.broker==='okx'?0:live?.amount??flow?.summary?.currentBalance;
       const currency=live?.currency||account.currency;
       const cashAge=Date.now()-Date.parse(live?.asOf);
+      // Broker-observed holdings (including CFD equity and frozen holdings)
+      // need matching dated broker cash, not independently refreshed quotes.
+      if(account.broker==='etoro'&&(!live||currency!=='USD'||!Number.isFinite(cashAge)||cashAge< -300000||
+          day(live.asOf)!==day(brokerSnapshot.synced_at))) {
+        unavailable++;warnings.push('etoro: broker cash and holdings dates do not match; no fresh chart value was recorded.');continue;
+      }
       if(flow?.summary?.reconciliation?.matched===false ||
         (account.broker==='kraken'&&(!Number.isFinite(cashAge)||cashAge< -300000||cashAge>36*3600000))) {
         unavailable++;warnings.push(`${account.broker}: cash valuation is stale or has not reconciled; no fresh chart value was recorded.`);continue;
