@@ -41,12 +41,17 @@ function addTask(map, symbol, type, from, to) {
   if (from > to) return;
   map.set(key, { symbol, instrumentType: type, from: old?.from < from ? old.from : from, to: old?.to > to ? old.to : to });
 }
+function addUnsupportedTask(map, market, from, to) {
+  if (!from || !Number.isFinite(Date.parse(from)) || from > to) return;
+  const key = `${market.instrumentType}:${market.symbol}`, old = map.get(key);
+  map.set(key, { ...market, from: old?.from < from ? old.from : from, to: old?.to > to ? old.to : to });
+}
 async function plan(userId, scope = null) {
   const accounts = scope ? Object.keys(scope.accounts) : [];
   if (scope && !accounts.length) return [];
   if (accounts.length > 1) {
     const combined=new Map();
-    for (const id of accounts) for (const task of await plan(userId,{accounts:{[id]:scope.accounts[id]}})) {if(task.unsupported)combined.set(`${task.instrumentType}:${task.symbol}`,task);else addTask(combined,task.symbol,task.instrumentType,task.from,task.to);}
+    for (const id of accounts) for (const task of await plan(userId,{accounts:{[id]:scope.accounts[id]}})) {if(task.unsupported)addUnsupportedTask(combined,task,task.from,task.to);else addTask(combined,task.symbol,task.instrumentType,task.from,task.to);}
     return [...combined.values()].sort((a,b)=>a.from.localeCompare(b.from)||a.symbol.localeCompare(b.symbol));
   }
   const floor = scope ? Object.values(scope.accounts).filter(Boolean).sort()[0] : null;
@@ -59,7 +64,8 @@ async function plan(userId, scope = null) {
     const entered = iso(t.entry_time || t.trade_date);
     const market=identity(t,entered);
     if(market.unsupported) {
-      tasks.set(`${market.instrumentType}:${market.symbol}`,{...market,from:entered,to:end});
+      const from=floor&&entered<floor?floor:entered,to=t.exit_time?[iso(Math.max(Date.parse(entered),Date.parse(iso(t.exit_time))-DAY)),end].sort()[0]:end;
+      addUnsupportedTask(tasks,market,from,to);
       continue;
     }
     if(!market.symbol)continue;
@@ -76,7 +82,7 @@ async function plan(userId, scope = null) {
     const listings=new Set(related.map(t=>identity(t,iso(t.entry_time||t.trade_date)).symbol));
     const verified=owners.length&&owners.every(a=>related.some(t=>t.account_identifier===a))&&listings.size===1;
     const market=identity(verified?{...p,history_market_symbol:[...listings][0]}:p,iso(p.effectiveDate));
-    if(market.unsupported)tasks.set(`${market.instrumentType}:${market.symbol}`,{...market,from:iso(p.effectiveDate),to:end});
+    if(market.unsupported)addUnsupportedTask(tasks,market,floor && iso(p.effectiveDate)<floor ? floor : iso(p.effectiveDate),end);
     else {requireFrom(market.symbol,market.instrumentType,iso(p.effectiveDate));scopedTask(market.symbol,market.instrumentType,iso(p.effectiveDate),end);}
   }
   // Closed coins and Earn/stablecoin balances may exist only in native ledgers.
