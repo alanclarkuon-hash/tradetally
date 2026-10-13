@@ -100,8 +100,10 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
     try {
      const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
      const result=response.data?.chart?.result?.[0];
-     if(result?.meta?.symbol || /^0[0-9]{4}\.HK$/i.test(ticker))require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
+     if(result?.meta?.symbol || require('./holdingsHistoryProvider').yahooTicker(ticker)!==ticker)require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
      native=parseYahoo(result);
+     const first=Number(result?.meta?.firstTradeDate)||0;
+     if(first)native.prices=native.prices.filter(p=>p.date>=date(first*1000));
     } catch { /* Cached native metadata remains usable; do not invent currencies. */ }
     if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}

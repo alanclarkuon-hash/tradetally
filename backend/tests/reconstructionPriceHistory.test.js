@@ -30,3 +30,13 @@ test.each([{symbol:'0257.HK',currency:'USD',exchangeName:'HKG'},{symbol:'0257.HK
  expect(await loadMarket('00257.HK','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'})).toBeNull();
  expect(db.withTransaction).not.toHaveBeenCalled();
 });
+
+
+test('namespace reconstruction recovers native metadata and rejects pre-listing candles under original key',async()=>{
+ saved=null;portfolio._getDailySeries.mockResolvedValue([]);
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE.AS',currency:'EUR',exchangeName:'AMS',firstTradeDate:Date.parse('2026-01-05')/1000},timestamp:['2026-01-02','2026-01-05'].map(d=>Date.parse(d)/1000),events:{},indicators:{quote:[{close:[10,11]}]}}]}}});
+ const result=await loadMarket('EXAMPLE.NV','2026-01-02','2026-01-05',{fetchPrices:true,userId:'owner'});
+ expect(result).toMatchObject({currency:'EUR',prices:[{date:'2026-01-05',close:11}]});
+ expect(db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT'))[1][0]).toBe('EXAMPLE.NV');
+ expect(axios.get.mock.calls[0][0]).toContain('/EXAMPLE.AS');
+});

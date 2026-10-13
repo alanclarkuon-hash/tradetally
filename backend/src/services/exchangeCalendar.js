@@ -108,14 +108,15 @@ async function lookup(symbol) {
   const request=yahooLane.catch(()=>{}).then(async()=>{
     if(Date.now()<yahooCooldown) return null;
     await new Promise(resolve=>setTimeout(resolve,500));
-    const ticker=symbol==='BRK.B'?'BRK-B':symbol;
+    const provider=require('./holdingsHistoryProvider'),ticker=provider.yahooTicker(symbol);
     try {
       const response=await require('axios').get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`,{
         params:{range:'5d',interval:'1d'},timeout:12000,maxRedirects:0,maxContentLength:1024*1024,
         headers:{'User-Agent':'TradeTally exchange calendar metadata'}
       });
       const meta=response.data?.chart?.result?.[0]?.meta;
-      if(String(meta?.symbol).toUpperCase()!==ticker.toUpperCase() || !meta.exchangeName) throw Error('Listing metadata unavailable');
+      provider.verifyYahooListing(symbol,meta);
+      if(!meta.exchangeName) throw Error('Listing metadata unavailable');
       await db.query(`INSERT INTO exchange_calendar_listings(symbol,exchange,source) VALUES($1,$2,'yahoo')
         ON CONFLICT(symbol) DO UPDATE SET exchange=EXCLUDED.exchange,source=EXCLUDED.source,checked_at=NOW()`,[symbol,meta.exchangeName]);
       const value=identify(symbol,meta.exchangeName);

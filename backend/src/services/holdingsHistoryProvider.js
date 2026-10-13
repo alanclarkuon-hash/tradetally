@@ -18,16 +18,32 @@ function missingRanges(candles, from, to, crypto = false, calendar = null) {
   return ranges;
 }
 
-// Provider formatting preserves the caller's broker/cache identity.
+// Broker namespaces differ from provider listing suffixes. Formatting changes
+// the provider request only; financial records and cache keys remain untouched.
+const namespaceRules={
+ US:{suffix:'',currency:'USD',venues:/^(NYQ|NMS|NGM|NCM|PCX|ASE|BTS|NYSE|NASDAQ|NYSEARCA)$/i},
+ NV:{suffix:'.AS',currency:'EUR',venues:/^(AMS|XAMS|AMSTERDAM)$/i},
+ ZU:{suffix:'.SW',currency:'CHF',venues:/^(EBS|SWX|SIX|XSWX)$/i},
+ ASX:{suffix:'.AX',currency:'AUD',venues:/^(ASX|XASX)$/i}
+};
+function yahooListing(symbol) {
+ const hk=/^0[0-9]{4}\.HK$/i.test(symbol);
+ if(hk)return {ticker:symbol.slice(1).toUpperCase(),currency:'HKD',venues:/^(HKG|HKEX|XHKG|HONG KONG)$/i};
+ const match=/^([A-Z][A-Z0-9.-]*)\.(US|NV|ZU|ASX)$/i.exec(symbol);
+ if(!match)return null;
+ const rule=namespaceRules[match[2].toUpperCase()];
+ const base=match[1].toUpperCase();
+ return {...rule,ticker:(match[2].toUpperCase()==='US'?base.replace(/^([A-Z0-9]+)\.([AB])$/,'$1-$2'):base)+rule.suffix};
+}
 function yahooTicker(symbol) {
-  return symbol === 'BRK.B' ? 'BRK-B' : /^0[0-9]{4}\.HK$/i.test(symbol) ? symbol.slice(1).toUpperCase() : symbol;
+ return yahooListing(symbol)?.ticker || (symbol === 'BRK.B' ? 'BRK-B' : symbol);
 }
 function verifyYahooListing(symbol,meta) {
-  if(String(meta?.symbol||'').toUpperCase()!==yahooTicker(symbol).toUpperCase())
-    throw new Error('Historical listing identity does not match requested symbol');
-  if(/^0[0-9]{4}\.HK$/i.test(symbol) &&
-     (meta.currency !== 'HKD' || !/^(HKG|HKEX|XHKG|HONG KONG)$/i.test(meta.exchangeName || '')))
-    throw new Error('Historical Hong Kong listing venue or currency does not match requested symbol');
+ if(String(meta?.symbol||'').toUpperCase()!==yahooTicker(symbol).toUpperCase())
+   throw new Error('Historical listing identity does not match requested symbol');
+ const listing=yahooListing(symbol);
+ if(listing && (meta.currency!==listing.currency || !listing.venues.test(meta.exchangeName||'')))
+   throw new Error('Historical listing venue or currency does not match requested symbol');
 }
 async function yahoo(symbol, from, to) {
   const ticker = yahooTicker(symbol);
