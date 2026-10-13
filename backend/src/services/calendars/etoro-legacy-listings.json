@@ -73,6 +73,38 @@
       "isin": "DK0060094928",
       "directoryPage": 36,
       "source": "https://www.etoro.com/markets/orsted.co"
+    },
+    {
+      "symbol": "PRY",
+      "currency": "EUR",
+      "marketSymbol": "PRY.MI",
+      "isin": "IT0004176001",
+      "directoryPage": 9,
+      "source": "https://www.etoro.com/markets/pry.mi"
+    },
+    {
+      "symbol": "ENI",
+      "currency": "EUR",
+      "marketSymbol": "ENI.MI",
+      "isin": "IT0003132476",
+      "directoryPage": 8,
+      "source": "https://www.etoro.com/markets/eni.mi"
+    },
+    {
+      "symbol": "ANA",
+      "currency": "EUR",
+      "marketSymbol": "ANA.MC",
+      "isin": "ES0125220311",
+      "directoryPage": 10,
+      "source": "https://www.etoro.com/markets/ana.mc"
+    },
+    {
+      "symbol": "VIE",
+      "currency": "EUR",
+      "marketSymbol": "VIE.PA",
+      "isin": "FR0000124141",
+      "directoryPage": 8,
+      "source": "https://www.etoro.com/markets/vie.pa"
     }
   ]
 }
