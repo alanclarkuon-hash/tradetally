@@ -39,8 +39,15 @@ test('last-split evidence cannot establish the unit basis for earlier dates',()=
 });
 
 test('accepts explicit split facts only when statistics identify the same security and currency',async()=>{
- const table='<table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table>';
+ const table='<main><p>This stock does not have any record of stock splits.</p><table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table></main>';
  const data={ticker:'ZZTEST4',exchange:'NASDAQ',currency:'USD',name:'Synthetic security',path:'/stocks/zztest4/history/'};
  axios.get.mockResolvedValueOnce({data:html('ZZTEST4')+table});await provider.splitProof(data);expect(data.unadjustedAfter).toBe('1900-01-01');
  const different={...data,proofPromise:undefined,unadjustedAfter:undefined};axios.get.mockResolvedValueOnce({data:html('DIFFERENT')+table});await provider.splitProof(different);expect(different.unadjustedAfter).toBeUndefined();
+});
+
+test('native prices with unidentified units cannot establish the unit of a fallback',()=>{
+ const data={currency:'USD',unadjustedAfter:'1900-01-01',prices:[{date:'2023-01-03',close:100}]};expect(provider.verifiedRows(data,'2023-01-01','2023-01-05',{prices:[{date:'2022-01-03',close:100}]})).toEqual([]);
+});
+test('blank split fields without an explicit source statement remain unverified',async()=>{
+ const data={ticker:'ZZTEST5',exchange:'NASDAQ',currency:'USD',name:'Synthetic security',path:'/stocks/zztest5/history/'};axios.get.mockResolvedValueOnce({data:html('ZZTEST5')+'<main><table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table></main>'});await provider.splitProof(data);expect(data.unadjustedAfter).toBeUndefined();
 });
