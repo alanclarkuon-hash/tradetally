@@ -29,3 +29,18 @@ test('foreign listings retain exchange namespace and crypto/contracts are not pr
 test('hydration reader treats embedded script text as data rather than executing it',()=>{
  const value=provider.literalObject('x:{ticker:"};process.exit()",nested:{value:1}} tail',2);expect(provider.stringField(value,'ticker')).toBe('};process.exit()');expect(()=>provider.literalObject('{bad',0)).toThrow();
 });
+
+test('explicit no-split evidence permits a full range in native units without cached overlap',()=>{
+ const data={currency:'USD',unadjustedAfter:'1900-01-01',prices:[{date:'2023-01-03',close:100}]};expect(provider.verifiedRows(data,'2023-01-01','2023-01-05',null)).toEqual(data.prices);
+ expect(provider.verifiedRows(data,'2023-01-01','2023-01-05',{currency:'USD',splits:[{date:'2024-01-01',ratio:2}]})).toEqual([]);
+});
+test('last-split evidence cannot establish the unit basis for earlier dates',()=>{
+ const data={currency:'USD',unadjustedAfter:'2023-01-04',prices:[{date:'2023-01-03',close:100},{date:'2023-01-05',close:101}]};expect(provider.verifiedRows(data,'2023-01-01','2023-01-06',null)).toEqual([data.prices[1]]);
+});
+
+test('accepts explicit split facts only when statistics identify the same security and currency',async()=>{
+ const table='<table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table>';
+ const data={ticker:'ZZTEST4',exchange:'NASDAQ',currency:'USD',name:'Synthetic security',path:'/stocks/zztest4/history/'};
+ axios.get.mockResolvedValueOnce({data:html('ZZTEST4')+table});await provider.splitProof(data);expect(data.unadjustedAfter).toBe('1900-01-01');
+ const different={...data,proofPromise:undefined,unadjustedAfter:undefined};axios.get.mockResolvedValueOnce({data:html('DIFFERENT')+table});await provider.splitProof(different);expect(different.unadjustedAfter).toBeUndefined();
+});
