@@ -45,3 +45,28 @@ test.each([
  axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE',firstTradeDate:Date.parse('2025-05-01')/1000},timestamp:['2023-05-01','2025-05-01','2025-06-01'].map(d=>Date.parse(d)/1000),indicators:{quote:[{close:[10,20,30]}]}}]}}});
  expect(await provider.yahoo('EXAMPLE','2023-05-01','2025-05-01')).toEqual([expect.objectContaining({close:20})]);
  });
+
+
+test.each([['00257.HK','0257.HK'],['01093.HK','1093.HK'],['00001.hk','0001.HK']])('numeric HK broker code %s uses equivalent provider listing %s',async(symbol,ticker)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:ticker,currency:'HKD',exchangeName:'HKG'},timestamp:[Date.parse('2022-03-01')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ expect(await provider.yahoo(symbol,'2022-03-01','2022-03-01')).toEqual([expect.objectContaining({close:10,currency:'HKD'})]);
+ expect(axios.get.mock.calls[0][0]).toContain('/'+ticker);
+});
+test.each(['12345.HK','0257.HK','00257.US','00001.L','HK005'])('unrelated or genuine five-digit listing %s is not shortened',async(symbol)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol,currency:'HKD'},timestamp:[],indicators:{quote:[{close:[]}]}}]}}});
+ await provider.yahoo(symbol,'2022-03-01','2022-03-01');
+ expect(axios.get.mock.calls[0][0]).toContain('/'+symbol);
+});
+test.each([
+ {symbol:'OTHER.HK',currency:'HKD',exchangeName:'HKG'},
+ {symbol:'0257.HK',currency:'USD',exchangeName:'HKG'},
+ {symbol:'0257.HK',currency:'HKD',exchangeName:'NYSE'},
+ {symbol:'0257.HK',currency:'HKD'},
+])('formatted HK listing requires matching symbol, currency and venue %#',async(meta)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta,timestamp:[Date.parse('2022-03-01')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ await expect(provider.yahoo('00257.HK','2022-03-01','2022-03-01')).rejects.toThrow(/listing/i);
+});
+test('formatted HK listing retains date/lifetime bounds',async()=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'0257.HK',currency:'HKD',exchangeName:'HKG',firstTradeDate:Date.parse('2022-03-02')/1000},timestamp:['2022-03-01','2022-03-02','2022-03-03'].map(d=>Date.parse(d)/1000),indicators:{quote:[{close:[10,11,12]}]}}]}}});
+ expect(await provider.yahoo('00257.HK','2022-03-01','2022-03-02')).toEqual([expect.objectContaining({close:11})]);
+});
