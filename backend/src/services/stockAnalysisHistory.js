@@ -57,7 +57,7 @@ async function download(symbol) {
   const rows=response.data.filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.t)&&[p.o,p.h,p.l,p.c].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>0)&&p.h>=Math.max(p.o,p.l,p.c)&&p.l<=Math.min(p.o,p.h,p.c)&&Number(p.v)>1);
   return {symbol:key,ticker,exchange,currency,name:stringField(info,'nameFull'),path:r.path,source:'stockanalysis:'+source,basis:'split-adjusted-close',prices:rows.map(p=>({date:p.t,close:p.c/unit.divisor})),candles:rows.map(p=>({time:Date.parse(p.t)/1000,open:p.o/unit.divisor,high:p.h/unit.divisor,low:p.l/unit.divisor,close:p.c/unit.divisor,volume:p.v,currency}))};
  })();
- memo.set(key,{time:Date.now(),promise});promise.catch(()=>memo.delete(key));if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
+ memo.set(key,{time:Date.now(),promise});promise.catch(error=>{if(error.response?.status===429||error.message==='Stock Analysis rate-limit cooldown')memo.delete(key);else if(error.response?.status>=500||error.code==='ECONNABORTED'){const entry=memo.get(key);if(entry)entry.time=Date.now()-55*60000;}});if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
 }
 async function splitProof(data) {
  if(!data.proofPromise)data.proofPromise=(async()=>{

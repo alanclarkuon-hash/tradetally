@@ -51,3 +51,10 @@ test('native prices with unidentified units cannot establish the unit of a fallb
 test('blank split fields without an explicit source statement remain unverified',async()=>{
  const data={ticker:'ZZTEST5',exchange:'NASDAQ',currency:'USD',name:'Synthetic security',path:'/stocks/zztest5/history/'};axios.get.mockResolvedValueOnce({data:html('ZZTEST5')+'<main><table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table></main>'});await provider.splitProof(data);expect(data.unadjustedAfter).toBeUndefined();
 });
+
+test('unavailable listings are not re-requested for each missing range',async()=>{
+ axios.get.mockRejectedValue({response:{status:404}});await expect(provider.download('ZZMISSING')).rejects.toEqual({response:{status:404}});await expect(provider.download('ZZMISSING')).rejects.toEqual({response:{status:404}});expect(axios.get).toHaveBeenCalledTimes(2);
+});
+test('a rate-limit response prevents requests for other symbols during cooldown',async()=>{
+ axios.get.mockRejectedValueOnce({response:{status:429,headers:{'retry-after':'120'}}});await expect(provider.download('ZZLIMIT1')).rejects.toEqual({response:{status:429,headers:{'retry-after':'120'}}});await expect(provider.download('ZZLIMIT2')).rejects.toThrow('rate-limit cooldown');expect(axios.get).toHaveBeenCalledTimes(1);
+});
