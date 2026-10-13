@@ -41,9 +41,9 @@ describe('daily R availability',()=>{
   const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,dailyPnL:[analytics.dailyPnL[0],{tradeDate:today,dailyPnL:8,rValue:value,tradeCount:2}]}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');
   expect(w.find('[aria-label="Today results"]').text()).toContain(expected);expect(w.findComponent({name:'MiniBarChart'}).props('values')).toEqual([.75,Number(value)]);w.unmount();
  });
- it('shows unavailable for both total and Today when no risk evidence exists',async()=>{
+ it.each([null, 0, '0'])('shows unavailable for both total and Today when no risk evidence exists (%s)',async value=>{
   mock.selection.value='gbp';const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
-  const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,summary:{...analytics.summary,totalRValue:null},dailyPnL:[{trade_date:today,daily_pnl:8,r_value:null,trade_count:2}]}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');
+  const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,summary:{...analytics.summary,totalRValue:null},dailyPnL:[{trade_date:today,daily_pnl:8,r_value:value,trade_count:2}]}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');
   expect(w.text().match(/R unavailable/g)).toHaveLength(2);expect(w.text()).not.toContain('+0.00R');expect(w.findComponent({name:'MiniBarChart'}).exists()).toBe(false);w.unmount();
  });
 

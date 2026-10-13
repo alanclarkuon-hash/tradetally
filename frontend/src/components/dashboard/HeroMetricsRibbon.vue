@@ -358,7 +358,7 @@ const profitFactorClass = computed(() => {
   return 'text-red-600 dark:text-red-400'
 })
 
-const todayR = computed(() => streakStats.value.todayR)
+const todayR = computed(() => rAvailable.value ? streakStats.value.todayR : null)
 
 const todayPnlClass = computed(() => {
   const v = rMode.value ? todayR.value : todayPnl.value
