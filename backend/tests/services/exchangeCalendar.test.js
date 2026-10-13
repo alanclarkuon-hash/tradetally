@@ -218,3 +218,16 @@ test('Frankfurt joint exchange calendar preserves full and partial session disti
 test('explicit non-Frankfurt suffix keeps its own venue despite a conflicting venue label',()=>expect(calendar.identify('KER.PA','FRA')).toBe('EURONEXT'));
 
 test.each(['Chicago Board Options Exchange','OTC Markets Stock Exchange'])('qualified broker stock venue %s uses the US equity calendar',venue=>expect(calendar.identify('VERIFIED',venue)).toBe('US'));
+test('Saudi Exchange has Sunday sessions and Friday/Saturday weekends',()=>{
+ expect(calendar.identify('2222.SR')).toBe('TADAWUL');
+ expect(calendar.identify('SAOC','Tadawul')).toBe('TADAWUL');
+ expect(calendar.isTradingDay('2026-10-11','TADAWUL')).toBe(true);
+ expect(calendar.isTradingDay('2026-10-09','TADAWUL')).toBe(false);
+ expect(calendar.isTradingDay('2026-10-10','TADAWUL')).toBe(false);
+ expect(missingRanges([],'2026-10-09','2026-10-12',false,'TADAWUL')).toEqual([{from:'2026-10-11',to:'2026-10-12'}]);
+ expect(calendar.coversRange('TADAWUL','2021-01-01','2026-12-31')).toBe(true);
+ expect(calendar.coversRange('TADAWUL','2020-01-01','2026-12-31')).toBe(false);
+ expect(calendar.coversRange('TADAWUL','2027-01-01','2027-12-31')).toBe(false);
+});
+test.each(['2021-05-16','2022-04-28','2022-07-12','2023-09-24','2024-04-11','2025-02-23','2025-06-10','2026-03-23','2026-05-28'])('announced Saudi closure %s',date=>expect(calendar.isTradingDay(date,'TADAWUL')).toBe(false));
+test.each(['2021-07-15','2021-07-25','2022-07-06','2022-07-13','2022-05-08','2023-04-17','2023-04-25','2023-06-22','2023-07-02','2024-04-04','2024-04-14','2024-06-13','2024-06-23','2025-03-27','2025-04-03','2026-03-16','2026-03-24'])('Saudi last/resumed trading date %s still needs a price',date=>expect(calendar.isTradingDay(date,'TADAWUL')).toBe(true));

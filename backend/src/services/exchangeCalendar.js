@@ -61,20 +61,22 @@ const hkexClosures={
 calendars.set('HKEX',year=>[...(hkex.years[year]||[]),...Object.keys(hkexClosures).filter(d=>d.startsWith(year+'-'))].map(Date.parse));
 const asx=require('./calendars/asx-holidays.json');
 calendars.set('ASX',year=>(asx.years[year]||[]).map(Date.parse));
+const tadawul=require('./calendars/tadawul-holidays.json');
+calendars.set('TADAWUL',year=>(tadawul.years[year]||[]).map(Date.parse));
 const european=require('./calendars/european-holidays.json').calendars;
 for (const [name,definition] of Object.entries(european)) calendars.set(name,year=>(definition.years[year]||[]).map(Date.parse));
 function coversRange(calendar,from,to) {
  if(!calendars.has(calendar))return false;
  const first=new Date(from).getUTCFullYear(),last=new Date(to).getUTCFullYear();
  if(!Number.isFinite(first)||!Number.isFinite(last)||first<2020)return false;
- for(let year=first;year<=last;year++)if(european[calendar]&&!european[calendar].years[year]||calendar==='HKEX'&&!hkex.years[year]||calendar==='ASX'&&!asx.years[year])return false;
+ for(let year=first;year<=last;year++)if(european[calendar]&&!european[calendar].years[year]||calendar==='HKEX'&&!hkex.years[year]||calendar==='ASX'&&!asx.years[year]||calendar==='TADAWUL'&&!tadawul.years[year])return false;
  return true;
 }
 const holidays=new Map(), identities=new Map(), lookupLanes=new Map(), retryAfter=new Map(), verifiedListings=new Set();
 let yahooLane=Promise.resolve(), yahooCooldown=0;
 function isTradingDay(day, calendar) {
   const t=Date.parse(day),year=new Date(t).getUTCFullYear();
-  if(!Number.isFinite(t) || [0,6].includes(new Date(t).getUTCDay())) return false;
+  if(!Number.isFinite(t) || (calendar==='TADAWUL'?[5,6]:[0,6]).includes(new Date(t).getUTCDay())) return false;
   if(!calendars.has(calendar) || year<2020) return true;
   const key=`${calendar}:${year}`;
   if(!holidays.has(key)) holidays.set(key,new Set(calendars.get(calendar)(year).map(iso)));
@@ -82,6 +84,8 @@ function isTradingDay(day, calendar) {
 }
 function identify(symbol, exchange='') {
   symbol=String(symbol).toUpperCase(); exchange=String(exchange).toUpperCase();
+  if(symbol.endsWith('.SR')) return 'TADAWUL';
+  if(/^(TADAWUL|SAUDI EXCHANGE|XSAU)$/.test(exchange)) return 'TADAWUL';
   if(symbol.endsWith('.L')) return 'LSE';
   if(symbol.endsWith('.DE')) return 'XETRA';
   if(symbol.endsWith('.F')) return 'FRANKFURT';
@@ -188,3 +192,4 @@ async function resolve(symbol,{allowLookup=false,userId=null}={}) {
   catch {identities.delete(symbol);return null;}
 }
 module.exports={resolve,identify,isTradingDay,calendars,coversRange,brokerCalendar};
+

@@ -176,7 +176,7 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     if (Number(data.instrumentId) !== id || !Array.isArray(data.results)) throw Error('Invalid eToro candles');
     if(data.interval!==interval||data.side!=='bid')throw Error('Invalid eToro candle interval');
     const quote=String(data.symbol||'').split('/');
-    if(data.results.length && (quote.length!==2 || quote[0].toUpperCase()!==symbol)) throw Error('Invalid eToro candle identity');
+    if(data.results.length && (quote.length!==2 || !etoroQuoteSymbol(symbol,quote[0],matches[0]))) throw Error('Invalid eToro candle identity');
     if(interval==='1h'&&quote[1]!=='USD'&&data.results.length)throw Error('Invalid eToro crypto currency');
     result.push(...(interval==='1h'?data.results:data.results.map(r => etoroDaily(r,instrumentType,quote[1],reference))));
     if (!data.pagination?.hasNext) return bounded(interval==='1h'?etoroCryptoDays(result):result, from, to);
@@ -186,6 +186,15 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
   throw Error('eToro candle page limit reached');
 }
 
+function etoroQuoteSymbol(symbol,quote,metadata) {
+ if(typeof quote!=='string')return false;
+ const shown=quote.toUpperCase();
+ if(shown===symbol)return true;
+ // The native Data API renders LSE display symbols without .L. Accept only
+ // this publisher formatting for an exact typed London identity; retain every
+ // other suffix/share class and never infer a listing from a bare symbol.
+ return Number(field(metadata,'exchangeId'))===7 && String(field(metadata,'symbolFull')).toUpperCase()===symbol && symbol.endsWith('.L') && shown===symbol.slice(0,-2);
+}
 function etoroCryptoDays(rows) {
  const groups=new Map();
  for(const row of rows) {
@@ -255,4 +264,5 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }
 }
-module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities };
+module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities, etoroQuoteSymbol };
+
