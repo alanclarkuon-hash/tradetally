@@ -45,10 +45,11 @@ function statementLotMetadata(trades,records,splits) {
  // Compare documented broker listing representations within statement evidence.
  // The full statement symbol remains the returned historical listing; account
  // settlement currency never supplies a market suffix or an alias.
- const suffixes={GBX:['L'],EUR:['DE','NV','AS','PA','BR','MI','MC','LS'],CHF:['ZU','SW'],SEK:['ST'],DKK:['CO'],NOK:['OL'],AUD:['ASX','AX'],USD:['US'],HKD:['HK']};
+ const suffixes={GBX:['L'],EUR:['DE','F','NV','AS','PA','BR','MI','MC','LS'],CHF:['ZU','SW'],SEK:['ST'],DKK:['CO'],NOK:['OL'],AUD:['ASX','AX'],USD:['US'],HKD:['HK']};
  const canonical=(symbol,currency)=>{
   const upper=String(symbol).toUpperCase(),match=/^(.+)\.([A-Z]+)$/.exec(upper);
-  return match&&suffixes[currency]?.includes(match[2])?match[1]:upper;
+  const alias=legacyListings.find(l=>l.currency===currency&&l.statementSymbols?.includes(upper));
+  return alias?.symbol||(match&&suffixes[currency]?.includes(match[2])?match[1]:upper);
  };
  for(const r of records) {
   if(r.sourceType!=='Open Position'||!r.positionId)continue;
@@ -96,9 +97,10 @@ function statementLotMetadata(trades,records,splits) {
   if(!authority)marketSymbol=null;
   else if(marketSymbol&&!marketSymbol.includes('.')&&canonical(t.symbol,currency)===marketSymbol&&canonical(t.symbol,currency)!==t.symbol.toUpperCase())marketSymbol=t.symbol.toUpperCase();
   // Legacy bare symbols are broker-specific and require proven native identity.
-  if(authority&&t.broker==='etoro'&&marketSymbol===t.symbol.toUpperCase()&&!marketSymbol.includes('.')) {
-   const listing=legacyListings.find(l=>l.symbol===marketSymbol&&l.currency===currency);
-   if(listing)marketSymbol=listing.marketSymbol;
+  if(authority&&t.broker==='etoro') {
+   const listing=legacyListings.find(l=>l.currency===currency&&l.symbol===canonical(t.symbol,currency)&&
+    (marketSymbol===l.symbol||l.statementSymbols?.includes(marketSymbol)));
+   if(listing)marketSymbol=t.symbol.includes('.')&&canonical(t.symbol,currency)!==t.symbol.toUpperCase()?t.symbol.toUpperCase():listing.marketSymbol;
   }
   // A mapped statement profile replaces the provider or differently named
   // broker profile, rather than applying both to the same lot.

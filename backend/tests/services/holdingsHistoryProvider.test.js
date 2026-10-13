@@ -126,3 +126,8 @@ test.each(require('../../src/services/calendars/verified-yahoo-aliases.json').li
  expect(()=>provider.verifyYahooListing(listing.symbol,{...meta,exchangeName:'WRONG'})).toThrow(/listing/i);
  expect(()=>provider.verifyYahooListing(listing.symbol,{...meta,symbol:'WRONG'})).toThrow(/listing/i);
 });
+test.each(['HDD.F','GYC.F','HLAG.F','SZG.F','EVK.F'])('verified Frankfurt %s cannot become Xetra or USD',symbol=>{
+ expect(()=>provider.verifyYahooListing(symbol,{symbol,currency:'EUR',exchangeName:'FRA'})).not.toThrow();
+ expect(()=>provider.verifyYahooListing(symbol,{symbol,currency:'EUR',exchangeName:'GER'})).toThrow(/venue/);
+ expect(()=>provider.verifyYahooListing(symbol,{symbol,currency:'USD',exchangeName:'FRA'})).toThrow(/currency/);
+});

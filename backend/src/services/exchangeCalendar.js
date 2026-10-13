@@ -46,6 +46,9 @@ calendars.set('LSE', year => {
 calendars.set('XETRA', year => [date(year,1,1),easter(year)-2*DAY,easter(year)+DAY,
   date(year,5,1),date(year,12,24),date(year,12,25),date(year,12,26),date(year,12,31),
   ...(year<=2021 ? [easter(year)+50*DAY,date(year,10,3)] : [])]);
+// Deutsche Boerse jointly publishes full closures for Xetra and Boerse Frankfurt.
+// https://www.xetra.com/xetra-en/trading/trading-calendar-and-trading-hours
+calendars.set('FRANKFURT',calendars.get('XETRA'));
 const hkex=require('./calendars/hkex-holidays.json');
 // Full closures only. Half-day typhoon sessions and Christmas/LNY eves trade.
 const hkexClosures={
@@ -81,6 +84,7 @@ function identify(symbol, exchange='') {
   symbol=String(symbol).toUpperCase(); exchange=String(exchange).toUpperCase();
   if(symbol.endsWith('.L')) return 'LSE';
   if(symbol.endsWith('.DE')) return 'XETRA';
+  if(symbol.endsWith('.F')) return 'FRANKFURT';
   if(symbol.endsWith('.HK')) return 'HKEX';
   if(/\.(AX|ASX)$/.test(symbol)) return 'ASX';
   if(/\.(PA|BR|AS|LS)$/.test(symbol)) return 'EURONEXT';
@@ -90,6 +94,7 @@ function identify(symbol, exchange='') {
   if(symbol.endsWith('.CO')) return 'COPENHAGEN';
   if(/\.(SW|ZU)$/.test(symbol)) return 'SIX';
   if(symbol.endsWith('.MC')) return 'MADRID';
+  if(/^(FRA|XFRA|FRANKFURT)$/.test(exchange)) return 'FRANKFURT';
   if(/^(PAR|BRU|AMS|LIS|XPAR|XBRU|XAMS|XLIS)$/.test(exchange)) return 'EURONEXT';
   if(/^(OSL|XOSL|OSLO)$/.test(exchange)) return 'OSLO';
   if(/^(MIL|XMIL|BORSA ITALIANA)$/.test(exchange)) return 'MILAN';
