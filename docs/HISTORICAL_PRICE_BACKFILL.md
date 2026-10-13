@@ -107,3 +107,11 @@ Full provider names additionally retain exact returned symbol/native-currency/ve
 Milan 2021 uses the visually verified Borsa Italiana primary-market column of the archived LSE Turquoise calendar. Only its published full weekday closures are excluded; neighbouring venues and bank holidays remain independent. Unsupported 2020 dates still report incomplete calendar coverage.
 
 Verified provider listing metadata is retained separately from cached historical closes. Optional pre-entry warm-up is clipped at a verified first session only when every actual contributing trade/position starts on or after that date. Earlier holdings, reused listings, incompatible currencies and unverified metadata retain their coverage requirements. A current metadata request never substitutes current quotes for historical prices.
+
+### Broker crypto lots and older USD archive candles
+
+Crypto fallbacks retain the broker product key while translating documented quote units. eToro SHIBxM represents one million SHIB: fallback OHLC prices multiply by one million and token volume divides by one million. Broker-native SHIBxM candles are already in lot units and remain unchanged. OKX USDT history still requires a dated USD index conversion before lot scaling.
+
+Older finalized USD gaps can use Kraken's official Q2 2026 OHLCVT archive. Only bounded ZIP ranges for the exact daily pair are read; checksums, UTC daily timestamps and valid OHLCV fields are mandatory. Live finalized candles win overlaps and archive failures leave valid live coverage intact.
+
+Source-backed predecessor archive windows recover EOS before Vaulta, MATIC before POL and FTM before Sonic only before conservative successor-launch bounds. Exact unique current USD pair identity is required. These bounds are not account migration dates; periods when both tokens existed cannot establish which token a particular broker account held. Original trades, cache keys and existing prices are preserved, and unresolved transition periods remain visible.
