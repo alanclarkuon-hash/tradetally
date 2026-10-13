@@ -1,4 +1,4 @@
-jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
+jest.mock('../../src/config/database', () => ({ query: jest.fn(), connect: jest.fn() }));
 jest.mock('../../src/services/brokerSync/encryptionService', () => ({
   encrypt: jest.fn(value => value),
   decrypt: jest.fn(value => value)
@@ -22,6 +22,51 @@ describe('BrokerConnection sync state updates', () => {
     expect(query).toContain('last_sync_at = CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE last_sync_at END');
     expect(query).toContain("last_sync_status = CASE WHEN $5 THEN 'success' ELSE 'warning' END");
     expect(params[4]).toBe(false);
+  });
+
+  test('acquires and releases a cross-process advisory sync lock on one client', async () => {
+    const client = {
+      query: jest.fn()
+        .mockResolvedValueOnce({ rows: [{ acquired: true }] })
+        .mockResolvedValueOnce({ rows: [{}] }),
+      release: jest.fn()
+    };
+    db.connect.mockResolvedValueOnce(client);
+
+    const lock = await BrokerConnection.acquireSyncLock('connection-1');
+    expect(lock).not.toBeNull();
+    expect(client.query.mock.calls[0][0]).toContain('pg_try_advisory_lock');
+    await lock.release();
+    expect(client.query.mock.calls[1][0]).toContain('pg_advisory_unlock');
+    expect(client.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('includes due IBKR backfills independently of automatic sync and excludes them from the normal branch', async () => {
+    await BrokerConnection.findDueForSync();
+
+    const [query] = db.query.mock.calls[0];
+    expect(query).toContain("broker_metadata->'ibkr_backfill_retry'");
+    expect(query).toContain("NULLIF(broker_metadata->'ibkr_backfill_retry'->>'retry_at', '')::timestamptz <= NOW()");
+    expect(query).toContain("AND NOT (broker_type = 'ibkr' AND broker_metadata->'ibkr_backfill_retry' IS NOT NULL)");
+  });
+
+  test('persists an IBKR retry one hour ahead with the exact cursor and retry count', async () => {
+    await BrokerConnection.scheduleIBKRBackfillRetry('connection-1', {
+      floor: '2024-01-01',
+      windowStart: '2025-01-01',
+      windowEnd: '2025-12-31',
+      retryCount: 2,
+      errorCode: 'TIMEOUT',
+      referenceCode: 'REF-123'
+    });
+
+    const [query, params] = db.query.mock.calls[0];
+    expect(query).toContain("jsonb_build_object('ibkr_backfill_retry'");
+    expect(query).toContain("NOW() + ($6 || ' minutes')::interval");
+    expect(params.slice(0, 7)).toEqual([
+      'connection-1', '2024-01-01', '2025-01-01', '2025-12-31', 2, '60', 'TIMEOUT'
+    ]);
+    expect(params[7]).toBe('REF-123');
   });
 
   test('moves a due transient retry into the future instead of leaving it due', async () => {
@@ -106,4 +151,16 @@ describe('BrokerConnection sync state updates', () => {
     expect(query).toContain('schwab_reauth_reminder_sent_at IS NULL');
     expect(params).toBeUndefined();
   });
+});
+
+
+test('current portfolio capture is valid bounded sync progress',async()=>{
+ db.query.mockClear();db.query.mockResolvedValue({rows:[]});
+ await BrokerConnection.updateSyncProgress('log','portfolio_capture',0);
+ const [sql,params]=db.query.mock.calls[0];expect(sql).toContain('completed_at IS NULL');
+ expect(JSON.parse(params[1])).toMatchObject({section:'portfolio_capture',pages:0,complete:false});
+ db.query.mockClear();
+ for(const section of ['unknown','private-response'])await expect(BrokerConnection.updateSyncProgress('log',section,0)).rejects.toThrow('Invalid sync progress');
+ for(const pages of [-1,1001,1.5])await expect(BrokerConnection.updateSyncProgress('log','portfolio_capture',pages)).rejects.toThrow('Invalid sync progress');
+ expect(db.query).not.toHaveBeenCalled();
 });

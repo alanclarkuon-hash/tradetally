@@ -46,3 +46,19 @@ test('stock classification labels include stored industry',async()=>{
 });
 
 test('closed renamed asset finds original trades through saved account-scoped catalogue without open snapshot positions',async()=>{const item={ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'};db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('broker_instrument_catalogues')?[{account_identifier:'selected',instruments:[item]}]:sql.includes('broker_portfolio_snapshots')?[]:sql.includes('count(*)')?[{count:1}]:[{symbol:'LOKB',broker:'trading212'}]}));const r=await getDetails('owner','NVTS',{source:'trades'});expect(r.records[0].symbol).toBe('LOKB');expect(db.query).toHaveBeenCalledWith(expect.stringContaining('aliases.account_identifier=trades.account_identifier'),['NVTS','owner',JSON.stringify([{account_identifier:'selected',symbol:'LOKB'}])]);});
+test.each(['BTC','COTI','HYPE'])('saved crypto quote %s reads its current identity instead of the legacy stock key',async symbol=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:true,stock:false}]:sql.includes('count(*)')?[{count:1}]:[{symbol:'crypto:'+symbol,data_source:'broker:example:crypto'}]}));
+  const result=await getDetails('owner',symbol,{source:'price_monitoring'});
+  expect(result.records[0].symbol).toBe('crypto:'+symbol);
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM price_monitoring WHERE symbol=$1'),['crypto:'+symbol]);
+});
+test('future crypto symbols use owned instrument type for historical price pagination',async()=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:true,stock:false}]:sql.includes('count(*)')?[{count:26}]:[{symbol:'crypto:NEWCOIN'}]}));
+  await getDetails('owner','NEWCOIN',{source:'historical_prices',offset:25});
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM historical_prices WHERE symbol=$1'),['crypto:NEWCOIN',25]);
+});
+test('an explicitly owned stock with a crypto ticker retains its stock cache',async()=>{
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('bool_or')?[{crypto:false,stock:true}]:sql.includes('count(*)')?[{count:1}]:[{symbol:'SUI'}]}));
+  await getDetails('owner','SUI',{source:'price_monitoring'});
+  expect(db.query).toHaveBeenCalledWith(expect.stringContaining('FROM price_monitoring WHERE symbol=$1'),['SUI']);
+});

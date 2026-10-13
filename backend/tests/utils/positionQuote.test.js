@@ -31,3 +31,14 @@ test('spread bets use dated IG point levels and never an underlying share quote'
   expect(getPositionKey(t)).not.toBe(getPositionKey({...t,side:'short'}));
   expect(getPositionKey(t)).not.toBe(getPositionKey({...t,account_identifier:'B'}));
 });
+
+ test('CFD equity never uses underlying share quotes and stays separate from shares and opposite sides',()=>{
+  const brokerQuote={c:55,currency:'USD'};
+  const p={instrumentType:'cfd',brokerQuote};
+  expect(usesEquityQuotes(p)).toBe(false);
+  expect(selectPositionQuote(p,{c:300},{c:300})).toBe(brokerQuote);
+  expect(selectPositionQuote({instrumentType:'cfd'},null,{c:300})).toBeNull();
+  const t={symbol:'TEST',instrument_type:'cfd',side:'long',account_identifier:'A',original_currency:'USD'};
+  expect(getPositionKey(t)).not.toBe(getPositionKey({...t,instrument_type:'stock'}));
+  expect(getPositionKey(t)).not.toBe(getPositionKey({...t,side:'short'}));
+ });

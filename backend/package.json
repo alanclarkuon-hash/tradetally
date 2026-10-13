@@ -1,6 +1,6 @@
 {
   "name": "tradetally-backend",
-  "version": "2.12.0",
+  "version": "2.13.0",
   "packageManager": "pnpm@10.34.5",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
@@ -10,6 +10,7 @@
     "test": "jest",
     "migrate": "node src/utils/migrate.js",
     "migrate:export": "node run-export-migration.js",
+    "seed:retirement-demo": "node scripts/seedRetirementPortfolioDemo.js",
     "test:integration": "jest --config jest.integration.config.js"
   },
   "dependencies": {

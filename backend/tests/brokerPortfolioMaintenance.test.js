@@ -3,7 +3,7 @@ jest.mock('../src/services/portfolioReconstructionService',()=>({reconstruct:jes
 jest.mock('../src/services/portfolioValueHistoryService',()=>({captureToday:jest.fn()}));
 jest.mock('../src/services/brokerSync/ibkrNavHistory',()=>({backfillTrailingWeekends:jest.fn()}));
 const db=require('../src/config/database'),reconstruction=require('../src/services/portfolioReconstructionService'),capture=require('../src/services/portfolioValueHistoryService');
-const {maintain}=require('../src/services/brokerPortfolioMaintenance');
+const {maintain,captureCurrent}=require('../src/services/brokerPortfolioMaintenance');
 const account={account_identifier:'owned',broker:'trading212',initial_balance_date:'2024-01-01'};
 beforeEach(()=>{
  jest.resetAllMocks();
@@ -51,4 +51,35 @@ test('OKX spot history gets the same bounded recovery, while unreconciled wallet
  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('user_accounts')?[api]:[{payload:{historyComplete:false}}]}));
  expect((await maintain('owner',{broker:'okx'})).warnings[0]).toContain('reconciliation');
  expect(reconstruction.reconstruct).not.toHaveBeenCalled();
+});
+
+
+test('sync snapshot capture does not wait for running historical maintenance',async()=>{
+ let finish;
+ reconstruction.reconstruct.mockImplementation(()=>new Promise(resolve=>{finish=resolve}));
+ const background=maintain('owner',{broker:'trading212',fetchPrices:true});
+ while(!finish)await new Promise(resolve=>setImmediate(resolve));
+ // This completes while the historical provider/reconstruction promise is pending.
+ expect(await captureCurrent('owner',{broker:'trading212'})).toEqual({captured:1,rebuilt:[],warnings:[]});
+ expect(reconstruction.reconstruct).toHaveBeenCalledTimes(1);
+ expect(capture.captureToday).toHaveBeenCalledWith('owner',{accounts:'owned'});
+ finish([{broker:'trading212',days:3,gaps:0}]);await background;
+});
+
+test('sync capture stays scoped to the imported broker and skips missing accounts',async()=>{
+ db.query.mockResolvedValue({rows:[account,{...account,broker:'etoro',account_identifier:'other'}]});
+ await captureCurrent('owner',{broker:'trading212'});
+ expect(capture.captureToday).toHaveBeenCalledWith('owner',{accounts:'owned'});
+ capture.captureToday.mockClear();
+ expect(await captureCurrent('owner',{broker:'ibkr'})).toEqual({captured:0,rebuilt:[],warnings:[]});
+ expect(capture.captureToday).not.toHaveBeenCalled();
+});
+
+
+test('routine scoped maintenance excludes untouched accounts and does not restart from old gaps',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[account,{...account,broker:'etoro',account_identifier:'untouched'}]:[{latest:'2026-10-01',first_gap:'2020-01-01'}]}));
+ await maintain('owner',{accountIdentifiers:['owned'],fromDates:{owned:'2026-10-02'}});
+ expect(reconstruction.reconstruct).toHaveBeenCalledTimes(1);
+ expect(reconstruction.reconstruct).toHaveBeenCalledWith('owner',expect.objectContaining({accountIdentifiers:['owned'],fromDate:'2026-10-02'}));
+ expect(capture.captureToday).toHaveBeenCalledWith('owner',{accounts:'owned'});
 });

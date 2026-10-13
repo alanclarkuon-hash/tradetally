@@ -1,9 +1,11 @@
 jest.mock('../../src/services/brokerSync/syncRecovery',()=>({acquire:jest.fn(),recoverConnection:jest.fn().mockResolvedValue(0)}));
-jest.mock('../../src/services/brokerPortfolioMaintenance',()=>({maintain:jest.fn()}));
+jest.mock('../../src/services/historyBackfillService',()=>({enqueue:jest.fn().mockResolvedValue('history-job')}));
+jest.mock('../../src/services/brokerPortfolioMaintenance',()=>({maintain:jest.fn(),captureCurrent:jest.fn().mockResolvedValue({captured:1,rebuilt:[],warnings:[]})}));
 jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn(),createSyncLog:jest.fn(),updateSyncLog:jest.fn(),updateSyncProgress:jest.fn(),updateAfterFailure:jest.fn(),scheduleTransientRetry:jest.fn(),updateAfterSync:jest.fn()}));
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/tierService',()=>({canSyncBrokerConnection:jest.fn().mockResolvedValue({allowed:true})}));
 jest.mock('../../src/services/brokerSync/ibkrService',()=>({syncTrades:jest.fn()}));
+jest.mock('../../src/services/brokerSync/etoroService',()=>({syncTrades:jest.fn()}));
 jest.mock('../../src/services/brokerSync/schwabService',()=>({}));
 jest.mock('../../src/services/brokerSync/trading212Service',()=>({}));
 jest.mock('../../src/services/brokerSync/tradestationService',()=>({}));
@@ -43,25 +45,29 @@ test('an unconfigured IBKR date floor uses the owner managed-account opening dat
 });
 
 
-test('successful sync runs chart maintenance and records its warnings without another broker call',async()=>{
- const maintenance=require('../../src/services/brokerPortfolioMaintenance');
- maintenance.maintain.mockResolvedValue({captured:0,warnings:['Chart coverage warning'],rebuilt:[]});
+test('successful imports commit before history is queued and do not wait for chart reconstruction',async()=>{
+ const events=[];
+ // A running history job may remain blocked on provider downloads indefinitely.
+ require('../../src/services/brokerPortfolioMaintenance').maintain.mockImplementation(()=>new Promise(()=>{}));
+ BC.updateSyncLog.mockImplementation(async(_id,status)=>events.push(status));
+ require('../../src/services/historyBackfillService').enqueue.mockImplementation(async()=>{events.push('history');return 'history-job';});
  ibkr.syncTrades.mockResolvedValue({imported:0,skipped:0,failed:0,duplicates:0,outcome:'success',warnings:[]});
  jest.spyOn(service,'closeExpiredOptions').mockResolvedValue(0);
  const result=await service.syncConnection('connection');
- expect(result.success).toBe(true);expect(result.outcome).toBe('warning');
- expect(maintenance.maintain).toHaveBeenCalledWith('owner',{broker:'ibkr'});
+ expect(result.success).toBe(true);expect(result.historyJobId).toBe('history-job');
+ expect(events.indexOf('completed')).toBeLessThan(events.indexOf('history'));
+ expect(require('../../src/services/brokerPortfolioMaintenance').captureCurrent).toHaveBeenCalledWith('owner',{broker:'ibkr'});
+ expect(require('../../src/services/brokerPortfolioMaintenance').maintain).not.toHaveBeenCalled();
  expect(ibkr.syncTrades).toHaveBeenCalledTimes(1);
- expect(BC.updateAfterFailure).not.toHaveBeenCalled();
- expect(BC.updateSyncLog).toHaveBeenCalledWith('log','completed',expect.objectContaining({syncDetails:expect.objectContaining({portfolio_history:expect.objectContaining({captured:0})})}));
 });
 
-test('chart failure does not mark a successfully imported broker sync as failed',async()=>{
- require('../../src/services/brokerPortfolioMaintenance').maintain.mockRejectedValue(Error('private error'));
+test('history queue failure does not mark a successfully imported broker sync as failed',async()=>{
+ require('../../src/services/historyBackfillService').enqueue.mockRejectedValue(Error('private error'));
  ibkr.syncTrades.mockResolvedValue({imported:1,skipped:0,failed:0,duplicates:0,warnings:[]});
  jest.spyOn(service,'closeExpiredOptions').mockResolvedValue(0);
  const result=await service.syncConnection('connection');
  expect(result.success).toBe(true);expect(result.warnings.join(' ')).not.toContain('private error');
+ expect(result.warnings.join(' ')).toContain('could not be queued');
  expect(BC.updateAfterFailure).not.toHaveBeenCalled();
 });
 
@@ -75,3 +81,18 @@ test('a retry recovers abandoned logs before starting and releases the database 
  const run=jest.spyOn(service,'runConnectionSync').mockResolvedValue({success:true});await service.syncConnection('connection');
  expect(recovery.recoverConnection).toHaveBeenCalledWith(lease.client,'connection');expect(recovery.recoverConnection.mock.invocationCallOrder[0]).toBeLessThan(run.mock.invocationCallOrder[0]);expect(lease.release).toHaveBeenCalled();
 });
+
+ test.each([false,true])('eToro post-sync capture runs without waiting for historical maintenance; capture failure=%s',async fails=>{
+ const maintenance=require('../../src/services/brokerPortfolioMaintenance');
+ BC.findById.mockResolvedValue({id:'connection',userId:'owner',brokerType:'etoro',connectionStatus:'active',syncStartDate:'2024-01-01'});
+ db.query.mockResolvedValue({rows:[]});
+ require('../../src/services/brokerSync/etoroService').syncTrades.mockResolvedValue({imported:0,skipped:0,failed:0,duplicates:0,warnings:[]});
+ require('../../src/services/historyBackfillService').enqueue.mockResolvedValue('history-job');
+ if(fails)maintenance.captureCurrent.mockRejectedValueOnce(Error('private capture failure'));
+ else maintenance.captureCurrent.mockResolvedValueOnce({captured:1,rebuilt:[],warnings:[]});
+ const r=await service.syncConnection('connection');
+ expect(r.success).toBe(true);expect(maintenance.captureCurrent).toHaveBeenCalledWith('owner',{broker:'etoro'});
+ expect(maintenance.maintain).not.toHaveBeenCalled();expect(BC.updateAfterFailure).not.toHaveBeenCalled();
+ if(fails){expect(r.warnings.join(' ')).toContain('chart maintenance');expect(r.warnings.join(' ')).not.toContain('private capture failure')}
+ else expect(r.portfolioHistory.captured).toBe(1);
+ });

@@ -71,3 +71,24 @@ test('bounded recovery keeps older history and does not rebuild another account'
 });
 
 test('reconstruction requests current ticker history for a closed broker asset with original keys preserved',async()=>{jest.useFakeTimers().setSystemTime(new Date('2026-01-06T12:00:00Z'));const db=require('../src/config/database');const account={id:'a',broker:'trading212',account_identifier:'selected',initial_balance_date:'2026-01-01',currency:'USD',initial_balance:100};const records=[{symbol:'LOKB_US_EQ',side:'BUY',date:'2026-01-01',quantity:3},{symbol:'LOKB_US_EQ',side:'SELL',date:'2026-01-04',quantity:3}];const before=JSON.stringify(records);const cash=jest.spyOn(require('../src/services/brokerSync/trading212CashLedger'),'loadLedger').mockResolvedValue({rows:[{date:'2026-01-01',balance:70},{date:'2026-01-04',balance:106}],openingBalance:100,report:{to_date:'2026-01-05'},reconciliation:{matched:true}});db.query.mockImplementation((sql,args)=>Promise.resolve({rows:sql.includes('user_accounts')?[account]:sql.includes('broker_instrument_catalogues')?[{instruments:[{ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'}]}]:sql.includes('broker_cash_reports')?[{records}]:sql.includes('portfolio_reconstruction_prices')&&args[0]==='NVTS'?[{payload:{currency:'USD',prices:[{date:'2026-01-01',close:10},{date:'2026-01-04',close:12}]}}]:[]}));const client={query:jest.fn().mockResolvedValue({rows:[]})};db.withTransaction=jest.fn(fn=>fn(client));try{await require('../src/services/portfolioReconstructionService').reconstruct('owner',{broker:'trading212',apply:true});expect(db.query.mock.calls.some(([sql,args])=>sql.includes('portfolio_reconstruction_prices')&&args[0]==='NVTS')).toBe(true);const values=client.query.mock.calls.filter(([sql])=>sql.startsWith('INSERT'));expect(values[0][1][3]).toBe(30);expect(values.at(-1)[1][3]).toBe(0);expect(JSON.stringify(records)).toBe(before)}finally{cash.mockRestore();jest.useRealTimers()}});
+
+
+test('bounded reconstruction fetches only recent prices while replaying older native holdings',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-01-20T12:00:00Z'));
+ const db=require('../src/config/database'),portfolio=require('../src/services/portfolioService');
+ const prices=jest.spyOn(portfolio,'_getDailySeries').mockResolvedValue(Array.from({length:11},(_,i)=>({time:Date.parse('2026-01-09')/1000+i*86400,close:100})));
+ const account={id:'a',broker:'kraken',account_identifier:'owned',initial_balance_date:'2025-01-01',currency:'USD'};
+ const payload={asOf:'2026-01-20',reconciled:true,nativeReconciliation:{nativeBalancesMatched:true},ledger:{
+  old:{asset:'OLD',time:Date.parse('2025-01-01')/1000,amount:'1',fee:'0'},sold:{asset:'OLD',time:Date.parse('2025-02-01')/1000,amount:'-1',fee:'0'},
+  held:{asset:'XXBT',time:Date.parse('2025-01-01')/1000,amount:'2',fee:'0'}
+ }};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('user_accounts')?[account]:sql.includes('broker_import_snapshots')?[{payload}]:[]}));
+ const client={query:jest.fn().mockResolvedValue({rows:[]})};db.withTransaction=jest.fn(fn=>fn(client));
+ try {
+  const result=await require('../src/services/portfolioReconstructionService').reconstruct('owner',{broker:'kraken',accountIdentifiers:['owned'],fromDate:'2026-01-16',fetchPrices:true,apply:true});
+  expect(prices).toHaveBeenCalledWith('BTC','2026-01-09','2026-01-19','owner',expect.any(Object));
+  expect(prices).toHaveBeenCalledTimes(1);expect(result[0].gaps).toBe(0);
+  const values=client.query.mock.calls.filter(([sql])=>sql.startsWith('INSERT INTO portfolio_reconstructed_values'));
+  expect(values).toHaveLength(4);expect(values.every(([,args])=>args[3]===200)).toBe(true);
+ } finally {prices.mockRestore();jest.useRealTimers();}
+});

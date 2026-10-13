@@ -1,0 +1,302 @@
+{
+  "notes": "Exact legacy eToro opening symbols only; apply after statement position/cost authority and native-currency proof. Never use these as global bare ticker aliases.",
+  "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+  "listings": [
+    {
+      "symbol": "NESN",
+      "currency": "CHF",
+      "marketSymbol": "NESN.ZU",
+      "isin": "CH0038863350",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/nesn.zu"
+    },
+    {
+      "symbol": "ADEN",
+      "currency": "CHF",
+      "marketSymbol": "ADEN.ZU",
+      "isin": "CH0012138605",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/aden.zu"
+    },
+    {
+      "symbol": "DANSKE",
+      "currency": "DKK",
+      "marketSymbol": "DANSKE.CO",
+      "isin": "DK0010274414",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/da-dk/markets/danske.co"
+    },
+    {
+      "symbol": "UBSG",
+      "currency": "CHF",
+      "marketSymbol": "UBSG.ZU",
+      "isin": "CH0244767585",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/ubsg.zu"
+    },
+    {
+      "symbol": "NHY",
+      "currency": "NOK",
+      "marketSymbol": "NHY.OL",
+      "isin": "NO0005052605",
+      "directoryPage": 34,
+      "source": "https://www.etoro.com/markets/nhy.ol"
+    },
+    {
+      "symbol": "BOL",
+      "currency": "SEK",
+      "marketSymbol": "BOL.ST",
+      "isin": "SE0012455673",
+      "directoryPage": 35,
+      "source": "https://www.etoro.com/markets/bol.st"
+    },
+    {
+      "symbol": "SWED-A",
+      "currency": "SEK",
+      "marketSymbol": "SWED-A.ST",
+      "isin": "SE0000242455",
+      "directoryPage": 35,
+      "source": "https://www.etoro.com/markets/swed-a.st"
+    },
+    {
+      "symbol": "NOVO-B",
+      "currency": "DKK",
+      "marketSymbol": "NOVO-B.CO",
+      "isin": "DK0060534915",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/markets/novo-b.co"
+    },
+    {
+      "symbol": "ORSTED",
+      "currency": "DKK",
+      "marketSymbol": "ORSTED.CO",
+      "isin": "DK0060094928",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/markets/orsted.co"
+    },
+    {
+      "symbol": "PRY",
+      "currency": "EUR",
+      "marketSymbol": "PRY.MI",
+      "isin": "IT0004176001",
+      "directoryPage": 9,
+      "source": "https://www.etoro.com/markets/pry.mi"
+    },
+    {
+      "symbol": "ENI",
+      "currency": "EUR",
+      "marketSymbol": "ENI.MI",
+      "isin": "IT0003132476",
+      "directoryPage": 8,
+      "source": "https://www.etoro.com/markets/eni.mi"
+    },
+    {
+      "symbol": "ANA",
+      "currency": "EUR",
+      "marketSymbol": "ANA.MC",
+      "isin": "ES0125220311",
+      "directoryPage": 10,
+      "source": "https://www.etoro.com/markets/ana.mc"
+    },
+    {
+      "symbol": "VIE",
+      "currency": "EUR",
+      "marketSymbol": "VIE.PA",
+      "isin": "FR0000124141",
+      "directoryPage": 8,
+      "source": "https://www.etoro.com/markets/vie.pa"
+    },
+    {
+      "symbol": "HDD",
+      "currency": "EUR",
+      "marketSymbol": "HDD.F",
+      "isin": "DE0007314007",
+      "directoryPage": 41,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GYC",
+      "currency": "EUR",
+      "marketSymbol": "GYC.F",
+      "isin": "LU0775917882",
+      "directoryPage": 41,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "statementSymbols": [
+        "GYC.DR"
+      ],
+      "issuerSource": "https://www.grandcityproperties.com/investor-relations/equity/share"
+    },
+    {
+      "symbol": "HLAG",
+      "currency": "EUR",
+      "marketSymbol": "HLAG.F",
+      "isin": "DE000HLAG475",
+      "directoryPage": 42,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SZG",
+      "currency": "EUR",
+      "marketSymbol": "SZG.F",
+      "isin": "DE0006202005",
+      "directoryPage": 42,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "EVK",
+      "currency": "EUR",
+      "marketSymbol": "EVK.F",
+      "isin": "DE000EVNK013",
+      "directoryPage": 41,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "KER",
+      "currency": "EUR",
+      "marketSymbol": "KER.PA",
+      "isin": "FR0000121485",
+      "directoryPage": 7,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GLE",
+      "currency": "EUR",
+      "marketSymbol": "GLE.PA",
+      "isin": "FR0000130809",
+      "directoryPage": 7,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "IBE",
+      "currency": "EUR",
+      "marketSymbol": "IBE.MC",
+      "isin": "ES0144580Y14",
+      "directoryPage": 10,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "VWS",
+      "currency": "DKK",
+      "marketSymbol": "VWS.CO",
+      "isin": "DK0010268606",
+      "directoryPage": 36,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SUBC",
+      "currency": "NOK",
+      "marketSymbol": "SUBC.OL",
+      "isin": "LU0075646355",
+      "directoryPage": 34,
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "1COV",
+      "currency": "EUR",
+      "isin": "DE0006062144",
+      "directoryPage": 41,
+      "marketSymbol": "1COV.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "DWNI",
+      "currency": "EUR",
+      "isin": "DE000A0HN5C6",
+      "directoryPage": 41,
+      "marketSymbol": "DWNI.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "MONY",
+      "currency": "GBX",
+      "isin": "GB00B1ZBKY84",
+      "directoryPage": 47,
+      "marketSymbol": "MONY.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "FXPO",
+      "currency": "GBX",
+      "isin": "GB00B1XH2C03",
+      "directoryPage": 47,
+      "marketSymbol": "FXPO.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SWDA",
+      "currency": "GBX",
+      "isin": "IE00B4L5Y983",
+      "directoryPage": 53,
+      "marketSymbol": "SWDA.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "LQDE",
+      "currency": "USD",
+      "statementSymbols": [
+        "LQDE.L"
+      ],
+      "isin": "IE0032895942",
+      "directoryPage": 53,
+      "marketSymbol": "LQDE.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "NVTKL",
+      "currency": "USD",
+      "statementSymbols": [
+        "NVTKL.L"
+      ],
+      "isin": "US6698881090",
+      "directoryPage": 11,
+      "marketSymbol": "NVTKL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "OGZDL",
+      "currency": "USD",
+      "statementSymbols": [
+        "OGZDL.L"
+      ],
+      "isin": "US3682872078",
+      "directoryPage": 11,
+      "marketSymbol": "OGZDL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SBERL",
+      "currency": "USD",
+      "statementSymbols": [
+        "SBERL.L"
+      ],
+      "isin": "US80585Y3080",
+      "directoryPage": 11,
+      "marketSymbol": "SBERL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "currency": "EUR",
+      "symbol": "MOR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "directoryPage": 42,
+      "marketSymbol": "MOR.F",
+      "isin": "DE0006632003"
+    },
+    {
+      "marketSymbol": "AOX.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "isin": "DE000A0LD2U1",
+      "currency": "EUR",
+      "directoryPage": 42,
+      "symbol": "AOX"
+    },
+    {
+      "marketSymbol": "SOW.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "isin": "DE000A2GS401",
+      "currency": "EUR",
+      "directoryPage": 42,
+      "symbol": "SOW"
+    }
+  ]
+}

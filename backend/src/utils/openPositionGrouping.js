@@ -76,7 +76,7 @@ function getPositionKey(trade) {
   // position whose totalCost and avgPrice add different units together — a
   // figure that cannot be labelled or converted correctly.
   const currency = storedCurrency(trade) || 'UNKNOWN';
-  if(trade.instrument_type==='spread_bet')return `spread_bet:${trade.symbol}:${trade.side}:${trade.account_identifier || ''}|${currency}`;
+  if(['spread_bet','cfd'].includes(trade.instrument_type))return `${trade.instrument_type}:${trade.symbol}:${trade.side}:${trade.account_identifier || ''}|${currency}`;
 
   if (trade.instrument_type === 'option' && trade.underlying_symbol
       && String(trade.underlying_symbol).trim()
@@ -153,6 +153,16 @@ function calculateTotalSharesTraded(trade) {
     return totalTraded;
   }
   return trade.quantity || 0;
+}
+
+function firstPriceLevel(trades, field) {
+  for (const trade of trades) {
+    const value = trade[field];
+    if (value === null || value === undefined || value === '') continue;
+    const level = Number(value);
+    if (Number.isFinite(level) && level > 0) return level;
+  }
+  return null;
 }
 
 // Group open trades into positions. Returns a map of position key -> position
@@ -299,6 +309,11 @@ function groupTradesIntoPositions(openTrades) {
 
     // avgPrice is per-share/per-contract, so divide by (quantity * multiplier)
     position.avgPrice = position.totalCost / (absQuantity * avgPriceMultiplier);
+
+    // Trades arrive newest first, so the first stop/target found is the
+    // trader's current plan for the position.
+    position.stop_loss = firstPriceLevel(position.trades, 'stop_loss');
+    position.take_profit = firstPriceLevel(position.trades, 'take_profit');
   });
 
   keysToDelete.forEach(key => delete positionMap[key]);

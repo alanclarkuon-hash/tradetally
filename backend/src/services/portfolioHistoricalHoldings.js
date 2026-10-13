@@ -8,6 +8,7 @@ const {assetCode,decimal,format}=require('./brokerSync/krakenReconcile');
 const {statementSplits,statementLotMetadata,historicalLotQuantity}=require('./etoroHistoricalSplits');
 const {cfdEquity}=require('./etoroHistoricalCfd');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
+const {previousDay}=require('../utils/heatmapPeriod');
 const day=v=>new Date(v).toISOString().slice(0,10);
 const FIAT=new Set(['USD','GBP','EUR','CAD','AUD','JPY','CHF']);
 
@@ -27,6 +28,7 @@ function remainingLots(events,end) {
 }
 
 async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
+  const baselineDate=previousDay(range.start_date);
   const {historicalPrice,migrationPriceAliases}=require('./portfolioReconstructionService');
   const [prices,fxRows,snapshots,reports,portfolios,trades]=await Promise.all([
     db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices'),
@@ -37,14 +39,32 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     db.query('SELECT * FROM trades WHERE user_id=$1',[userId])
   ]);
   const market=new Map(prices.rows.map(r=>[r.symbol,r.payload]));
+  const baselineFrom=new Date(baselineDate+'T00:00:00Z');baselineFrom.setUTCDate(baselineFrom.getUTCDate()-14);
+  const sharedRows=(await db.query(`SELECT symbol,price_date,close FROM historical_prices
+    WHERE price_date BETWEEN $1 AND $2 AND is_final AND price_currency='USD'
+    AND (symbol LIKE 'crypto:%' OR data_source NOT IN ('coingecko','okx','kraken'))`,[day(baselineFrom),range.end_date])).rows;
+  const shared=new Map();
+  for(const row of sharedRows){const list=shared.get(row.symbol)||new Map();list.set(day(row.price_date),Number(row.close));shared.set(row.symbol,list);}
+  const calendarMap=new Map();
+  const calendarSymbols=[...new Set(trades.rows.filter(t=>t.instrument_type!=='crypto'&&Number.isFinite(Date.parse(t.entry_time||t.trade_date))).map(t=>historicalMarketSymbol(t.symbol,t.instrument_type,day(t.entry_time||t.trade_date))))];
+  for(const s of calendarSymbols)calendarMap.set(s,await require('./exchangeCalendar').resolve(s));
   const fx=(currency,date)=>{
     if(currency==='USD')return 1;
     const row=fxRows.rows.filter(r=>day(r.rate_date)<=date).at(-1);
     return row&&Date.parse(date)-Date.parse(day(row.rate_date))<=7*86400000&&Number(row.rates[currency])>0?1/Number(row.rates[currency]):null;
   };
   const quote=(symbol,date)=>{
-    const series=market.get(symbol),price=historicalPrice(series,date,symbol.endsWith('-USD'));
-    const rate=series?fx(series.currency,date):null;
+    const crypto=symbol.endsWith('-USD');
+    const expected=require('../utils/heatmapPeriod').sessionOnOrBefore(date,calendarMap.get(symbol)||require('./exchangeCalendar').identify(symbol),crypto);
+    const key=crypto?'crypto:'+symbol.slice(0,-4):symbol;
+    const series=market.get(symbol);
+    const canonical=shared.get(key)?.get(expected);
+    if(canonical>0){const split=crypto?1:(series?.splits||[]).filter(s=>s.date>expected).reduce((n,s)=>n*s.ratio,1);return canonical*split;}
+    // A missing open-session close is a gap, not permission to use Friday's
+    // price on a Monday. Legacy split-aware reconstruction remains a fallback.
+    const exact=series?.prices?.find(p=>p.date===expected);
+    const price=exact?.close;
+    const rate=series?fx(series.currency,expected):null;
     return price>0&&rate>0?price*rate:null;
   };
   const publicRates=snapshots.rows.find(r=>r.broker_type==='kraken')?.payload?.valuation?.rates||{};
@@ -82,13 +102,13 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const tradeQuantity=tradeLots.reduce((n,t)=>n+Number(t.quantity),0);
         if(Math.abs(tradeQuantity-q)<Math.max(1e-8,q*1e-7)) {
           for(const t of tradeLots) {
-            const acquired=day(t.entry_time||t.trade_date),start=acquired>=range.start_date?Number(t.entry_price):price(s,range.start_date);
+            const acquired=day(t.entry_time||t.trade_date),start=acquired>=range.start_date?Number(t.entry_price):price(s,baselineDate);
             if(!(start>0)){known=false;break;}basis+=Number(t.quantity)*start;
           }
         }else {
         for(const l of held) {
           if(l.acquired>=range.start_date){known=false;break;} // Transfers/rewards are not purchases with an established cost.
-          const start=price(s,range.start_date);if(!(start>0)){known=false;break;}basis+=l.quantity*start;
+          const start=price(s,baselineDate);if(!(start>0)){known=false;break;}basis+=l.quantity*start;
         }
         }
         add(s,'crypto',account,q,p>0?q*p:null,known?basis:null,known?[]:['Period basis unavailable for ledger acquisitions or transfers']);
@@ -113,14 +133,14 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const series=market.get(s),q=held.reduce((n,l)=>n+l.quantity,0),p=quote(s,range.end_date);
         let basis=0,known=true;
         for(const l of held) {
-          const later=historySplits(s,series?.splits||[]).filter(x=>x.date>range.start_date&&x.date<=range.end_date).reduce((n,x)=>n*x.ratio,1);
-          const start=l.acquired>=range.start_date?l.price:quote(s,range.start_date)/later;
+          const later=historySplits(s,series?.splits||[]).filter(x=>x.date>baselineDate&&x.date<=range.end_date).reduce((n,x)=>n*x.ratio,1);
+          const start=l.acquired>=range.start_date?l.price:quote(s,baselineDate)/later;
           if(!(start>0)){known=false;break;}basis+=l.quantity*start;
         }
         add(s,'stock',account,q,p>0?q*p:null,known?basis:null);
       }
     }else {
-      const records=ownReports.flatMap(r=>r.records||[]),metadata=account.broker==='etoro'?statementLotMetadata(accountTrades,records,statementSplits(records)):new Map();
+      const records=ownReports.flatMap(r=>r.records||[]),metadata=account.broker==='etoro'?statementLotMetadata(accountTrades,records,statementSplits(records),{nativeFx:fx}):new Map();
       for(const t of accountTrades) {
         const opened=day(t.entry_time||t.trade_date),closed=t.exit_time?day(t.exit_time):null;
         if(opened>range.end_date||(closed&&closed<=range.end_date))continue;
@@ -128,7 +148,7 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         const series=market.get(s);
         const units=d=>account.broker==='etoro'?historicalLotQuantity(t,d,opened,closed,meta?.splits||[],series?.splits||[],meta):
           Number(t.quantity)/(series?.splits||[]).filter(x=>x.date>d&&x.date>opened&&(!closed||x.date<=closed)).reduce((n,x)=>n*x.ratio,1);
-        const q=units(range.end_date),startDate=opened>=range.start_date?opened:range.start_date;
+        const q=units(range.end_date),startDate=opened>=range.start_date?opened:baselineDate;
         if(q==null){warnings.push(`${t.symbol}: historic split allocation unavailable`);continue;}
         const p=quote(s,range.end_date),startPrice=quote(s,startDate),startQ=units(startDate);
         let value=p>0?q*p:null,basis=startPrice>0&&startQ!=null?startQ*startPrice:null;
@@ -156,7 +176,12 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     existing.totalShares+=p.totalShares;existing.currentValue+=p.currentValue;existing.totalCostBasis+=p.totalCostBasis;
     existing.accountIdentifiers=[...new Set([...existing.accountIdentifiers,...p.accountIdentifiers])];
     existing.historicalWarnings=[...new Set([...existing.historicalWarnings,...p.historicalWarnings])];
-    const known=existing.periodResult.pnl!=null&&p.periodResult.pnl!=null,basis=existing.periodResult.basis+p.periodResult.basis;
+    // A missing account basis cannot be replaced with zero. Keep basis
+    // completeness independent of ending-price availability so fresh quotes
+    // can still value holdings whose complete opening basis is known.
+    const completeBasis=existing.periodResult.basis>0&&p.periodResult.basis>0;
+    const basis=completeBasis?existing.periodResult.basis+p.periodResult.basis:null;
+    const known=completeBasis&&existing.periodResult.pnl!=null&&p.periodResult.pnl!=null;
     existing.periodResult={pnl:known?existing.periodResult.pnl+p.periodResult.pnl:null,percent:known&&basis>0?(existing.currentValue-basis)/basis*100:null,basis};
   }
   return {positions:[...combined.values()],warnings,displayRates:{USD:currency==='USD'?1:(fx(currency,range.end_date)>0?1/fx(currency,range.end_date):null)}};

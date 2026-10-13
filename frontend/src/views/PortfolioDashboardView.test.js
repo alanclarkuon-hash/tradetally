@@ -20,7 +20,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
   totals: { portfolioValue: 100, holdingsValue: 60, cashValue: 40, stablecoinValue: 0, pnl: 0, pnlPercent: 0 },
   coverage: { missingCash: 0, missingPrices: 0, missingPnl: 0, unclassified: 0 } }
-const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true } } })
+const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true, HistoryBackfillStatus: true } } })
 
 beforeEach(() => {
   localStorage.clear()
@@ -57,6 +57,22 @@ describe('Portfolio summary cards', () => {
     await vi.advanceTimersByTimeAsync(10000);expect(calls).toBe(2)
     view.unmount();vi.useRealTimers()
   })
+
+  it('shows the selected price timestamp and source beneath the heatmap',async()=>{
+    useAuthStore().user.timezone='Europe/London'
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
+      {symbol:'AAA',value:80,pnlPercent:1,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:'2026-10-12T12:34:56Z',quoteSource:'yahoo',quoteTimestampKind:'trade'},
+      {symbol:'BBB',value:70,pnlPercent:0,assetClass:'Stocks',sector:'Technology',industry:'Software',priceAsOf:null,quoteSource:null}
+    ]}:{change:25}}))
+    const view=create();await flushPromises()
+    await view.findAll('.holding-tile')[0].trigger('click')
+    expect(view.find('.saved-quote').text()).toContain('12/10/2026, 13:34:56 BST')
+    expect(view.find('.saved-quote').text()).toContain('Source Yahoo Finance')
+    await view.findAll('.holding-tile')[1].trigger('click')
+    expect(view.find('.saved-quote').text()).toBe('Saved market quote Unavailable · Source Unavailable')
+    view.unmount()
+  })
+
 
   it('uses crypto identities for heatmap logos and omits logos from tiny holdings',async()=>{
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[
@@ -203,6 +219,16 @@ describe('Portfolio filter interactions', () => {
 
 
 describe('Delayed heatmap quotes',()=>{
+  it('shows identified quote sessions on large and tiny tiles alongside independent delay markers',async()=>{
+    const assets=[['PRE','pre',80],['POST','post',80],['NIGHT','overnight',.01],['UNKNOWN',null,80],['CRYPTO','continuous',80]]
+      .map(([symbol,quoteSession,value])=>({symbol,quoteSession,value,priceAsOf:new Date(Date.now()-960000).toISOString(),assetClass:'Stocks',sector:'Technology',industry:'Software'}));
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:assets}:{change:25}}));
+    const view=create();await flushPromises();
+    expect(view.findAll('.quote-session-marker').map(m=>m.attributes('title'))).toEqual(expect.arrayContaining(['Pre-market quote','Post-market quote','Overnight quote']));
+    expect(view.findAll('.quote-session-marker')).toHaveLength(3);
+    expect(view.findAll('.quote-delay-marker')).toHaveLength(5);
+    view.unmount();
+  });
   it('marks quotes older than fifteen minutes, including tiny tiles, but not fresh or unknown dates',async()=>{
     const now=Date.now();
     const assets=[{symbol:'OLD',value:99,priceAsOf:new Date(now-960000).toISOString()},

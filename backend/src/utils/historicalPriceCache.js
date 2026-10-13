@@ -1,4 +1,5 @@
 const db = require('../config/database');
+const cacheKey = symbol => /^crypto:/i.test(symbol) ? 'crypto:'+symbol.slice(7).toUpperCase() : symbol.toUpperCase();
 
 /**
  * Persistent historical price cache backed by the historical_prices table.
@@ -16,9 +17,10 @@ async function getRange(symbol, startDate, endDate) {
   const result = await db.query(
     `SELECT price_date, open, high, low, close, volume
      FROM historical_prices
-     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3
+     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND (is_final OR price_date=CURRENT_DATE) AND price_currency='USD'
+       AND (symbol LIKE 'crypto:%' OR data_source NOT IN ('coingecko','okx','kraken'))
      ORDER BY price_date ASC`,
-    [symbol.toUpperCase(), startDate, endDate]
+    [cacheKey(symbol), startDate, endDate]
   );
 
   return result.rows.map(row => ({
@@ -44,8 +46,8 @@ async function hasRange(symbol, startDate, endDate) {
   const result = await db.query(
     `SELECT COUNT(*) as count
      FROM historical_prices
-     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3`,
-    [symbol.toUpperCase(), startDate, endDate]
+     WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND is_final AND price_currency='USD'`,
+    [cacheKey(symbol), startDate, endDate]
   );
 
   const count = parseInt(result.rows[0].count);
@@ -65,15 +67,19 @@ async function hasRange(symbol, startDate, endDate) {
 
 /**
  * Bulk insert candles (immutable historical data).
- * Uses ON CONFLICT DO NOTHING since historical prices don't change.
+ * Finalized rows are immutable; provisional live quotes can be finalized.
  * @param {string} symbol
  * @param {Array} candles - Array of {time, open, high, low, close, volume}
  * @param {string} dataSource - e.g. 'alphavantage', 'finnhub'
  */
-async function insertCandles(symbol, candles, dataSource) {
+async function insertCandles(symbol, candles, dataSource, {currency=null,replaceFinal=false}={}) {
   if (!candles || candles.length === 0) return;
+  if (candles.length > 1000) {
+    for (let offset=0; offset<candles.length; offset+=1000) await insertCandles(symbol, candles.slice(offset,offset+1000), dataSource,{currency,replaceFinal});
+    return;
+  }
 
-  const symbolUpper = symbol.toUpperCase();
+  const symbolUpper = cacheKey(symbol);
 
   // Build bulk INSERT with VALUES list
   const values = [];
@@ -86,7 +92,7 @@ async function insertCandles(symbol, candles, dataSource) {
     const dateStr = date.toISOString().split('T')[0];
 
     placeholders.push(
-      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7})`
+      `($${paramIndex}, $${paramIndex + 1}, $${paramIndex + 2}, $${paramIndex + 3}, $${paramIndex + 4}, $${paramIndex + 5}, $${paramIndex + 6}, $${paramIndex + 7}, $${paramIndex + 8}, $${paramIndex + 9})`
     );
     values.push(
       symbolUpper,
@@ -95,17 +101,24 @@ async function insertCandles(symbol, candles, dataSource) {
       candle.high,
       candle.low,
       candle.close,
-      // FMP occasionally reports fractional volumes; the column is BIGINT
+      // volume is a bigint column; some providers return fractional volume, so round it
       Math.round(Number(candle.volume) || 0),
-      dataSource
+      dataSource,
+      candle.currency || currency || (['reconstruction_cache','coingecko','kraken','okx'].includes(dataSource)?'USD':null),
+      dateStr < new Date().toISOString().slice(0, 10)
     );
-    paramIndex += 8;
+    paramIndex += 10;
   }
 
   const query = `
-    INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source)
+    INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, price_currency, is_final)
     VALUES ${placeholders.join(', ')}
-    ON CONFLICT (symbol, price_date) DO NOTHING
+    ON CONFLICT (symbol, price_date) DO UPDATE SET
+      open=EXCLUDED.open,high=EXCLUDED.high,low=EXCLUDED.low,close=EXCLUDED.close,
+      volume=EXCLUDED.volume,data_source=EXCLUDED.data_source,price_currency=EXCLUDED.price_currency,is_final=EXCLUDED.is_final,updated_at=NOW()
+    WHERE NOT historical_prices.is_final AND (EXCLUDED.is_final OR historical_prices.observed_at IS NULL)
+      OR (historical_prices.price_currency IS NULL AND EXCLUDED.price_currency='USD' AND EXCLUDED.is_final)
+      OR (${replaceFinal?'TRUE':'FALSE'} AND EXCLUDED.data_source LIKE 'broker:%' AND EXCLUDED.price_currency='USD' AND EXCLUDED.is_final)
   `;
 
   await db.query(query, values);
@@ -120,8 +133,11 @@ async function insertCandles(symbol, candles, dataSource) {
  * @param {string} dataSource - e.g. 'finnhub', 'price_monitor'
  */
 async function upsertToday(symbol, priceData, dataSource) {
-  const symbolUpper = symbol.toUpperCase();
+  const symbolUpper = cacheKey(symbol);
   const today = new Date().toISOString().split('T')[0];
+  const asOf=priceData.asOf || (Number(priceData.t)>0 ? new Date(Number(priceData.t)*1000).toISOString() : new Date().toISOString());
+  // A cached last close is not a candle for a later trading date.
+  if (!Number.isFinite(Date.parse(asOf)) || new Date(asOf).toISOString().slice(0,10)!==today) return;
 
   const open = priceData.open ?? priceData.o ?? null;
   const high = priceData.high ?? priceData.h ?? null;
@@ -130,8 +146,8 @@ async function upsertToday(symbol, priceData, dataSource) {
   const volume = priceData.volume ?? priceData.v ?? null;
 
   await db.query(
-    `INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+    `INSERT INTO historical_prices (symbol, price_date, open, high, low, close, volume, data_source, updated_at, is_final,observed_at,price_currency)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP, FALSE,$9,'USD')
      ON CONFLICT (symbol, price_date) DO UPDATE SET
        open = COALESCE($3, historical_prices.open),
        high = COALESCE($4, historical_prices.high),
@@ -139,14 +155,64 @@ async function upsertToday(symbol, priceData, dataSource) {
        close = COALESCE($6, historical_prices.close),
        volume = COALESCE($7, historical_prices.volume),
        data_source = $8,
-       updated_at = CURRENT_TIMESTAMP`,
-    [symbolUpper, today, open, high, low, close, volume, dataSource]
+       price_currency = 'USD',
+       observed_at=$9,
+       updated_at = CURRENT_TIMESTAMP
+     WHERE NOT historical_prices.is_final AND (historical_prices.observed_at IS NULL OR historical_prices.observed_at<=$9::timestamptz)`,
+    [symbolUpper, today, open, high, low, close, volume, dataSource,asOf]
   );
+}
+
+/**
+ * Symbols confirmed to have no daily candles from any provider, last checked within
+ * `recheckDays`. Returned as an uppercased Set so callers can skip them. Falls back to
+ * an empty Set if the table doesn't exist yet (migration not applied).
+ * @param {number} recheckDays - re-attempt symbols older than this many days
+ * @returns {Promise<Set<string>>}
+ */
+async function getUnavailableSymbols(recheckDays = 30) {
+  try {
+    const result = await db.query(
+      `SELECT symbol
+         FROM price_unavailable_symbols
+        WHERE last_checked_at > (CURRENT_TIMESTAMP - ($1 || ' days')::interval)`,
+      [String(recheckDays)]
+    );
+    return new Set(result.rows.map(row => row.symbol.toUpperCase()));
+  } catch (error) {
+    return new Set();
+  }
+}
+
+/**
+ * Record that a symbol returned no daily candles (increments fail_count, refreshes
+ * last_checked_at). Used by the nightly backfill to stop retrying dead symbols.
+ */
+async function markUnavailable(symbol, reason = 'no_candles') {
+  await db.query(
+    `INSERT INTO price_unavailable_symbols (symbol, reason)
+     VALUES ($1, $2)
+     ON CONFLICT (symbol) DO UPDATE SET
+       fail_count = price_unavailable_symbols.fail_count + 1,
+       reason = EXCLUDED.reason,
+       last_checked_at = CURRENT_TIMESTAMP`,
+    [symbol.toUpperCase(), reason]
+  );
+}
+
+/**
+ * Clear any unavailable marker for a symbol (e.g. it now returns data).
+ */
+async function clearUnavailable(symbol) {
+  await db.query('DELETE FROM price_unavailable_symbols WHERE symbol = $1', [symbol.toUpperCase()]);
 }
 
 module.exports = {
   getRange,
   hasRange,
   insertCandles,
-  upsertToday
+  upsertToday,
+  getUnavailableSymbols,
+  markUnavailable,
+  clearUnavailable
 };

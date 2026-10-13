@@ -13,8 +13,8 @@ test('explicit date bounds override rolling periods for benchmark and position d
   const benchmark = jest.spyOn(PortfolioService, '_getDailySeries').mockResolvedValue([]);
   const positions = jest.spyOn(PortfolioService, '_getPriceSeriesMap').mockResolvedValue(new Map());
   const result = await PortfolioService._getPerformance('owner', { accounts: 'acct-1', period: '1Y', start_date: '2026-08-01', end_date: '2026-08-31' });
-  expect(benchmark).toHaveBeenCalledWith('SPY', '2026-08-01', '2026-08-31', 'owner');
-  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner');
+  expect(benchmark).toHaveBeenCalledWith('SPY', '2026-08-01', '2026-08-31', 'owner', { background: true });
+  expect(positions).toHaveBeenCalledWith([], '2026-08-01', '2026-08-31', 'owner', { background: true, cryptoSymbols: new Set(), historyStarts: new Map() });
   expect(PortfolioService._getPositionComponents).toHaveBeenCalledWith('owner', ['acct-1']);
   expect(result.startDate).toBe('2026-08-01');
   expect(result.endDate).toBe('2026-08-31');
@@ -36,12 +36,43 @@ test('completed month totals exclude candles outside both boundaries', async () 
   jest.spyOn(PortfolioService, '_getPositionComponents').mockResolvedValue([
     { symbol: 'AAPL', shares: 1, valueMultiplier: 1, effectiveDate: '2026-01-01' }
   ]);
+  const calendarDays=Array.from({length:31},(_,i)=>'2026-08-'+String(i+1).padStart(2,'0'));
   const candles = [
-    ['2026-07-31', 50], ['2026-08-01', 100], ['2026-08-31', 110], ['2026-09-01', 200]
+    ['2026-07-31',50], ...calendarDays.map(d=>[d,d==='2026-08-31'?110:100]), ['2026-09-01',200]
   ].map(([date, close]) => ({ time: new Date(`${date}T00:00:00Z`).getTime() / 1000, close }));
   jest.spyOn(PortfolioService, '_getDailySeries').mockResolvedValue(candles);
   jest.spyOn(PortfolioService, '_getPriceSeriesMap').mockResolvedValue(new Map([['AAPL', candles]]));
   const result = await PortfolioService._getPerformance('owner', { start_date: '2026-08-01', end_date: '2026-08-31' });
-  expect(result.series.map(point => point.date)).toEqual(['2026-08-01', '2026-08-31']);
+  expect(result.series.map(point => point.date)).toEqual(calendarDays);
   expect(result.metrics.totalReturnPercent).toBe(10);
 });
+
+
+test('comparison components use canonical broker holdings and contract multipliers', async () => {
+  jest.spyOn(PortfolioService, '_getTradePositions').mockResolvedValue([
+    {symbol:'RKLB',instrumentType:'stock',totalShares:2,openedAt:'2026-06-01'},
+    {symbol:'SUI',instrumentType:'crypto',totalShares:3,openedAt:'2026-07-01'},
+    {symbol:'OPTION',instrumentType:'option',totalShares:1,contractSize:100,openedAt:'2026-07-01'},
+    {symbol:'CLOSED',totalShares:0}
+  ]);
+  const rows=await PortfolioService._getOpenTradeComponents('owner', ['account']);
+  expect(rows.map(r=>r.symbol)).toEqual(['RKLB','SUI','OPTION']);
+  expect(rows[1].instrumentType).toBe('crypto');
+  expect(rows[2].valueMultiplier).toBe(100);
+});
+
+test('history requests start when the earliest retained holding was acquired', async () => {
+  jest.spyOn(PortfolioService,'getPreferences').mockResolvedValue({defaultBenchmarkSymbol:'SPY'});
+  jest.spyOn(PortfolioService,'_getPositionComponents').mockResolvedValue([
+    {symbol:'NEWETF',shares:1,effectiveDate:'2026-06-15',valueMultiplier:1},
+    {symbol:'NEWETF',shares:2,effectiveDate:'2026-07-01',valueMultiplier:1},
+    {symbol:'LATER',shares:1,effectiveDate:'2026-11-01',valueMultiplier:1}
+  ]);
+  jest.spyOn(PortfolioService,'_getDailySeries').mockResolvedValue([]);
+  const requests=jest.spyOn(PortfolioService,'_getPriceSeriesMap').mockResolvedValue(new Map());
+  await PortfolioService._getPerformance('owner', {start_date:'2026-04-05',end_date:'2026-10-05'});
+  expect(requests.mock.calls[0][0]).toEqual(['NEWETF']);
+  expect(requests.mock.calls[0][4].historyStarts.get('NEWETF')).toBe('2026-06-15');
+});
+
+test('ordinary Holdings summary remains independent of comparison coverage',async()=>{jest.spyOn(PortfolioService,'getPositions').mockResolvedValue([]);const r=await PortfolioService.getOverview('owner');expect(r.totalValue).toBe(0);expect(r.totalReturnPercent).toBe(0);expect(r.positionCount).toBe(0);});

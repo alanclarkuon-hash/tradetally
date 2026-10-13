@@ -1,23 +1,27 @@
 const db=require('../config/database');
 const pending=new Map();
-const supported=new Set(['ibkr','trading212','kraken','okx']);
+const supported=new Set(['ibkr','trading212','kraken','okx','etoro','ig']);
 const day=v=>v instanceof Date?v.toISOString().slice(0,10):String(v).slice(0,10);
 
-async function maintain(userId,{broker=null,fetchPrices=true}={}) {
+async function maintain(userId,{broker=null,fetchPrices=true,fullHistory=false,accountIdentifiers=null,fromDates=null,onProgress=async()=>{}}={}) {
  // Serialize recovery for each user, including scheduler/manual overlap.
  const key=userId,prior=pending.get(key)||Promise.resolve();
  const job=(async()=>{
+  await onProgress({stage:'waiting'});
   await prior.catch(()=>{});
   const accounts=(await db.query("SELECT * FROM user_accounts WHERE user_id=$1 AND NOT is_archived AND account_identifier IS NOT NULL",[userId])).rows
-   .filter(a=>supported.has(a.broker)&&(!broker||a.broker===broker));
+   .filter(a=>supported.has(a.broker)&&(!broker||a.broker===broker)&&(!accountIdentifiers||accountIdentifiers.includes(a.account_identifier)));
   const warnings=[],rebuilt=[];
   if(!accounts.length)return {captured:0,rebuilt,warnings};
-  for(const account of accounts) {
+  for(const [index,account] of accounts.entries()) {
+   const report=detail=>onProgress({accountName:account.account_name,accountProcessed:index,accountTotal:accounts.length,...detail});
+   await report({stage:'account'});
    if(account.broker==='ibkr') {
      // Dated NAV remains authoritative. Only closed-market weekend days can
      // use the documented prior-close estimate, with ledger cash movements.
      try {await require('./brokerSync/ibkrNavHistory').backfillTrailingWeekends(userId,account);}
      catch {warnings.push('ibkr: weekend portfolio history could not be updated; dated NAV values were retained.');}
+     await report({stage:'account_complete',accountProcessed:index+1});
      continue;
    }
    try {
@@ -31,15 +35,19 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
       const snapshot=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='okx' AND account_identifier=$2",[userId,account.account_identifier])).rows[0];
       if(!snapshot?.payload?.historyComplete||snapshot.payload.funding?.length||snapshot.payload.positions?.length){warnings.push('okx: portfolio history awaits spot balance reconciliation.');continue;}
     }
-    const last=(await db.query(`SELECT MAX(value_date) AS latest FROM portfolio_reconstructed_values
-      WHERE user_id=$1 AND account_identifier=$2 AND holdings_usd IS NOT NULL AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0]?.latest;
-    const fromDate=last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date);
+    const coverage=(await db.query(`SELECT MAX(value_date) AS latest,
+      MIN(value_date) FILTER (WHERE holdings_usd IS NULL OR issues <> '[]'::jsonb) AS first_gap
+      FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date<CURRENT_DATE`,[userId,account.account_identifier])).rows[0];
+    const last=coverage?.latest;
+    const fromDate=fromDates && Object.hasOwn(fromDates,account.account_identifier) ? fromDates[account.account_identifier]||day(account.initial_balance_date) : (fullHistory&&account.initial_balance_date?day(account.initial_balance_date):coverage?.first_gap?day(coverage.first_gap):last?day(new Date(Date.parse(day(last))-2*86400000)):day(account.initial_balance_date));
     const summary=await require('./portfolioReconstructionService').reconstruct(userId,{broker:account.broker,
-     accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true});
+     accountIdentifiers:[account.account_identifier],fromDate,fetchPrices,apply:true,zeroMissingPrices:true,onProgress:report});
     rebuilt.push(...summary.map(s=>({broker:s.broker,days:s.days,gaps:s.gaps})));
     if(summary.some(s=>s.gaps))warnings.push(`${account.broker}: some historical portfolio dates remain unavailable; review chart coverage.`);
    } catch {warnings.push(`${account.broker}: portfolio history backfill could not finish; imported broker records were retained.`);}
+   finally {await report({stage:'account_complete',accountProcessed:index+1});}
   }
+  await onProgress({stage:'capture',accountProcessed:accounts.length,accountTotal:accounts.length});
   const capture=await require('./portfolioValueHistoryService').captureToday(userId,{accounts:accounts.map(a=>a.account_identifier).join(',')});
   warnings.push(...(capture.warnings||[]));
   return {captured:capture.captured,rebuilt,warnings};
@@ -47,7 +55,17 @@ async function maintain(userId,{broker=null,fetchPrices=true}={}) {
  pending.set(key,job);
  try{return await job;}finally{if(pending.get(key)===job)pending.delete(key);}
 }
-async function maintainAllUsers() {
- for(const user of (await db.query('SELECT id FROM users')).rows)await maintain(user.id);
+// Sync completion must not join the serialized historical maintenance lane.
+// Capture only the fresh broker snapshot; the durable worker rebuilds past dates.
+async function captureCurrent(userId,{broker}={}) {
+ const accounts=(await db.query("SELECT account_identifier,broker FROM user_accounts WHERE user_id=$1 AND NOT is_archived AND account_identifier IS NOT NULL",[userId])).rows
+  .filter(a=>supported.has(a.broker)&&a.broker===broker);
+ if(!accounts.length)return {captured:0,rebuilt:[],warnings:[]};
+ const result=await require('./portfolioValueHistoryService').captureToday(userId,{accounts:accounts.map(a=>a.account_identifier).join(',')});
+ return {captured:result.captured,rebuilt:[],warnings:result.warnings||[]};
 }
-module.exports={maintain,maintainAllUsers};
+
+async function maintainAllUsers() {
+ for(const user of (await db.query('SELECT id FROM users')).rows)await require('./historyBackfillService').enqueue(user.id);
+}
+module.exports={maintain,captureCurrent,maintainAllUsers};

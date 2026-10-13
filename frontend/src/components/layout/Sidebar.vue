@@ -521,6 +521,7 @@ const navItems = computed(() => {
           ? [{ name: 'Assets', to: '/analysis/assets', route: 'assets', badge: 'pro' }]
           : []),
         { name: 'Investments', to: '/analysis', route: 'analysis', badge: 'pro' },
+        { name: 'Retirement Planner', to: '/analysis/retirement', route: 'retirement-planner', badge: 'pro' },
         { name: 'Watchlists', to: '/markets', route: 'markets', badge: 'pro' },
         { name: 'Trade Management', to: '/analysis/trade-management', route: 'trade-management', badge: 'pro' },
         { name: 'Playbooks & Grading', to: '/analysis/playbooks', route: 'playbooks', badge: 'pro' },

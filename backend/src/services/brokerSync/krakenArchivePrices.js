@@ -81,14 +81,17 @@ async function dailyPrices(pair) {
   if(name.toString('utf8')!==entry.name)throw Error('Kraken ZIP file identity mismatch');
   const bytes=inflateRawSync(await read(entry.offset+30+nameLength+extraLength,entry.compressed),{maxOutputLength:MAX_RANGE});
   if(bytes.length!==entry.size || crc32(bytes)!==entry.crc)throw Error('Kraken archive CSV checksum mismatch');
-  const prices={};
-  for(const line of bytes.toString('utf8').trim().split(/\r?\n/)) {
-    const fields=line.split(',');const time=Number(fields[0]),price=Number(fields[4]);
-    if(fields.length!==7 || !Number.isSafeInteger(time) || !(price>0))throw Error('Invalid Kraken archived candle');
-    const date=new Date(time*1000).toISOString().slice(0,10);
-    if(prices[date]!==undefined)throw Error('Duplicate Kraken archived daily candle');
-    prices[date]=price;
-  }
-  return {prices,source:'Kraken official OHLCVT archive 2026Q2, daily UTC close',pair};
+  return {...parseDailyCsv(bytes.toString('utf8')),source:'Kraken official OHLCVT archive 2026Q2, daily UTC close',pair};
 }
-module.exports={dailyPrices,directoryLocation,findEntry};
+function parseDailyCsv(text) {
+ const prices={},candles=[];
+ for(const line of text.trim().split(/\r?\n/)) {
+  const f=line.split(',').map(Number),[time,open,high,low,close,volume,trades]=f;
+  if(f.length!==7||!Number.isSafeInteger(time)||time<0||time%86400!==0||![open,high,low,close].every(n=>Number.isFinite(n)&&n>0)||low>Math.min(open,close)||high<Math.max(open,close)||low>high||!Number.isFinite(volume)||volume<0||!Number.isSafeInteger(trades)||trades<0)throw Error('Invalid Kraken archived candle');
+  const date=new Date(time*1000).toISOString().slice(0,10);
+  if(prices[date]!==undefined)throw Error('Duplicate Kraken archived daily candle');
+  prices[date]=close;candles.push({time,open,high,low,close,volume});
+ }
+ return {prices,candles:candles.sort((a,b)=>a.time-b.time)};
+}
+module.exports={dailyPrices,directoryLocation,findEntry,parseDailyCsv};

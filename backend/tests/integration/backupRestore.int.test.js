@@ -164,4 +164,20 @@ describe('backup restore with real PostgreSQL', () => {
     } finally {
       if (ids.length) await db.query('DELETE FROM backups WHERE id=ANY($1::uuid[])', [ids]);
     }
-  });});
+  });
+
+
+  test('restores decoded JSON scalars and objects without losing instance settings', async () => {
+    const values = ['TradeTally "Test"', '', 'true', '123', false, 123, { enabled: true }, ['a', 'b']];
+    const entries = values.map((value, index) => ({
+      id: randomUUID(), key: `restore_json_${index}`, value
+    }));
+    const result = await backup_service.restoreFromBackup({ tables: { instance_config: entries } });
+    expect(result.tableResults.instance_config).toEqual({ added: entries.length, skipped: 0, errors: 0 });
+    for (const entry of entries) {
+      const restored = await db.query('SELECT value FROM instance_config WHERE key = $1', [entry.key]);
+      expect(restored.rows[0].value).toEqual(entry.value);
+    }
+  });
+
+});

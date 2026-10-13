@@ -82,3 +82,22 @@ describe('broker-reported holdings', () => {
     expect(p.find(x=>x.side==='short')).toMatchObject({totalQuantity:.5,brokerQuote:{c:110,unrealizedPnL:5}});
   });
 });
+
+ test('multiple CFD snapshot lots sum broker equity while stocks and shorts remain separate',async()=>{
+  const rows=[{broker_type:'etoro',account_identifier:'synthetic',synced_at:'2026-10-03T12:00:00Z',positions:[
+    {symbol:'TEST',quantity:2,totalCost:100,currentValue:110,instrumentType:'cfd',side:'long'},
+    {symbol:'TEST',quantity:3,totalCost:180,currentValue:210,instrumentType:'cfd',side:'long'},
+    {symbol:'TEST',quantity:1,totalCost:50,currentValue:60,instrumentType:'cfd',side:'short'},
+    {symbol:'TEST',quantity:1,totalCost:300,currentValue:310,instrumentType:'stock',side:'long'}]}];
+  const ps=Object.values(dashboardPositions([],rows));expect(ps).toHaveLength(3);
+  const long=ps.find(p=>p.instrumentType==='cfd'&&p.side==='long');
+  expect(long.totalQuantity*long.brokerQuote.c).toBe(320);
+  expect(long.totalCost).toBe(280);
+  expect(ps.find(p=>p.side==='short').brokerQuote.c).toBe(60);
+  const portfolio=await snapshotPositions(rows);
+  const Portfolio=require('../../src/services/portfolioService');
+  const merged=Portfolio._mergePositions([],portfolio,{});
+  const cfd=merged.find(p=>p.instrumentType==='cfd');
+  expect(cfd.totalShares*cfd.brokerCurrentPrice).toBeCloseTo(380);
+  expect(cfd.totalCostBasis).toBe(330);
+ });

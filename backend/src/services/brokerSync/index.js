@@ -11,12 +11,18 @@ const ibkrService = require('./ibkrService');
 const schwabService = require('./schwabService');
 const tradestationService = require('./tradestationService');
 const alpacaService = require('./alpacaService');
+const webullService = require('./webullService');
 const trading212Service = require('./trading212Service');
 const etoroService = require('./etoroService');
 const okxService = require('./okxService');
 const krakenService = require('./krakenService');
 const syncRecovery = require('./syncRecovery');
+const tradovateService = require('./tradovateService');
 const { getUserTimezone } = require('../../utils/timezone');
+const { publishInBackground } = require('../../events/domainEvents');
+
+const IBKR_BACKFILL_RETRY_LIMIT = 3;
+const IBKR_BACKFILL_RETRY_DELAY_MINUTES = 60;
 
 class BrokerSyncService {
   constructor() {
@@ -45,7 +51,7 @@ class BrokerSyncService {
    * @param {object} options - Sync options
    */
   async runConnectionSync(connectionId, options = {}) {
-    const { syncType = 'manual', endDate } = options;
+    const { syncType = 'manual', endDate, referenceCode } = options;
     let { startDate } = options;
 
     // Get connection with credentials
@@ -64,7 +70,7 @@ class BrokerSyncService {
     const TierService = require('../tierService');
     const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
     if (!syncAccess.allowed) {
-      if (syncType === 'scheduled') {
+      if (['scheduled', 'ibkr_timeout_retry'].includes(syncType)) {
         console.log(`[BROKER-SYNC] Skipping scheduled sync for connection ${connectionId}: broker sync is Pro-only for this free user`);
         return { success: false, skippedForTier: true, reason: 'tier_pro_required', imported: 0, duplicates: 0 };
       }
@@ -97,6 +103,11 @@ class BrokerSyncService {
       if (opening) startDate = opening instanceof Date ? opening.toISOString().slice(0,10) : String(opening).slice(0,10);
     }
 
+    const historyScope = require('../historySyncScope');
+    let historyBefore;
+    try { historyBefore = await historyScope.capture(connection.userId, connection.brokerType, connectionId); }
+    catch { /* Import still proceeds; a failed comparison is reported after sync. */ }
+
     // Create sync log
     const syncLog = await BrokerConnection.createSyncLog(
       connectionId,
@@ -116,7 +127,8 @@ class BrokerSyncService {
             startDate,
             endDate,
             syncLogId: syncLog.id,
-            syncType
+            syncType,
+            referenceCode
           });
           break;
 
@@ -153,8 +165,24 @@ class BrokerSyncService {
         case 'etoro':
           result = await etoroService.syncTrades(connection, { startDate, endDate, syncLogId: syncLog.id });
           break;
+        case 'webull':
+          result = await webullService.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
         case 'trading212':
           result = await trading212Service.syncTrades(connection, {
+            startDate,
+            endDate,
+            syncLogId: syncLog.id
+          });
+          break;
+
+        case 'tradovate':
+          result = await tradovateService.syncTrades(connection, {
             startDate,
             endDate,
             syncLogId: syncLog.id
@@ -177,13 +205,15 @@ class BrokerSyncService {
       const expiredClosed = ['etoro','okx','kraken'].includes(connection.brokerType) ? 0 : await this.closeExpiredOptions(connection.userId);
       result.expiredClosed = expiredClosed;
 
+      // Capture current broker values only. Historical reconstruction/downloads
+      // run in the durable history lane after the broker sync is committed.
       // Broker imports remain successful if chart maintenance needs attention.
       // Do not retry private broker requests for a public-price/history problem.
-      if (['ibkr','trading212','kraken','okx'].includes(connection.brokerType) && !result.failed &&
+      if (['ibkr','trading212','kraken','okx','etoro'].includes(connection.brokerType) && !result.failed &&
           result.latestWindowRetrieved !== false && result.reconciliationRequired !== true) {
         try {
-          await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_history',0);
-          result.portfolioHistory = await require('../brokerPortfolioMaintenance').maintain(connection.userId,{broker:connection.brokerType});
+          await BrokerConnection.updateSyncProgress(syncLog.id,'portfolio_capture',0);
+          result.portfolioHistory = await require('../brokerPortfolioMaintenance').captureCurrent(connection.userId,{broker:connection.brokerType});
           result.warnings = [...(result.warnings||[]),...result.portfolioHistory.warnings];
         } catch {
           result.warnings = [...(result.warnings||[]),'Portfolio chart maintenance needs attention; broker records were imported successfully.'];
@@ -219,7 +249,9 @@ class BrokerSyncService {
           cash_events_imported: result.cashEventsImported || 0,
           cash_events_matched: result.cashEventsMatched || 0,
           manual_review_count: result.manualReviewCount || 0,
-          manual_review_items: result.manualReviewItems || []
+          manual_review_items: result.manualReviewItems || [],
+          retryable_window: result.retryableWindow || null,
+          retry_error_code: result.retryableErrorCode || null
         }
       });
 
@@ -243,18 +275,103 @@ class BrokerSyncService {
         { advanceLastSync: latestReportRetrieved }
       );
 
+      let retryStopped = false;
+      if (connection.brokerType === 'ibkr' && result.retryableWindow) {
+        const retriesConsumed = syncType === 'ibkr_timeout_retry'
+          ? Number(connection.ibkrBackfillRetry?.retry_count || 0) + 1
+          : 0;
+
+        if (retriesConsumed >= IBKR_BACKFILL_RETRY_LIMIT) {
+          const message = `IBKR backfill stopped after ${IBKR_BACKFILL_RETRY_LIMIT} hourly retries. The last unfinished range was ${result.retryableWindow.start_date} through ${result.retryableWindow.end_date}.`;
+          await BrokerConnection.stopIBKRBackfillRetry(connectionId, message);
+          await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
+            errorMessage: message,
+            errorDetails: {
+              errorCode: result.retryableErrorCode || 'TIMEOUT',
+              retryAttempts: IBKR_BACKFILL_RETRY_LIMIT,
+              window: result.retryableWindow,
+              transient: false,
+              timestamp: new Date().toISOString()
+            }
+          });
+          result.warnings = [...(result.warnings || []), message];
+          result.warningDetails = [...(result.warningDetails || []), {
+            code: 'IBKR_BACKFILL_RETRY_EXHAUSTED',
+            message,
+            window_start: result.retryableWindow.start_date,
+            window_end: result.retryableWindow.end_date
+          }];
+          result.outcome = 'failed';
+          retryStopped = true;
+          console.warn(`[BROKER-SYNC] ${message}`);
+        } else {
+          await BrokerConnection.scheduleIBKRBackfillRetry(connectionId, {
+            floor: result.backfillFloor,
+            windowStart: result.retryableWindow.start_date,
+            windowEnd: result.retryableWindow.end_date,
+            retryCount: retriesConsumed,
+            errorCode: result.retryableErrorCode,
+            referenceCode: result.retryableReferenceCode
+          }, IBKR_BACKFILL_RETRY_DELAY_MINUTES);
+          result.retryScheduled = true;
+          result.retryAttempt = retriesConsumed + 1;
+          console.log(`[BROKER-SYNC] Scheduled IBKR backfill retry ${result.retryAttempt} of ${IBKR_BACKFILL_RETRY_LIMIT} for ${connectionId} in one hour`);
+        }
+      } else if (connection.brokerType === 'ibkr' && connection.ibkrBackfillRetry) {
+        await BrokerConnection.clearIBKRBackfillRetry(connectionId);
+      }
+
       if (latestReportRetrieved) {
         console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
       } else {
         console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
       }
 
+      if (latestReportRetrieved && !result.failed && result.reconciliationRequired !== true) {
+        try {
+          if (!historyBefore) throw new Error('History inputs unavailable');
+          const historyAfter = await historyScope.capture(connection.userId, connection.brokerType, connectionId);
+          result.historyJobId = await require('../historyBackfillService').enqueue(connection.userId, historyScope.difference(historyBefore, historyAfter));
+        }
+        catch { result.warnings = [...(result.warnings || []), 'Historical price backfill could not be queued; broker imports were retained.']; }
+      }
+      publishInBackground('broker_sync.completed', {
+        connectionId,
+        brokerType: connection.brokerType,
+        syncLogId: syncLog.id,
+        syncType,
+        status: 'completed',
+        imported: result.imported + expiredClosed,
+        skipped: result.skipped || 0,
+        failed: result.failed || 0,
+        duplicates: result.duplicates || 0,
+        warnings: result.warnings || []
+      }, { source: 'brokerSync', userId: connection.userId });
+
       return {
-        success: true,
+        success: !retryStopped,
         syncLogId: syncLog.id,
         ...result
       };
     } catch (error) {
+      if (error.errorCode === 'IBKR_OPERATION_IN_PROGRESS') {
+        await BrokerConnection.updateSyncLog(syncLog.id, 'failed', {
+          errorMessage: error.message,
+          errorDetails: {
+            errorCode: error.errorCode,
+            transient: true,
+            timestamp: new Date().toISOString()
+          }
+        });
+        return {
+          success: false,
+          skipped: true,
+          reason: 'ibkr_token_operation_in_progress',
+          syncLogId: syncLog.id,
+          error: error.message
+        };
+      }
+
       console.error(`[BROKER-SYNC] Sync failed:`, error.message);
 
       // Capture error code + raw message into error_details for diagnosability.
@@ -288,7 +405,7 @@ class BrokerSyncService {
       // consecutive failures, after which the connection is marked 'error').
       // Manual retries are not auto-rescheduled — the user is watching the
       // UI and can re-click "Sync Now".
-      if (error.transient && syncType === 'scheduled') {
+      if (connection.brokerType !== 'ibkr' && error.transient && syncType === 'scheduled') {
         try {
           await BrokerConnection.scheduleTransientRetry(connectionId, 30);
           console.log(`[BROKER-SYNC] Scheduled transient-failure retry for ${connectionId} in 30 min`);
@@ -296,6 +413,15 @@ class BrokerSyncService {
           console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
         }
       }
+
+      publishInBackground('broker_sync.completed', {
+        connectionId,
+        brokerType: connection.brokerType,
+        syncLogId: syncLog.id,
+        syncType,
+        status: 'failed',
+        error: error.message
+      }, { source: 'brokerSync', userId: connection.userId });
 
       return {
         success: false,
@@ -376,6 +502,18 @@ class BrokerSyncService {
         return okxService.validateCredentials(credentials.apiKey,credentials.apiSecret,credentials.passphrase,credentials.region);
       case 'etoro':
         return etoroService.validateCredentials(credentials.apiKey, credentials.userKey);
+      case 'tradovate':
+        return {
+          valid: tradovateService.isConfigured(),
+          message: tradovateService.isConfigured() ? 'Tradovate OAuth is configured' : 'Tradovate OAuth is not configured'
+        };
+
+      case 'webull':
+        return {
+          valid: webullService.isConfigured(),
+          message: webullService.isConfigured() ? 'Webull OAuth is configured' : 'Webull OAuth is not configured'
+        };
+
       case 'trading212':
         return trading212Service.validateCredentials(
           credentials.apiKey,
