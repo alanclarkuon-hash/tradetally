@@ -88,7 +88,7 @@ test('reviewed full closures are excluded but half days and other venues remain 
 test('calendar years outside published evidence keep weekday gaps and report incomplete calendar coverage',()=>{
  expect(calendar.coversRange('EURONEXT','2020-01-01','2026-12-31')).toBe(true);
  expect(calendar.coversRange('STOCKHOLM','2020-01-01','2026-12-31')).toBe(false);
- expect(calendar.isTradingDay('2023-01-06','STOCKHOLM')).toBe(true);
+ expect(calendar.isTradingDay('2020-01-06','STOCKHOLM')).toBe(true);
  expect(calendar.coversRange('MADRID','2026-01-01','2026-12-31')).toBe(true);
  expect(calendar.coversRange('OSLO','2020-01-01','2021-12-31')).toBe(false);
  expect(calendar.coversRange('EURONEXT','2027-01-01','2027-12-31')).toBe(false);
@@ -154,4 +154,27 @@ test('ASX exceptional closure does not hide another venue, crypto or adjacent mi
  expect(calendar.coversRange('ASX','2027-01-01','2028-12-31')).toBe(false);
  expect(calendar.isTradingDay('2021-01-26','ASX')).toBe(true);
  expect(calendar.identify('EXAMPLE','ASX24')).toBeNull();
+});
+
+// Regression boundaries verified against archived primary-market columns.
+test.each(['2021-01-06','2021-06-25','2021-12-24','2022-06-06','2022-06-24','2023-05-18','2023-06-23'])('archived Stockholm closure %s is not missing price data',day=>expect(missingRanges([],day,day,false,'STOCKHOLM')).toEqual([]));
+test.each(['2021-01-05','2021-04-01','2021-04-30','2021-05-12','2021-11-05','2022-04-14','2022-11-04','2023-04-06','2023-05-17','2023-11-03'])('Stockholm early close %s remains a required candle',day=>expect(calendar.isTradingDay(day,'STOCKHOLM')).toBe(true));
+test('Swiss cash calendars cover sourced years, not unknown years or derivative venues',async()=>{
+ expect(calendar.coversRange('SIX','2021-01-01','2026-12-31')).toBe(true);
+ expect(calendar.coversRange('SIX','2020-01-01','2021-01-01')).toBe(false);
+ expect(calendar.coversRange('SIX','2026-01-01','2027-01-01')).toBe(false);
+ expect(calendar.coversRange('STOCKHOLM','2021-01-01','2027-12-31')).toBe(true);
+ for(const symbol of ['SYNTH.SW','SYNTH.ZU'])expect(await calendar.resolve(symbol)).toBe('SIX');
+ for(const exchange of ['EBS','SWX','SIX','XSWX','SIX Swiss Exchange'])expect(calendar.identify('SYNTH',exchange)).toBe('SIX');
+ expect(calendar.identify('SYNTH','SIX derivatives')).toBeNull();
+ expect(calendar.identify('SYNTH','Swiss Repo')).toBeNull();
+ expect(calendar.identify('SYNTH.L','SIX')).toBe('LSE');
+ expect(calendar.identify('SYNTH')).toBeNull();
+});
+test.each(['2021-12-24','2021-12-31','2022-08-01','2023-01-02','2024-05-20','2025-06-09','2026-01-02','2026-05-25'])('SIX dated full closure %s excludes missing candles',day=>expect(missingRanges([],day,day,false,'SIX')).toEqual([]));
+test.each(['2022-01-03','2022-12-23','2022-12-30','2023-12-22','2023-12-29','2024-12-30','2025-12-30','2026-08-03','2027-01-04'])('SIX regular sessions %s stay required',day=>expect(calendar.isTradingDay(day,'SIX')).toBe(true));
+test('Swiss closures never remove real adjacent sessions, US trading or crypto dates',()=>{
+ expect(missingRanges([],'2021-12-23','2021-12-24',false,'SIX')).toEqual([{from:'2021-12-23',to:'2021-12-23'}]);
+ expect(calendar.isTradingDay('2025-01-02','US')).toBe(true);
+ expect(missingRanges([],'2025-01-02','2025-01-02',true,'SIX')).toHaveLength(1);
 });
