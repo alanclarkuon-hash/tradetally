@@ -145,13 +145,33 @@ async function lookup(symbol) {
   yahooLane=request; lookupLanes.set(symbol,request);
   try{return await request;}finally{lookupLanes.delete(symbol);}
 }
-async function resolve(symbol,{allowLookup=false}={}) {
+const brokerIdentities=new Map();
+async function brokerCalendar(userId,symbol) {
+ const key=userId+':'+symbol,old=brokerIdentities.get(key);
+ if(old&&Date.now()<old.expires)return old.value;
+ const value=(async()=>{
+  // A bare symbol from a different broker must not inherit eToro's venue.
+  const sources=(await db.query("SELECT broker,instrument_type FROM trades WHERE user_id=$1 AND UPPER(symbol)=$2 AND COALESCE(instrument_type,'stock') IN ('stock','cfd')",[userId,symbol])).rows;
+  if(!sources.length||sources.some(r=>r.broker!=='etoro'))return null;
+  const connections=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='etoro' AND connection_status='active'",[userId])).rows;
+  if(!connections.length)return null;
+  const connection=await require('../models/BrokerConnection').findById(connections[0].id,true);
+  const metadata=await require('./brokerHistoryProviders').etoroArchivedEquities(connection,symbol);
+  if(metadata.length!==1||String(metadata[0].symbolFull).toUpperCase()!==symbol||![5,6].includes(Number(metadata[0].instrumentTypeId)))return null;
+  return identify(symbol,metadata[0].exchange)||null;
+ })().catch(()=>null);
+ brokerIdentities.set(key,{value,expires:Date.now()+3600000});
+ if(brokerIdentities.size>4096)brokerIdentities.delete(brokerIdentities.keys().next().value);
+ return value;
+}
+async function resolve(symbol,{allowLookup=false,userId=null}={}) {
   symbol=String(symbol).toUpperCase();
   const suffix=identify(symbol); if(suffix) return suffix;
+  const scoped=async known=>known||(allowLookup&&userId?await brokerCalendar(userId,symbol):null);
   const old=identities.get(symbol);
   if(old && Date.now()<old.expires) {
     const known=await old.value;
-    return known || (allowLookup && !verifiedListings.has(symbol) ? lookup(symbol) : null);
+    return scoped(known || (allowLookup && !verifiedListings.has(symbol) ? await lookup(symbol) : null));
   }
   const value=(async()=>{
     const saved=(await db.query(`SELECT exchange,source FROM exchange_calendar_listings WHERE symbol=$1
@@ -162,7 +182,7 @@ async function resolve(symbol,{allowLookup=false}={}) {
   })();
   identities.set(symbol,{value,expires:Date.now()+3600000});
   if(identities.size>4096) identities.delete(identities.keys().next().value);
-  try { const known=await value; return known || (allowLookup && !verifiedListings.has(symbol) ? lookup(symbol) : null); }
+  try { const known=await value; return scoped(known || (allowLookup && !verifiedListings.has(symbol) ? await lookup(symbol) : null)); }
   catch {identities.delete(symbol);return null;}
 }
-module.exports={resolve,identify,isTradingDay,calendars,coversRange};
+module.exports={resolve,identify,isTradingDay,calendars,coversRange,brokerCalendar};

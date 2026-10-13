@@ -85,7 +85,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
  if(!fetchPrices)return cached||null;
  const crypto=symbol.endsWith('-USD'),ticker=crypto?symbol.slice(0,-4):symbol;
- const calendar=crypto?null:await require('./exchangeCalendar').resolve(ticker,{allowLookup:true});
+ const calendar=crypto?null:await require('./exchangeCalendar').resolve(ticker,{allowLookup:true,userId});
  const candles=(cached?.prices||[]).map(p=>({time:Date.parse(p.date)/1000,close:p.close}));
  const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
  if(!gaps.length)return cached;

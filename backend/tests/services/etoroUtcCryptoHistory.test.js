@@ -82,10 +82,10 @@ test.each(['repeated','wrongPage','empty','unfiltered'])('invalid %s search pagi
 });
 test('typed venue directory retains exact retired equities omitted by search',async()=>{
  const {etoroArchivedEquities}=require('../../src/services/brokerHistoryProviders');
- etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4},{exchangeId:5}]})
+ etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4,exchangeDescription:'Nasdaq'},{exchangeId:5,exchangeDescription:'NYSE'}]})
  .mockResolvedValueOnce({instrumentDisplayDatas:[{instrumentId:88,instrumentTypeId:5,symbolFull:'RETIRED',exchangeId:4,images:['unused']}]})
  .mockResolvedValueOnce({instrumentDisplayDatas:[{instrumentId:89,instrumentTypeId:6,symbolFull:'OTHER',exchangeId:5}]});
- expect(await etoroArchivedEquities({},'RETIRED')).toEqual([{instrumentId:88,instrumentTypeId:5,symbolFull:'RETIRED',exchangeId:4}]);
+ expect(await etoroArchivedEquities({},'RETIRED')).toEqual([{instrumentId:88,instrumentTypeId:5,symbolFull:'RETIRED',exchangeId:4,exchange:'Nasdaq'}]);
  expect(etoro.get.mock.calls[1][2]).toEqual({instrumentTypeIds:'5,6',exchangeIds:'4'});
 });
 test.each([{instrumentId:88,instrumentTypeId:1,symbolFull:'COIN',exchangeId:4},{instrumentId:88,instrumentTypeId:5,symbolFull:'COIN',exchangeId:5},{instrumentId:-1,instrumentTypeId:5,symbolFull:'COIN',exchangeId:4}])('archived directory rejects wrong product or venue: %p',async row=>{

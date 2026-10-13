@@ -122,7 +122,7 @@ async function process(job) {
       state.stage='calendars'; state.currentSymbol=pendingCalendars[i].symbol;
       state.calendarProcessed=i; state.calendarTotal=pendingCalendars.length;
       await progress(job.id,state);
-      pendingCalendars[i].calendar=await require('./exchangeCalendar').resolve(pendingCalendars[i].symbol,{allowLookup:true});
+      pendingCalendars[i].calendar=await require('./exchangeCalendar').resolve(pendingCalendars[i].symbol,{allowLookup:true,userId:job.user_id});
     }
     state.stage='prices';
     for (let i = state.processed; i < tasks.length; i++) {
@@ -134,7 +134,7 @@ async function process(job) {
       }
       try {
         const prices = await require('./portfolioService')._getDailySeries(task.symbol, task.from, task.to, job.user_id, { instrumentType: task.instrumentType });
-        task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol);
+        task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol,{allowLookup:true,userId:job.user_id});
         const absent = missingRanges(prices, task.from, task.to, task.instrumentType === 'crypto', task.calendar);
         if (absent.length) state.gaps.push({ ...task, ranges: absent, reason: task.instrumentType === 'crypto' ? 'No finalized broker/provider prices for these dates' : calendarCoverageReason(task.calendar,task.from,task.to) });
         else state.complete++;
