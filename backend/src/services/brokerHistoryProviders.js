@@ -167,7 +167,7 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
   const interval=instrumentType==='crypto'&&coverage.intervals.some(i=>i.interval==='1h'&&Number(i.candles)>0)?'1h':'1d';
   if(!coverage.intervals.some(i=>i.interval===interval&&Number(i.candles)>0))return [];
   const reference=instrumentType==='crypto'?null:(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
-  const result = []; let cursor;
+  const result = []; let cursor,quoteCurrency;
   for (let page = 0; page < 100; page++) {
     const data = await etoro.get(connection, `/data/instruments/${id}/candles`, {
       interval, from: new Date(Date.parse(from)-DAY).toISOString(), to: new Date(Date.parse(to) + DAY).toISOString(), limit: 2000,
@@ -176,16 +176,55 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     if (Number(data.instrumentId) !== id || !Array.isArray(data.results)) throw Error('Invalid eToro candles');
     if(data.interval!==interval||data.side!=='bid')throw Error('Invalid eToro candle interval');
     const quote=String(data.symbol||'').split('/');
+    if(data.results.length){if(quoteCurrency&&quoteCurrency!==quote[1])throw Error('eToro quote currency changed');quoteCurrency=quote[1];}
     if(data.results.length && (quote.length!==2 || !etoroQuoteSymbol(symbol,quote[0],matches[0]))) throw Error('Invalid eToro candle identity');
     if(interval==='1h'&&quote[1]!=='USD'&&data.results.length)throw Error('Invalid eToro crypto currency');
     result.push(...(interval==='1h'?data.results:data.results.map(r => etoroDaily(r,instrumentType,quote[1],reference))));
-    if (!data.pagination?.hasNext) return bounded(interval==='1h'?etoroCryptoDays(result):result, from, to);
+    if (!data.pagination?.hasNext) {
+      const verified=bounded(interval==='1h'?etoroCryptoDays(result):result,from,to);
+      if(instrumentType==='crypto'||!quoteCurrency||!reference?.prices?.length)return verified;
+      try {
+        const legacy=await directory(`etoro-legacy-history:${id}`,()=>etoro.get(connection,`/market-data/instruments/${id}/history/candles/desc/OneDay/1000`));
+        const merged=new Map(verified.map(c=>[c.time,c]));
+        for(const c of etoroLegacyDaily(legacy,id,quoteCurrency,reference,from,to))if(!merged.has(c.time))merged.set(c.time,c);
+        return [...merged.values()].sort((a,b)=>a.time-b.time);
+      }catch{return verified;}
+    }
     if (!data.pagination.nextCursor || cursor === data.pagination.nextCursor) throw Error('eToro candle cursor did not advance');
     cursor = data.pagination.nextCursor;
   }
   throw Error('eToro candle page limit reached');
 }
 
+function etoroLegacyDaily(data,id,currency,reference,from,to) {
+ const unit=require('../utils/quoteCurrency').normaliseMinorUnit(currency);
+ if(!unit||unit.code!==reference?.currency||data?.interval!=='OneDay'||!Array.isArray(data.candles)||data.candles.length!==1)return [];
+ const group=data.candles[0];
+ if(Number(field(group,'instrumentId'))!==id||!Array.isArray(group.candles)||group.candles.length>1000)return [];
+ const known=new Map((reference.prices||[]).map(p=>[p.date,p.close])),rows=new Map(),anchors=[];
+ const splits=reference.splits||[];
+ if(splits.some(s=>!/^\d{4}-\d{2}-\d{2}$/.test(s.date)||!(s.ratio>0)||!Number.isFinite(s.ratio)))return [];
+ for(const row of group.candles) {
+  if(Number(field(row,'instrumentId'))!==id)return [];
+  const c=candle(Date.parse(row.fromDate),[row.open,row.high,row.low,row.close,row.volume]);
+  if(!c)return [];
+  const normalized={...c,open:c.open/unit.divisor,high:c.high/unit.divisor,low:c.low/unit.divisor,close:c.close/unit.divisor,currency:unit.code};
+  const old=rows.get(c.time);if(old&&JSON.stringify(old)!==JSON.stringify(normalized))return [];
+  rows.set(c.time,normalized);
+  const date=day(c.time*1000),raw=known.get(date);
+  if(raw>0){
+   const split=splits.filter(s=>s.date>date).reduce((n,s)=>n*s.ratio,1),target=raw/split;
+   if(!(target>0)||!Number.isFinite(target)||Math.abs(normalized.close/target-1)>.01)return [];
+   anchors.push(c.time);
+  }
+ }
+ const unique=[...new Set(anchors)].sort((a,b)=>a-b);
+ if(unique.length<3)return [];
+ // Never extend an inferred basis into older unproven history or across an
+ // unbounded tail. A small recent tail supports the next finalized sessions.
+ const first=unique[0],last=unique.at(-1)+7*DAY/1000;
+ return bounded([...rows.values()].filter(c=>c.time>=first&&c.time<=last),from,to).sort((a,b)=>a.time-b.time);
+}
 function etoroQuoteSymbol(symbol,quote,metadata) {
  if(typeof quote!=='string')return false;
  const shown=quote.toUpperCase();
@@ -264,5 +303,6 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }
 }
-module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities, etoroQuoteSymbol };
+module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities, etoroQuoteSymbol, etoroLegacyDaily };
+
 
