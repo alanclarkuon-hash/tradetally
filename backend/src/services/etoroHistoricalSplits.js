@@ -90,7 +90,7 @@ function statementLotMetadata(trades,records,splits) {
   const symbols=new Set(candidates.map(o=>o.symbol));
   const currency=currencies.size===1?[...currencies][0]:null;
   let marketSymbol=symbols.size===1?[...symbols][0]:null;
-  if(currency==='GBX'&&marketSymbol&&!marketSymbol.includes('.'))marketSymbol+='.L';
+  if((t.broker==='etoro'||!t.broker)&&currency==='GBX'&&marketSymbol&&!marketSymbol.includes('.'))marketSymbol+='.L';
   const unchanged=candidates.length&&candidates.every(o=>near(ratioFor(o),1));
   const authority=original.length>0||!!chosen?.length||unchanged;
   // An older bare statement label must not discard a fuller broker listing.

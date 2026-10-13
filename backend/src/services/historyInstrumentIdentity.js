@@ -2,8 +2,11 @@
 // underlying may be warmed for analysis, but never values its derivative.
 const {historicalMarketSymbol}=require('./portfolioCorporateActions');
 const derivativeTypes=new Set(['option','future','spread_bet']);
+const etoroProducts=new Map(require('./calendars/etoro-contract-products.json').products.map(p=>[p.symbol.toUpperCase(),p]));
 function identity(row,date) {
  const type=row.instrument_type||row.instrumentType||'stock';
+ const product=row.broker==='etoro'&&['stock','cfd'].includes(type)?etoroProducts.get(String(row.symbol).toUpperCase()):null;
+ if(product)return {symbol:row.symbol,instrumentType:'cfd',unsupported:true,brokerProduct:product.kind,reason:'Historical '+product.kind+' broker contract prices are not verified as listed-security closes. Broker statement valuations are retained.'};
  if(derivativeTypes.has(type)) {
   const underlying=row.underlying_symbol;
   if(!underlying || type==='spread_bet' && underlying===row.symbol) return {symbol:row.symbol,instrumentType:type,unsupported:true,
@@ -17,8 +20,8 @@ function identity(row,date) {
  return {symbol:kind==='crypto'?symbol.replace(/-USD$/,''):symbol,instrumentType:kind};
 }
 async function unsupportedSymbols(client,userId=null) {
- const rows=(await client.query('SELECT symbol,instrument_type,underlying_symbol FROM trades WHERE ($1::uuid IS NULL OR user_id=$1)',[userId]))?.rows||[];
- const result=new Map(),stockSymbols=new Set(rows.filter(r=>(r.instrument_type||'stock')==='stock').map(r=>r.symbol));
+ const rows=(await client.query('SELECT symbol,instrument_type,underlying_symbol,broker FROM trades WHERE ($1::uuid IS NULL OR user_id=$1)',[userId]))?.rows||[];
+ const result=new Map(),stockSymbols=new Set(rows.filter(r=>(r.instrument_type||'stock')==='stock'&&!identity(r).unsupported).map(r=>r.symbol));
  for(const row of rows){const mapped=identity(row);if(stockSymbols.has(row.symbol))continue;
   if(mapped.unsupported)result.set(row.symbol,mapped);
   else if(mapped.analysisOnly && mapped.symbol!==row.symbol)result.set(row.symbol,{symbol:row.symbol,instrumentType:row.instrument_type,unsupported:true,reason:'Broker contract prices are unavailable. Recorded underlying history is for analysis only and cannot value this contract.'});

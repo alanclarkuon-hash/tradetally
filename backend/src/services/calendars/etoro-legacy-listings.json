@@ -189,6 +189,90 @@
       "isin": "LU0075646355",
       "directoryPage": 34,
       "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "1COV",
+      "currency": "EUR",
+      "isin": "DE0006062144",
+      "directoryPage": 41,
+      "marketSymbol": "1COV.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "DWNI",
+      "currency": "EUR",
+      "isin": "DE000A0HN5C6",
+      "directoryPage": 41,
+      "marketSymbol": "DWNI.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "MONY",
+      "currency": "GBX",
+      "isin": "GB00B1ZBKY84",
+      "directoryPage": 47,
+      "marketSymbol": "MONY.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "FXPO",
+      "currency": "GBX",
+      "isin": "GB00B1XH2C03",
+      "directoryPage": 47,
+      "marketSymbol": "FXPO.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SWDA",
+      "currency": "GBX",
+      "isin": "IE00B4L5Y983",
+      "directoryPage": 53,
+      "marketSymbol": "SWDA.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "LQDE",
+      "currency": "USD",
+      "statementSymbols": [
+        "LQDE.L"
+      ],
+      "isin": "IE0032895942",
+      "directoryPage": 53,
+      "marketSymbol": "LQDE.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "NVTKL",
+      "currency": "USD",
+      "statementSymbols": [
+        "NVTKL.L"
+      ],
+      "isin": "US6698881090",
+      "directoryPage": 11,
+      "marketSymbol": "NVTKL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "OGZDL",
+      "currency": "USD",
+      "statementSymbols": [
+        "OGZDL.L"
+      ],
+      "isin": "US3682872078",
+      "directoryPage": 11,
+      "marketSymbol": "OGZDL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SBERL",
+      "currency": "USD",
+      "statementSymbols": [
+        "SBERL.L"
+      ],
+      "isin": "US80585Y3080",
+      "directoryPage": 11,
+      "marketSymbol": "SBERL.L",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
     }
   ]
 }

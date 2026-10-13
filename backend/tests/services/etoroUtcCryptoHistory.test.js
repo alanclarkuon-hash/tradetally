@@ -67,3 +67,34 @@ test('current UTC day is never persisted even with 24 supplied bars',async()=>{
  jest.useFakeTimers().setSystemTime(new Date('2023-10-25T12:00:00Z'));
  coverage();etoro.get.mockResolvedValueOnce(page(bars()));expect(await request()).toEqual([]);
 });
+test('exact search paginates with page and can find the identity on a later prefix page',async()=>{
+ const {etoroSearch}=require('../../src/services/brokerHistoryProviders');
+ etoro.get.mockResolvedValueOnce({page:1,totalItems:2,items:[{instrumentId:78,internalSymbolFull:'COIN.FUT'}]}).mockResolvedValueOnce({page:2,totalItems:2,items:[{instrumentId:77,internalSymbolFull:'COIN'}]});
+ expect(await etoroSearch({},'COIN')).toEqual([{instrumentId:77,internalSymbolFull:'COIN'}]);
+ expect(etoro.get.mock.calls[1][2]).toMatchObject({page:2});expect(etoro.get.mock.calls[1][2]).not.toHaveProperty('pageNumber');
+});
+test.each(['repeated','wrongPage','empty','unfiltered'])('invalid %s search pagination fails closed',async mode=>{
+ const {etoroSearch}=require('../../src/services/brokerHistoryProviders');
+ const first={page:1,totalItems:2,items:[{instrumentId:77,internalSymbolFull:'COIN'}]};
+ if(mode==='unfiltered')first.totalItems=12117;
+ etoro.get.mockResolvedValueOnce(first).mockResolvedValueOnce({page:mode==='wrongPage'?1:2,totalItems:2,items:mode==='empty'?[]:[{instrumentId:77,internalSymbolFull:'COIN'}]});
+ await expect(etoroSearch({},'COIN')).rejects.toThrow();
+});
+test('typed venue directory retains exact retired equities omitted by search',async()=>{
+ const {etoroArchivedEquities}=require('../../src/services/brokerHistoryProviders');
+ etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4},{exchangeId:5}]})
+ .mockResolvedValueOnce({instrumentDisplayDatas:[{instrumentId:88,instrumentTypeId:5,symbolFull:'RETIRED',exchangeId:4,images:['unused']}]})
+ .mockResolvedValueOnce({instrumentDisplayDatas:[{instrumentId:89,instrumentTypeId:6,symbolFull:'OTHER',exchangeId:5}]});
+ expect(await etoroArchivedEquities({},'RETIRED')).toEqual([{instrumentId:88,instrumentTypeId:5,symbolFull:'RETIRED',exchangeId:4}]);
+ expect(etoro.get.mock.calls[1][2]).toEqual({instrumentTypeIds:'5,6',exchangeIds:'4'});
+});
+test.each([{instrumentId:88,instrumentTypeId:1,symbolFull:'COIN',exchangeId:4},{instrumentId:88,instrumentTypeId:5,symbolFull:'COIN',exchangeId:5},{instrumentId:-1,instrumentTypeId:5,symbolFull:'COIN',exchangeId:4}])('archived directory rejects wrong product or venue: %p',async row=>{
+ const {etoroArchivedEquities}=require('../../src/services/brokerHistoryProviders');
+ etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4}]}).mockResolvedValueOnce({instrumentDisplayDatas:[row]});
+ await expect(etoroArchivedEquities({},'COIN')).rejects.toThrow();
+});
+test('duplicate venues cannot certify an archived directory',async()=>{
+ const {etoroArchivedEquities}=require('../../src/services/brokerHistoryProviders');
+ etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4},{exchangeId:4}]});
+ await expect(etoroArchivedEquities({},'COIN')).rejects.toThrow();
+});

@@ -91,6 +91,49 @@ async function okx({ symbol, instrumentType, from, to, connection }) {
     return { ...c, open: c.open * rate, high: c.high * rate, low: c.low * rate, close: c.close * rate };
   }),quote.units);
 }
+async function etoroSearch(connection,symbol) {
+ const matches=[],seen=new Set();
+ for(let page=1;page<=10;page++) {
+  const data=await etoro.get(connection,'/market-data/search',{
+   fields:'instrumentId,internalSymbolFull',internalSymbolFull:symbol,pageSize:100,page
+  });
+  if(!Array.isArray(data.items)||data.page!=null&&Number(data.page)!==page)throw Error('Invalid eToro search page');
+  const total=Number(data.totalItems??data.items.length);
+  if(!Number.isSafeInteger(total)||total<0||total>1000)throw Error('Unbounded eToro search');
+  for(const item of data.items) {
+   const id=String(field(item,'instrumentId'));
+   if(id==='undefined'||seen.has(id))throw Error('eToro search pages overlap');
+   seen.add(id);
+   if(String(field(item,'internalSymbolFull')).toUpperCase()===symbol)matches.push(item);
+  }
+  if(seen.size>=total)return matches;
+  if(!data.items.length)throw Error('Incomplete eToro search');
+ }
+ throw Error('eToro search page limit reached');
+}
+async function etoroArchivedEquities(connection,symbol) {
+ const metadata=await directory('etoro-history-archived-equities',async()=>{
+  const response=await etoro.get(connection,'/market-data/exchanges');
+  const venues=field(response,'exchangeInfo');
+  if(!Array.isArray(venues)||!venues.length||venues.length>64)throw Error('Invalid eToro venues');
+  const ids=venues.map(v=>Number(field(v,'exchangeId')));
+  if(ids.some(id=>!Number.isSafeInteger(id)||id<=0)||new Set(ids).size!==ids.length)throw Error('Invalid eToro venue identities');
+  const instruments=new Map();
+  for(const exchangeId of ids) {
+   const response=await etoro.get(connection,'/market-data/instruments',{instrumentTypeIds:'5,6',exchangeIds:String(exchangeId)});
+   const rows=field(response,'instrumentDisplayDatas');
+   if(!Array.isArray(rows))throw Error('Invalid eToro equity directory');
+   for(const row of rows) {
+    const instrumentId=Number(field(row,'instrumentId')),type=Number(field(row,'instrumentTypeId')),symbolFull=field(row,'symbolFull');
+    if(!Number.isSafeInteger(instrumentId)||instrumentId<=0||![5,6].includes(type)||Number(field(row,'exchangeId'))!==exchangeId||typeof symbolFull!=='string'||!symbolFull)throw Error('Invalid eToro archived identity');
+    if(instruments.has(instrumentId))throw Error('Duplicate eToro archived identity');
+    instruments.set(instrumentId,{instrumentId,instrumentTypeId:type,symbolFull,exchangeId});
+   }
+  }
+  return [...instruments.values()];
+ });
+ return metadata.filter(m=>m.symbolFull.toUpperCase()===symbol);
+}
 async function etoroCandles({ symbol, instrumentType, from, to, connection, userId }) {
   if (!['crypto','stock','etf'].includes(instrumentType)) return [];
   const snapshot = (await db.query(`SELECT payload FROM broker_import_snapshots
@@ -100,10 +143,8 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     // Older closed holdings may be absent from the current account snapshot.
     // Search is public metadata, but its filter can be ignored: verify exact identity.
     matches = await directory(`etoro-identity:${symbol}`,async()=>{
-      const data=await etoro.get(connection,'/market-data/search',{
-        fields:'instrumentId,internalSymbolFull',internalSymbolFull:symbol,pageSize:100,pageNumber:1
-      });
-      const found=(data.items||[]).filter(i=>String(field(i,'internalSymbolFull')).toUpperCase()===symbol);
+      const found=await etoroSearch(connection,symbol);
+      if(!found.length&&instrumentType!=='crypto')return etoroArchivedEquities(connection,symbol);
       if(found.length!==1)return [];
       const id=Number(field(found[0],'instrumentId'));
       if(!Number.isSafeInteger(id)||id<=0)return [];
@@ -214,4 +255,4 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }
 }
-module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays };
+module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities };

@@ -325,7 +325,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
       // These broker contract names are not listed-security identifiers.
       // Missing contract prices use the explicitly approved zero estimate;
       // do not inspect splits for an unrelated similarly named Yahoo stock.
-      const unsupportedContract=isEtoroCfd&&(['OIL','GOLD','SILVER','COPPER','NGAS','NATGAS','PLATINUM','PALLADIUM'].includes(t.symbol)||t.symbol.endsWith('.FUT'));
+      const unsupportedContract=account.broker==='etoro'&&require('./historyInstrumentIdentity').identity({...t,broker:account.broker},opened).unsupported;
       if(unsupportedContract){value.issues.push(priceIssue(t.symbol,zeroMissingPrices));continue;}
       const s=marketSymbolFor(t),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a

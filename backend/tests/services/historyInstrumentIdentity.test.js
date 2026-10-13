@@ -29,3 +29,19 @@ test('an option recorded under its underlying ticker can still warm that underly
  const client={query:jest.fn().mockResolvedValue({rows:[row]})};
  expect((await unsupportedSymbols(client,'user')).size).toBe(0);
 });
+
+test('verified eToro FX and index products remain contracts even in legacy stock imports',()=>{
+ for(const symbol of ['EURUSD','GER40','NICKEL'])expect(identity({symbol,broker:'etoro',instrument_type:'stock'})).toMatchObject({symbol,unsupported:true,instrumentType:'cfd'});
+ expect(identity({symbol:'EURUSD',broker:'other',instrument_type:'stock'}).unsupported).not.toBe(true);
+ expect(identity({symbol:'EURUSD',broker:'etoro',instrument_type:'crypto'}).instrumentType).toBe('crypto');
+});
+test('saved legacy eToro stock tasks become explicit contract gaps',async()=>{
+ const client={query:jest.fn().mockResolvedValue({rows:[{symbol:'EURUSD',broker:'etoro',instrument_type:'stock'}]})};
+ const state={tasks:[{symbol:'EURUSD',instrumentType:'stock'}],processed:1,complete:1,gaps:[]};
+ await classifySavedTasks(client,'owner',state);
+ expect(state.complete).toBe(0);expect(state.tasks[0]).toMatchObject({unsupported:true,brokerProduct:'forex'});expect(state.gaps).toHaveLength(1);
+});
+test('a same-symbol true stock in another broker protects a shared stock requirement',async()=>{
+ const client={query:jest.fn().mockResolvedValue({rows:[{symbol:'EURUSD',broker:'etoro',instrument_type:'stock'},{symbol:'EURUSD',broker:'other',instrument_type:'stock'}]})};
+ expect((await unsupportedSymbols(client,'owner')).size).toBe(0);
+});
