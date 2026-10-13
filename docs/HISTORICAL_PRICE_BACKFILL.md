@@ -78,3 +78,8 @@ Shared daily history, exchange metadata lookup and reconstruction metadata trans
 ### ASX cash-market session coverage
 
 `calendars/asx-holidays.json` bundles reviewed ASX Trade cash-market full closures for 2022–2027 with official per-year sources and the [22 September 2022 mourning closure notice](https://asxonline.com/public/notices/2022/september/0984.22.09.html). `.AX`/broker `.ASX` stock suffixes and verified ASX equity venues select this calendar; ASX 24 derivatives are not treated as cash stocks. Christmas/New Year's half days and normal late-December sessions remain required. The published 2027 substitute ANZAC day (26 April) is open. Unsupported older/later years retain weekday gaps and explicit incomplete-calendar coverage. Currency-settlement calendars are not substituted for trading calendars.
+
+
+### Provider timestamps and local exchange sessions
+
+Yahoo daily bars, first-trade boundaries and reconstruction split metadata use the provider's declared exchange timezone to establish the trading date, then persist that date at UTC midnight. Request windows include a boundary-day buffer and discard out-of-window sessions after timezone conversion. This preserves Australian/NZ local dates when market opening falls on the previous UTC day, including daylight-saving changes. Australian responses without a valid declared timezone are rejected. Legacy responses without timezone metadata elsewhere retain their previous UTC interpretation.

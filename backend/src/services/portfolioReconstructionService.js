@@ -69,11 +69,11 @@ function valueQuantities(quantities,d,price,fx,{zeroMissingPrices=false}={}) {
 function parseYahoo(result) {
  const unit=normaliseMinorUnit(result?.meta?.currency);
  if(!unit)throw Error('Missing market-price currency');
- const splits=Object.values(result.events?.splits||{}).map(s=>({date:date(Number(s.date)*1000),ratio:Number(s.numerator)/Number(s.denominator)})).sort((a,b)=>a.date.localeCompare(b.date));
+ const splits=Object.values(result.events?.splits||{}).map(s=>({date:require('./holdingsHistoryProvider').yahooSessionDate(Number(s.date),result.meta),ratio:Number(s.numerator)/Number(s.denominator)})).sort((a,b)=>a.date.localeCompare(b.date));
  if(splits.some(s=>!(s.ratio>0)))throw Error('Invalid split ratio');
  const quote=result.indicators?.quote?.[0];
  const prices=(result.timestamp||[]).flatMap((t,i)=>{
-  const d=date(t*1000),close=quote?.close?.[i];
+  const d=require('./holdingsHistoryProvider').yahooSessionDate(t,result.meta),close=quote?.close?.[i];
   if(!(close>0))return [];
   return [{date:d,close:close/unit.divisor*splits.filter(s=>s.date>d).reduce((p,s)=>p*s.ratio,1)}];
  });
@@ -103,7 +103,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
      if(result?.meta?.symbol || require('./holdingsHistoryProvider').yahooTicker(ticker)!==ticker)require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
      native=parseYahoo(result);
      const first=Number(result?.meta?.firstTradeDate)||0;
-     if(first)native.prices=native.prices.filter(p=>p.date>=date(first*1000));
+     if(first)native.prices=native.prices.filter(p=>p.date>=require('./holdingsHistoryProvider').yahooSessionDate(first,result.meta));
     } catch { /* Cached native metadata remains usable; do not invent currencies. */ }
     if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
