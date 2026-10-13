@@ -100,5 +100,5 @@ test.each([['DE','EUR'],['ZU','CHF'],['NV','EUR'],['PA','EUR'],['MC','EUR'],['US
 test('an unproven same-time opening cannot supply an alias without cost or position authority',()=>{
  const lot={symbol:'SYNTH.DE',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'unmatched'}]};
  const opening={sourceType:'Open Position',positionId:'other',details:'SYNTH/EUR',time:lot.entry_time,units:2,amount:40};
- const meta=statementLotMetadata([lot],[opening],[]).get(lot);expect(meta.statementAuthority).toBe(false);expect(meta.marketSymbol).toBeNull();
+ const meta=statementLotMetadata([lot],[opening],[]).get(lot);expect(meta.statementAuthority).toBeFalsy();expect(meta.marketSymbol).toBeNull();
 });
