@@ -90,6 +90,11 @@ function identify(symbol, exchange='') {
   if(/^(MIL|XMIL|BORSA ITALIANA)$/.test(exchange)) return 'MILAN';
   if(/^(STO|XSTO|STOCKHOLM)$/.test(exchange)) return 'STOCKHOLM';
   if(/^(MCE|XMAD|MADRID)$/.test(exchange)) return 'MADRID';
+  // Verified US OTC equity venues use the US equity holiday schedule.
+  // OTC Markets' market-hours calendar retains shortened sessions:
+  // https://www.otcmarkets.com/market-hours
+  // Do not generalize this to unidentified OTC products, FX or derivatives.
+  if(/^(OQX|OQB|PNK|OTCM|OTCQX|OTCQB|OTC MARKETS OTCQX|OTC MARKETS OTCQB|PINK SHEETS)$/.test(exchange)) return 'US';
   // Never apply US holidays just because a ticker has no suffix.
   if(/LONDON|^LSE$|^XLON$|^LSEETF$/.test(exchange)) return 'LSE';
   if(/XETRA|^XET$|^GER$|^XETR$/.test(exchange)) return 'XETRA';

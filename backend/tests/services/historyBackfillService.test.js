@@ -138,3 +138,13 @@ test('native contracts remain explicit coverage limitations without stock downlo
  expect(tasks.some(t=>t.symbol==='EXAMPLE.L')).toBe(true);
  }finally{mapping.mockRestore()}
  });
+
+ test('old OTC coverage reports remove closed days without hiding genuine missing sessions or downloading',async()=>{
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM job_queue')?[{id:'old-job',status:'completed',result:{processed:2,total:2,complete:0,gaps:[
+ {symbol:'SYNTHETIC_OTC_HOLIDAYS',instrumentType:'stock',calendar:null,ranges:['2024-12-25','2025-01-01','2025-01-09','2025-01-20','2025-02-17'].map(day=>({from:day,to:day}))},
+ {symbol:'SYNTHETIC_OTC_SESSION',instrumentType:'stock',calendar:null,ranges:[{from:'2025-01-09',to:'2025-01-10'}]}]}}]:[{exchange:'OQX',source:'yahoo'}]}));
+ const [r]=await service.status('owner');
+ expect(r.complete).toBe(1);expect(r.gaps).toHaveLength(1);
+ expect(r.gaps[0]).toMatchObject({symbol:'SYNTHETIC_OTC_SESSION',calendar:'US',ranges:[{from:'2025-01-10',to:'2025-01-10'}]});
+ expect(portfolio._getDailySeries).not.toHaveBeenCalled();
+ });
