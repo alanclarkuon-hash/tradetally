@@ -73,3 +73,8 @@ The Yahoo daily-history adapter removes one representational leading zero from f
 ### Verified broker namespaces at provider boundaries
 
 Shared daily history, exchange metadata lookup and reconstruction metadata translate broker listing suffixes `.US` to US symbols, `.NV` to `.AS`, `.ZU` to `.SW`, and `.ASX` to `.AX`. Statement native currencies and public provider responses verify these namespace conventions. Each translated response requires matching symbol, venue and native currency (USD, EUR, CHF or AUD respectively); unknown suffixes are unchanged. Dates before the returned listing's first-trade date are excluded in reconstruction too. Metadata is saved under the original broker/cache identity. A reused or unavailable listing cannot provide pre-listing coverage. Swiss/Australian calendar coverage is still explicitly unavailable until separately reviewed calendars are supplied.
+
+
+### ASX cash-market session coverage
+
+`calendars/asx-holidays.json` bundles reviewed ASX Trade cash-market full closures for 2022–2027 with official per-year sources and the [22 September 2022 mourning closure notice](https://asxonline.com/public/notices/2022/september/0984.22.09.html). `.AX`/broker `.ASX` stock suffixes and verified ASX equity venues select this calendar; ASX 24 derivatives are not treated as cash stocks. Christmas/New Year's half days and normal late-December sessions remain required. The published 2027 substitute ANZAC day (26 April) is open. Unsupported older/later years retain weekday gaps and explicit incomplete-calendar coverage. Currency-settlement calendars are not substituted for trading calendars.
