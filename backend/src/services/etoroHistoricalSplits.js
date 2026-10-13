@@ -41,7 +41,14 @@ function historicalLotQuantity(trade,day,opened,closed,splits,marketSplits=[],{s
 }
 function statementLotMetadata(trades,records,splits) {
  const openings=new Map(),byId=new Map();
- const canonical=(symbol,currency)=>currency==='GBX'?symbol.toUpperCase().replace(/\.L$/,''):symbol.toUpperCase();
+ // Compare documented broker listing representations within statement evidence.
+ // The full statement symbol remains the returned historical listing; account
+ // settlement currency never supplies a market suffix or an alias.
+ const suffixes={GBX:['L'],EUR:['DE','NV','AS','PA','BR','MI','MC','LS'],CHF:['ZU','SW'],SEK:['ST'],DKK:['CO'],AUD:['ASX','AX'],USD:['US'],HKD:['HK']};
+ const canonical=(symbol,currency)=>{
+  const upper=String(symbol).toUpperCase(),match=/^(.+)\.([A-Z]+)$/.exec(upper);
+  return match&&suffixes[currency]?.includes(match[2])?match[1]:upper;
+ };
  for(const r of records) {
   if(r.sourceType!=='Open Position'||!r.positionId)continue;
   const match=/^([^/]+)\/([A-Z]{3})/.exec(r.details||'');if(!match)continue;
