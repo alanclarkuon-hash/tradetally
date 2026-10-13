@@ -1,0 +1,5557 @@
+{
+  "source": "https://api-portal.etoro.com/api-reference/market-data/get-instrument-display-data",
+  "verifiedAt": "2026-10-13",
+  "notes": "Public eToro instrument metadata only. Exact broker product identities; not share tickers or account records.",
+  "products": [
+    {
+      "symbol": "100.OZ.Silver.DEC26",
+      "instrumentId": 226000,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.DEC27",
+      "instrumentId": 226005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.DEC28",
+      "instrumentId": 226010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.DEC29",
+      "instrumentId": 226015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.JUL26",
+      "instrumentId": 208004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.JUL27",
+      "instrumentId": 226003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.JUL28",
+      "instrumentId": 226008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.JUL29",
+      "instrumentId": 226013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAR26",
+      "instrumentId": 208002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAR27",
+      "instrumentId": 226001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAR28",
+      "instrumentId": 226006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAR29",
+      "instrumentId": 226011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAY26",
+      "instrumentId": 208003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAY27",
+      "instrumentId": 226002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAY28",
+      "instrumentId": 226007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.MAY29",
+      "instrumentId": 226012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.SEP26",
+      "instrumentId": 208005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.SEP27",
+      "instrumentId": 226004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.SEP28",
+      "instrumentId": 226009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "100.OZ.Silver.SEP29",
+      "instrumentId": 226014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "10Y.APR26",
+      "instrumentId": 225008,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.APR27",
+      "instrumentId": 225021,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.APR28",
+      "instrumentId": 225033,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.APR29",
+      "instrumentId": 225045,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.AUG25",
+      "instrumentId": 225001,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.AUG26",
+      "instrumentId": 225012,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.AUG27",
+      "instrumentId": 225025,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.AUG28",
+      "instrumentId": 225037,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.AUG29",
+      "instrumentId": 225049,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.DEC25",
+      "instrumentId": 225004,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.DEC26",
+      "instrumentId": 225017,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.DEC27",
+      "instrumentId": 225029,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.DEC28",
+      "instrumentId": 225041,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.DEC29",
+      "instrumentId": 225053,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.FEB26",
+      "instrumentId": 225006,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.FEB27",
+      "instrumentId": 225019,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.FEB28",
+      "instrumentId": 225031,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.FEB29",
+      "instrumentId": 225043,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JAN26",
+      "instrumentId": 225005,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.JAN27",
+      "instrumentId": 225018,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JAN28",
+      "instrumentId": 225030,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JAN29",
+      "instrumentId": 225042,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUL25",
+      "instrumentId": 225000,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.JUL26",
+      "instrumentId": 225011,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.JUL27",
+      "instrumentId": 225024,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUL28",
+      "instrumentId": 225036,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUL29",
+      "instrumentId": 225048,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUN26",
+      "instrumentId": 225010,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.JUN27",
+      "instrumentId": 225023,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUN28",
+      "instrumentId": 225035,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.JUN29",
+      "instrumentId": 225047,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAR26",
+      "instrumentId": 225007,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.MAR27",
+      "instrumentId": 225020,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAR28",
+      "instrumentId": 225032,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAR29",
+      "instrumentId": 225044,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAY26",
+      "instrumentId": 225009,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.MAY27",
+      "instrumentId": 225022,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAY28",
+      "instrumentId": 225034,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.MAY29",
+      "instrumentId": 225046,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.NOV25",
+      "instrumentId": 225003,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.NOV26",
+      "instrumentId": 225015,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.NOV27",
+      "instrumentId": 225028,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.NOV28",
+      "instrumentId": 225040,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.NOV29",
+      "instrumentId": 225052,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.OCT25",
+      "instrumentId": 225002,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.OCT26",
+      "instrumentId": 225014,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.OCT27",
+      "instrumentId": 225027,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.OCT28",
+      "instrumentId": 225039,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.OCT29",
+      "instrumentId": 225051,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.SEP25",
+      "instrumentId": 225016,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.SEP26",
+      "instrumentId": 225013,
+      "kind": "index"
+    },
+    {
+      "symbol": "10Y.SEP27",
+      "instrumentId": 225026,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.SEP28",
+      "instrumentId": 225038,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10Y.SEP29",
+      "instrumentId": 225050,
+      "kind": "forex"
+    },
+    {
+      "symbol": "10yUS.FUT",
+      "instrumentId": 312,
+      "kind": "index"
+    },
+    {
+      "symbol": "1OZ.GOLD.APR26",
+      "instrumentId": 205006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.APR27",
+      "instrumentId": 205012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.APR28",
+      "instrumentId": 205018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.APR29",
+      "instrumentId": 205024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.AUG25",
+      "instrumentId": 205002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.AUG26",
+      "instrumentId": 205008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.AUG27",
+      "instrumentId": 205014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.AUG28",
+      "instrumentId": 205020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.AUG29",
+      "instrumentId": 205026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.DEC25",
+      "instrumentId": 205004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.DEC26",
+      "instrumentId": 205010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.DEC27",
+      "instrumentId": 205016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.DEC28",
+      "instrumentId": 205022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.DEC29",
+      "instrumentId": 205028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.FEB26",
+      "instrumentId": 205005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.FEB27",
+      "instrumentId": 205011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.FEB28",
+      "instrumentId": 205017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.FEB29",
+      "instrumentId": 205023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.JUN26",
+      "instrumentId": 205007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.JUN27",
+      "instrumentId": 205013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.JUN28",
+      "instrumentId": 205019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.JUN29",
+      "instrumentId": 205025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.OCT25",
+      "instrumentId": 205003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.OCT26",
+      "instrumentId": 205009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.OCT27",
+      "instrumentId": 205015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.OCT28",
+      "instrumentId": 205021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "1OZ.GOLD.OCT29",
+      "instrumentId": 205027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "2yUS.FUT",
+      "instrumentId": 314,
+      "kind": "index"
+    },
+    {
+      "symbol": "5yUS.FUT",
+      "instrumentId": 313,
+      "kind": "index"
+    },
+    {
+      "symbol": "AEDUSD",
+      "instrumentId": 349,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AI.Leaders",
+      "instrumentId": 561,
+      "kind": "index"
+    },
+    {
+      "symbol": "Aluminum",
+      "instrumentId": 344,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "ALUMINUM.FUT",
+      "instrumentId": 99,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "ARSUSD",
+      "instrumentId": 89,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDCAD",
+      "instrumentId": 47,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDCHF",
+      "instrumentId": 46,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDCNH",
+      "instrumentId": 466,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDHKD",
+      "instrumentId": 465,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDJPY",
+      "instrumentId": 14,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDNZD",
+      "instrumentId": 48,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDSGD",
+      "instrumentId": 467,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD",
+      "instrumentId": 7,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.DEC25",
+      "instrumentId": 213001,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.DEC26",
+      "instrumentId": 213005,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.DEC27",
+      "instrumentId": 213009,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.DEC28",
+      "instrumentId": 213013,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.DEC29",
+      "instrumentId": 213017,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.JUN26",
+      "instrumentId": 213003,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.JUN27",
+      "instrumentId": 213007,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.JUN28",
+      "instrumentId": 213011,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.JUN29",
+      "instrumentId": 213015,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.MAR26",
+      "instrumentId": 213002,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.MAR27",
+      "instrumentId": 213006,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.MAR28",
+      "instrumentId": 213010,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.MAR29",
+      "instrumentId": 213014,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.SEP26",
+      "instrumentId": 213004,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.SEP27",
+      "instrumentId": 213008,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.SEP28",
+      "instrumentId": 213012,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUDUSD.SEP29",
+      "instrumentId": 213016,
+      "kind": "forex"
+    },
+    {
+      "symbol": "AUS200",
+      "instrumentId": 33,
+      "kind": "index"
+    },
+    {
+      "symbol": "AUS200.FUT",
+      "instrumentId": 260,
+      "kind": "index"
+    },
+    {
+      "symbol": "AVAA.FUT",
+      "instrumentId": 409,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "BHCA.FUT",
+      "instrumentId": 406,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "BHDUSD",
+      "instrumentId": 346,
+      "kind": "forex"
+    },
+    {
+      "symbol": "BITA.FUT",
+      "instrumentId": 402,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "BRLUSD_old",
+      "instrumentId": 85,
+      "kind": "forex"
+    },
+    {
+      "symbol": "BTC.Fut",
+      "instrumentId": 315,
+      "kind": "index"
+    },
+    {
+      "symbol": "BTCCNH",
+      "instrumentId": 100223,
+      "kind": "forex"
+    },
+    {
+      "symbol": "BTIA.FUT",
+      "instrumentId": 400,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CA.Ops8",
+      "instrumentId": 2880,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CA128",
+      "instrumentId": 1441,
+      "kind": "index"
+    },
+    {
+      "symbol": "CADCHF",
+      "instrumentId": 56,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CADCNH",
+      "instrumentId": 463,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CADHKD",
+      "instrumentId": 462,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CADJPY",
+      "instrumentId": 15,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CADSGD",
+      "instrumentId": 464,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Canada60",
+      "instrumentId": 625,
+      "kind": "index"
+    },
+    {
+      "symbol": "CANOLA.FUT",
+      "instrumentId": 422,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Carbon.FUT",
+      "instrumentId": 333,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CETA.FUT",
+      "instrumentId": 401,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CHFCNH",
+      "instrumentId": 471,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFHKD",
+      "instrumentId": 470,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFHUF",
+      "instrumentId": 72,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFJPY",
+      "instrumentId": 16,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFNOK",
+      "instrumentId": 468,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFSEK",
+      "instrumentId": 469,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHFSGD",
+      "instrumentId": 472,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CHINA50",
+      "instrumentId": 253,
+      "kind": "index"
+    },
+    {
+      "symbol": "China50.FUTURE",
+      "instrumentId": 26,
+      "kind": "index"
+    },
+    {
+      "symbol": "CHINAA50.FUT",
+      "instrumentId": 327,
+      "kind": "index"
+    },
+    {
+      "symbol": "CHINAH50.FUT",
+      "instrumentId": 306,
+      "kind": "index"
+    },
+    {
+      "symbol": "CL.APR21",
+      "instrumentId": 125,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR22",
+      "instrumentId": 268,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR23",
+      "instrumentId": 280,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR24",
+      "instrumentId": 292,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR25",
+      "instrumentId": 510,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR26",
+      "instrumentId": 741,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.APR27",
+      "instrumentId": 753,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG20",
+      "instrumentId": 117,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG21",
+      "instrumentId": 129,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG22",
+      "instrumentId": 272,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG23",
+      "instrumentId": 284,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG24",
+      "instrumentId": 296,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG25",
+      "instrumentId": 487,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG26",
+      "instrumentId": 745,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.AUG27",
+      "instrumentId": 757,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC20",
+      "instrumentId": 121,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC21",
+      "instrumentId": 133,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC22",
+      "instrumentId": 276,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC23",
+      "instrumentId": 288,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC24",
+      "instrumentId": 300,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC25",
+      "instrumentId": 491,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC26",
+      "instrumentId": 749,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.DEC27",
+      "instrumentId": 761,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB21",
+      "instrumentId": 123,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB22",
+      "instrumentId": 266,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB23",
+      "instrumentId": 278,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB24",
+      "instrumentId": 290,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB25",
+      "instrumentId": 481,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB26",
+      "instrumentId": 555,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.FEB27",
+      "instrumentId": 751,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN21",
+      "instrumentId": 122,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN22",
+      "instrumentId": 265,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN23",
+      "instrumentId": 277,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN24",
+      "instrumentId": 289,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN25",
+      "instrumentId": 502,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN26",
+      "instrumentId": 554,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JAN27",
+      "instrumentId": 750,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL20",
+      "instrumentId": 115,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL21",
+      "instrumentId": 128,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL22",
+      "instrumentId": 271,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL23",
+      "instrumentId": 283,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL24",
+      "instrumentId": 295,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL25",
+      "instrumentId": 486,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL26",
+      "instrumentId": 744,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUL27",
+      "instrumentId": 756,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN21",
+      "instrumentId": 127,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN22",
+      "instrumentId": 270,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN23",
+      "instrumentId": 282,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN24",
+      "instrumentId": 294,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN25",
+      "instrumentId": 485,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN26",
+      "instrumentId": 743,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.JUN27",
+      "instrumentId": 755,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR21",
+      "instrumentId": 124,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR22",
+      "instrumentId": 267,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR23",
+      "instrumentId": 279,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR24",
+      "instrumentId": 291,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR25",
+      "instrumentId": 482,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR26",
+      "instrumentId": 556,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAR27",
+      "instrumentId": 752,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY21",
+      "instrumentId": 126,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY22",
+      "instrumentId": 269,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY23",
+      "instrumentId": 281,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY24",
+      "instrumentId": 293,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY25",
+      "instrumentId": 484,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY26",
+      "instrumentId": 742,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.MAY27",
+      "instrumentId": 754,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV20",
+      "instrumentId": 120,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV21",
+      "instrumentId": 132,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV22",
+      "instrumentId": 275,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV23",
+      "instrumentId": 287,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV24",
+      "instrumentId": 299,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV25",
+      "instrumentId": 490,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV26",
+      "instrumentId": 748,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.NOV27",
+      "instrumentId": 760,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT20",
+      "instrumentId": 119,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT21",
+      "instrumentId": 131,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT22",
+      "instrumentId": 274,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT23",
+      "instrumentId": 286,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT24",
+      "instrumentId": 298,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT25",
+      "instrumentId": 489,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT26",
+      "instrumentId": 747,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.OCT27",
+      "instrumentId": 759,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP20",
+      "instrumentId": 118,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP21",
+      "instrumentId": 130,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP22",
+      "instrumentId": 273,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP23",
+      "instrumentId": 285,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP24",
+      "instrumentId": 297,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP25",
+      "instrumentId": 524,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP26",
+      "instrumentId": 746,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CL.SEP27",
+      "instrumentId": 758,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CLPUSD old",
+      "instrumentId": 86,
+      "kind": "forex"
+    },
+    {
+      "symbol": "CO.APR25",
+      "instrumentId": 615,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.APR26",
+      "instrumentId": 398,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.AUG25",
+      "instrumentId": 619,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.AUG26",
+      "instrumentId": 414,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.DEC25",
+      "instrumentId": 623,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.DEC26",
+      "instrumentId": 418,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.FEB25",
+      "instrumentId": 613,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.FEB26",
+      "instrumentId": 553,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.FEB27",
+      "instrumentId": 420,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.HDG",
+      "instrumentId": 421,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JAN26",
+      "instrumentId": 540,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JAN27",
+      "instrumentId": 419,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JUL25",
+      "instrumentId": 618,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JUL26",
+      "instrumentId": 413,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JUN25",
+      "instrumentId": 617,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.JUN26",
+      "instrumentId": 412,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.MAR25",
+      "instrumentId": 614,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.MAR26",
+      "instrumentId": 383,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.MAY25",
+      "instrumentId": 616,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.MAY26",
+      "instrumentId": 399,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.NOV25",
+      "instrumentId": 622,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.NOV26",
+      "instrumentId": 417,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.OCT25",
+      "instrumentId": 621,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.OCT26",
+      "instrumentId": 416,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.SEP25",
+      "instrumentId": 620,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CO.SEP26",
+      "instrumentId": 415,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COAL.FUT",
+      "instrumentId": 379,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COCOA.FUT",
+      "instrumentId": 96,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Coffee.FUT",
+      "instrumentId": 334,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Colombia",
+      "instrumentId": 689,
+      "kind": "index"
+    },
+    {
+      "symbol": "COPPER.APR26",
+      "instrumentId": 208010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.APR27",
+      "instrumentId": 208022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.APR28",
+      "instrumentId": 208034,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.APR29",
+      "instrumentId": 208046,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.AUG26",
+      "instrumentId": 208014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.AUG27",
+      "instrumentId": 208026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.AUG28",
+      "instrumentId": 208038,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.AUG29",
+      "instrumentId": 208050,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.DEC25",
+      "instrumentId": 208006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.DEC26",
+      "instrumentId": 208018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.DEC27",
+      "instrumentId": 208030,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.DEC28",
+      "instrumentId": 208042,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.DEC29",
+      "instrumentId": 208054,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.FEB26",
+      "instrumentId": 208008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.FEB27",
+      "instrumentId": 208020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.FEB28",
+      "instrumentId": 208032,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.FEB29",
+      "instrumentId": 208044,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.FUT",
+      "instrumentId": 21,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JAN26",
+      "instrumentId": 208007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JAN27",
+      "instrumentId": 208019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JAN28",
+      "instrumentId": 208031,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JAN29",
+      "instrumentId": 208043,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUL26",
+      "instrumentId": 208013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUL27",
+      "instrumentId": 208025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUL28",
+      "instrumentId": 208037,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUL29",
+      "instrumentId": 208049,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUN26",
+      "instrumentId": 208012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUN27",
+      "instrumentId": 208024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUN28",
+      "instrumentId": 208036,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.JUN29",
+      "instrumentId": 208048,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAR26",
+      "instrumentId": 208009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAR27",
+      "instrumentId": 208021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAR28",
+      "instrumentId": 208033,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAR29",
+      "instrumentId": 208045,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAY26",
+      "instrumentId": 208011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAY27",
+      "instrumentId": 208023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAY28",
+      "instrumentId": 208035,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.MAY29",
+      "instrumentId": 208047,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.NOV26",
+      "instrumentId": 208017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.NOV27",
+      "instrumentId": 208029,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.NOV28",
+      "instrumentId": 208041,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.NOV29",
+      "instrumentId": 208053,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.OCT26",
+      "instrumentId": 208016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.OCT27",
+      "instrumentId": 208028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.OCT28",
+      "instrumentId": 208040,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.OCT29",
+      "instrumentId": 208052,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.SEP26",
+      "instrumentId": 208015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.SEP27",
+      "instrumentId": 208027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.SEP28",
+      "instrumentId": 208039,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPPER.SEP29",
+      "instrumentId": 208051,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COPUSD old",
+      "instrumentId": 87,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Corn.FUT",
+      "instrumentId": 331,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "COTTON.FUT",
+      "instrumentId": 93,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "CottonNo7",
+      "instrumentId": 98,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Crypto10",
+      "instrumentId": 624,
+      "kind": "index"
+    },
+    {
+      "symbol": "Crypto10 - Test",
+      "instrumentId": 1440,
+      "kind": "index"
+    },
+    {
+      "symbol": "Cybersecurity",
+      "instrumentId": 562,
+      "kind": "index"
+    },
+    {
+      "symbol": "DAX.MICRO",
+      "instrumentId": 320,
+      "kind": "index"
+    },
+    {
+      "symbol": "DGOA.FUT",
+      "instrumentId": 404,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "DJ30",
+      "instrumentId": 29,
+      "kind": "index"
+    },
+    {
+      "symbol": "DJ30.FUT",
+      "instrumentId": 256,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOTA.FUT",
+      "instrumentId": 405,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "DOW30.DEC25",
+      "instrumentId": 214001,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.DEC26",
+      "instrumentId": 214005,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.DEC27",
+      "instrumentId": 214009,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.DEC28",
+      "instrumentId": 214013,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.JUN26",
+      "instrumentId": 214003,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.JUN27",
+      "instrumentId": 214007,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.JUN28",
+      "instrumentId": 214011,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.JUN29",
+      "instrumentId": 214015,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.MAR26",
+      "instrumentId": 214002,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.MAR27",
+      "instrumentId": 214006,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.MAR28",
+      "instrumentId": 214010,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.MAR29",
+      "instrumentId": 214014,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SEP26",
+      "instrumentId": 214004,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SEP27",
+      "instrumentId": 214008,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SEP28",
+      "instrumentId": 214012,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SPOT",
+      "instrumentId": 224001,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SPOT28",
+      "instrumentId": 224002,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SPOT29",
+      "instrumentId": 224003,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SPOT30",
+      "instrumentId": 224004,
+      "kind": "index"
+    },
+    {
+      "symbol": "DOW30.SPOT6",
+      "instrumentId": 224000,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm 207002",
+      "instrumentId": 207002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 207003",
+      "instrumentId": 207003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 210000",
+      "instrumentId": 210000,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 210001",
+      "instrumentId": 210001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 210002",
+      "instrumentId": 210002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 210003",
+      "instrumentId": 210003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm 211000",
+      "instrumentId": 211000,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Drm 212000",
+      "instrumentId": 212000,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Drm 213000",
+      "instrumentId": 213000,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Drm 214000",
+      "instrumentId": 214000,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.15733",
+      "instrumentId": 15733,
+      "kind": "index"
+    },
+    {
+      "symbol": "DRM.27",
+      "instrumentId": 639,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "DRM.28",
+      "instrumentId": 640,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "DRM.29",
+      "instrumentId": 641,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "DRM.30",
+      "instrumentId": 642,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.723",
+      "instrumentId": 723,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.724",
+      "instrumentId": 724,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.725",
+      "instrumentId": 725,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.726",
+      "instrumentId": 726,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.727",
+      "instrumentId": 727,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.728",
+      "instrumentId": 728,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.729",
+      "instrumentId": 729,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.730",
+      "instrumentId": 730,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.731",
+      "instrumentId": 731,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.732",
+      "instrumentId": 732,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.733",
+      "instrumentId": 733,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.734",
+      "instrumentId": 734,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.735",
+      "instrumentId": 735,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.736",
+      "instrumentId": 736,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.737",
+      "instrumentId": 737,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.785",
+      "instrumentId": 785,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.786",
+      "instrumentId": 786,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.787",
+      "instrumentId": 787,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.788",
+      "instrumentId": 788,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.789",
+      "instrumentId": 789,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.790",
+      "instrumentId": 790,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.791",
+      "instrumentId": 791,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.792",
+      "instrumentId": 792,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.793",
+      "instrumentId": 793,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.794",
+      "instrumentId": 794,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.797",
+      "instrumentId": 797,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Drm.798",
+      "instrumentId": 798,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.799",
+      "instrumentId": 799,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.800",
+      "instrumentId": 800,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.801",
+      "instrumentId": 801,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.802",
+      "instrumentId": 802,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.803",
+      "instrumentId": 803,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.804",
+      "instrumentId": 804,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.805",
+      "instrumentId": 805,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.806",
+      "instrumentId": 806,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.807",
+      "instrumentId": 807,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.808",
+      "instrumentId": 808,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.809",
+      "instrumentId": 809,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.810",
+      "instrumentId": 810,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.811",
+      "instrumentId": 811,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.812",
+      "instrumentId": 812,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.813",
+      "instrumentId": 813,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.814",
+      "instrumentId": 814,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.815",
+      "instrumentId": 815,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.816",
+      "instrumentId": 816,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.817",
+      "instrumentId": 817,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Drm.Index22",
+      "instrumentId": 302,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index23",
+      "instrumentId": 303,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index24",
+      "instrumentId": 304,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index25",
+      "instrumentId": 378,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index683",
+      "instrumentId": 698,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index684",
+      "instrumentId": 699,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.Index685",
+      "instrumentId": 700,
+      "kind": "index"
+    },
+    {
+      "symbol": "Drm.TestIG",
+      "instrumentId": 691,
+      "kind": "index"
+    },
+    {
+      "symbol": "ESP35",
+      "instrumentId": 34,
+      "kind": "index"
+    },
+    {
+      "symbol": "ESP35.FUT",
+      "instrumentId": 261,
+      "kind": "index"
+    },
+    {
+      "symbol": "ETH.Fut",
+      "instrumentId": 316,
+      "kind": "index"
+    },
+    {
+      "symbol": "EURAUD",
+      "instrumentId": 12,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURCAD",
+      "instrumentId": 13,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURCHF",
+      "instrumentId": 9,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURDKK",
+      "instrumentId": 76,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURGBP",
+      "instrumentId": 8,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURHKD",
+      "instrumentId": 475,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURHUF",
+      "instrumentId": 70,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURILS",
+      "instrumentId": 425,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURILS-old",
+      "instrumentId": 329,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURJPY",
+      "instrumentId": 10,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURMXN",
+      "instrumentId": 477,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURNOK",
+      "instrumentId": 60,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURNZD",
+      "instrumentId": 49,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EuroNatGas.FUT",
+      "instrumentId": 319,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "EuroOIL",
+      "instrumentId": 341,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "EURPLN",
+      "instrumentId": 68,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURSAR",
+      "instrumentId": 479,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURSEK",
+      "instrumentId": 61,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURSGD",
+      "instrumentId": 478,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURTRY",
+      "instrumentId": 474,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD",
+      "instrumentId": 1,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD_conversion",
+      "instrumentId": 350,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.24-7",
+      "instrumentId": 567,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.DEC25",
+      "instrumentId": 211001,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.DEC26",
+      "instrumentId": 211005,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.DEC27",
+      "instrumentId": 211009,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.DEC28",
+      "instrumentId": 211013,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.DEC29",
+      "instrumentId": 211017,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.JUN26",
+      "instrumentId": 211003,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.JUN27",
+      "instrumentId": 211007,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.JUN28",
+      "instrumentId": 211011,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.JUN29",
+      "instrumentId": 211015,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.MAR26",
+      "instrumentId": 211002,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.MAR27",
+      "instrumentId": 211006,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.MAR28",
+      "instrumentId": 211010,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.MAR29",
+      "instrumentId": 211014,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.SEP26",
+      "instrumentId": 211004,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.SEP27",
+      "instrumentId": 211008,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.SEP28",
+      "instrumentId": 211012,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURUSD.SEP29",
+      "instrumentId": 211016,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EURZAR",
+      "instrumentId": 473,
+      "kind": "forex"
+    },
+    {
+      "symbol": "EUSTX50",
+      "instrumentId": 43,
+      "kind": "index"
+    },
+    {
+      "symbol": "EUSTX50.FUT",
+      "instrumentId": 264,
+      "kind": "index"
+    },
+    {
+      "symbol": "FRA40",
+      "instrumentId": 31,
+      "kind": "index"
+    },
+    {
+      "symbol": "FRA40.FUT",
+      "instrumentId": 258,
+      "kind": "index"
+    },
+    {
+      "symbol": "FUT_COM_TEMP",
+      "instrumentId": 999,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "FUT_IDX_TEMP",
+      "instrumentId": 998,
+      "kind": "index"
+    },
+    {
+      "symbol": "GasOil.FUT",
+      "instrumentId": 387,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Gasoline.FUT",
+      "instrumentId": 335,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GBPAUD",
+      "instrumentId": 50,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPCAD",
+      "instrumentId": 65,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPCHF",
+      "instrumentId": 51,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPHUF",
+      "instrumentId": 71,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPILS",
+      "instrumentId": 424,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPILS_olddd",
+      "instrumentId": 330,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPJPY",
+      "instrumentId": 11,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPNZD",
+      "instrumentId": 52,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD",
+      "instrumentId": 2,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD_conversion",
+      "instrumentId": 351,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.DEC25",
+      "instrumentId": 212001,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.DEC26",
+      "instrumentId": 212005,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.DEC27",
+      "instrumentId": 212009,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.DEC28",
+      "instrumentId": 212013,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.DEC29",
+      "instrumentId": 212017,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.JUN26",
+      "instrumentId": 212003,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.JUN27",
+      "instrumentId": 212007,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.JUN28",
+      "instrumentId": 212011,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.JUN29",
+      "instrumentId": 212015,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.MAR26",
+      "instrumentId": 212002,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.MAR27",
+      "instrumentId": 212006,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.MAR28",
+      "instrumentId": 212010,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.MAR29",
+      "instrumentId": 212014,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.SEP26",
+      "instrumentId": 212004,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.SEP27",
+      "instrumentId": 212008,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.SEP28",
+      "instrumentId": 212012,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GBPUSD.SEP29",
+      "instrumentId": 212016,
+      "kind": "forex"
+    },
+    {
+      "symbol": "GDBR10",
+      "instrumentId": 697,
+      "kind": "index"
+    },
+    {
+      "symbol": "GER40",
+      "instrumentId": 32,
+      "kind": "index"
+    },
+    {
+      "symbol": "GER40.FUT",
+      "instrumentId": 259,
+      "kind": "index"
+    },
+    {
+      "symbol": "GOLD",
+      "instrumentId": 18,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.24-7",
+      "instrumentId": 559,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.APR25",
+      "instrumentId": 205000,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.APR26",
+      "instrumentId": 207006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.APR27",
+      "instrumentId": 207012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.APR28",
+      "instrumentId": 207018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.APR29",
+      "instrumentId": 207024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.AUG26",
+      "instrumentId": 207008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.AUG27",
+      "instrumentId": 207014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.AUG28",
+      "instrumentId": 207020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.AUG29",
+      "instrumentId": 207026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.DEC25",
+      "instrumentId": 207004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.DEC26",
+      "instrumentId": 207010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.DEC27",
+      "instrumentId": 207016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.DEC28",
+      "instrumentId": 207022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.DEC29",
+      "instrumentId": 207028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.FEB26",
+      "instrumentId": 207005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.FEB27",
+      "instrumentId": 207011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.FEB28",
+      "instrumentId": 207017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.FEB29",
+      "instrumentId": 207023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Gold.Hedge",
+      "instrumentId": 342,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.JUN25",
+      "instrumentId": 205001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.JUN26",
+      "instrumentId": 207007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.JUN27",
+      "instrumentId": 207013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.JUN28",
+      "instrumentId": 207019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.JUN29",
+      "instrumentId": 207025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.OCT26",
+      "instrumentId": 207009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.OCT27",
+      "instrumentId": 207015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.OCT28",
+      "instrumentId": 207021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLD.OCT29",
+      "instrumentId": 207027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLDAUD",
+      "instrumentId": 100236,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLDCHF",
+      "instrumentId": 100242,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLDEUR",
+      "instrumentId": 100253,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLDGBP",
+      "instrumentId": 100251,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GOLDJPY",
+      "instrumentId": 100252,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "GoldMiners",
+      "instrumentId": 564,
+      "kind": "index"
+    },
+    {
+      "symbol": "GOLDNZD",
+      "instrumentId": 100228,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "HeatingOil.FUT",
+      "instrumentId": 336,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "HKG50",
+      "instrumentId": 38,
+      "kind": "index"
+    },
+    {
+      "symbol": "HKG50.FUT",
+      "instrumentId": 263,
+      "kind": "index"
+    },
+    {
+      "symbol": "ILSUSD",
+      "instrumentId": 326,
+      "kind": "forex"
+    },
+    {
+      "symbol": "INRUSD",
+      "instrumentId": 110,
+      "kind": "forex"
+    },
+    {
+      "symbol": "IronOre",
+      "instrumentId": 557,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "ITA40",
+      "instrumentId": 35,
+      "kind": "index"
+    },
+    {
+      "symbol": "Italy40",
+      "instrumentId": 321,
+      "kind": "index"
+    },
+    {
+      "symbol": "JPN225",
+      "instrumentId": 36,
+      "kind": "index"
+    },
+    {
+      "symbol": "JPN225.FUT",
+      "instrumentId": 262,
+      "kind": "index"
+    },
+    {
+      "symbol": "Korea200.24-7",
+      "instrumentId": 692,
+      "kind": "index"
+    },
+    {
+      "symbol": "KRWUSD_old",
+      "instrumentId": 84,
+      "kind": "forex"
+    },
+    {
+      "symbol": "KWDUSD",
+      "instrumentId": 345,
+      "kind": "forex"
+    },
+    {
+      "symbol": "LEAD",
+      "instrumentId": 339,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "LeanHogs.FUT",
+      "instrumentId": 338,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "LiveCattle.FUT",
+      "instrumentId": 337,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "LNCA.FUT",
+      "instrumentId": 410,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "LTIA.FUT",
+      "instrumentId": 407,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "LUMBER.FUT",
+      "instrumentId": 382,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "META.FUT",
+      "instrumentId": 403,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "MILK.FUT",
+      "instrumentId": 381,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "MNG20",
+      "instrumentId": 206019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "MNG21",
+      "instrumentId": 206020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "MNG22",
+      "instrumentId": 206021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "MSCISGX.FUT",
+      "instrumentId": 307,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.DOW30.DEC26",
+      "instrumentId": 214016,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.DOW30.SEP26",
+      "instrumentId": 214017,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.NASDAQ.DEC26",
+      "instrumentId": 201018,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.NASDAQ.SEP26",
+      "instrumentId": 201019,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.RUSSELL.DEC26",
+      "instrumentId": 202018,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.RUSSELL.SEP26",
+      "instrumentId": 202019,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.SP500.SEP26",
+      "instrumentId": 200019,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nano.SPX500.DEC26",
+      "instrumentId": 200018,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.DEC25",
+      "instrumentId": 201003,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.DEC26",
+      "instrumentId": 201007,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.DEC27",
+      "instrumentId": 201011,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.DEC28",
+      "instrumentId": 201015,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.JUN25",
+      "instrumentId": 201001,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.JUN26",
+      "instrumentId": 201005,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.JUN27",
+      "instrumentId": 201009,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.JUN28",
+      "instrumentId": 201013,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.JUN29",
+      "instrumentId": 201017,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.MAR25",
+      "instrumentId": 201000,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.MAR26",
+      "instrumentId": 201004,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.MAR27",
+      "instrumentId": 201008,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.MAR28",
+      "instrumentId": 201012,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.MAR29",
+      "instrumentId": 201016,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nasdaq.MICRO",
+      "instrumentId": 355,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NASDAQ.SEP25",
+      "instrumentId": 201002,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SEP26",
+      "instrumentId": 201006,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SEP27",
+      "instrumentId": 201010,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SEP28",
+      "instrumentId": 201014,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SPOT2",
+      "instrumentId": 222000,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SPOT28",
+      "instrumentId": 222002,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SPOT29",
+      "instrumentId": 222003,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ.SPOT30",
+      "instrumentId": 222004,
+      "kind": "index"
+    },
+    {
+      "symbol": "NASDAQ100.SPOT",
+      "instrumentId": 222001,
+      "kind": "index"
+    },
+    {
+      "symbol": "NATGAS",
+      "instrumentId": 22,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.24-7",
+      "instrumentId": 782,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.APR26",
+      "instrumentId": 206010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.APR27",
+      "instrumentId": 206025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.APR28",
+      "instrumentId": 206037,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.APR29",
+      "instrumentId": 206049,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.AUG25",
+      "instrumentId": 206002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.AUG26",
+      "instrumentId": 206014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.AUG27",
+      "instrumentId": 206029,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.AUG28",
+      "instrumentId": 206041,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.AUG29",
+      "instrumentId": 206053,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.DEC25",
+      "instrumentId": 206006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.DEC26",
+      "instrumentId": 206018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.DEC27",
+      "instrumentId": 206033,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.DEC28",
+      "instrumentId": 206045,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.DEC29",
+      "instrumentId": 206057,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.FEB26",
+      "instrumentId": 206008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.FEB27",
+      "instrumentId": 206023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.FEB28",
+      "instrumentId": 206035,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.FEB29",
+      "instrumentId": 206047,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JAN26",
+      "instrumentId": 206007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JAN27",
+      "instrumentId": 206022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JAN28",
+      "instrumentId": 206034,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JAN29",
+      "instrumentId": 206046,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUL25",
+      "instrumentId": 206001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUL26",
+      "instrumentId": 206013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUL27",
+      "instrumentId": 206028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUL28",
+      "instrumentId": 206040,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUL29",
+      "instrumentId": 206052,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUN25",
+      "instrumentId": 206000,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUN26",
+      "instrumentId": 206012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUN27",
+      "instrumentId": 206027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUN28",
+      "instrumentId": 206039,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.JUN29",
+      "instrumentId": 206051,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAR26",
+      "instrumentId": 206009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAR27",
+      "instrumentId": 206024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAR28",
+      "instrumentId": 206036,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAR29",
+      "instrumentId": 206048,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAY26",
+      "instrumentId": 206011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAY27",
+      "instrumentId": 206026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAY28",
+      "instrumentId": 206038,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.MAY29",
+      "instrumentId": 206050,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NATGAS.MICRO",
+      "instrumentId": 356,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.NOV25",
+      "instrumentId": 206005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.NOV26",
+      "instrumentId": 206017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.NOV27",
+      "instrumentId": 206032,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.NOV28",
+      "instrumentId": 206044,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.NOV29",
+      "instrumentId": 206056,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.OCT25",
+      "instrumentId": 206004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.OCT26",
+      "instrumentId": 206016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.OCT27",
+      "instrumentId": 206031,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.OCT28",
+      "instrumentId": 206043,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.OCT29",
+      "instrumentId": 206055,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.SEP25",
+      "instrumentId": 206003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.SEP26",
+      "instrumentId": 206015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.SEP27",
+      "instrumentId": 206030,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.SEP28",
+      "instrumentId": 206042,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NatGas.SEP29",
+      "instrumentId": 206054,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.APR24",
+      "instrumentId": 369,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.APR25",
+      "instrumentId": 631,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.APR26",
+      "instrumentId": 764,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.APR27",
+      "instrumentId": 776,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.AUG23",
+      "instrumentId": 361,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.AUG24",
+      "instrumentId": 373,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.AUG25",
+      "instrumentId": 635,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.AUG26",
+      "instrumentId": 768,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.AUG27",
+      "instrumentId": 780,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.DEC23",
+      "instrumentId": 365,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.DEC24",
+      "instrumentId": 377,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.DEC25",
+      "instrumentId": 476,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.DEC26",
+      "instrumentId": 772,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.FEB24",
+      "instrumentId": 367,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.FEB25",
+      "instrumentId": 629,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.FEB26",
+      "instrumentId": 762,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.FEB27",
+      "instrumentId": 774,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JAN24",
+      "instrumentId": 366,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JAN25",
+      "instrumentId": 628,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JAN26",
+      "instrumentId": 497,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JAN27",
+      "instrumentId": 773,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUL23",
+      "instrumentId": 360,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUL24",
+      "instrumentId": 372,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUL25",
+      "instrumentId": 634,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUL26",
+      "instrumentId": 767,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUL27",
+      "instrumentId": 779,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUN23",
+      "instrumentId": 359,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUN24",
+      "instrumentId": 371,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUN25",
+      "instrumentId": 633,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUN26",
+      "instrumentId": 766,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.JUN27",
+      "instrumentId": 778,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAR24",
+      "instrumentId": 368,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAR25",
+      "instrumentId": 630,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAR26",
+      "instrumentId": 763,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAR27",
+      "instrumentId": 775,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAY23",
+      "instrumentId": 358,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAY24",
+      "instrumentId": 370,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAY25",
+      "instrumentId": 632,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAY26",
+      "instrumentId": 765,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.MAY27",
+      "instrumentId": 777,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.NOV23",
+      "instrumentId": 364,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.NOV24",
+      "instrumentId": 376,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.NOV25",
+      "instrumentId": 638,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.NOV26",
+      "instrumentId": 771,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.OCT23",
+      "instrumentId": 363,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.OCT24",
+      "instrumentId": 375,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.OCT25",
+      "instrumentId": 637,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.OCT26",
+      "instrumentId": 770,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.SEP23",
+      "instrumentId": 362,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.SEP24",
+      "instrumentId": 374,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.SEP25",
+      "instrumentId": 636,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.SEP26",
+      "instrumentId": 769,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NG.SEP27",
+      "instrumentId": 781,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Nickel",
+      "instrumentId": 343,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NICKEL.FUT",
+      "instrumentId": 100,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "NIFTY50",
+      "instrumentId": 305,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIFTY50.FUT",
+      "instrumentId": 323,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.DEC25",
+      "instrumentId": 203003,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.DEC26",
+      "instrumentId": 203007,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.DEC27",
+      "instrumentId": 203011,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.DEC28",
+      "instrumentId": 203015,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.DEC29",
+      "instrumentId": 203019,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.JUN26",
+      "instrumentId": 203005,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.JUN27",
+      "instrumentId": 203009,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.JUN28",
+      "instrumentId": 203013,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.JUN29",
+      "instrumentId": 203017,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.MAR26",
+      "instrumentId": 203004,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.MAR27",
+      "instrumentId": 203008,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.MAR28",
+      "instrumentId": 203012,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.MAR29",
+      "instrumentId": 203016,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.SEP25",
+      "instrumentId": 203002,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.SEP26",
+      "instrumentId": 203006,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.SEP27",
+      "instrumentId": 203010,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.SEP28",
+      "instrumentId": 203014,
+      "kind": "index"
+    },
+    {
+      "symbol": "NIKKEI.SEP29",
+      "instrumentId": 203018,
+      "kind": "index"
+    },
+    {
+      "symbol": "NKD.JUN25",
+      "instrumentId": 203001,
+      "kind": "index"
+    },
+    {
+      "symbol": "NKD.MAR25",
+      "instrumentId": 203000,
+      "kind": "index"
+    },
+    {
+      "symbol": "NL25",
+      "instrumentId": 353,
+      "kind": "index"
+    },
+    {
+      "symbol": "NOKSEK",
+      "instrumentId": 59,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Norway25",
+      "instrumentId": 627,
+      "kind": "index"
+    },
+    {
+      "symbol": "NQH1",
+      "instrumentId": 142,
+      "kind": "index"
+    },
+    {
+      "symbol": "NSDQ100",
+      "instrumentId": 28,
+      "kind": "index"
+    },
+    {
+      "symbol": "NSDQ100.24-7",
+      "instrumentId": 686,
+      "kind": "index"
+    },
+    {
+      "symbol": "NSDQ100.FUT",
+      "instrumentId": 255,
+      "kind": "index"
+    },
+    {
+      "symbol": "Nuclear",
+      "instrumentId": 690,
+      "kind": "index"
+    },
+    {
+      "symbol": "NZDCAD",
+      "instrumentId": 53,
+      "kind": "forex"
+    },
+    {
+      "symbol": "NZDCHF",
+      "instrumentId": 54,
+      "kind": "forex"
+    },
+    {
+      "symbol": "NZDJPY",
+      "instrumentId": 55,
+      "kind": "forex"
+    },
+    {
+      "symbol": "NZDUSD",
+      "instrumentId": 3,
+      "kind": "forex"
+    },
+    {
+      "symbol": "OATS.FUT",
+      "instrumentId": 324,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL",
+      "instrumentId": 17,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.24-7",
+      "instrumentId": 784,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.MICRO",
+      "instrumentId": 95,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.APR25",
+      "instrumentId": 204001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.APR26",
+      "instrumentId": 204012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.APR27",
+      "instrumentId": 204024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.APR28",
+      "instrumentId": 204036,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.APR29",
+      "instrumentId": 204048,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.AUG25",
+      "instrumentId": 204004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.AUG26",
+      "instrumentId": 204016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.AUG27",
+      "instrumentId": 204028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.AUG28",
+      "instrumentId": 204040,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.AUG29",
+      "instrumentId": 204052,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.DEC25",
+      "instrumentId": 204008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.DEC26",
+      "instrumentId": 204020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.DEC27",
+      "instrumentId": 204032,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.DEC28",
+      "instrumentId": 204044,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.DEC29",
+      "instrumentId": 204056,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.FEB26",
+      "instrumentId": 204010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.FEB27",
+      "instrumentId": 204022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.FEB28",
+      "instrumentId": 204034,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.FEB29",
+      "instrumentId": 204046,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JAN26",
+      "instrumentId": 204009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JAN27",
+      "instrumentId": 204021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JAN28",
+      "instrumentId": 204033,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JAN29",
+      "instrumentId": 204045,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUL25",
+      "instrumentId": 204003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUL26",
+      "instrumentId": 204015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUL27",
+      "instrumentId": 204027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUL28",
+      "instrumentId": 204039,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUL29",
+      "instrumentId": 204051,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUN25",
+      "instrumentId": 204002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUN26",
+      "instrumentId": 204014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUN27",
+      "instrumentId": 204026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUN28",
+      "instrumentId": 204038,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.JUN29",
+      "instrumentId": 204050,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAR26",
+      "instrumentId": 204011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAR27",
+      "instrumentId": 204023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAR28",
+      "instrumentId": 204035,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAR29",
+      "instrumentId": 204047,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAY25",
+      "instrumentId": 204000,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAY26",
+      "instrumentId": 204013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAY27",
+      "instrumentId": 204025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAY28",
+      "instrumentId": 204037,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.MAY29",
+      "instrumentId": 204049,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.NOV25",
+      "instrumentId": 204007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.NOV26",
+      "instrumentId": 204019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.NOV27",
+      "instrumentId": 204031,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.NOV28",
+      "instrumentId": 204043,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.NOV29",
+      "instrumentId": 204055,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.OCT25",
+      "instrumentId": 204006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.OCT26",
+      "instrumentId": 204018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.OCT27",
+      "instrumentId": 204030,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.OCT28",
+      "instrumentId": 204042,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.OCT29",
+      "instrumentId": 204054,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.SEP25",
+      "instrumentId": 204005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.SEP26",
+      "instrumentId": 204017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.SEP27",
+      "instrumentId": 204029,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.SEP28",
+      "instrumentId": 204041,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OIL.WTI.SEP29",
+      "instrumentId": 204053,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OJ.FUT",
+      "instrumentId": 311,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "OMRUSD",
+      "instrumentId": 347,
+      "kind": "forex"
+    },
+    {
+      "symbol": "PALLADIUM.FUT",
+      "instrumentId": 91,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "PALLADIUM.spot",
+      "instrumentId": 41,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "PENUSD",
+      "instrumentId": 88,
+      "kind": "forex"
+    },
+    {
+      "symbol": "PLATINUM",
+      "instrumentId": 40,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "POWER.FUT",
+      "instrumentId": 388,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "QARUSD",
+      "instrumentId": 90,
+      "kind": "forex"
+    },
+    {
+      "symbol": "Quantum",
+      "instrumentId": 563,
+      "kind": "index"
+    },
+    {
+      "symbol": "RICE.FUT",
+      "instrumentId": 325,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "RTY",
+      "instrumentId": 310,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUBBER",
+      "instrumentId": 558,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "RUSSELL.DEC25",
+      "instrumentId": 202003,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.DEC26",
+      "instrumentId": 202007,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.DEC27",
+      "instrumentId": 202011,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.DEC28",
+      "instrumentId": 202015,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.JUN25",
+      "instrumentId": 202001,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.JUN26",
+      "instrumentId": 202005,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.JUN27",
+      "instrumentId": 202009,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.JUN28",
+      "instrumentId": 202013,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.JUN29",
+      "instrumentId": 202017,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.MAR25",
+      "instrumentId": 202000,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.MAR26",
+      "instrumentId": 202004,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.MAR27",
+      "instrumentId": 202008,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.MAR28",
+      "instrumentId": 202012,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.MAR29",
+      "instrumentId": 202016,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SEP25",
+      "instrumentId": 202002,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SEP26",
+      "instrumentId": 202006,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SEP27",
+      "instrumentId": 202010,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SEP28",
+      "instrumentId": 202014,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SPOT",
+      "instrumentId": 223001,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SPOT28",
+      "instrumentId": 223002,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SPOT29",
+      "instrumentId": 223003,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SPOT30",
+      "instrumentId": 223004,
+      "kind": "index"
+    },
+    {
+      "symbol": "RUSSELL.SPOT6",
+      "instrumentId": 223000,
+      "kind": "index"
+    },
+    {
+      "symbol": "Semiconductors",
+      "instrumentId": 560,
+      "kind": "index"
+    },
+    {
+      "symbol": "SGX",
+      "instrumentId": 301,
+      "kind": "index"
+    },
+    {
+      "symbol": "SHIA.FUT",
+      "instrumentId": 411,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER",
+      "instrumentId": 19,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Silver Hedge",
+      "instrumentId": 357,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "Silver.24-7",
+      "instrumentId": 783,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.APR26",
+      "instrumentId": 209011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.APR27",
+      "instrumentId": 209023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.APR28",
+      "instrumentId": 209035,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.APR29",
+      "instrumentId": 209047,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.AUG26",
+      "instrumentId": 209015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.AUG27",
+      "instrumentId": 209027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.AUG28",
+      "instrumentId": 209039,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.AUG29",
+      "instrumentId": 209051,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DEC25",
+      "instrumentId": 209007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DEC26",
+      "instrumentId": 209019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DEC27",
+      "instrumentId": 209031,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DEC28",
+      "instrumentId": 209043,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DEC29",
+      "instrumentId": 209055,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.DRM",
+      "instrumentId": 209003,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.FEB26",
+      "instrumentId": 209009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.FEB27",
+      "instrumentId": 209021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.FEB28",
+      "instrumentId": 209033,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.FEB29",
+      "instrumentId": 209045,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JAN26",
+      "instrumentId": 209008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JAN27",
+      "instrumentId": 209020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JAN28",
+      "instrumentId": 209032,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JAN29",
+      "instrumentId": 209044,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUL25",
+      "instrumentId": 209002,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUL26",
+      "instrumentId": 209014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUL27",
+      "instrumentId": 209026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUL28",
+      "instrumentId": 209038,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUL29",
+      "instrumentId": 209050,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUN26",
+      "instrumentId": 209013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUN27",
+      "instrumentId": 209025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUN28",
+      "instrumentId": 209037,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.JUN29",
+      "instrumentId": 209049,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAR26",
+      "instrumentId": 209010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAR27",
+      "instrumentId": 209022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAR28",
+      "instrumentId": 209034,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAR29",
+      "instrumentId": 209046,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAY25",
+      "instrumentId": 209001,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAY26",
+      "instrumentId": 209012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAY27",
+      "instrumentId": 209024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAY28",
+      "instrumentId": 209036,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.MAY29",
+      "instrumentId": 209048,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.NOV25",
+      "instrumentId": 209006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.NOV26",
+      "instrumentId": 209018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.NOV27",
+      "instrumentId": 209030,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.NOV28",
+      "instrumentId": 209042,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.NOV29",
+      "instrumentId": 209054,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.OCT25",
+      "instrumentId": 209005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.OCT26",
+      "instrumentId": 209017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.OCT27",
+      "instrumentId": 209029,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.OCT28",
+      "instrumentId": 209041,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.OCT29",
+      "instrumentId": 209053,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.SEP25",
+      "instrumentId": 209004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.SEP26",
+      "instrumentId": 209016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.SEP27",
+      "instrumentId": 209028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.SEP28",
+      "instrumentId": 209040,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVER.SEP29",
+      "instrumentId": 209052,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVERAUD",
+      "instrumentId": 100204,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVERCHF",
+      "instrumentId": 100203,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVEREUR",
+      "instrumentId": 100198,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVERGBP",
+      "instrumentId": 100196,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVERJPY",
+      "instrumentId": 100197,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SILVERNZD",
+      "instrumentId": 100205,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SouthKorea200",
+      "instrumentId": 688,
+      "kind": "index"
+    },
+    {
+      "symbol": "Soybeans.FUT",
+      "instrumentId": 332,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.APR26",
+      "instrumentId": 210008,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.AUG26",
+      "instrumentId": 210012,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.AUG27",
+      "instrumentId": 210021,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.AUG28",
+      "instrumentId": 210029,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.AUG29",
+      "instrumentId": 210037,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.DEC25",
+      "instrumentId": 210004,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.DEC26",
+      "instrumentId": 210016,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.DEC27",
+      "instrumentId": 210024,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.DEC28",
+      "instrumentId": 210032,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.DEC29",
+      "instrumentId": 210040,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.FEB26",
+      "instrumentId": 210006,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.FUT",
+      "instrumentId": 318,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JAN26",
+      "instrumentId": 210005,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JAN27",
+      "instrumentId": 210017,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JAN28",
+      "instrumentId": 210025,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JAN29",
+      "instrumentId": 210033,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JUL26",
+      "instrumentId": 210011,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JUL27",
+      "instrumentId": 210020,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JUL28",
+      "instrumentId": 210028,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JUL29",
+      "instrumentId": 210036,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.JUN26",
+      "instrumentId": 210010,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAR26",
+      "instrumentId": 210007,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAR27",
+      "instrumentId": 210018,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAR28",
+      "instrumentId": 210026,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAR29",
+      "instrumentId": 210034,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAY26",
+      "instrumentId": 210009,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAY27",
+      "instrumentId": 210019,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAY28",
+      "instrumentId": 210027,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.MAY29",
+      "instrumentId": 210035,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.NOV26",
+      "instrumentId": 210015,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.OCT26",
+      "instrumentId": 210014,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.OCT27",
+      "instrumentId": 210023,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.OCT28",
+      "instrumentId": 210031,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.OCT29",
+      "instrumentId": 210039,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.SEP26",
+      "instrumentId": 210013,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.SEP27",
+      "instrumentId": 210022,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.SEP28",
+      "instrumentId": 210030,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyMeal.SEP29",
+      "instrumentId": 210038,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SoyOil.FUT",
+      "instrumentId": 317,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SP.24-7",
+      "instrumentId": 687,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP400.JUN25",
+      "instrumentId": 208000,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP400.SEP25",
+      "instrumentId": 208001,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.DEC25",
+      "instrumentId": 200003,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.DEC26",
+      "instrumentId": 200007,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.DEC27",
+      "instrumentId": 200011,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.DEC28",
+      "instrumentId": 200015,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.JUN25",
+      "instrumentId": 200001,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.JUN26",
+      "instrumentId": 200005,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.JUN27",
+      "instrumentId": 200009,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.JUN28",
+      "instrumentId": 200013,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.JUN29",
+      "instrumentId": 200017,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.MAR25",
+      "instrumentId": 200000,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.MAR26",
+      "instrumentId": 200004,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.MAR27",
+      "instrumentId": 200008,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.MAR28",
+      "instrumentId": 200012,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.MAR29",
+      "instrumentId": 200016,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SEP25",
+      "instrumentId": 200002,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SEP26",
+      "instrumentId": 200006,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SEP27",
+      "instrumentId": 200010,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SEP28",
+      "instrumentId": 200014,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SPOT",
+      "instrumentId": 221001,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SPOT26",
+      "instrumentId": 221000,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SPOT28",
+      "instrumentId": 221002,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SPOT29",
+      "instrumentId": 221003,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP500.SPOT30",
+      "instrumentId": 221004,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP600.JUN25",
+      "instrumentId": 207000,
+      "kind": "index"
+    },
+    {
+      "symbol": "SP600.SEP25",
+      "instrumentId": 207001,
+      "kind": "index"
+    },
+    {
+      "symbol": "SPX.MICRO",
+      "instrumentId": 354,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SPX500",
+      "instrumentId": 27,
+      "kind": "index"
+    },
+    {
+      "symbol": "SPX500.FUT",
+      "instrumentId": 254,
+      "kind": "index"
+    },
+    {
+      "symbol": "STEEL.FUT",
+      "instrumentId": 380,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SUGAR.FUT",
+      "instrumentId": 92,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "SUI30",
+      "instrumentId": 37,
+      "kind": "index"
+    },
+    {
+      "symbol": "Sweden30",
+      "instrumentId": 626,
+      "kind": "index"
+    },
+    {
+      "symbol": "Switzerland20",
+      "instrumentId": 322,
+      "kind": "index"
+    },
+    {
+      "symbol": "TWDUSD",
+      "instrumentId": 392,
+      "kind": "forex"
+    },
+    {
+      "symbol": "UK100",
+      "instrumentId": 30,
+      "kind": "index"
+    },
+    {
+      "symbol": "UK100.FUT",
+      "instrumentId": 257,
+      "kind": "index"
+    },
+    {
+      "symbol": "UKNatGas.FUT",
+      "instrumentId": 389,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "US2000",
+      "instrumentId": 101,
+      "kind": "index"
+    },
+    {
+      "symbol": "USD/PEN",
+      "instrumentId": 395,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDAED",
+      "instrumentId": 453,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDARS",
+      "instrumentId": 454,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDBRL",
+      "instrumentId": 429,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDBRL_old",
+      "instrumentId": 107,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCAD",
+      "instrumentId": 4,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCHF",
+      "instrumentId": 6,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCLP",
+      "instrumentId": 427,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCLP_old",
+      "instrumentId": 393,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCNH",
+      "instrumentId": 45,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCOP",
+      "instrumentId": 426,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCOP_old",
+      "instrumentId": 394,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDCZK",
+      "instrumentId": 82,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDDKK",
+      "instrumentId": 75,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDHKD",
+      "instrumentId": 39,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDHKD_conversion",
+      "instrumentId": 352,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDHUF",
+      "instrumentId": 69,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDIDR",
+      "instrumentId": 461,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDILS",
+      "instrumentId": 423,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDILS_OLD",
+      "instrumentId": 328,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDINR",
+      "instrumentId": 456,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDJPY",
+      "instrumentId": 5,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDJPY.24-7",
+      "instrumentId": 568,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDKRW",
+      "instrumentId": 428,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDMXN",
+      "instrumentId": 63,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDMYR",
+      "instrumentId": 457,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDNOK",
+      "instrumentId": 57,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDOLLAR",
+      "instrumentId": 25,
+      "kind": "index"
+    },
+    {
+      "symbol": "USDOLLAR.FUT",
+      "instrumentId": 252,
+      "kind": "index"
+    },
+    {
+      "symbol": "USDPEN",
+      "instrumentId": 455,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDPHP",
+      "instrumentId": 458,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDPLN",
+      "instrumentId": 73,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDRON",
+      "instrumentId": 83,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDRUB",
+      "instrumentId": 44,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDSAR",
+      "instrumentId": 348,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDSAR_old",
+      "instrumentId": 111,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDSEK",
+      "instrumentId": 58,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDSGD",
+      "instrumentId": 64,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDTHB",
+      "instrumentId": 460,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDTRY",
+      "instrumentId": 62,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDTWD",
+      "instrumentId": 459,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USDZAR",
+      "instrumentId": 42,
+      "kind": "forex"
+    },
+    {
+      "symbol": "USGG10YR",
+      "instrumentId": 695,
+      "kind": "index"
+    },
+    {
+      "symbol": "USGG2YR",
+      "instrumentId": 693,
+      "kind": "index"
+    },
+    {
+      "symbol": "USGG30YR",
+      "instrumentId": 696,
+      "kind": "index"
+    },
+    {
+      "symbol": "USGG5YR",
+      "instrumentId": 694,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.APR24",
+      "instrumentId": 397,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.APR25",
+      "instrumentId": 441,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.APR26",
+      "instrumentId": 701,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.APR27",
+      "instrumentId": 713,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.AUG24",
+      "instrumentId": 433,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.AUG25",
+      "instrumentId": 445,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.AUG26",
+      "instrumentId": 705,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.AUG27",
+      "instrumentId": 717,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.DEC",
+      "instrumentId": 386,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.DEC24",
+      "instrumentId": 437,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.DEC25",
+      "instrumentId": 449,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.DEC26",
+      "instrumentId": 709,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.DEC27",
+      "instrumentId": 721,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.FEB",
+      "instrumentId": 391,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.FEB25",
+      "instrumentId": 439,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.FEB26",
+      "instrumentId": 451,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.FEB27",
+      "instrumentId": 711,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JAN",
+      "instrumentId": 390,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JAN25",
+      "instrumentId": 438,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JAN26",
+      "instrumentId": 450,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JAN27",
+      "instrumentId": 710,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUL24",
+      "instrumentId": 432,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUL25",
+      "instrumentId": 611,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUL26",
+      "instrumentId": 704,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUL27",
+      "instrumentId": 716,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUN24",
+      "instrumentId": 431,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUN25",
+      "instrumentId": 443,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUN26",
+      "instrumentId": 703,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.JUN27",
+      "instrumentId": 715,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAR",
+      "instrumentId": 396,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAR25",
+      "instrumentId": 440,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAR26",
+      "instrumentId": 612,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAR27",
+      "instrumentId": 712,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAY24",
+      "instrumentId": 430,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAY25",
+      "instrumentId": 442,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAY26",
+      "instrumentId": 702,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.MAY27",
+      "instrumentId": 714,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.NOV",
+      "instrumentId": 385,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.NOV24",
+      "instrumentId": 436,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.NOV25",
+      "instrumentId": 448,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.NOV26",
+      "instrumentId": 708,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.NOV27",
+      "instrumentId": 720,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.OCT",
+      "instrumentId": 384,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.OCT24",
+      "instrumentId": 435,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.OCT25",
+      "instrumentId": 447,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.OCT26",
+      "instrumentId": 707,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.OCT27",
+      "instrumentId": 719,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.SEP",
+      "instrumentId": 308,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.SEP24",
+      "instrumentId": 434,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.SEP25",
+      "instrumentId": 446,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.SEP26",
+      "instrumentId": 706,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIX.SEP27",
+      "instrumentId": 718,
+      "kind": "index"
+    },
+    {
+      "symbol": "VIXsub",
+      "instrumentId": 309,
+      "kind": "index"
+    },
+    {
+      "symbol": "WHEAT.FUT",
+      "instrumentId": 97,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "WhiteSugar",
+      "instrumentId": 94,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "XLRA.FUT",
+      "instrumentId": 408,
+      "kind": "commodity"
+    },
+    {
+      "symbol": "ZARJPY",
+      "instrumentId": 66,
+      "kind": "forex"
+    },
+    {
+      "symbol": "ZINC",
+      "instrumentId": 340,
+      "kind": "commodity"
+    }
+  ]
+}

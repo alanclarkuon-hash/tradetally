@@ -115,7 +115,7 @@ describe('source-backed legacy eToro listing evidence',()=>{
  });
  test.each(cases)('bare %s is not redirected for another broker',(symbol,currency)=>expect(metadata(symbol,currency,{broker:'other'}).marketSymbol).toBe(symbol));
  test.each(cases)('bare %s requires statement authority',(symbol,currency)=>expect(metadata(symbol,currency,{authority:false}).marketSymbol).toBeNull());
- test.each(cases)('bare %s settlement USD does not supply a foreign listing',(symbol)=>expect(metadata(symbol,'USD').marketSymbol).toBe(symbol));
+ test.each(cases)('bare %s incompatible currency does not supply a foreign listing',(symbol,currency)=>expect(metadata(symbol,currency==='USD'?'EUR':'USD').marketSymbol).toBe(symbol));
  test('existing full listing is retained',()=>expect(metadata('NESN.SW','CHF').marketSymbol).toBe('NESN.SW'));
  test('unregistered bare symbol is retained',()=>expect(metadata('UNKNOWN','CHF').marketSymbol).toBe('UNKNOWN'));
 });
@@ -136,4 +136,21 @@ test('an exact registered legacy statement label requires native position proof 
  const full={...lot,symbol:'GYC.DE'};expect(statementLotMetadata([full],[record],[]).get(full).marketSymbol).toBe('GYC.DE');
  expect(statementLotMetadata([lot],[{...record,details:'GYC.DR/USD'}],[]).get(lot).marketSymbol).toBeNull();
  const other={...lot,broker:'other'};expect(statementLotMetadata([other],[record],[]).get(other).marketSymbol).not.toBe('GYC.F');
+});
+
+describe('additional source-backed exact broker listing identities',()=>{
+ const cases=[['1COV','EUR','1COV.F'],['DWNI','EUR','DWNI.F'],['MONY','GBX','MONY.L'],['FXPO','GBX','FXPO.L'],['SWDA','GBX','SWDA.L'],['LQDE','USD','LQDE.L'],['NVTKL','USD','NVTKL.L'],['OGZDL','USD','OGZDL.L'],['SBERL','USD','SBERL.L']];
+ test.each(cases)('%s uses its documented listing only with matching native statement proof',(symbol,currency,listing)=>{
+  const lot={symbol,broker:'etoro',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+  const opening={sourceType:'Open Position',positionId:'synthetic',details:symbol+'/'+currency,time:lot.entry_time,units:2,amount:20};
+  expect(statementLotMetadata([lot],[opening],[]).get(lot)).toMatchObject({marketSymbol:listing,currency,statementAuthority:true});
+  const other={...lot,broker:'other'};expect(statementLotMetadata([other],[opening],[]).get(other).marketSymbol).not.toBe(listing);
+  const full={...lot,symbol:listing};expect(statementLotMetadata([full],[{...opening,details:listing+'/'+currency}],[]).get(full).marketSymbol).toBe(listing);
+ });
+ test('a USD-denominated LSE fund is not inferred from account currency or arbitrary suffix',()=>{
+  const lot={symbol:'LQDE',broker:'etoro',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+  expect(statementLotMetadata([lot],[],[]).get(lot).marketSymbol).toBeNull();
+  const wrong={sourceType:'Open Position',positionId:'synthetic',details:'LQDE/EUR',time:lot.entry_time,units:2,amount:20};
+  expect(statementLotMetadata([lot],[wrong],[]).get(lot).marketSymbol).not.toBe('LQDE.L');
+ });
 });
