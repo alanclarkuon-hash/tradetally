@@ -91,3 +91,14 @@ test('a different full listing or wrong opening time cannot become historical ma
  expect(statementLotMetadata([lot],[opening],[]).get(lot).marketSymbol).toBeNull();
  expect(statementLotMetadata([lot],[{...opening,positionId:'unmatched-child',details:'DIFFERENT.DE/EUR'}],[]).get(lot).marketSymbol).toBeNull();
 });
+
+test.each([['DE','EUR'],['ZU','CHF'],['NV','EUR'],['PA','EUR'],['MC','EUR'],['US','USD'],['CO','DKK'],['ST','SEK']])('a bare statement label never discards existing compatible %s listing',(suffix,currency)=>{
+ const lot={symbol:'SYNTH.'+suffix,entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+ const opening={sourceType:'Open Position',positionId:'synthetic',details:'SYNTH/'+currency,time:lot.entry_time,units:2,amount:20};
+ expect(statementLotMetadata([lot],[opening],[]).get(lot)).toMatchObject({currency,marketSymbol:lot.symbol,statementAuthority:true});
+});
+test('an unproven same-time opening cannot supply an alias without cost or position authority',()=>{
+ const lot={symbol:'SYNTH.DE',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'unmatched'}]};
+ const opening={sourceType:'Open Position',positionId:'other',details:'SYNTH/EUR',time:lot.entry_time,units:2,amount:40};
+ const meta=statementLotMetadata([lot],[opening],[]).get(lot);expect(meta.statementAuthority).toBe(false);expect(meta.marketSymbol).toBeNull();
+});
