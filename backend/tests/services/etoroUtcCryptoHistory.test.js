@@ -98,3 +98,13 @@ test('duplicate venues cannot certify an archived directory',async()=>{
  etoro.get.mockResolvedValueOnce({exchangeInfo:[{exchangeId:4},{exchangeId:4}]});
  await expect(etoroArchivedEquities({},'COIN')).rejects.toThrow();
 });
+test('native London display format is scoped to the exact typed LSE identity',()=>{
+ const {etoroQuoteSymbol}=require('../../src/services/brokerHistoryProviders');
+ const metadata={symbolFull:'FXPO.L',exchangeId:7};
+ expect(etoroQuoteSymbol('FXPO.L','FXPO',metadata)).toBe(true);
+ expect(etoroQuoteSymbol('FXPO.L','FXPO.L',metadata)).toBe(true);
+ expect(etoroQuoteSymbol('FXPO.L','FXPO',{...metadata,exchangeId:4})).toBe(false);
+ expect(etoroQuoteSymbol('FXPO.L','FXPO',{...metadata,symbolFull:'OTHER.L'})).toBe(false);
+ expect(etoroQuoteSymbol('BRK.B','BRK',{symbolFull:'BRK.B',exchangeId:7})).toBe(false);
+ expect(etoroQuoteSymbol('FXPO.L','OTHER',metadata)).toBe(false);
+});
