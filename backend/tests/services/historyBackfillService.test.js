@@ -160,3 +160,18 @@ test('an earlier contributing account prevents combined listing padding from hid
  db.query.mockImplementation(async(sql,args)=>({rows:sql.includes('FROM trades')?[{symbol:'SYNTH',instrument_type:'stock',entry_time:args[1][0]==='new'?'2023-09-14':'2021-09-14'}]:sql.includes('FROM portfolio_reconstruction_prices')?[{symbol:'SYNTH',payload:meta}]:[]}));
  portfolio._getPositionComponents.mockResolvedValue([]);const tasks=await service.plan('owner',{accounts:{new:'2023-08-15',old:'2023-08-15'}});expect(tasks.find(t=>t.symbol==='SYNTH').from).toBe('2023-08-15');
 });
+
+test('closed price requirements stop at the last held day while open lots stay current',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-13T12:00:00Z'));
+ portfolio._getPositionComponents.mockResolvedValue([]);
+ db.query.mockImplementation(async sql=>({rows:sql.startsWith('SELECT symbol,instrument_type')?[
+  {symbol:'CLOSED',broker:'other',instrument_type:'stock',entry_time:'2026-09-01T12:00:00Z',exit_time:'2026-09-30T16:00:00Z'},
+  {symbol:'OPEN',broker:'other',instrument_type:'stock',entry_time:'2026-09-01T12:00:00Z'},
+  {symbol:'DAY',broker:'other',instrument_type:'stock',entry_time:'2026-09-01T12:00:00Z',exit_time:'2026-09-01T16:00:00Z'}
+ ]:[]}));
+ const tasks=await service.plan('owner');
+ expect(tasks.find(t=>t.symbol==='CLOSED').to).toBe('2026-09-29');
+ expect(tasks.find(t=>t.symbol==='OPEN').to).toBe('2026-10-12');
+ expect(tasks.find(t=>t.symbol==='DAY').to).toBe('2026-09-01');
+ jest.useRealTimers();
+});

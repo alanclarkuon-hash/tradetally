@@ -143,3 +143,7 @@ The alternate broker OneDay equity feed is bounded to 1,000 rows and exact instr
 
 A cross-broker bare-symbol calendar is accepted only where every other source broker independently proves the same venue calendar. Trading 212 proof uses owner/account-scoped ledger fill reference, execution time and allocated quantity plus an exact native instrument catalogue entry. Identical overlapping evidence deduplicates; conflicting evidence rejects. No global bare-symbol identity or source financial record is changed.
 
+
+Retired native-USD equities without a price cache have a distinct recovery route. Exact typed US instrument identity and native USD quote descriptors are required. Account-scoped statement lot profiles must independently confirm native USD, unchanged opening cost/share units and no split allocations. At least three dated native execution-price anchors must fit the broker daily intraday envelopes without contradiction. Paired detailed/legacy closes verify later held sessions; an independently corroborated feed tail is limited to seven days and stops at disagreement. Only verified US sessions are saved. This route has its own cache source tag; reconstruction never infers native USD from ordinary USD-normalized prices.
+
+Closed-lot portfolio price requirements end at the last held valuation day; same-day trades retain an entry-day requirement. Chart padding is requested separately and does not require prices after a position has exited. Open holdings still require closes through yesterday.
