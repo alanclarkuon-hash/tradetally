@@ -1,4 +1,5 @@
 const axios = require('axios');
+const cheerio = require('cheerio');
 const {normaliseMinorUnit}=require('../utils/quoteCurrency');
 const routes = { L:['lon','GBP'], HK:['hkg','HKD'], F:['fra','EUR'], DE:['etr','EUR'], OL:['osl','NOK'] };
 const memo = new Map();
@@ -58,19 +59,37 @@ async function download(symbol) {
  })();
  memo.set(key,{time:Date.now(),promise});promise.catch(()=>memo.delete(key));if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
 }
+async function splitProof(data) {
+ if(!data.proofPromise)data.proofPromise=(async()=>{
+  const html=await page(data.path.replace(/history\/$/,'statistics/'));
+  const pos=html.indexOf('info:{');if(pos<0)return;
+  const info=literalObject(html,pos+5),ticker=stringField(info,'ticker')||stringField(info,'symbol');
+  const curr=info.match(/curr:\{([^}]+)\}/)?.[1],unit=normaliseMinorUnit(stringField('{'+curr+'}','price'));
+  if(ticker?.toUpperCase()!==data.ticker||stringField(info,'nameFull')!==data.name||(stringField(info,'exchange_code')||stringField(info,'exchange'))!==data.exchange||unit?.code!==data.currency)return;
+  const $=cheerio.load(html),fields=new Map();
+  for(const tr of $('tr').toArray()){const cells=$(tr).find('td');if(cells.length===2)fields.set($(cells[0]).text().trim(),$(cells[1]).text().trim());}
+  const last=fields.get('Last Split Date'),type=fields.get('Split Type'),ratio=fields.get('Split Ratio');
+  if(last==='n/a'&&type==='n/a'&&ratio==='n/a')data.unadjustedAfter='1900-01-01';
+  else if(last&&last!=='n/a'&&Number.isFinite(Date.parse(last))&&ratio&&ratio!=='n/a')data.unadjustedAfter=new Date(last).toISOString().slice(0,10);
+ })().catch(()=>{});
+ await data.proofPromise;
+}
 // Native dated quotes are the reference for both security continuity and split
 // basis. Only fill near an independently verified overlap; never overwrite it.
 function verifiedRows(data,from,to,cached) {
- if(!cached || cached.currency!==data.currency)return [];
- const existing=new Map((cached.prices||[]).map(p=>[p.date,p.close]));
- const splits=cached.splits||[];
+ if(cached?.currency&&cached.currency!==data.currency)return [];
+ const existing=new Map((cached?.prices||[]).map(p=>[p.date,p.close]));
+ const splits=cached?.splits||[];
  const factor=d=>splits.filter(s=>s.date>d).reduce((v,s)=>v*s.ratio,1);
  const anchors=data.prices.filter(p=>existing.has(p.date)&&Math.abs(existing.get(p.date)/(p.close*factor(p.date))-1)<=0.02).map(p=>p.date).sort();
- return data.prices.filter(p=>p.date>=from&&p.date<=to&&!existing.has(p.date)&&anchors.some(d=>Math.abs(Date.parse(d)-Date.parse(p.date))<=3*86400000)).map(p=>({...p,close:p.close*factor(p.date)}));
+ return data.prices.filter(p=>p.date>=from&&p.date<=to&&!existing.has(p.date)&&(anchors.some(d=>Math.abs(Date.parse(d)-Date.parse(p.date))<=3*86400000)||(data.unadjustedAfter&&p.date>=data.unadjustedAfter&&!splits.some(s=>s.date>p.date)))).map(p=>({...p,close:p.close*factor(p.date)}));
 }
 async function verified(symbol,from,to,cached) {
- const data=await download(symbol),prices=verifiedRows(data,from,to,cached);
+ const data=await download(symbol);
+ if(verifiedRows(data,from,to,cached).length<data.prices.filter(p=>p.date>=from&&p.date<=to).length)await splitProof(data);
+ const prices=verifiedRows(data,from,to,cached);
  const dates=new Set(prices.map(p=>p.date));
- return {...data,prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
+ const {proofPromise,...publicData}=data;
+ return {...publicData,prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
 }
-module.exports={download,verified,verifiedRows,route,literalObject,stringField};
+module.exports={download,verified,verifiedRows,splitProof,route,literalObject,stringField};
