@@ -149,6 +149,26 @@ async function lookup(symbol) {
   yahooLane=request; lookupLanes.set(symbol,request);
   try{return await request;}finally{lookupLanes.delete(symbol);}
 }
+async function trading212CalendarEvidence(userId,symbol,trades) {
+ if(!trades.length||trades.some(t=>t.broker!=='trading212'||(t.instrument_type||'stock')!=='stock'))return null;
+ const reports=(await db.query(`SELECT a.account_identifier,r.records FROM broker_cash_reports r JOIN user_accounts a ON a.id=r.account_id WHERE r.user_id=$1 AND a.user_id=$1 AND r.broker_type='trading212'`,[userId])).rows;
+ const catalogues=await require('./brokerInstrumentSymbols').cataloguesForUser(db,userId);
+ const {currentSymbol}=require('./brokerSync/trading212Instruments');
+ for(const trade of trades) {
+  const entries=(trade.executions||[]).filter(e=>e.type==='entry');if(!entries.length)return null;
+  const rawRecords=reports.filter(r=>r.account_identifier===trade.account_identifier).flatMap(r=>r.records||[]);
+  const records=[...new Map(rawRecords.map(r=>[JSON.stringify([String(r.reference),r.time,r.side,r.quantity,r.symbol]),r])).values()];
+  const catalogue=catalogues.find(c=>c.account_identifier===trade.account_identifier)?.instruments||[];
+  for(const entry of entries) {
+   if(entry.order_id==null||!String(entry.order_id).trim()||!Number.isFinite(Number(entry.quantity)))return null;
+   const matches=records.filter(r=>String(r.reference)===String(entry.order_id)&&r.side==='BUY'&&Number.isFinite(Date.parse(entry.datetime))&&Math.abs(Date.parse(r.time)-Date.parse(entry.datetime))<1000&&Number(entry.quantity)>0&&Number.isFinite(Number(r.quantity))&&Number(r.quantity)>=Number(entry.quantity)-1e-8);
+   if(matches.length!==1)return null;
+   const native=matches[0].symbol,items=catalogue.filter(i=>i.ticker===native);
+   if(items.length!==1||!/_US_EQ$/i.test(native)||currentSymbol(items[0])!==symbol||!/^[A-Z]{2}[A-Z0-9]{9}[0-9]$/.test(items[0].isin||'')||items[0].currencyCode!=='USD')return null;
+  }
+ }
+ return 'US';
+}
 const brokerIdentities=new Map();
 async function brokerCalendar(userId,symbol) {
  const key=userId+':'+symbol,old=brokerIdentities.get(key);
@@ -158,13 +178,17 @@ async function brokerCalendar(userId,symbol) {
   const raw=(await db.query("SELECT symbol,broker,instrument_type,account_identifier,entry_time,exit_time,trade_date,entry_price,quantity,executions FROM trades WHERE user_id=$1 AND UPPER(symbol)=$2 AND COALESCE(instrument_type,'stock') IN ('stock','cfd')",[userId,symbol])).rows;
   await require('./brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,userId,raw);
   const sources=raw.filter(r=>!r.history_market_symbol||r.history_market_symbol===symbol);
-  if(!sources.length||sources.some(r=>r.broker!=='etoro'))return null;
+  if(!sources.length||!sources.some(r=>r.broker==='etoro'))return null;
+  const others=sources.filter(r=>r.broker!=='etoro');
+  const otherCalendar=others.length?await trading212CalendarEvidence(userId,symbol,others):null;
+  if(others.length&&!otherCalendar)return null;
   const connections=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='etoro' AND connection_status='active'",[userId])).rows;
   if(!connections.length)return null;
   const connection=await require('../models/BrokerConnection').findById(connections[0].id,true);
   const metadata=await require('./brokerHistoryProviders').etoroArchivedEquities(connection,symbol);
   if(metadata.length!==1||String(metadata[0].symbolFull).toUpperCase()!==symbol||![5,6].includes(Number(metadata[0].instrumentTypeId)))return null;
-  return identify(symbol,metadata[0].exchange)||null;
+  const calendar=identify(symbol,metadata[0].exchange)||null;
+  return otherCalendar&&calendar!==otherCalendar?null:calendar;
  })().catch(()=>null);
  brokerIdentities.set(key,{value,expires:Date.now()+3600000});
  if(brokerIdentities.size>4096)brokerIdentities.delete(brokerIdentities.keys().next().value);
@@ -191,5 +215,8 @@ async function resolve(symbol,{allowLookup=false,userId=null}={}) {
   try { const known=await value; return scoped(known || (allowLookup && !verifiedListings.has(symbol) ? await lookup(symbol) : null)); }
   catch {identities.delete(symbol);return null;}
 }
-module.exports={resolve,identify,isTradingDay,calendars,coversRange,brokerCalendar};
+module.exports={resolve,identify,isTradingDay,calendars,coversRange,brokerCalendar,trading212CalendarEvidence};
+
+
+
 
