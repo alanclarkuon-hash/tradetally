@@ -47,3 +47,30 @@ test('native Australian daily prices and splits use exchange session dates',()=>
  const result=parseYahoo({meta:{currency:'AUD',exchangeTimezoneName:'Australia/Sydney'},timestamp:[Date.parse('2023-01-02T23:00:00Z')/1000],indicators:{quote:[{close:[10]}]},events:{splits:{one:{date:Date.parse('2023-01-03T23:00:00Z')/1000,numerator:2,denominator:1}}}});
  expect(result.prices).toEqual([{date:'2023-01-03',close:20}]);expect(result.splits).toEqual([{date:'2023-01-04',ratio:2}]);
 });
+
+test('verified first-trade evidence is saved without rewriting existing closes',async()=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-02')/1000},timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ const before=saved.prices[0];const result=await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});
+ expect(result.listing.meta.firstTradeDate).toBe(Date.parse('2026-01-02')/1000);expect(result.prices[0]).toEqual(before);
+});
+test('shared candles before the verified listing are not inserted',async()=>{
+ saved=null;portfolio._getDailySeries.mockResolvedValue(['2026-01-02','2026-01-05'].map(d=>({time:Date.parse(d)/1000,close:10})));
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-05')/1000},timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ const result=await loadMarket('SYNTH','2026-01-02','2026-01-05',{fetchPrices:true,userId:'owner'});expect(result.prices.map(p=>p.date)).toEqual(['2026-01-05']);
+});
+test('modern listing metadata cannot replace evidence for existing older cached prices',async()=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-05')/1000},timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ const result=await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(result.listing).toBeUndefined();expect(result.prices[0]).toEqual({date:'2026-01-02',close:100});
+});
+
+test('a failed pre-IPO range reads lifetime metadata once and retains existing prices',async()=>{
+ saved={currency:'USD',from:'2026-01-05',to:'2026-01-05',prices:[{date:'2026-01-05',close:100}],splits:[]};portfolio._getDailySeries.mockResolvedValue([]);
+ axios.get.mockRejectedValueOnce(Error('No pre-IPO history')).mockResolvedValueOnce({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-05')/1000}}]}}});
+ const result=await loadMarket('SYNTH','2026-01-02','2026-01-05',{fetchPrices:true,userId:'owner'});
+ expect(result.prices).toEqual(saved.prices);expect(result.listing.meta.firstTradeDate).toBe(Date.parse('2026-01-05')/1000);
+ expect(axios.get.mock.calls[1][1].params).toEqual({interval:'1d',range:'5d'});
+});
+test('failed history and incompatible current metadata retain existing evidence',async()=>{
+ portfolio._getDailySeries.mockResolvedValue([]);axios.get.mockRejectedValueOnce(Error('Unavailable')).mockResolvedValueOnce({data:{chart:{result:[{meta:{symbol:'OTHER',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-02')/1000}}]}}});
+ const result=await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(result).toEqual(saved);expect(db.withTransaction).not.toHaveBeenCalled();
+});
