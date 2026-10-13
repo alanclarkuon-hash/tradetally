@@ -83,7 +83,7 @@ test('reviewed full closures are excluded but half days and other venues remain 
  expect(calendar.isTradingDay('2026-04-02','STOCKHOLM')).toBe(true);
  expect(calendar.isTradingDay('2026-12-24','MADRID')).toBe(true);
  expect(calendar.isTradingDay('2023-01-02','EURONEXT')).toBe(true);
- expect(calendar.identify('UNKNOWN','PNK')).toBeNull();
+ expect(calendar.identify('UNKNOWN','UNVERIFIED OTC')).toBeNull();
 });
 test('calendar years outside published evidence keep weekday gaps and report incomplete calendar coverage',()=>{
  expect(calendar.coversRange('EURONEXT','2020-01-01','2026-12-31')).toBe(true);
@@ -104,3 +104,23 @@ test('archived Madrid closures preserve actual half sessions and Milan daytime t
  for(const day of ['2022-01-06','2022-06-02','2022-12-30'])expect(calendar.isTradingDay(day,'MILAN')).toBe(true);
  expect(calendar.coversRange('MILAN','2021-01-01','2022-12-31')).toBe(false);
 });
+
+ test.each(['OQX','OQB','PNK','OTCM','OTCQX','OTCQB','OTC Markets OTCQX','OTC Markets OTCQB','Pink Sheets'])('verified US OTC equity venue %s uses equity sessions',venue=>{
+ expect(calendar.identify('SYNTHETIC',venue)).toBe('US');
+ expect(calendar.identify('SYNTHETIC.L',venue)).toBe('LSE');
+ });
+ test('OTC holiday-only gaps disappear while early closes and genuine sessions remain required',()=>{
+ const venue=calendar.identify('SYNTHETIC','OQX');
+ for(const d of ['2024-12-25','2025-01-01','2025-01-09','2025-01-20','2025-02-17'])expect(missingRanges([],d,d,false,venue)).toEqual([]);
+ for(const d of ['2025-01-10','2025-07-03','2025-11-28','2025-12-24','2025-10-13'])expect(missingRanges([],d,d,false,venue)).toEqual([{from:d,to:d}]);
+ expect(missingRanges([],'2025-01-09','2025-01-10',false,venue)).toEqual([{from:'2025-01-10',to:'2025-01-10'}]);
+ expect(calendar.identify('SYNTHETIC','OTC')).toBeNull();expect(calendar.identify('SYNTHETIC')).toBeNull();
+ });
+ test('previously persisted OTC listing resolves without fetching metadata again',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ db.query.mockResolvedValue({rows:[{exchange:'OQX',source:'yahoo'}]});
+ const before=axios.get.mock.calls.length;
+ expect(await calendar.resolve('SYNTHETIC_OTC_CACHED',{allowLookup:true})).toBe('US');
+ expect(await calendar.resolve('SYNTHETIC_OTC_CACHED')).toBe('US');
+ expect(axios.get.mock.calls.length).toBe(before);
+ });
