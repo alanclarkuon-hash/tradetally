@@ -93,3 +93,14 @@ test('calendar years outside published evidence keep weekday gaps and report inc
  expect(calendar.coversRange('OSLO','2020-01-01','2021-12-31')).toBe(false);
  expect(calendar.coversRange('EURONEXT','2027-01-01','2027-12-31')).toBe(false);
 });
+
+
+test('archived Madrid closures preserve actual half sessions and Milan daytime trading',()=>{
+ expect(calendar.coversRange('MADRID','2021-01-01','2026-12-31')).toBe(true);
+ for(const day of ['2021-12-24','2021-12-31','2022-04-18','2023-05-01','2024-12-26'])expect(calendar.isTradingDay(day,'MADRID')).toBe(false);
+ for(const day of ['2024-12-24','2024-12-31','2025-12-24','2025-12-31','2022-05-02'])expect(calendar.isTradingDay(day,'MADRID')).toBe(true);
+ expect(calendar.coversRange('MILAN','2022-01-01','2022-12-31')).toBe(true);
+ expect(calendar.isTradingDay('2022-08-15','MILAN')).toBe(false);
+ for(const day of ['2022-01-06','2022-06-02','2022-12-30'])expect(calendar.isTradingDay(day,'MILAN')).toBe(true);
+ expect(calendar.coversRange('MILAN','2021-01-01','2022-12-31')).toBe(false);
+});

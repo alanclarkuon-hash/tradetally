@@ -137,6 +137,12 @@
     "MILAN": {
       "source": "https://live.euronext.com/en/resources/trading-hours-holidays",
       "years": {
+        "2022": [
+          "2022-04-15",
+          "2022-04-18",
+          "2022-08-15",
+          "2022-12-26"
+        ],
         "2023": [
           "2023-04-07",
           "2023-04-10",
@@ -176,6 +182,9 @@
           "2026-12-25",
           "2026-12-31"
         ]
+      },
+      "yearSources": {
+        "2022": "https://www.assiomforex.it/archivioFiles/Avviso%20Provvedimento%2032390-2021.pdf"
       }
     },
     "STOCKHOLM": {
@@ -235,6 +244,41 @@
     "MADRID": {
       "source": "https://www.bolsasymercados.es/bme-exchange/docs/regula/sbolsas/esp/instrucc/2025/2025-65-IO-CALENDARIO-DE-SESIONES-2026.pdf",
       "years": {
+        "2021": [
+          "2021-01-01",
+          "2021-04-02",
+          "2021-04-05",
+          "2021-12-24",
+          "2021-12-31"
+        ],
+        "2022": [
+          "2022-04-15",
+          "2022-04-18",
+          "2022-12-26"
+        ],
+        "2023": [
+          "2023-04-07",
+          "2023-04-10",
+          "2023-05-01",
+          "2023-12-25",
+          "2023-12-26"
+        ],
+        "2024": [
+          "2024-01-01",
+          "2024-03-29",
+          "2024-04-01",
+          "2024-05-01",
+          "2024-12-25",
+          "2024-12-26"
+        ],
+        "2025": [
+          "2025-01-01",
+          "2025-04-18",
+          "2025-04-21",
+          "2025-05-01",
+          "2025-12-25",
+          "2025-12-26"
+        ],
         "2026": [
           "2026-01-01",
           "2026-04-03",
@@ -242,6 +286,13 @@
           "2026-05-01",
           "2026-12-25"
         ]
+      },
+      "yearSources": {
+        "2021": "https://www.bolsasymercados.es/dam/descargas/regulacion/renta-variable/bolsa-madrid/instruccion-operativa/2020/io-15-calendario-de-sesiones-del-a-o-2021.pdf",
+        "2022": "https://www.bolsasymercados.es/dam/descargas/regulacion/renta-variable/bolsa-madrid/instruccion-operativa/2021/io-18-calendario-de-sesiones-durante-el-a-o-2022.pdf",
+        "2023": "https://www.bolsasymercados.es/en/media/press-releases/2022/spanish-securities-markets-2023-trading-calendar.html",
+        "2024": "https://www.bolsasymercados.es/bme-exchange/docs/regula/sbolsas/ing/instrucc/2023/2023-45-TRADING-SESSIONS-CALENDAR-2024_eng.pdf",
+        "2025": "https://www.bolsasymercados.es/en/media/press-releases/2024/spanish-financial-markets-2025-trading-calendar.html"
       }
     }
   }

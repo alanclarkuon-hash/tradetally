@@ -26,7 +26,10 @@ async function yahoo(symbol, from, to) {
     headers: { 'User-Agent': 'TradeTally historical prices' }
   });
   const result = response.data?.chart?.result?.[0], quote = result?.indicators?.quote?.[0];
-  return (result?.timestamp || []).flatMap((time, i) => quote?.close?.[i] > 0
+  if(String(result?.meta?.symbol||'').toUpperCase()!==ticker.toUpperCase())
+    throw new Error('Historical listing identity does not match requested symbol');
+  const first=Number(result.meta.firstTradeDate)||0;
+  return (result?.timestamp || []).flatMap((time, i) => quote?.close?.[i] > 0 && Number.isFinite(time) && iso(time*1000)>=from && iso(time*1000)<=to && (!first||iso(time*1000)>=iso(first*1000))
     ? [{ time: Date.parse(iso(time * 1000)) / 1000, close: quote.close[i], open: quote.open?.[i] ?? quote.close[i], high: quote.high?.[i] ?? quote.close[i], low: quote.low?.[i] ?? quote.close[i], volume: quote.volume?.[i] || 0, currency:result.meta?.currency || null }] : []);
 }
 

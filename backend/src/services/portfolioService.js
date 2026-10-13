@@ -1890,6 +1890,7 @@ class PortfolioService {
     return positions.filter(p => p.totalShares > 0).map(p => ({
       symbol: p.symbol,
       instrumentType: p.instrumentType || 'stock',
+      accountIdentifiers: p.accountIdentifiers || [],
       shares: p.totalShares,
       effectiveDate: this._normalizeDateValue(p.openedAt),
       valueMultiplier: p.instrumentType === 'future' ? (p.pointValue || 1)

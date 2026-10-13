@@ -20,3 +20,30 @@ test('backfill mapping uses dated verified account catalogues without changing b
  expect(rows.map(t=>t.history_market_symbol)).toEqual(['NVTS','SRNG','LOKB']);
  expect(rows.map(t=>t.symbol)).toEqual(['LOKB','SRNG','LOKB']);
 });
+
+
+test('statement-confirmed closed lots supply historical listing identity without rewriting trades',async()=>{
+ const trade={broker:'etoro',account_identifier:'selected',symbol:'EXAMPLE',instrument_type:'stock',entry_time:'2021-06-01T10:00:00Z',entry_price:10,quantity:10,executions:[{type:'entry',etoro_position_id:'lot'}]};
+ const record={sourceType:'Open Position',positionId:'lot',details:'EXAMPLE/GBX',time:'2021-06-01T10:00:00Z',amount:100,units:10,date:'2021-06-01'};
+ db.query.mockResolvedValue({rows:[{account_identifier:'selected',records:[record]}]});
+ const wrongAccount={...trade,account_identifier:'other'};
+ const crypto={...trade,instrument_type:'crypto'};
+ await require('../../src/services/brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,'owner',[trade,wrongAccount,crypto]);
+ expect(trade).toMatchObject({symbol:'EXAMPLE',history_market_symbol:'EXAMPLE.L',history_market_currency:'GBX',entry_price:10,quantity:10});
+ expect(wrongAccount.history_market_symbol).toBeUndefined();expect(crypto.history_market_symbol).toBeUndefined();
+ expect(db.query.mock.calls[0][1]).toEqual(['owner']);
+});
+test('ambiguous opening currencies do not invent a historical listing',async()=>{
+ const trade={broker:'etoro',account_identifier:'selected',symbol:'EXAMPLE',instrument_type:'stock',entry_time:'2021-06-01T10:00:00Z',entry_price:10,quantity:10,executions:[]};
+ const row={sourceType:'Open Position',details:'EXAMPLE/GBP',time:'2021-06-01T10:00:00Z',amount:100,units:10,date:'2021-06-01'};
+ db.query.mockResolvedValue({rows:[{account_identifier:'selected',records:[{...row,positionId:'one'},{...row,details:'EXAMPLE/USD',positionId:'two'}]}]});
+ await require('../../src/services/brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,'owner',[trade]);
+ expect(trade.history_market_symbol).toBeUndefined();
+});
+
+ test('statement lot identity supports trade_date fallback without modifying broker fields',async()=>{
+ const t={broker:'etoro',account_identifier:'selected',symbol:'EXAMPLE',instrument_type:'stock',trade_date:'2021-06-01T10:00:00Z',entry_price:10,quantity:10,executions:[{type:'entry',etoro_position_id:'lot'}]};
+ db.query.mockResolvedValue({rows:[{account_identifier:'selected',records:[{sourceType:'Open Position',positionId:'lot',details:'EXAMPLE/GBX',time:t.trade_date,amount:100,units:10,date:'2021-06-01'}]}]});
+ await require('../../src/services/brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,'owner',[t]);
+ expect(t.history_market_symbol).toBe('EXAMPLE.L');expect(t.entry_time).toBeUndefined();
+ });
