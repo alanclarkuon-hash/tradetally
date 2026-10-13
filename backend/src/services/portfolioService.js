@@ -2033,6 +2033,17 @@ class PortfolioService {
       try { await persist(await historyProvider.yahoo(ticker, range.from, range.to), 'yahoo'); }
       catch { break; }
     }
+    if (ranges().length) {
+      try {
+        const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[ticker])).rows[0]?.payload;
+        const provider=require('./stockAnalysisHistory');
+        for (const range of ranges()) {
+          const result=await provider.verified(ticker,range.from,range.to,cached);
+          // Shared cache follows the existing split-adjusted daily-close basis.
+          await persist(result.candles,result.source);
+        }
+      } catch { /* Public range or verified native basis unavailable: retain gap. */ }
+    }
     return [...merged.values()].filter(c => c.time >= Date.parse(startDate)/1000 && c.time < Date.parse(endDate)/1000+86400).sort((a,b) => a.time-b.time);
   }
 
