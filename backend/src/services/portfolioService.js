@@ -1985,7 +1985,7 @@ class PortfolioService {
     const crypto = instrumentType === 'crypto';
     const ticker = crypto ? symbol.slice(7) : symbol;
     const merged = new Map(cachedCandles.map(c => [c.time, c]));
-    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true});
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true,userId});
     const persist = async (candles, source) => {
       const normalized=await require('../utils/dailyPriceCurrency').toUsd(candles,crypto||calendar==='US'?'USD':null);
       const fresh = normalized.filter(c => !merged.has(c.time));

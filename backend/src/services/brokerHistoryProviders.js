@@ -127,7 +127,7 @@ async function etoroArchivedEquities(connection,symbol) {
     const instrumentId=Number(field(row,'instrumentId')),type=Number(field(row,'instrumentTypeId')),symbolFull=field(row,'symbolFull');
     if(!Number.isSafeInteger(instrumentId)||instrumentId<=0||![5,6].includes(type)||Number(field(row,'exchangeId'))!==exchangeId||typeof symbolFull!=='string'||!symbolFull)throw Error('Invalid eToro archived identity');
     if(instruments.has(instrumentId))throw Error('Duplicate eToro archived identity');
-    instruments.set(instrumentId,{instrumentId,instrumentTypeId:type,symbolFull,exchangeId});
+    instruments.set(instrumentId,{instrumentId,instrumentTypeId:type,symbolFull,exchangeId,exchange:field(venues.find(v=>Number(field(v,'exchangeId'))===exchangeId),'exchangeDescription')});
    }
   }
   return [...instruments.values()];
