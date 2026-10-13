@@ -77,7 +77,7 @@ test.each([
  ['EXAMPLE.ZU','EXAMPLE.SW','CHF','EBS'],['EXAMPLE.ASX','EXAMPLE.AX','AUD','ASX'],
  ['EXAMPLE.B.US','EXAMPLE-B','USD','NMS']
 ])('broker namespace %s requests verified provider listing %s',async(symbol,ticker,currency,exchangeName)=>{
- axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:ticker,currency,exchangeName},timestamp:[Date.parse('2022-03-01')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:ticker,currency,exchangeName,...(exchangeName==='ASX'?{exchangeTimezoneName:'Australia/Sydney'}:{})},timestamp:[Date.parse('2022-03-01')/1000],indicators:{quote:[{close:[10]}]}}]}}});
  expect(await provider.yahoo(symbol,'2022-03-01','2022-03-01')).toEqual([expect.objectContaining({close:10,currency})]);
  expect(axios.get.mock.calls[0][0]).toContain('/'+ticker);
 });
@@ -91,3 +91,22 @@ test.each([
  await expect(provider.yahoo(symbol,'2022-03-01','2022-03-01')).rejects.toThrow(/listing/);
 });
 test.each(['EXAMPLE.DE','EXAMPLE.L','EXAMPLE.AS','EXAMPLE.SW','EXAMPLE.AX','EXAMPLE.CO','EXAMPLE.UNKNOWN'])('normal/unknown provider suffix %s stays unchanged',symbol=>expect(provider.yahooTicker(symbol)).toBe(symbol));
+
+
+test.each([['2023-01-02T23:00:00Z','2023-01-03'],['2023-07-03T00:00:00Z','2023-07-03']])('Australian daily session %s keeps local trading date %s across DST',async(stamp,day)=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE.AX',currency:'AUD',exchangeName:'ASX',exchangeTimezoneName:'Australia/Sydney',firstTradeDate:Date.parse(stamp)/1000},timestamp:[Date.parse(stamp)/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ const rows=await provider.yahoo('EXAMPLE.ASX',day,day);
+ expect(rows).toEqual([expect.objectContaining({time:Date.parse(day)/1000})]);
+ expect(axios.get.mock.calls[0][1].params.period1).toBeLessThan(Date.parse(day)/1000);
+});
+test.each([['America/New_York','2023-01-03T14:30:00Z','2023-01-03'],['Asia/Hong_Kong','2023-01-03T01:30:00Z','2023-01-03'],['Pacific/Auckland','2023-01-02T21:00:00Z','2023-01-03']])('declared exchange timezone %s sets the session date', (exchangeTimezoneName,stamp,day)=>expect(provider.yahooSessionDate(Date.parse(stamp)/1000,{exchangeTimezoneName})).toBe(day));
+test('Australian sessions without timezone or with invalid timezone are rejected',async()=>{
+ for(const exchangeTimezoneName of [undefined,'Invalid/Timezone']){
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE.AX',currency:'AUD',exchangeName:'ASX',exchangeTimezoneName},timestamp:[Date.parse('2023-01-02T23:00:00Z')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ await expect(provider.yahoo('EXAMPLE.ASX','2023-01-03','2023-01-03')).rejects.toThrow();
+ }
+});
+test('date-window bounds apply after exchange-session normalization',async()=>{
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE.AX',currency:'AUD',exchangeName:'ASX',exchangeTimezoneName:'Australia/Sydney'},timestamp:['2023-01-01T23:00:00Z','2023-01-02T23:00:00Z','2023-01-03T23:00:00Z'].map(d=>Date.parse(d)/1000),indicators:{quote:[{close:[9,10,11]}]}}]}}});
+ expect(await provider.yahoo('EXAMPLE.ASX','2023-01-03','2023-01-03')).toEqual([expect.objectContaining({close:10,time:Date.parse('2023-01-03')/1000})]);
+});

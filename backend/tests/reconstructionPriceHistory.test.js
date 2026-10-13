@@ -40,3 +40,10 @@ test('namespace reconstruction recovers native metadata and rejects pre-listing 
  expect(db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT'))[1][0]).toBe('EXAMPLE.NV');
  expect(axios.get.mock.calls[0][0]).toContain('/EXAMPLE.AS');
 });
+
+
+test('native Australian daily prices and splits use exchange session dates',()=>{
+ const {parseYahoo}=require('../src/services/portfolioReconstructionService');
+ const result=parseYahoo({meta:{currency:'AUD',exchangeTimezoneName:'Australia/Sydney'},timestamp:[Date.parse('2023-01-02T23:00:00Z')/1000],indicators:{quote:[{close:[10]}]},events:{splits:{one:{date:Date.parse('2023-01-03T23:00:00Z')/1000,numerator:2,denominator:1}}}});
+ expect(result.prices).toEqual([{date:'2023-01-03',close:20}]);expect(result.splits).toEqual([{date:'2023-01-04',ratio:2}]);
+});
