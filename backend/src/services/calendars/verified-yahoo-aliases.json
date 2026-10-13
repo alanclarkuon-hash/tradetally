@@ -105,6 +105,20 @@
       "currency": "EUR",
       "venue": "PAR",
       "source": "https://www.etoro.com/markets/vie.pa"
+    },
+    {
+      "symbol": "ROCKB.CO",
+      "ticker": "ROCK-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/rockb.co"
+    },
+    {
+      "symbol": "PBR.A",
+      "ticker": "PBR-A",
+      "currency": "USD",
+      "venue": "NYQ",
+      "source": "https://www.etoro.com/markets/pbr.a"
     }
   ]
 }
