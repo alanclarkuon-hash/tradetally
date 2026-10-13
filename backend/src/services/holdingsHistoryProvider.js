@@ -38,7 +38,10 @@ const namespaceRules={
  ZU:{suffix:'.SW',currency:'CHF',venues:/^(EBS|SWX|SIX|XSWX)$/i},
  ASX:{suffix:'.AX',currency:'AUD',venues:/^(ASX|XASX)$/i}
 };
+const verifiedAliases=new Map(require('./calendars/verified-yahoo-aliases.json').listings.map(l=>[l.symbol,l]));
 function yahooListing(symbol) {
+ const alias=verifiedAliases.get(String(symbol).toUpperCase());
+ if(alias)return {...alias,venues:new RegExp('^'+alias.venue+'$','i')};
  const hk=/^0[0-9]{4}\.HK$/i.test(symbol);
  if(hk)return {ticker:symbol.slice(1).toUpperCase(),currency:'HKD',venues:/^(HKG|HKEX|XHKG|HONG KONG)$/i};
  const match=/^([A-Z][A-Z0-9.-]*)\.(US|NV|ZU|ASX)$/i.exec(symbol);

@@ -1,0 +1,40 @@
+{
+  "notes": "Documented broker share-class representations only. Each Yahoo response must match the exact mapped listing, venue and native currency. Never infer aliases for arbitrary tickers ending A/B.",
+  "listings": [
+    {
+      "symbol": "HUSQB.ST",
+      "ticker": "HUSQ-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/husqb.st/"
+    },
+    {
+      "symbol": "HUSQA.ST",
+      "ticker": "HUSQ-A.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/husqa.st/"
+    },
+    {
+      "symbol": "NIBEB.ST",
+      "ticker": "NIBE-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/nibeb.st/"
+    },
+    {
+      "symbol": "EMBRACB.ST",
+      "ticker": "EMBRAC-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/embracb.st/"
+    },
+    {
+      "symbol": "MAERSKB.CO",
+      "ticker": "MAERSK-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/maerskb.co/"
+    }
+  ]
+}

@@ -178,3 +178,23 @@ test('Swiss closures never remove real adjacent sessions, US trading or crypto d
  expect(calendar.isTradingDay('2025-01-02','US')).toBe(true);
  expect(missingRanges([],'2025-01-02','2025-01-02',true,'SIX')).toHaveLength(1);
 });
+
+test('Nordic alias calendars resolve without unnecessary metadata downloads',async()=>{
+ const axios=require('axios'),before=axios.get.mock.calls.length;
+ expect(await calendar.resolve('MAERSKB.CO',{allowLookup:true})).toBe('COPENHAGEN');
+ expect(await calendar.resolve('HUSQB.ST',{allowLookup:true})).toBe('STOCKHOLM');
+ expect(axios.get.mock.calls.length).toBe(before);
+});
+
+test('Copenhagen sourced calendars retain local closures and actual market sessions',()=>{
+ expect(calendar.coversRange('COPENHAGEN','2021-01-01','2026-12-31')).toBe(true);
+ expect(calendar.coversRange('COPENHAGEN','2020-01-01','2021-01-01')).toBe(false);
+ expect(calendar.coversRange('COPENHAGEN','2026-01-01','2027-01-01')).toBe(false);
+ expect(calendar.identify('AAA.CO')).toBe('COPENHAGEN');
+ expect(calendar.identify('AAA','CPH')).toBe('COPENHAGEN');
+ expect(calendar.identify('AAA','XCSE')).toBe('COPENHAGEN');
+ for(const day of ['2021-04-30','2021-05-14','2022-05-13','2023-05-05','2023-06-05','2024-05-10','2025-05-30','2026-06-05'])expect(missingRanges([],day,day,false,'COPENHAGEN')).toEqual([]);
+ for(const day of ['2022-01-03','2023-01-02','2023-05-01','2024-04-26','2025-05-01','2026-05-01'])expect(calendar.isTradingDay(day,'COPENHAGEN')).toBe(true);
+ expect(calendar.isTradingDay('2023-05-05','STOCKHOLM')).toBe(true);
+ expect(missingRanges([],'2023-05-04','2023-05-05',false,'COPENHAGEN')).toEqual([{from:'2023-05-04',to:'2023-05-04'}]);
+});

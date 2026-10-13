@@ -87,12 +87,14 @@ function identify(symbol, exchange='') {
   if(symbol.endsWith('.OL')) return 'OSLO';
   if(symbol.endsWith('.MI')) return 'MILAN';
   if(symbol.endsWith('.ST')) return 'STOCKHOLM';
+  if(symbol.endsWith('.CO')) return 'COPENHAGEN';
   if(/\.(SW|ZU)$/.test(symbol)) return 'SIX';
   if(symbol.endsWith('.MC')) return 'MADRID';
   if(/^(PAR|BRU|AMS|LIS|XPAR|XBRU|XAMS|XLIS)$/.test(exchange)) return 'EURONEXT';
   if(/^(OSL|XOSL|OSLO)$/.test(exchange)) return 'OSLO';
   if(/^(MIL|XMIL|BORSA ITALIANA)$/.test(exchange)) return 'MILAN';
   if(/^(STO|XSTO|STOCKHOLM)$/.test(exchange)) return 'STOCKHOLM';
+  if(/^(CPH|XCSE|COPENHAGEN)$/.test(exchange)) return 'COPENHAGEN';
   if(/^(EBS|SWX|SIX|XSWX|SIX SWISS EXCHANGE)$/.test(exchange)) return 'SIX';
   if(/^(MCE|XMAD|MADRID)$/.test(exchange)) return 'MADRID';
   if(/^(ASX|XASX|AUSTRALIAN SECURITIES EXCHANGE)$/.test(exchange)) return 'ASX';
