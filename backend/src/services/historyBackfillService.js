@@ -71,7 +71,7 @@ async function plan(userId, scope = null) {
     if(!market.symbol)continue;
     requireFrom(market.symbol,market.instrumentType,entered);
     scopedTask(market.symbol,market.instrumentType,
-      iso(Date.parse(entered) - 30 * DAY), t.exit_time ? [iso(Math.max(Date.parse(entered),Date.parse(iso(t.exit_time))-DAY)), end].sort()[0] : end);
+      entered, t.exit_time ? [iso(Math.max(Date.parse(entered),Date.parse(iso(t.exit_time))-DAY)), end].sort()[0] : end);
   }
   const positions = await require('./portfolioService')._getPositionComponents(userId, accounts);
   for (const p of positions) {
