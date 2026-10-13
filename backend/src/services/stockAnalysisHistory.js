@@ -1,0 +1,76 @@
+const axios = require('axios');
+const {normaliseMinorUnit}=require('../utils/quoteCurrency');
+const routes = { L:['lon','GBP'], HK:['hkg','HKD'], F:['fra','EUR'], DE:['etr','EUR'], OL:['osl','NOK'] };
+const memo = new Map();
+let queue=Promise.resolve(),nextRequest=0,cooldownUntil=0;
+async function get(url,options) {
+ const task=queue.then(async()=>{
+  if(Date.now()<cooldownUntil)throw Error('Stock Analysis rate-limit cooldown');
+  const delay=nextRequest-Date.now();if(delay>0)await new Promise(r=>setTimeout(r,delay));
+  nextRequest=Date.now()+3000;
+  try{return await axios.get(url,options);}catch(error){
+   if(error.response?.status===429){const value=error.response.headers?.['retry-after'],seconds=Number(value);cooldownUntil=Date.now()+Math.max(120000,Number.isFinite(seconds)&&seconds>0?seconds*1000:Date.parse(value)-Date.now()||120000);}
+   throw error;
+  }
+ });queue=task.catch(()=>{});return task;
+}
+async function page(path) {
+ let url='https://stockanalysis.com'+path;
+ for(let n=0;n<3;n++) {
+  try{return (await get(url,{timeout:15000,maxRedirects:0,maxContentLength:8*1024*1024})).data;}
+  catch(e){if(![301,302,307,308].includes(e.response?.status)||!e.response.headers?.location)throw e;const target=new URL(e.response.headers.location,url);if(target.origin!=='https://stockanalysis.com')throw Error('Unexpected history-page redirect');url=target.href;}
+ }
+ throw Error('Too many history-page redirects');
+}
+// Only literal hydration data is read. Never execute scripts supplied by a site.
+function literalObject(text, start) {
+ let i=start, depth=0, quoted=false, escaped=false;
+ for(;i<text.length;i++) { const c=text[i]; if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;}else if(c==='"')quoted=true;else if(c==='{')depth++;else if(c==='}'&&!--depth)return text.slice(start,i+1); }
+ throw Error('Incomplete public listing metadata');
+}
+function stringField(text,key) {
+ const m=text.match(new RegExp('(?:^|[,\\{])'+key+':("(?:[^"\\\\]|\\\\.)*")'));
+ return m?JSON.parse(m[1]):null;
+}
+function route(symbol) {
+ const name=String(symbol).toUpperCase(),m=/^(.+)\.(L|HK|F|DE|OL)$/.exec(name);
+ if(m){const [venue,currency]=routes[m[2]],ticker=m[2]==='HK'?m[1].replace(/^0(?=\d{4}$)/,''):m[1];return {path:`/quote/${venue}/${ticker}/history/`,ticker,venue:venue.toUpperCase(),currency,type:'a'};}
+ const ticker=name.replace(/\.US$/,'');
+ if(!/^[A-Z][A-Z0-9.-]*$/.test(ticker)||ticker.endsWith('.OLD')||ticker.includes('.'))throw Error('Stock Analysis listing namespace unavailable');
+ return {path:`/stocks/${ticker.toLowerCase()}/history/`,ticker,currency:'USD',type:'s'};
+}
+async function download(symbol) {
+ const key=String(symbol).toUpperCase();
+ if(memo.has(key)&&Date.now()-memo.get(key).time<3600000)return memo.get(key).promise;
+ const promise=(async()=>{
+  const r=route(symbol);let html;
+  try{html=await page(r.path);}catch(e){if(e.response?.status!==404||r.type!=='s')throw e;r.path='/etf/'+r.ticker.toLowerCase()+'/history/';html=await page(r.path);}
+  const pos=html.indexOf('info:{');if(pos<0)throw Error('Public listing identity missing');
+  const info=literalObject(html,pos+5),ticker=stringField(info,'ticker')||stringField(info,'symbol'),exchange=stringField(info,'exchange_code')||stringField(info,'exchange'),curr=info.match(/curr:\{([^}]+)\}/)?.[1],priceCurrency=stringField('{'+curr+'}','price'),unit=normaliseMinorUnit(priceCurrency),currency=unit?.code;
+  if(ticker?.toUpperCase()!==r.ticker||(!unit||!(r.venue==='LON'?['GBP','USD']: [r.currency]).includes(currency))||(r.venue&&exchange!==r.venue)||(!r.venue&&!/^(NASDAQ|NYSE|NYSEARCA|NYSEAMERICAN|OTC|OTCQX|OTCQB|OTCPK)$/i.test(exchange||'')))throw Error('Stock Analysis listing identity mismatch');
+  const uid=stringField(info,'db_symbol')||stringField(info,'uid')||ticker;
+  const type=stringField(info,'type')?.charAt(0);if(!['s','e','a'].includes(type))throw Error('Unsupported public listing type');
+  const response=(await get(`https://api.stockanalysis.com/api/symbol/${type}/${encodeURIComponent(uid)}/history`,{params:{range:'5Y',period:'Daily'},timeout:20000,maxRedirects:0,maxContentLength:8*1024*1024})).data;
+  if(!Array.isArray(response.data))throw Error('Public daily history unavailable');
+  const source=html.match(/data:\{data:\{[^{}]*source:"([^"]+)"/)?.[1];if(!['tiingo','spg','spg-api'].includes(source))throw Error('Unverified historical-price source');
+  const rows=response.data.filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.t)&&[p.o,p.h,p.l,p.c].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>0)&&p.h>=Math.max(p.o,p.l,p.c)&&p.l<=Math.min(p.o,p.h,p.c)&&Number(p.v)>1);
+  return {symbol:key,ticker,exchange,currency,name:stringField(info,'nameFull'),path:r.path,source:'stockanalysis:'+source,basis:'split-adjusted-close',prices:rows.map(p=>({date:p.t,close:p.c/unit.divisor})),candles:rows.map(p=>({time:Date.parse(p.t)/1000,open:p.o/unit.divisor,high:p.h/unit.divisor,low:p.l/unit.divisor,close:p.c/unit.divisor,volume:p.v,currency}))};
+ })();
+ memo.set(key,{time:Date.now(),promise});promise.catch(()=>memo.delete(key));if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
+}
+// Native dated quotes are the reference for both security continuity and split
+// basis. Only fill near an independently verified overlap; never overwrite it.
+function verifiedRows(data,from,to,cached) {
+ if(!cached || cached.currency!==data.currency)return [];
+ const existing=new Map((cached.prices||[]).map(p=>[p.date,p.close]));
+ const splits=cached.splits||[];
+ const factor=d=>splits.filter(s=>s.date>d).reduce((v,s)=>v*s.ratio,1);
+ const anchors=data.prices.filter(p=>existing.has(p.date)&&Math.abs(existing.get(p.date)/(p.close*factor(p.date))-1)<=0.02).map(p=>p.date).sort();
+ return data.prices.filter(p=>p.date>=from&&p.date<=to&&!existing.has(p.date)&&anchors.some(d=>Math.abs(Date.parse(d)-Date.parse(p.date))<=3*86400000)).map(p=>({...p,close:p.close*factor(p.date)}));
+}
+async function verified(symbol,from,to,cached) {
+ const data=await download(symbol),prices=verifiedRows(data,from,to,cached);
+ const dates=new Set(prices.map(p=>p.date));
+ return {...data,prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
+}
+module.exports={download,verified,verifiedRows,route,literalObject,stringField};

@@ -120,6 +120,12 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
       }catch{/* Unverified metadata cannot remove any coverage requirement. */}
      }
     }
+    if(!native) {
+     try {
+      const result=await require('./stockAnalysisHistory').verified(ticker,gap.from,gap.to,cached);
+      if(result.prices.length)native={currency:result.currency,prices:result.prices,splits:cached?.splits||[]};
+     }catch{/* Never substitute an unverified listing, unit or subscription range. */}
+    }
     if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
     }
