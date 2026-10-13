@@ -101,9 +101,16 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     // Search is public metadata, but its filter can be ignored: verify exact identity.
     matches = await directory(`etoro-identity:${symbol}`,async()=>{
       const data=await etoro.get(connection,'/market-data/search',{
-        fields:'instrumentId,internalSymbolFull,instrumentTypeID',internalSymbolFull:symbol,pageSize:100,pageNumber:1
+        fields:'instrumentId,internalSymbolFull',internalSymbolFull:symbol,pageSize:100,pageNumber:1
       });
-      return (data.items||[]).filter(i=>String(field(i,'internalSymbolFull')).toUpperCase()===symbol);
+      const found=(data.items||[]).filter(i=>String(field(i,'internalSymbolFull')).toUpperCase()===symbol);
+      if(found.length!==1)return [];
+      const id=Number(field(found[0],'instrumentId'));
+      if(!Number.isSafeInteger(id)||id<=0)return [];
+      // Search projections omit instrument type. Verify the separate typed
+      // display metadata before requesting native history for a closed asset.
+      const metadata=await etoro.get(connection,'/market-data/instruments',{instrumentIds:String(id)});
+      return (field(metadata,'instrumentDisplayDatas')||[]).filter(i=>Number(field(i,'instrumentId'))===id&&String(field(i,'symbolFull')).toUpperCase()===symbol);
     });
   }
   if (matches.length !== 1) return [];
@@ -116,26 +123,52 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
   if (!Number.isSafeInteger(id) || id <= 0) return [];
   const coverage=await etoro.get(connection, `/data/instruments/${id}/candles/coverage`);
   if(Number(coverage.instrumentId)!==id || !Array.isArray(coverage.intervals)) throw Error('Invalid eToro coverage');
-  if(!coverage.intervals.some(i=>i.interval==='1d'&&Number(i.candles)>0))return [];
+  const interval=instrumentType==='crypto'&&coverage.intervals.some(i=>i.interval==='1h'&&Number(i.candles)>0)?'1h':'1d';
+  if(!coverage.intervals.some(i=>i.interval===interval&&Number(i.candles)>0))return [];
   const reference=instrumentType==='crypto'?null:(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
   const result = []; let cursor;
   for (let page = 0; page < 100; page++) {
     const data = await etoro.get(connection, `/data/instruments/${id}/candles`, {
-      interval: '1d', from: new Date(Date.parse(from)-DAY).toISOString(), to: new Date(Date.parse(to) + DAY).toISOString(), limit: 2000,
+      interval, from: new Date(Date.parse(from)-DAY).toISOString(), to: new Date(Date.parse(to) + DAY).toISOString(), limit: 2000,
       side:'bid',format:'verbose', ...(cursor ? { cursor } : {})
     });
     if (Number(data.instrumentId) !== id || !Array.isArray(data.results)) throw Error('Invalid eToro candles');
-    if(data.interval!=='1d'||data.side!=='bid')throw Error('Invalid eToro candle interval');
+    if(data.interval!==interval||data.side!=='bid')throw Error('Invalid eToro candle interval');
     const quote=String(data.symbol||'').split('/');
     if(data.results.length && (quote.length!==2 || quote[0].toUpperCase()!==symbol)) throw Error('Invalid eToro candle identity');
-    result.push(...data.results.map(r => etoroDaily(r,instrumentType,quote[1],reference)));
-    if (!data.pagination?.hasNext) return bounded(result, from, to);
+    if(interval==='1h'&&quote[1]!=='USD'&&data.results.length)throw Error('Invalid eToro crypto currency');
+    result.push(...(interval==='1h'?data.results:data.results.map(r => etoroDaily(r,instrumentType,quote[1],reference))));
+    if (!data.pagination?.hasNext) return bounded(interval==='1h'?etoroCryptoDays(result):result, from, to);
     if (!data.pagination.nextCursor || cursor === data.pagination.nextCursor) throw Error('eToro candle cursor did not advance');
     cursor = data.pagination.nextCursor;
   }
   throw Error('eToro candle page limit reached');
 }
 
+function etoroCryptoDays(rows) {
+ const groups=new Map();
+ for(const row of rows) {
+  const time=Date.parse(row.time);
+  if(!Number.isFinite(time))continue;
+  const date=day(time),group=groups.get(date)||{hours:new Map(),invalid:false};groups.set(date,group);
+  if(time%3600000!==0){group.invalid=true;continue;}
+  const values=[row.open,row.high,row.low,row.close].map(Number),volume=Number(row.volume??0);
+  const [open,high,low,close]=values;
+  if(!values.every(v=>Number.isFinite(v)&&v>0)||low>Math.min(open,close)||high<Math.max(open,close)||low>high||!Number.isFinite(volume)||volume<0){group.invalid=true;continue;}
+  const c={time,open,high,low,close,volume},old=group.hours.get(time);
+  if(old&&JSON.stringify(old)!==JSON.stringify(c))group.invalid=true;
+  group.hours.set(time,c);
+ }
+ const result=[];
+ for(const [date,g] of groups) {
+  if(g.invalid||g.hours.size!==24)continue;
+  const hours=[...g.hours.values()].sort((a,b)=>a.time-b.time),start=Date.parse(date);
+  if(!hours.every((c,i)=>c.time===start+i*3600000))continue;
+  const volume=hours.reduce((n,c)=>n+c.volume,0);if(!Number.isFinite(volume))continue;
+  result.push({time:start/1000,open:hours[0].open,high:Math.max(...hours.map(c=>c.high)),low:Math.min(...hours.map(c=>c.low)),close:hours[23].close,volume,currency:'USD'});
+ }
+ return result.sort((a,b)=>a.time-b.time);
+}
 function etoroDaily(row,type,currency,reference) {
   const time=Date.parse(row.time),hour=new Date(time).getUTCHours();
   if(!Number.isFinite(time))return null;
@@ -181,4 +214,4 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }
 }
-module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily };
+module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays };

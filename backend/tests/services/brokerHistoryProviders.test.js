@@ -60,10 +60,11 @@ test('eToro discovers a historical equity missing from the recent snapshot and u
  const etoro=require('../../src/services/brokerSync/etoroService');
  db.query.mockResolvedValueOnce({rows:[{payload:{instruments:[],instrumentTypes:[{instrumentTypeId:1,instrumentTypeDescription:'Stocks'}]}}]}).mockResolvedValueOnce({rows:[{payload:{currency:'HKD',prices:[{date:'2021-10-15',close:500}],splits:[]}}]});
  etoro.get.mockResolvedValueOnce({items:[{instrumentId:23,instrumentTypeId:1,internalSymbolFull:'0700.HK'},{instrumentId:9,internalSymbolFull:'WRONG'}]})
+ .mockResolvedValueOnce({instrumentDisplayDatas:[{instrumentId:23,instrumentTypeId:1,symbolFull:'0700.HK'}]})
  .mockResolvedValueOnce({instrumentId:23,intervals:[{interval:'1d',candles:20}]})
  .mockResolvedValueOnce({instrumentId:23,symbol:'0700.HK/HKD',interval:'1d',side:'bid',results:[{time:'2021-10-14T21:00:00Z',close:500}],pagination:{hasNext:false}});
  expect(await registry.etoroCandles({symbol:'0700.HK',instrumentType:'stock',from:'2021-10-15',to:'2021-10-15',userId:'owner',connection:{id:'conn'}})).toEqual([expect.objectContaining({close:500,time:Date.parse('2021-10-15')/1000})]);
- expect(etoro.get.mock.calls[2][2].from).toBe('2021-10-14T00:00:00.000Z');
+ expect(etoro.get.mock.calls[3][2].from).toBe('2021-10-14T00:00:00.000Z');
 });
 test('eToro history rejects a same-ticker equity when asked for a coin',async()=>{
  db.query.mockResolvedValue({rows:[{payload:{instruments:[{symbolFull:'SUI',instrumentId:1,instrumentTypeId:1}],instrumentTypes:[{instrumentTypeId:1,instrumentTypeDescription:'Stocks'}]}}]});
