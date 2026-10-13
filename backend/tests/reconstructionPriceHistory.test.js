@@ -74,3 +74,14 @@ test('failed history and incompatible current metadata retain existing evidence'
  portfolio._getDailySeries.mockResolvedValue([]);axios.get.mockRejectedValueOnce(Error('Unavailable')).mockResolvedValueOnce({data:{chart:{result:[{meta:{symbol:'OTHER',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-02')/1000}}]}}});
  const result=await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(result).toEqual(saved);expect(db.withTransaction).not.toHaveBeenCalled();
 });
+
+test('USD-normalized shared candles cannot establish an unknown native quote currency',async()=>{
+ saved=null;expect(await loadMarket('RETIRED','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'})).toBeNull();
+ expect(db.withTransaction).not.toHaveBeenCalled();
+});
+test('a separately corroborated native-USD cache route establishes native currency without inventing FX',async()=>{
+ saved=null;const query=db.query.getMockImplementation();db.query.mockImplementation(async(sql,args)=>sql.startsWith('SELECT price_date')?{rows:[{price_date:'2026-01-05'}]}:query(sql,args));
+ const result=await loadMarket('RETIRED','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});
+ expect(result).toMatchObject({currency:'USD',splits:[],prices:[{date:'2026-01-05',close:101}]});
+ expect(db.query.mock.calls.find(([sql])=>sql.startsWith('SELECT price_date'))[0]).toContain("data_source='broker:etoro:statement-native-usd'");
+});

@@ -108,3 +108,14 @@ test('native London display format is scoped to the exact typed LSE identity',()
  expect(etoroQuoteSymbol('BRK.B','BRK',{symbolFull:'BRK.B',exchangeId:7})).toBe(false);
  expect(etoroQuoteSymbol('FXPO.L','OTHER',metadata)).toBe(false);
 });
+
+test('a lagging detailed range uses only verified coverage currency for the alternate feed',async()=>{
+ const snapshotPayload={instruments:[{instrumentId:77,symbolFull:'LAG.L',instrumentTypeId:5,exchangeId:7}],instrumentTypes:[{instrumentTypeId:5,instrumentTypeDescription:'Stocks'}]};
+ const ref={currency:'GBP',splits:[],prices:['2023-10-20','2023-10-23','2023-10-24'].map(date=>({date,close:1}))};
+ db.query.mockImplementation(async sql=>({rows:[{payload:sql.includes('broker_import_snapshots')?snapshotPayload:ref}]}));
+ etoro.get.mockResolvedValueOnce({instrumentId:77,symbol:'LAG/GBX',intervals:[{interval:'1d',candles:100}]})
+ .mockResolvedValueOnce({instrumentId:77,symbol:null,interval:'1d',side:'bid',results:[],pagination:{hasNext:false}})
+ .mockResolvedValueOnce({interval:'OneDay',candles:[{instrumentId:77,candles:['2023-10-20','2023-10-23','2023-10-24','2023-10-25'].map(date=>({instrumentId:77,fromDate:date+'T00:00:00Z',open:100,high:101,low:99,close:100,volume:0}))}]});
+ expect(await request({symbol:'LAG.L',instrumentType:'stock'})).toEqual([expect.objectContaining({close:1,currency:'GBP'})]);
+ expect(etoro.get.mock.calls.at(-1)[1]).toBe('/market-data/instruments/77/history/candles/desc/OneDay/1000');
+});

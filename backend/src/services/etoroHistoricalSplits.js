@@ -124,7 +124,7 @@ function statementLotMetadata(trades,records,splits,{nativeFx}={}) {
   }
   // A mapped statement profile replaces the provider or differently named
   // broker profile, rather than applying both to the same lot.
-  result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority,listingAuthority});
+  result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority,unsplitCostAuthority:!!unchanged,listingAuthority});
  }
  return result;
 }

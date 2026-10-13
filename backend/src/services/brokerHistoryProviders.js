@@ -167,7 +167,9 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
   const interval=instrumentType==='crypto'&&coverage.intervals.some(i=>i.interval==='1h'&&Number(i.candles)>0)?'1h':'1d';
   if(!coverage.intervals.some(i=>i.interval===interval&&Number(i.candles)>0))return [];
   const reference=instrumentType==='crypto'?null:(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
-  const result = []; let cursor,quoteCurrency;
+  const coverageQuote=String(coverage.symbol||'').split('/');
+  const coverageCurrency=coverageQuote.length===2&&etoroQuoteSymbol(symbol,coverageQuote[0],matches[0])?coverageQuote[1]:null;
+  const result = [],nativeRows=[]; let cursor,quoteCurrency=coverageCurrency;
   for (let page = 0; page < 100; page++) {
     const data = await etoro.get(connection, `/data/instruments/${id}/candles`, {
       interval, from: new Date(Date.parse(from)-DAY).toISOString(), to: new Date(Date.parse(to) + DAY).toISOString(), limit: 2000,
@@ -179,12 +181,20 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
     if(data.results.length){if(quoteCurrency&&quoteCurrency!==quote[1])throw Error('eToro quote currency changed');quoteCurrency=quote[1];}
     if(data.results.length && (quote.length!==2 || !etoroQuoteSymbol(symbol,quote[0],matches[0]))) throw Error('Invalid eToro candle identity');
     if(interval==='1h'&&quote[1]!=='USD'&&data.results.length)throw Error('Invalid eToro crypto currency');
+    if(instrumentType!=='crypto')nativeRows.push(...data.results);
     result.push(...(interval==='1h'?data.results:data.results.map(r => etoroDaily(r,instrumentType,quote[1],reference))));
     if (!data.pagination?.hasNext) {
       const verified=bounded(interval==='1h'?etoroCryptoDays(result):result,from,to);
-      if(instrumentType==='crypto'||!quoteCurrency||!reference?.prices?.length)return verified;
+      if(instrumentType==='crypto'||!quoteCurrency)return verified;
       try {
         const legacy=await directory(`etoro-legacy-history:${id}`,()=>etoro.get(connection,`/market-data/instruments/${id}/history/candles/desc/OneDay/1000`));
+        if(!reference?.prices?.length&&quoteCurrency==='USD'&&[4,5,19,20].includes(Number(field(matches[0],'exchangeId')))) {
+          const trades=(await db.query("SELECT * FROM trades WHERE user_id=$1 AND broker='etoro' AND account_identifier=$2 AND UPPER(symbol)=$3",[userId,'etoro:'+connection.externalAccountId,symbol])).rows;
+          if(trades.length){const reports=(await db.query("SELECT r.records FROM broker_cash_reports r JOIN user_accounts a ON a.id=r.account_id WHERE r.user_id=$1 AND a.user_id=$1 AND a.account_identifier=$2 AND r.broker_type='etoro'",[userId,trades[0].account_identifier])).rows.flatMap(r=>r.records||[]);
+            const proof=require('./etoroHistoricalSplits'),profiles=proof.statementLotMetadata(trades,reports,proof.statementSplits(reports));
+            return require('./etoroStatementEquityHistory').corroborate(legacy,id,trades,profiles,from,to,nativeRows);
+          }
+        }
         const merged=new Map(verified.map(c=>[c.time,c]));
         for(const c of etoroLegacyDaily(legacy,id,quoteCurrency,reference,from,to))if(!merged.has(c.time))merged.set(c.time,c);
         return [...merged.values()].sort((a,b)=>a.time-b.time);
@@ -300,13 +310,9 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
       const connection = await BrokerConnection.findById(row.id, row.broker_type === 'etoro');
       for (const { from, to } of ranges()) {
         const prices = await adapter({ userId, symbol, instrumentType, from, to, connection });
-        if (prices.length) await onPrices(prices.map(c=>({...c,currency:c.currency||(instrumentType==='crypto'?'USD':null)})), row.broker_type);
+        if (prices.length) await onPrices(prices.map(c=>({...c,currency:c.currency||(instrumentType==='crypto'?'USD':null)})), row.broker_type==='etoro'&&prices.every(c=>c.nativeEvidence==='statement-usd-unsplit')?'etoro:statement-native-usd':row.broker_type);
       }
     } catch { /* Provider fallback handles unavailable permissions, pairs or dates. */ }
   }
 }
 module.exports = { fetch, adapters, bounded, candle, kraken, okx, etoroCandles, etoroDaily, etoroCryptoDays, etoroSearch, etoroArchivedEquities, etoroQuoteSymbol, etoroLegacyDaily };
-
-
-
-

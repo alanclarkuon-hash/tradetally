@@ -124,6 +124,13 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
     }
    }
+   if(!currency&&shared.length){
+    // Only this separately proven native-USD route can establish currency.
+    // Ordinary normalized USD cache rows may originate in any quote currency.
+    const verified=(await db.query("SELECT price_date FROM historical_prices WHERE symbol=$1 AND is_final AND data_source='broker:etoro:statement-native-usd' AND price_date BETWEEN $2 AND $3",[ticker,gap.from,gap.to])).rows;
+    const dates=new Set(verified.map(r=>new Date(r.price_date).toISOString().slice(0,10)));
+    if(shared.every(c=>dates.has(date(c.time*1000))))currency='USD';
+   }
    if(!currency)continue;
    const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
    for(const row of rows){
