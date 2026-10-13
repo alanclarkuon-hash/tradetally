@@ -1,0 +1,30 @@
+{
+  "notes": "Exact legacy eToro opening symbols only; apply after statement position/cost authority and native-currency proof. Never use these as global bare ticker aliases.",
+  "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+  "listings": [
+    {
+      "symbol": "NESN",
+      "currency": "CHF",
+      "marketSymbol": "NESN.ZU",
+      "isin": "CH0038863350",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/nesn.zu"
+    },
+    {
+      "symbol": "ADEN",
+      "currency": "CHF",
+      "marketSymbol": "ADEN.ZU",
+      "isin": "CH0012138605",
+      "directoryPage": 12,
+      "source": "https://www.etoro.com/markets/aden.zu"
+    },
+    {
+      "symbol": "DANSKE",
+      "currency": "DKK",
+      "marketSymbol": "DANSKE.CO",
+      "isin": "DK0010274414",
+      "directoryPage": 36,
+      "source": "https://www.etoro.com/da-dk/markets/danske.co"
+    }
+  ]
+}

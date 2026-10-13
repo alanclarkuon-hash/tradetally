@@ -39,6 +39,7 @@ function historicalLotQuantity(trade,day,opened,closed,splits,marketSplits=[],{s
  for(const s of events)if(s.date>day)quantity/=s.ratio;
  return Number.isFinite(quantity)&&quantity>=0?quantity:null;
 }
+const legacyListings=require('./calendars/etoro-legacy-listings.json').listings;
 function statementLotMetadata(trades,records,splits) {
  const openings=new Map(),byId=new Map();
  // Compare documented broker listing representations within statement evidence.
@@ -94,6 +95,11 @@ function statementLotMetadata(trades,records,splits) {
   // An older bare statement label must not discard a fuller broker listing.
   if(!authority)marketSymbol=null;
   else if(marketSymbol&&!marketSymbol.includes('.')&&canonical(t.symbol,currency)===marketSymbol&&canonical(t.symbol,currency)!==t.symbol.toUpperCase())marketSymbol=t.symbol.toUpperCase();
+  // Legacy bare symbols are broker-specific and require proven native identity.
+  if(authority&&t.broker==='etoro'&&marketSymbol===t.symbol.toUpperCase()&&!marketSymbol.includes('.')) {
+   const listing=legacyListings.find(l=>l.symbol===marketSymbol&&l.currency===currency);
+   if(listing)marketSymbol=listing.marketSymbol;
+  }
   // A mapped statement profile replaces the provider or differently named
   // broker profile, rather than applying both to the same lot.
   result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority});

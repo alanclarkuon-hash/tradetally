@@ -102,3 +102,20 @@ test('an unproven same-time opening cannot supply an alias without cost or posit
  const opening={sourceType:'Open Position',positionId:'other',details:'SYNTH/EUR',time:lot.entry_time,units:2,amount:40};
  const meta=statementLotMetadata([lot],[opening],[]).get(lot);expect(meta.statementAuthority).toBeFalsy();expect(meta.marketSymbol).toBeNull();
 });
+
+describe('source-backed legacy eToro listing evidence',()=>{
+ const cases=[['NESN','CHF','NESN.ZU'],['ADEN','CHF','ADEN.ZU'],['DANSKE','DKK','DANSKE.CO']];
+ const metadata=(symbol,currency,{broker='etoro',authority=true}={})=>{
+  const lot={broker,symbol,entry_time:'2022-01-04T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:authority?'source':'different'}]};
+  const opening={sourceType:'Open Position',positionId:'source',details:symbol+'/'+currency,time:lot.entry_time,units:2,amount:authority?20:40};
+  return statementLotMetadata([lot],[opening],[]).get(lot);
+ };
+ test.each(cases)('native %s statement identity selects full broker listing',(symbol,currency,listing)=>{
+  const meta=metadata(symbol,currency);expect(meta.marketSymbol).toBe(listing);expect(meta.currency).toBe(currency);
+ });
+ test.each(cases)('bare %s is not redirected for another broker',(symbol,currency)=>expect(metadata(symbol,currency,{broker:'other'}).marketSymbol).toBe(symbol));
+ test.each(cases)('bare %s requires statement authority',(symbol,currency)=>expect(metadata(symbol,currency,{authority:false}).marketSymbol).toBeNull());
+ test.each(cases)('bare %s settlement USD does not supply a foreign listing',(symbol)=>expect(metadata(symbol,'USD').marketSymbol).toBe(symbol));
+ test('existing full listing is retained',()=>expect(metadata('NESN.SW','CHF').marketSymbol).toBe('NESN.SW'));
+ test('unregistered bare symbol is retained',()=>expect(metadata('UNKNOWN','CHF').marketSymbol).toBe('UNKNOWN'));
+});

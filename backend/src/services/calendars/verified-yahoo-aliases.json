@@ -1,5 +1,5 @@
 {
-  "notes": "Documented broker share-class representations only. Each Yahoo response must match the exact mapped listing, venue and native currency. Never infer aliases for arbitrary tickers ending A/B.",
+  "notes": "Source-backed broker listing and share-class representations. Responses must match exact mapped listing, venue and native currency; never infer arbitrary bare or trailing A/B aliases.",
   "listings": [
     {
       "symbol": "HUSQB.ST",
@@ -35,6 +35,13 @@
       "currency": "DKK",
       "venue": "CPH",
       "source": "https://www.etoro.com/markets/maerskb.co/"
+    },
+    {
+      "symbol": "DANSKE.CO",
+      "ticker": "DANSKE.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/da-dk/markets/danske.co"
     }
   ]
 }
