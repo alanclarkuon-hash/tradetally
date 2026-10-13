@@ -126,3 +126,15 @@ test('native contracts remain explicit coverage limitations without stock downlo
  db.query.mockResolvedValue({rows:[{id:'job',status:'completed',result}]});
  expect((await service.status('owner'))[0].gaps[0].unsupported).toBe(true);calendar.mockRestore();
 });
+
+ test.each([['same',false],['conflict',true]])('open positions reuse account-verified listing only with unanimous evidence: %s',async(_label,conflict)=>{
+ const rows=[{symbol:'EXAMPLE',account_identifier:'a',instrument_type:'stock',entry_time:'2022-01-01'}, {symbol:'EXAMPLE',account_identifier:'b',instrument_type:'stock',entry_time:'2022-01-01'}];
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM trades')?rows:[]}));
+ portfolio._getPositionComponents.mockResolvedValue([{symbol:'EXAMPLE',instrumentType:'stock',accountIdentifiers:['a','b'],effectiveDate:'2022-01-01'}]);
+ const mapping=jest.spyOn(require('../../src/services/brokerInstrumentSymbols'),'applyTradeHistoricalSymbols').mockImplementation(async(_db,_user,trades)=>{for(const t of trades)t.history_market_symbol=conflict&&t.account_identifier==='b'?'EXAMPLE.DE':'EXAMPLE.L'});
+ try{
+ const tasks=await service.plan('owner');
+ expect(tasks.some(t=>t.symbol==='EXAMPLE')).toBe(conflict);
+ expect(tasks.some(t=>t.symbol==='EXAMPLE.L')).toBe(true);
+ }finally{mapping.mockRestore()}
+ });

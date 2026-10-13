@@ -52,7 +52,7 @@ async function plan(userId, scope = null) {
   const floor = scope ? Object.values(scope.accounts).filter(Boolean).sort()[0] : null;
   const scopedTask = (symbol,type,from,to) => addTask(tasks,symbol,type,floor && from < floor ? floor : from,to);
   const end = iso(Date.now() - DAY), tasks = new Map();
-  const trades = (await db.query('SELECT symbol,instrument_type,underlying_symbol,entry_time,exit_time,trade_date,broker,account_identifier FROM trades WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
+  const trades = (await db.query('SELECT symbol,instrument_type,underlying_symbol,entry_time,exit_time,trade_date,broker,account_identifier,executions,entry_price,quantity FROM trades WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
   await require('./brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,userId,trades);
   for (const t of trades) {
     const entered = iso(t.entry_time || t.trade_date);
@@ -68,7 +68,12 @@ async function plan(userId, scope = null) {
   const positions = await require('./portfolioService')._getPositionComponents(userId, accounts);
   for (const p of positions) {
     if (!p.effectiveDate) continue;
-    const market=identity(p,iso(p.effectiveDate));
+    // Reuse a listing only when every contributing account/lot agrees.
+    const owners=p.accountIdentifiers||[];
+    const related=trades.filter(t=>owners.includes(t.account_identifier)&&t.symbol===p.symbol&&(t.instrument_type||'stock')===(p.instrumentType||'stock'));
+    const listings=new Set(related.map(t=>identity(t,iso(t.entry_time||t.trade_date)).symbol));
+    const verified=owners.length&&owners.every(a=>related.some(t=>t.account_identifier===a))&&listings.size===1;
+    const market=identity(verified?{...p,history_market_symbol:[...listings][0]}:p,iso(p.effectiveDate));
     if(market.unsupported)tasks.set(`${market.instrumentType}:${market.symbol}`,{...market,from:iso(p.effectiveDate),to:end});
     else scopedTask(market.symbol,market.instrumentType,iso(p.effectiveDate),end);
   }
