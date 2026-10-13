@@ -51,7 +51,8 @@ async function plan(userId, scope = null) {
   }
   const floor = scope ? Object.values(scope.accounts).filter(Boolean).sort()[0] : null;
   const scopedTask = (symbol,type,from,to) => addTask(tasks,symbol,type,floor && from < floor ? floor : from,to);
-  const end = iso(Date.now() - DAY), tasks = new Map();
+  const end = iso(Date.now() - DAY), tasks = new Map(),requiredDates=new Map();
+  const requireFrom=(symbol,type,day)=>{const key=type+':'+String(symbol).toUpperCase(),old=requiredDates.get(key);if(!old||day<old)requiredDates.set(key,day);};
   const trades = (await db.query('SELECT symbol,instrument_type,underlying_symbol,entry_time,exit_time,trade_date,broker,account_identifier,executions,entry_price,quantity FROM trades WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
   await require('./brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,userId,trades);
   for (const t of trades) {
@@ -62,6 +63,7 @@ async function plan(userId, scope = null) {
       continue;
     }
     if(!market.symbol)continue;
+    requireFrom(market.symbol,market.instrumentType,entered);
     scopedTask(market.symbol,market.instrumentType,
       iso(Date.parse(entered) - 30 * DAY), t.exit_time ? [iso(Date.parse(t.exit_time) + 30 * DAY), end].sort()[0] : end);
   }
@@ -75,7 +77,7 @@ async function plan(userId, scope = null) {
     const verified=owners.length&&owners.every(a=>related.some(t=>t.account_identifier===a))&&listings.size===1;
     const market=identity(verified?{...p,history_market_symbol:[...listings][0]}:p,iso(p.effectiveDate));
     if(market.unsupported)tasks.set(`${market.instrumentType}:${market.symbol}`,{...market,from:iso(p.effectiveDate),to:end});
-    else scopedTask(market.symbol,market.instrumentType,iso(p.effectiveDate),end);
+    else {requireFrom(market.symbol,market.instrumentType,iso(p.effectiveDate));scopedTask(market.symbol,market.instrumentType,iso(p.effectiveDate),end);}
   }
   // Closed coins and Earn/stablecoin balances may exist only in native ledgers.
   const snapshots = (await db.query('SELECT broker_type,payload FROM broker_import_snapshots WHERE user_id=$1 AND ($2::text[] IS NULL OR account_identifier=ANY($2))', [userId, scope ? accounts : null])).rows;
@@ -89,7 +91,9 @@ async function plan(userId, scope = null) {
     const preferences = (await db.query('SELECT default_benchmark_symbol FROM portfolio_preferences WHERE user_id=$1', [userId])).rows[0];
     addTask(tasks, preferences?.default_benchmark_symbol || 'SPY', 'stock', [...tasks.values()].filter(t=>!t.unsupported).map(t => t.from).sort()[0], end);
   }
-  return [...tasks.values()].sort((a,b) => a.from.localeCompare(b.from) || a.symbol.localeCompare(b.symbol));
+  const listings=(await db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1)',[[...tasks.values()].filter(t=>t.instrumentType==='stock'&&!t.unsupported).map(t=>t.symbol)])).rows;
+  const metadata=new Map(listings.map(r=>[r.symbol,r.payload]));
+  return [...tasks.values()].map(t=>require('./historyListingLifetime').trimPadding(t,requiredDates.get(t.instrumentType+':'+t.symbol),metadata.get(t.symbol))).sort((a,b) => a.from.localeCompare(b.from) || a.symbol.localeCompare(b.symbol));
 }
 function calendarCoverageReason(calendar,from,to) {
  const exchange=require('./exchangeCalendar');

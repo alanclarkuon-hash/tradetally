@@ -1,0 +1,9 @@
+const {firstDate,trimPadding}=require('../src/services/historyListingLifetime');
+const payload={currency:'USD',listing:{source:'yahoo',meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',exchangeTimezoneName:'America/New_York',firstTradeDate:Date.parse('2023-09-14T13:30:00Z')/1000}}};
+const task={symbol:'SYNTH',instrumentType:'stock',from:'2023-08-15',to:'2023-10-15'};
+test('verified IPO clips only pre-entry padding',()=>expect(trimPadding(task,'2023-09-14',payload)).toEqual({...task,from:'2023-09-14'}));
+test.each(['2021-01-01',undefined])('earlier or unproven actual holdings retain original range: %s',entered=>expect(trimPadding(task,entered,payload)).toBe(task));
+test.each([{...payload,listing:{...payload.listing,source:'unknown'}},{...payload,currency:'EUR'},{...payload,listing:{source:'yahoo',meta:{...payload.listing.meta,symbol:'OTHER'}}},{...payload,listing:{source:'yahoo',meta:{...payload.listing.meta,firstTradeDate:0}}},{...payload,listing:{source:'yahoo',meta:{...payload.listing.meta,firstTradeDate:NaN}}}])('invalid listing proof cannot suppress history %#',p=>expect(trimPadding(task,'2023-09-14',p)).toBe(task));
+test('a modern reused listing entirely after old held dates does not hide that range',()=>expect(trimPadding({...task,to:'2023-01-01'},'2023-01-01',payload).from).toBe(task.from));
+test('crypto lifecycle is not guessed from equity IPO metadata',()=>expect(trimPadding({...task,instrumentType:'crypto'},'2023-09-14',payload).from).toBe(task.from));
+test('exchange session timezone controls verified first date',()=>expect(firstDate('SYNTH',{...payload,listing:{source:'yahoo',meta:{...payload.listing.meta,exchangeTimezoneName:'Asia/Tokyo',firstTradeDate:Date.parse('2023-09-13T23:00:00Z')/1000}}})).toBe('2023-09-14'));

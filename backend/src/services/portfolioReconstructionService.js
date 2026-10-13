@@ -90,7 +90,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
  if(!gaps.length)return cached;
  let currency=cached?.currency||(crypto?'USD':null),splits=[...(cached?.splits||[])];
- const incoming=new Map();
+ const incoming=new Map();let listing=cached?.listing||null,metadataChecked=false;
  try {
   for(const gap of gaps){
    // Shared finalized daily prices use broker-first routing and USD units.
@@ -104,8 +104,23 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
      native=parseYahoo(result);
      const first=Number(result?.meta?.firstTradeDate)||0;
      if(first)native.prices=native.prices.filter(p=>p.date>=require('./holdingsHistoryProvider').yahooSessionDate(first,result.meta));
-    } catch { /* Cached native metadata remains usable; do not invent currencies. */ }
-    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;
+     const candidate={source:'yahoo',meta:Object.fromEntries(['symbol','currency','exchangeName','exchangeTimezoneName','firstTradeDate'].filter(k=>result.meta[k]!=null).map(k=>[k,result.meta[k]]))};
+     const firstDay=require('./historyListingLifetime').firstDate(ticker,{currency:native.currency,listing:candidate});
+     if(firstDay&&!(cached?.prices||[]).some(p=>p.date<firstDay))native.listing=candidate;
+     } catch {
+     // A pre-IPO historical request may return no result. Read current listing
+     // metadata once, retaining historic prices and never using today's quote.
+     if(!metadataChecked){metadataChecked=true;
+      try {
+       const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',range:'5d'},timeout:12000,maxRedirects:0,maxContentLength:1024*1024,headers:{'User-Agent':'TradeTally listing lifetime metadata'}});
+       const meta=response.data?.chart?.result?.[0]?.meta,unit=normaliseMinorUnit(meta?.currency);
+       const candidate={source:'yahoo',meta:Object.fromEntries(['symbol','currency','exchangeName','exchangeTimezoneName','firstTradeDate'].filter(k=>meta?.[k]!=null).map(k=>[k,meta[k]]))};
+       const firstDay=unit&&require('./historyListingLifetime').firstDate(ticker,{currency:unit.code,listing:candidate});
+       if(firstDay&&(!currency||currency===unit.code)&&!(cached?.prices||[]).some(p=>p.date<firstDay)){currency ||= unit.code;listing=candidate;}
+      }catch{/* Unverified metadata cannot remove any coverage requirement. */}
+     }
+    }
+    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
     }
    }
@@ -113,13 +128,14 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
    for(const row of rows){
     if(row.date<gap.from||row.date>gap.to||!(row.close>0))continue;
+    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom)continue;
     const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
     if(!(factor>0))continue;
     const later=row.adjusted?splits.filter(s=>s.date>row.date):splits.filter(s=>s.date>row.date&&!native?.splits.some(n=>n.date===s.date));
     incoming.set(row.date,{date:row.date,close:row.close*factor*later.reduce((v,s)=>v*s.ratio,1)});
    }
   }
-  if(!incoming.size)return cached||null;
+  if(!incoming.size&&(!listing||JSON.stringify(listing)===JSON.stringify(cached?.listing)))return cached||null;
   return await db.withTransaction(async client=>{
    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['reconstruction-prices:'+symbol]);
    const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[symbol])).rows[0]?.payload;
@@ -127,7 +143,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
    const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
    const prices=new Map((old?.prices||[]).map(p=>[p.date,p]));for(const [d,p] of incoming)if(!prices.has(d))prices.set(d,p);
-   const payload={...old,currency,splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
+   const payload={...old,currency,...(listing?{listing}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
    await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[symbol,payload]);return payload;
   });
  }catch{return cached||null;}

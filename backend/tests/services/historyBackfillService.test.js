@@ -148,3 +148,15 @@ test('native contracts remain explicit coverage limitations without stock downlo
  expect(r.gaps[0]).toMatchObject({symbol:'SYNTHETIC_OTC_SESSION',calendar:'US',ranges:[{from:'2025-01-10',to:'2025-01-10'}]});
  expect(portfolio._getDailySeries).not.toHaveBeenCalled();
  });
+
+test.each([['2023-09-14','2023-09-14'],['2021-09-14','2023-08-15']])('plan trims optional IPO padding only when actual held date %s permits it',async(entered,expected)=>{
+ const meta={currency:'USD',listing:{source:'yahoo',meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2023-09-14')/1000}}};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM trades')?[{symbol:'SYNTH',instrument_type:'stock',entry_time:entered}]:sql.includes('FROM portfolio_reconstruction_prices')?[{symbol:'SYNTH',payload:meta}]:[]}));
+ portfolio._getPositionComponents.mockResolvedValue([]);
+ const scope={accounts:{a:'2023-08-15'}},tasks=await service.plan('owner',scope);expect(tasks.find(t=>t.symbol==='SYNTH').from).toBe(expected);
+});
+test('an earlier contributing account prevents combined listing padding from hiding old holdings',async()=>{
+ const meta={currency:'USD',listing:{source:'yahoo',meta:{symbol:'SYNTH',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2023-09-14')/1000}}};
+ db.query.mockImplementation(async(sql,args)=>({rows:sql.includes('FROM trades')?[{symbol:'SYNTH',instrument_type:'stock',entry_time:args[1][0]==='new'?'2023-09-14':'2021-09-14'}]:sql.includes('FROM portfolio_reconstruction_prices')?[{symbol:'SYNTH',payload:meta}]:[]}));
+ portfolio._getPositionComponents.mockResolvedValue([]);const tasks=await service.plan('owner',{accounts:{new:'2023-08-15',old:'2023-08-15'}});expect(tasks.find(t=>t.symbol==='SYNTH').from).toBe('2023-08-15');
+});
