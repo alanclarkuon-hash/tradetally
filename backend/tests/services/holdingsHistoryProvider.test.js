@@ -110,3 +110,12 @@ test('date-window bounds apply after exchange-session normalization',async()=>{
  axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'EXAMPLE.AX',currency:'AUD',exchangeName:'ASX',exchangeTimezoneName:'Australia/Sydney'},timestamp:['2023-01-01T23:00:00Z','2023-01-02T23:00:00Z','2023-01-03T23:00:00Z'].map(d=>Date.parse(d)/1000),indicators:{quote:[{close:[9,10,11]}]}}]}}});
  expect(await provider.yahoo('EXAMPLE.ASX','2023-01-03','2023-01-03')).toEqual([expect.objectContaining({close:10,time:Date.parse('2023-01-03')/1000})]);
 });
+
+test.each(require('../../src/services/calendars/verified-yahoo-aliases.json').listings)('documented broker share class $symbol uses guarded listing $ticker',async listing=>{
+ const meta={symbol:listing.ticker,currency:listing.currency,exchangeName:listing.venue,exchangeTimezoneName:listing.venue==='STO'?'Europe/Stockholm':'Europe/Copenhagen'};
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta,timestamp:[Date.parse('2023-03-01T08:00Z')/1000],indicators:{quote:[{close:[10]}]}}]}}});
+ expect(await provider.yahoo(listing.symbol.toLowerCase(),'2023-03-01','2023-03-01')).toEqual([expect.objectContaining({close:10,currency:listing.currency})]);
+ expect(axios.get.mock.calls[0][0]).toContain('/'+listing.ticker);
+});
+test.each(['ABB.ST','SOBI.ST','UNKNOWNB.ST','HUSQ-B.ST','OTHERB.CO'])('unregistered Nordic symbol %s is never guessed',symbol=>expect(provider.yahooTicker(symbol)).toBe(symbol));
+test.each([{symbol:'HUSQ-A.ST',currency:'SEK',exchangeName:'STO'},{symbol:'HUSQ-B.ST',currency:'DKK',exchangeName:'STO'},{symbol:'HUSQ-B.ST',currency:'SEK',exchangeName:'CPH'},{symbol:'HUSQ-B.ST',currency:'SEK'}])('Nordic alias rejects wrong class, currency or venue %#',meta=>expect(()=>provider.verifyYahooListing('HUSQB.ST',meta)).toThrow(/listing/i));
