@@ -119,6 +119,76 @@
       "currency": "USD",
       "venue": "NYQ",
       "source": "https://www.etoro.com/markets/pbr.a"
+    },
+    {
+      "symbol": "HDD.F",
+      "ticker": "HDD.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GYC.F",
+      "ticker": "GYC.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "HLAG.F",
+      "ticker": "HLAG.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SZG.F",
+      "ticker": "SZG.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "EVK.F",
+      "ticker": "EVK.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "KER.PA",
+      "ticker": "KER.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GLE.PA",
+      "ticker": "GLE.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "IBE.MC",
+      "ticker": "IBE.MC",
+      "currency": "EUR",
+      "venue": "MCE",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "VWS.CO",
+      "ticker": "VWS.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SUBC.OL",
+      "ticker": "SUBC.OL",
+      "currency": "NOK",
+      "venue": "OSL",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
     }
   ]
 }

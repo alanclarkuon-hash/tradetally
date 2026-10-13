@@ -206,3 +206,13 @@ test('archived Milan 2021 follows its primary cash market column',()=>{
  expect(calendar.isTradingDay('2021-12-24','EURONEXT')).toBe(true);
  expect(calendar.coversRange('MILAN','2020-12-01','2021-01-01')).toBe(false);
 });
+test('Frankfurt joint exchange calendar preserves full and partial session distinctions',()=>{
+ expect(calendar.identify('HDD.F')).toBe('FRANKFURT');expect(calendar.identify('HDD','FRA')).toBe('FRANKFURT');
+ expect(calendar.identify('COPPER.FUT')).not.toBe('FRANKFURT');
+ for(const day of ['2020-06-01','2021-05-24','2025-12-24'])expect(calendar.isTradingDay(day,'FRANKFURT')).toBe(false);
+ for(const day of ['2025-06-09','2025-10-03'])expect(calendar.isTradingDay(day,'FRANKFURT')).toBe(true);
+ expect(calendar.coversRange('FRANKFURT','2020-01-01','2026-10-12')).toBe(true);
+ expect(calendar.coversRange('FRANKFURT','2019-01-01','2020-01-01')).toBe(false);
+});
+
+test('explicit non-Frankfurt suffix keeps its own venue despite a conflicting venue label',()=>expect(calendar.identify('KER.PA','FRA')).toBe('EURONEXT'));

@@ -119,3 +119,21 @@ describe('source-backed legacy eToro listing evidence',()=>{
  test('existing full listing is retained',()=>expect(metadata('NESN.SW','CHF').marketSymbol).toBe('NESN.SW'));
  test('unregistered bare symbol is retained',()=>expect(metadata('UNKNOWN','CHF').marketSymbol).toBe('UNKNOWN'));
 });
+describe('additional statement-proven European native listings',()=>{
+ const cases=[['HDD','EUR','HDD.F'],['GYC','EUR','GYC.F'],['HLAG','EUR','HLAG.F'],['SZG','EUR','SZG.F'],['EVK','EUR','EVK.F'],['KER','EUR','KER.PA'],['GLE','EUR','GLE.PA'],['IBE','EUR','IBE.MC'],['VWS','DKK','VWS.CO'],['SUBC','NOK','SUBC.OL']];
+ test.each(cases)('bare %s maps only for proven native broker evidence',(symbol,currency,listing)=>{
+ const lot={symbol,broker:'etoro',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+ const opening={sourceType:'Open Position',positionId:'synthetic',details:symbol+'/'+currency,time:lot.entry_time,units:2,amount:20};
+ expect(statementLotMetadata([lot],[opening],[]).get(lot)).toMatchObject({marketSymbol:listing,currency,statementAuthority:true});
+ const other={...lot,broker:'other'};expect(statementLotMetadata([other],[opening],[]).get(other).marketSymbol).toBe(symbol);
+ const wrong={...opening,details:symbol+'/USD'};expect(statementLotMetadata([lot],[wrong],[]).get(lot).marketSymbol).toBe(symbol);
+ });
+});
+test('an exact registered legacy statement label requires native position proof and preserves a full trade listing',()=>{
+ const lot={symbol:'GYC',broker:'etoro',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:2,executions:[{etoro_position_id:'synthetic'}]};
+ const record={sourceType:'Open Position',positionId:'synthetic',details:'GYC.DR/EUR',time:lot.entry_time,units:2,amount:20};
+ expect(statementLotMetadata([lot],[record],[]).get(lot)).toMatchObject({marketSymbol:'GYC.F',currency:'EUR',statementAuthority:true});
+ const full={...lot,symbol:'GYC.DE'};expect(statementLotMetadata([full],[record],[]).get(full).marketSymbol).toBe('GYC.DE');
+ expect(statementLotMetadata([lot],[{...record,details:'GYC.DR/USD'}],[]).get(lot).marketSymbol).toBeNull();
+ const other={...lot,broker:'other'};expect(statementLotMetadata([other],[record],[]).get(other).marketSymbol).not.toBe('GYC.F');
+});
