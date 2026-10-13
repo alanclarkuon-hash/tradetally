@@ -152,3 +152,10 @@ test('EUR dashboard converts native USD holdings to EUR',async()=>{
 });
 
 test('current-range P&L uses remaining native lots after partial sales, reconciled to the broker holding',()=>{const {currentRangeResult}=require('../src/services/portfolioDashboardService');const p={instrumentType:'stock',totalShares:5,currentValue:600};const native={totalShares:5,periodResult:{basis:500}};expect(currentRangeResult(p,{start_date:'2026-01-01',end_date:'2026-01-02'},native)).toMatchObject({pnl:100,percent:20,basis:500});expect(currentRangeResult({...p,totalShares:6},{},native).pnl).toBeNull();expect(currentRangeResult(p,{}, {...native,periodResult:{basis:null}}).pnl).toBeNull();});
+
+ test.each([['USD',1],['GBP',0.8],['EUR',0.9]])('current CFD heatmap preserves equity and P/L in %s',async(currency,rate)=>{
+  Portfolio.getPositions.mockResolvedValue([{symbol:'TEST',instrumentType:'cfd',totalShares:2,totalCostBasis:100,currentValue:110,unrealizedPnL:10,unrealizedPnLPercent:10,quoteSource:'Broker snapshot (etoro)'}]);
+  getRatesToDisplay.mockResolvedValue({USD:rate});db.query.mockResolvedValue({rows:[]});
+  const result=await getDashboard('owner',{currency});
+  expect(result.holdings[0]).toMatchObject({value:110*rate,cost:100*rate,pnl:10*rate,pnlPercent:10,quoteSource:'Broker snapshot (etoro)'});
+ });

@@ -76,7 +76,7 @@ function getPositionKey(trade) {
   // position whose totalCost and avgPrice add different units together — a
   // figure that cannot be labelled or converted correctly.
   const currency = storedCurrency(trade) || 'UNKNOWN';
-  if(trade.instrument_type==='spread_bet')return `spread_bet:${trade.symbol}:${trade.side}:${trade.account_identifier || ''}|${currency}`;
+  if(['spread_bet','cfd'].includes(trade.instrument_type))return `${trade.instrument_type}:${trade.symbol}:${trade.side}:${trade.account_identifier || ''}|${currency}`;
 
   if (trade.instrument_type === 'option' && trade.underlying_symbol
       && String(trade.underlying_symbol).trim()

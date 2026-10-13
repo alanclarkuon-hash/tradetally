@@ -1695,14 +1695,17 @@ class PortfolioService {
       const row = cachedPrices.get(key) || cachedPrices.get(position.symbol);
       const cached = usablePriceRow(row, position.instrumentType) ? row : null;
       const brokerDate = position.brokerPriceAsOf ? new Date(position.brokerPriceAsOf) : null;
+      // CFD snapshots represent invested equity per unit, not an underlying quote.
+      const brokerEquity = position.instrumentType === 'cfd';
       const useBroker = Number.isFinite(position.brokerCurrentPrice) &&
-        (!cached?.updatedAt || cached.updatedAt < brokerDate);
-      const currentPrice = useBroker ? position.brokerCurrentPrice : (cached && cached.price !== null ? cached.price : null);
-      const priceDate = useBroker ? brokerDate : cached?.updatedAt;
+        Number.isFinite(brokerDate?.getTime()) &&
+        (brokerEquity || !cached?.updatedAt || cached.updatedAt < brokerDate);
+      const currentPrice = useBroker ? position.brokerCurrentPrice : (!brokerEquity && cached && cached.price !== null ? cached.price : null);
+      const priceDate = useBroker ? brokerDate : (brokerEquity ? null : cached?.updatedAt);
       const ageMs = priceDate ? now - priceDate.getTime() : Infinity;
       const priceStale = currentPrice === null || ageMs > PRICE_FRESH_MS;
 
-      if (priceStale) {
+      if (priceStale && !brokerEquity) {
         symbolsNeedingRefresh.add(key);
       }
 
@@ -1728,9 +1731,9 @@ class PortfolioService {
         ? (position.totalDividendsReceived / position.totalCostBasis) * 100
         : position.dividendYieldOnCost;
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
-      position.quoteSession = useBroker ? null : cached?.quote_session || null;
+      position.quoteSession = useBroker || brokerEquity ? null : cached?.quote_session || null;
       position.quoteTimestampKind=useBroker?'observed':cached?.timestamp_kind||'observed';
-      position.quoteSource = useBroker ? `Broker snapshot (${position.brokers || 'unknown'})` : cached?.data_source || null;
+      position.quoteSource = useBroker ? `Broker snapshot (${position.brokers || 'unknown'})` : (brokerEquity ? null : cached?.data_source || null);
       position.priceStale = priceStale;
     }
 
