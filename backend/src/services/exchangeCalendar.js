@@ -107,12 +107,12 @@ function identify(symbol, exchange='') {
   // OTC Markets' market-hours calendar retains shortened sessions:
   // https://www.otcmarkets.com/market-hours
   // Do not generalize this to unidentified OTC products, FX or derivatives.
-  if(/^(OQX|OQB|PNK|OTCM|OTCQX|OTCQB|OTC MARKETS OTCQX|OTC MARKETS OTCQB|PINK SHEETS)$/.test(exchange)) return 'US';
+  if(/^(OQX|OQB|PNK|OTCM|OTCQX|OTCQB|OTC MARKETS OTCQX|OTC MARKETS OTCQB|OTC MARKETS STOCK EXCHANGE|PINK SHEETS)$/.test(exchange)) return 'US';
   // Never apply US holidays just because a ticker has no suffix.
   if(/LONDON|^LSE$|^XLON$|^LSEETF$/.test(exchange)) return 'LSE';
   if(/XETRA|^XET$|^GER$|^XETR$/.test(exchange)) return 'XETRA';
   if(/HONG KONG|^HKG$|^HKEX$|^XHKG$/.test(exchange)) return 'HKEX';
-  if(/NASDAQ|NYSE|NEW YORK STOCK|BATS|^XNYS$|^XNAS$|^ARCX$|^NMS$|^NGM$|^NCM$|^NYQ$|^PCX$|^ASE$|^BTS$|^SNP$|^DJI$/.test(exchange)) return 'US';
+  if(/NASDAQ|NYSE|NEW YORK STOCK|BATS|^XNYS$|^XNAS$|^ARCX$|^NMS$|^NGM$|^NCM$|^NYQ$|^PCX$|^ASE$|^BTS$|^SNP$|^DJI$|^CHICAGO BOARD OPTIONS EXCHANGE$/.test(exchange)) return 'US';
   return null;
 }
 async function lookup(symbol) {
@@ -151,7 +151,9 @@ async function brokerCalendar(userId,symbol) {
  if(old&&Date.now()<old.expires)return old.value;
  const value=(async()=>{
   // A bare symbol from a different broker must not inherit eToro's venue.
-  const sources=(await db.query("SELECT broker,instrument_type FROM trades WHERE user_id=$1 AND UPPER(symbol)=$2 AND COALESCE(instrument_type,'stock') IN ('stock','cfd')",[userId,symbol])).rows;
+  const raw=(await db.query("SELECT symbol,broker,instrument_type,account_identifier,entry_time,exit_time,trade_date,entry_price,quantity,executions FROM trades WHERE user_id=$1 AND UPPER(symbol)=$2 AND COALESCE(instrument_type,'stock') IN ('stock','cfd')",[userId,symbol])).rows;
+  await require('./brokerInstrumentSymbols').applyTradeHistoricalSymbols(db,userId,raw);
+  const sources=raw.filter(r=>!r.history_market_symbol||r.history_market_symbol===symbol);
   if(!sources.length||sources.some(r=>r.broker!=='etoro'))return null;
   const connections=(await db.query("SELECT id FROM broker_connections WHERE user_id=$1 AND broker_type='etoro' AND connection_status='active'",[userId])).rows;
   if(!connections.length)return null;

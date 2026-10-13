@@ -198,7 +198,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    const reports=(await db.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='etoro'",[userId,account.id])).rows;
    const records=reports.flatMap(r=>r.records||[]);
    etoroSplits=statementSplits(records);
-   etoroLots=statementLotMetadata(trades,records,etoroSplits);
+   etoroLots=statementLotMetadata(trades,records,etoroSplits,{nativeFx:fx});
   }
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');

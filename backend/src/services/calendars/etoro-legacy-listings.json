@@ -273,6 +273,30 @@
       "directoryPage": 11,
       "marketSymbol": "SBERL.L",
       "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "currency": "EUR",
+      "symbol": "MOR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "directoryPage": 42,
+      "marketSymbol": "MOR.F",
+      "isin": "DE0006632003"
+    },
+    {
+      "marketSymbol": "AOX.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "isin": "DE000A0LD2U1",
+      "currency": "EUR",
+      "directoryPage": 42,
+      "symbol": "AOX"
+    },
+    {
+      "marketSymbol": "SOW.F",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf",
+      "isin": "DE000A2GS401",
+      "currency": "EUR",
+      "directoryPage": 42,
+      "symbol": "SOW"
     }
   ]
 }

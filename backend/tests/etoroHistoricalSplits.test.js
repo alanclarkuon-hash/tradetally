@@ -154,3 +154,27 @@ describe('additional source-backed exact broker listing identities',()=>{
   expect(statementLotMetadata([lot],[wrong],[]).get(lot).marketSymbol).not.toBe('LQDE.L');
  });
 });
+describe('registered closed statement listing proof',()=>{
+ const make=()=>({symbol:'MONY',broker:'etoro',instrument_type:'stock',entry_time:'2022-01-03T10:00:00Z',exit_time:'2022-02-04T10:00:00Z',entry_price:10,quantity:2,executions:[{type:'exit',price:12,datetime:'2022-02-04T10:00:00Z',etoro_native_price:1200,etoro_fx:.01,etoro_statement_source:true,etoro_source_type:'Stocks',etoro_position_id:'42',etoro_record_key:'statement:42',etoro_statement_symbol:'MONY'}]});
+ test('verified closed native FX identifies a listing without granting split allocation authority',()=>{
+  const lot=make(),before=JSON.stringify(lot),meta=statementLotMetadata([lot],[],[],{nativeFx:()=>1}).get(lot);
+  expect(meta).toMatchObject({marketSymbol:'MONY.L',currency:'GBX',listingAuthority:true,statementAuthority:false});expect(JSON.stringify(lot)).toBe(before);
+  expect(historicalLotQuantity(lot,'2022-01-04','2022-01-03','2022-02-04',[],[{date:'2022-02-01',ratio:2}],meta)).toBeNull();
+ });
+ test.each(['broker','identity','fx','price','date','source'])('rejects unproven %s in closed evidence',kind=>{
+  const lot=make(),e=lot.executions[0];if(kind==='broker')lot.broker='other';if(kind==='identity')e.etoro_statement_symbol='OTHER';if(kind==='fx')e.etoro_fx=0;if(kind==='price')e.price=99;if(kind==='date')e.datetime='2021-01-01';if(kind==='source')e.etoro_statement_source=false;
+  expect(statementLotMetadata([lot],[],[],{nativeFx:()=>1}).get(lot).marketSymbol).toBeNull();
+ });
+});
+test('dated FX proof does not treat GBP major units as a GBX native rate or invent a rate',()=>{
+ const lot={symbol:'MONY',broker:'etoro',entry_time:'2022-01-03',exit_time:'2022-02-04',entry_price:10,quantity:2,executions:[{type:'exit',datetime:'2022-02-04',price:12,etoro_native_price:12,etoro_fx:1,etoro_statement_source:true,etoro_source_type:'Stocks',etoro_position_id:'42',etoro_record_key:'statement:42',etoro_statement_symbol:'MONY'}]};
+ expect(statementLotMetadata([lot],[],[],{nativeFx:()=>1}).get(lot).marketSymbol).toBeNull();
+ const correct={...lot,executions:[{...lot.executions[0],etoro_native_price:1200,etoro_fx:.01}]};
+ expect(statementLotMetadata([correct],[],[]).get(correct).marketSymbol).toBeNull();
+});
+test('closed listing proof can supplement consistent opening currency but never a conflicting profile',()=>{
+ const lot={symbol:'MONY',broker:'etoro',entry_time:'2022-01-03T10:00:00Z',exit_time:'2022-02-04T10:00:00Z',entry_price:10,quantity:2,executions:[{type:'exit',datetime:'2022-02-04T10:00:00Z',price:12,etoro_native_price:1200,etoro_fx:.01,etoro_statement_source:true,etoro_source_type:'Stocks',etoro_position_id:'42',etoro_record_key:'statement:42',etoro_statement_symbol:'MONY'}]};
+ const record={sourceType:'Open Position',positionId:'different',details:'MONY/GBX',time:lot.entry_time,amount:40,units:2};
+ expect(statementLotMetadata([lot],[record],[],{nativeFx:()=>1}).get(lot)).toMatchObject({marketSymbol:'MONY.L',listingAuthority:true,statementAuthority:false});
+ expect(statementLotMetadata([lot],[{...record,details:'MONY/EUR'}],[],{nativeFx:()=>1}).get(lot).marketSymbol).toBeNull();
+});
