@@ -4,6 +4,7 @@ const BrokerConnection = require('../models/BrokerConnection');
 const etoro = require('./brokerSync/etoroService');
 const { field } = require('./brokerSync/etoroService');
 const DAY = 86400000;
+const cryptoUnits=require('./cryptoPriceUnits');
 const day = t => new Date(t).toISOString().slice(0, 10);
 function candle(time, values) {
   const [open, high, low, close, volume] = values.map(Number);
@@ -21,10 +22,11 @@ async function kraken({ symbol, instrumentType, from, to }) {
     if (data.error?.length || !data.result) throw Error('Invalid Kraken pair directory');
     return data.result;
   });
+  const quote=cryptoUnits.underlying(symbol);
   const aliases = { BTC: 'XBT', DOGE: 'XDG' };
   const candidates = Object.entries(pairs).filter(([, p]) => {
-    const [base, quote] = String(p.wsname || '').split('/');
-    return [symbol, aliases[symbol]].includes(base) && quote === 'USD';
+    const [base, currency] = String(p.wsname || '').split('/');
+    return [quote.symbol,aliases[quote.symbol]].includes(base) && currency === 'USD';
   });
   if (candidates.length !== 1) return [];
   const body = await read('kraken', 'https://api.kraken.com/0/public/OHLC', {
@@ -35,7 +37,17 @@ async function kraken({ symbol, instrumentType, from, to }) {
   if (!Array.isArray(rows)) throw Error('Invalid Kraken candles');
   // Kraken explicitly marks the final row as the unfinished candle even when
   // an inactive market's last period predates today. Never infer commitment by date.
-  return bounded(rows.slice(0,-1).map(r => candle(Number(r[0]) * 1000, [r[1], r[2], r[3], r[4], r[6]])), from, to);
+  const live=bounded(rows.slice(0,-1).map(r => candle(Number(r[0]) * 1000, [r[1], r[2], r[3], r[4], r[6]])), from, to);
+  const archiveTo=to<'2026-06-30'?to:'2026-06-30';
+  const missing=from<=archiveTo&&require('./holdingsHistoryProvider').missingRanges(live,from,archiveTo,true).length;
+  if(missing)try {
+    const pair=String(candidates[0][1].wsname).replace('/','');
+    const archive=await directory('kraken-ohlcvt:'+pair,()=>require('./brokerSync/krakenArchivePrices').dailyPrices(pair));
+    const combined=new Map(live.map(c=>[c.time,c]));
+    for(const c of bounded(archive.candles||[],from,archiveTo))if(!combined.has(c.time))combined.set(c.time,c);
+    return cryptoUnits.scale([...combined.values()].sort((a,b)=>a.time-b.time),quote.units);
+  }catch{/* Missing/invalid archive data leaves live coverage intact. */}
+  return cryptoUnits.scale(live,quote.units);
 }
 async function okxPages(origin, path, params, from, to) {
   const result = []; let after = Date.parse(to) + DAY;
@@ -62,19 +74,20 @@ async function okx({ symbol, instrumentType, from, to, connection }) {
     if (response.code !== '0' || !Array.isArray(response.data)) throw Error('Invalid OKX instruments');
     return response.data;
   });
-  const markets = instruments.filter(p => p.baseCcy === symbol && ['USD', 'USDT'].includes(p.quoteCcy));
+  const quote=cryptoUnits.underlying(symbol);
+  const markets = instruments.filter(p => p.baseCcy === quote.symbol && ['USD', 'USDT'].includes(p.quoteCcy));
   const pair = markets.find(p => p.quoteCcy === 'USD') || markets.find(p => p.quoteCcy === 'USDT');
   if (!pair) return [];
   const rows = await okxPages(origin, '/api/v5/market/history-candles', { instId: pair.instId }, from, to);
-  if (pair.quoteCcy === 'USD') return rows;
+  if (pair.quoteCcy === 'USD') return cryptoUnits.scale(rows,quote.units);
   // A USDT quote is not USD. Use the dated broker index, never assume parity.
   const rates = await directory(`okx-usdt:${from}:${to}:${origin}`, () => okxPages(origin,
     '/api/v5/market/history-index-candles', { instId: 'USDT-USD' }, from, to));
   const byDate = new Map(rates.map(c => [c.time, c.close]));
-  return rows.filter(c => byDate.has(c.time)).map(c => {
+  return cryptoUnits.scale(rows.filter(c => byDate.has(c.time)).map(c => {
     const rate = byDate.get(c.time);
     return { ...c, open: c.open * rate, high: c.high * rate, low: c.low * rate, close: c.close * rate };
-  });
+  }),quote.units);
 }
 async function etoroCandles({ symbol, instrumentType, from, to, connection, userId }) {
   if (!['crypto','stock','etf'].includes(instrumentType)) return [];

@@ -82,7 +82,8 @@ async function yahoo(symbol, from, to) {
 }
 
 async function crypto(symbol, from, to) {
-  const coin = await identity.resolve(symbol);
+  const quote=require('./cryptoPriceUnits').underlying(symbol);
+  const coin = await identity.resolve(quote.symbol);
   if (!coin) throw new Error('Crypto identity unavailable');
   // The Demo plan cannot fetch older history. Retain cached older dates.
   const earliest = iso(Date.now() - 364 * DAY);
@@ -97,6 +98,6 @@ async function crypto(symbol, from, to) {
     if (close > 0 && date >= from && date <= to && !daily.has(date))
       daily.set(date, { time: Date.parse(date) / 1000, close, open: close, high: close, low: close, volume: 0 });
   }
-  return [...daily.values()];
+  return require('./cryptoPriceUnits').scale([...daily.values()],quote.units);
 }
 module.exports = { missingRanges, yahoo, crypto, yahooTicker, verifyYahooListing, yahooSessionDate };
