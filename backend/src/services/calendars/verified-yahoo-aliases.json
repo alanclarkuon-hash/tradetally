@@ -77,6 +77,34 @@
       "currency": "DKK",
       "venue": "CPH",
       "source": "https://www.etoro.com/markets/orsted.co"
+    },
+    {
+      "symbol": "PRY.MI",
+      "ticker": "PRY.MI",
+      "currency": "EUR",
+      "venue": "MIL",
+      "source": "https://www.etoro.com/markets/pry.mi"
+    },
+    {
+      "symbol": "ENI.MI",
+      "ticker": "ENI.MI",
+      "currency": "EUR",
+      "venue": "MIL",
+      "source": "https://www.etoro.com/markets/eni.mi"
+    },
+    {
+      "symbol": "ANA.MC",
+      "ticker": "ANA.MC",
+      "currency": "EUR",
+      "venue": "MCE",
+      "source": "https://www.etoro.com/markets/ana.mc"
+    },
+    {
+      "symbol": "VIE.PA",
+      "ticker": "VIE.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://www.etoro.com/markets/vie.pa"
     }
   ]
 }

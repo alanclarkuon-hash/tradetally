@@ -137,6 +137,13 @@
     "MILAN": {
       "source": "https://live.euronext.com/en/resources/trading-hours-holidays",
       "years": {
+        "2021": [
+          "2021-01-01",
+          "2021-04-02",
+          "2021-04-05",
+          "2021-12-24",
+          "2021-12-31"
+        ],
         "2022": [
           "2022-04-15",
           "2022-04-18",
@@ -184,6 +191,7 @@
         ]
       },
       "yearSources": {
+        "2021": "https://docs.londonstockexchange.com/sites/default/files/documents/turquoise_trading_calendar_2021.pdf",
         "2022": "https://www.assiomforex.it/archivioFiles/Avviso%20Provvedimento%2032390-2021.pdf"
       }
     },

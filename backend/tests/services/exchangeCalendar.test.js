@@ -102,7 +102,7 @@ test('archived Madrid closures preserve actual half sessions and Milan daytime t
  expect(calendar.coversRange('MILAN','2022-01-01','2022-12-31')).toBe(true);
  expect(calendar.isTradingDay('2022-08-15','MILAN')).toBe(false);
  for(const day of ['2022-01-06','2022-06-02','2022-12-30'])expect(calendar.isTradingDay(day,'MILAN')).toBe(true);
- expect(calendar.coversRange('MILAN','2021-01-01','2022-12-31')).toBe(false);
+ expect(calendar.coversRange('MILAN','2020-01-01','2022-12-31')).toBe(false);
 });
 
  test.each(['OQX','OQB','PNK','OTCM','OTCQX','OTCQB','OTC Markets OTCQX','OTC Markets OTCQB','Pink Sheets'])('verified US OTC equity venue %s uses equity sessions',venue=>{
@@ -197,4 +197,12 @@ test('Copenhagen sourced calendars retain local closures and actual market sessi
  for(const day of ['2022-01-03','2023-01-02','2023-05-01','2024-04-26','2025-05-01','2026-05-01'])expect(calendar.isTradingDay(day,'COPENHAGEN')).toBe(true);
  expect(calendar.isTradingDay('2023-05-05','STOCKHOLM')).toBe(true);
  expect(missingRanges([],'2023-05-04','2023-05-05',false,'COPENHAGEN')).toEqual([{from:'2023-05-04',to:'2023-05-04'}]);
+});
+
+test('archived Milan 2021 follows its primary cash market column',()=>{
+ expect(calendar.coversRange('MILAN','2021-01-01','2026-12-31')).toBe(true);
+ for(const day of ['2021-01-01','2021-04-02','2021-04-05','2021-12-24','2021-12-31'])expect(missingRanges([],day,day,false,'MILAN')).toEqual([]);
+ for(const day of ['2021-01-06','2021-05-03','2021-06-02','2021-12-27','2021-12-28'])expect(calendar.isTradingDay(day,'MILAN')).toBe(true);
+ expect(calendar.isTradingDay('2021-12-24','EURONEXT')).toBe(true);
+ expect(calendar.coversRange('MILAN','2020-12-01','2021-01-01')).toBe(false);
 });
