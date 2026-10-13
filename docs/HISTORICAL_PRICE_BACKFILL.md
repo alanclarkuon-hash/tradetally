@@ -63,3 +63,8 @@ Explicit US OTC equity venues (Yahoo OQX/OQB/PNK and OTC Markets identifiers) us
 ### eToro current valuation versus historical coverage
 
 Current chart capture uses the owner/account-scoped eToro broker portfolio snapshot, including broker-reported CFD equity and zero-valued frozen holdings. Its holdings and USD cash must be observed on the same current day; missing, stale, future-dated or mismatched evidence retains existing chart values and emits a coverage warning. Provider quotes are not substituted for a complete broker-observed valuation. This does not fabricate historical cash: dates after the imported statement's cash coverage still require an updated statement. Suspended/delisted security history and unresolved historical listing identities remain labelled estimates or gaps.
+
+
+### Hong Kong provider stock-code formatting
+
+The Yahoo daily-history adapter removes one representational leading zero from five-digit numeric broker codes ending `.HK` (for example `00257.HK` requests `0257.HK`). Genuine five-digit codes, nonnumeric identities and other markets are unchanged. The returned symbol must match the formatted request, with verified Hong Kong venue and HKD pricing. Requested/listing date guards still apply. Cache identities and broker financial records retain their original codes; this is provider formatting, not a security substitution. An unavailable/delisted listing remains a gap.
