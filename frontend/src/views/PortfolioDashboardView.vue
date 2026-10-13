@@ -18,6 +18,7 @@
         <button @click="load" :disabled="loading" class="refresh">{{ loading ? 'Loading…' : 'Refresh' }}</button>
       </div>
     </header>
+    <HistoryBackfillStatus />
     <div v-if="period==='custom'" class="custom-dates"><label>From <input type="date" v-model="start" :max="end"></label><label>To <input type="date" v-model="end" :min="start" :max="today"></label></div>
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
@@ -40,13 +41,13 @@
           <div v-for="group in groups" :key="group.name" class="industry" :style="rectStyle(group,true)"><div class="industry-label" :title="group.name">{{ group.name }} <span>{{ formatCurrency(group.value) }}</span></div><div class="industry-tiles">
             <div v-for="sector in group.sectors" :key="sector.name" :style="{left:sector.x+'%',top:sector.y+'%',width:sector.w+'%',height:sector.h+'%'}" class="stock-sector" :title="sector.name"><span :style="{height:sector.labelHeight+'%'}">{{ sector.name }}</span></div>
             <template v-for="category in group.categories" :key="category.key||category.name"><div v-if="category.showLabel" :style="{left:category.x+'%',top:category.y+'%',width:category.w+'%',height:category.labelHeight+'%'}" class="crypto-category-label" :title="category.name">{{ category.name }}</div></template>
-            <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${formatCurrency(tile.value)}, ${percent(tile.pnlPercent)}${isDelayedQuote(tile) ? ', quote more than 15 minutes old' : ''}`" :title="`${tile.symbol}${tile.name ? ' · '+tile.name : ''} · ${formatCurrency(tile.value)} · ${percent(tile.pnlPercent)}`">
+            <button v-for="tile in group.tiles" :key="tile.symbol" class="holding-tile" :style="{...rectStyle(tile),background:pnlColor(tile.pnlPercent),color:tile.pnlPercent>=20?'#102d20':'#f5fff8'}" @mouseenter="focus=tile" @focus="focus=tile" @click="focus=tile" :aria-label="`${tile.symbol}, ${formatCurrency(tile.value)}, ${percent(tile.pnlPercent)}${isDelayedQuote(tile) ? ', quote more than 15 minutes old' : ''}`" :title="`${tile.symbol}${tile.name ? ' · '+tile.name : ''} · ${formatCurrency(tile.value)} · ${percent(tile.pnlPercent)}${tile.quoteTimestampKind==='observed'?' · Market trade time unavailable':''}`">
               <StockLogo v-if="tile.pixelW>=75 && tile.area/tile.pixelW>=115" class="heatmap-logo" :symbol="tile.symbol" :instrument-type="tile.assetClass==='Crypto assets'?'crypto':'stock'" size-class="w-7 h-7" rounded-class="rounded-full" aria-hidden="true" />
-              <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ formatCurrency(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}<sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span>
+              <template v-if="tile.area>1700"><span class="ticker" :style="{fontSize:Math.max(10,Math.min(25,tile.pixelW/5))+'px'}">{{ tile.symbol }}<QuoteSessionMarker :session="tile.quoteSession" /><sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span><span class="tile-pnl">{{ percent(tile.pnlPercent) }}</span><span v-if="tile.area>10000" class="tile-value">{{ formatCurrency(tile.value) }}</span></template><span v-else class="tiny-ticker">{{ tile.symbol }}<QuoteSessionMarker :session="tile.quoteSession" /><sup v-if="isDelayedQuote(tile)" class="quote-delay-marker" title="Quote more than 15 minutes old" aria-label="Quote more than 15 minutes old">d</sup></span>
             </button>
           </div></div>
         </div><p v-else class="empty">No priced holdings for these accounts.</p>
-        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span v-if="focus.name">{{ focus.name }}</span><span>{{ focus.sector ? `${focus.sector} → ` : '' }}{{ focus.industry }}</span><span>Value <b>{{ formatCurrency(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ formatSignedCurrency(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
+        <div class="holding-detail" aria-live="polite"><template v-if="focus"><strong>{{ focus.symbol }}</strong><span v-if="focus.name">{{ focus.name }}</span><span>{{ focus.sector ? `${focus.sector} → ` : '' }}{{ focus.industry }}</span><span>Value <b>{{ formatCurrency(focus.value) }}</b></span><span :class="pnlClass(focus.pnl)">P&amp;L <b>{{ formatSignedCurrency(focus.pnl) }} · {{ percent(focus.pnlPercent) }}</b></span><span class="saved-quote">Saved market quote <b>{{ quoteDateTime(focus) }}</b> · Source <b>{{ quoteSourceLabel(focus.quoteSource) }}</b><span v-if="focus.quoteTimestampKind==='observed' && !data.heatmapDate"> · observation time</span></span></template><span v-else>Hover over or select a holding to see its details.</span></div>
         <details v-if="focus?.categories?.length" class="coverage"><summary>{{ focus.categorySource }} labels for {{ focus.symbol }} ({{ focus.categories.length }}){{ focus.categoryStale ? ' · cached labels' : '' }}</summary><div class="flex flex-wrap gap-2 mt-3"><span v-for="category in focus.categories" :key="category" class="px-2 py-1 rounded border border-gray-500/30">{{ category }}</span></div></details>
         <p v-if="focus?.categoryOverride" class="coverage">Manual grouping correction: {{ focus.categoryOverride.override_reason }} <a :href="focus.categoryOverride.source_url" target="_blank" rel="noopener noreferrer" class="underline">Review source</a></p>
         <p class="scope-note">Stocks use FinanceDatabase sector and industry classifications, which are community reference data and may be outdated or incorrect. Funds & ETFs use Yahoo Finance categories; crypto uses CoinGecko themes with AI taking priority. Your correction files take precedence for all three asset classes.</p>
@@ -63,6 +64,7 @@
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
 import {cardCurrencies} from '@/utils/cardCurrency'
+import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
@@ -76,6 +78,7 @@ import { holdingGroups, pnlColor, heatmapRectStyle as rectStyle } from '@/utils/
 import PortfolioCardLayout from '@/components/dashboard/PortfolioCardLayout.vue'
 import PortfolioValueChart from '@/components/dashboard/PortfolioValueChart.vue'
 import StockLogo from '@/components/common/StockLogo.vue'
+import QuoteSessionMarker from '@/components/common/QuoteSessionMarker.vue'
 import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
 import { useDashboardPrivacy, MONEY_MASK } from '@/composables/useDashboardPrivacy'
 const { hideAmounts } = useDashboardPrivacy()
@@ -113,6 +116,15 @@ const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
 const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.coverage??{})
 const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
+const quoteSourceLabel=source=>({trading212:'Trading 212',etoro:'eToro',okx:'OKX',kraken:'Kraken',ig:'IG',schwab:'Schwab',yahoo:'Yahoo Finance',finnhub:'Finnhub',coingecko:'CoinGecko',alpaca:'Alpaca'})[source] || source || 'Unavailable'
+const quoteDateTime=holding=>{
+  const value=holding.priceAsOf
+  if(!value)return 'Unavailable'
+  if(/^\d{4}-\d{2}-\d{2}$/.test(value))return `${value} · time unavailable`
+  const date=new Date(value)
+  if(!Number.isFinite(date.getTime()))return 'Unavailable'
+  return new Intl.DateTimeFormat('en-GB',{timeZone:authStore.user?.timezone||'UTC',dateStyle:'short',timeStyle:'long'}).format(date)
+}
 const quoteClock=ref(Date.now())
 let quoteClockTimer,metadataTimer
 onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now()},30000)})

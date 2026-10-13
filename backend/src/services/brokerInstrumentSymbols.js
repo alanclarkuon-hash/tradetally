@@ -46,6 +46,36 @@ async function applyTradeMarketSymbols(client,userId,trades){
   if(symbol!==(t.plan_trade?.sourceSymbol||raw)){t.current_price=null;t.currentPrice=null;}
  }
 }
+async function applyTradeHistoricalSymbols(client,userId,trades) {
+ const stocks=trades.filter(t=>t.broker==='trading212'&&(t.instrument_type||'stock')==='stock');
+ if(stocks.length){
+  const catalogues=await cataloguesForUser(client,userId);
+  const maps=new Map(catalogues.map(r=>[r.account_identifier,catalogueMapping(r.instruments)]));
+  for(const t of stocks)t.history_market_symbol=historicalSymbol(maps.get(t.account_identifier)||new Map(),t.underlying_symbol||t.symbol,new Date(t.entry_time||t.trade_date).toISOString().slice(0,10));
+ }
+ // Reuse position/date/cost-verified statement identity, scoped to the account.
+ // A short ticker or account settlement currency alone cannot identify a listing.
+ const etoro=trades.filter(t=>t.broker==='etoro'&&['stock','cfd'].includes(t.instrument_type||'stock'));
+ if(!etoro.length)return;
+ const reports=(await client.query(`SELECT a.account_identifier,r.records FROM broker_cash_reports r
+  JOIN user_accounts a ON a.id=r.account_id
+  WHERE r.user_id=$1 AND r.broker_type='etoro' AND a.user_id=$1`,[userId])).rows;
+ const {statementLotMetadata,statementSplits}=require('./etoroHistoricalSplits');
+ const fxRows=(await client.query("SELECT rate_date,rates FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date")).rows.filter(r=>r.rate_date&&r.rates).map(r=>({...r,date:new Date(r.rate_date).toISOString().slice(0,10)}));
+ const nativeFx=(currency,date)=>{if(currency==='USD')return 1;const r=fxRows.filter(r=>r.date<=date).at(-1);return r&&Date.parse(date)-Date.parse(r.date)<=7*86400000&&r.rates[currency]>0?1/Number(r.rates[currency]):null;};
+ for(const account of new Set(etoro.map(t=>t.account_identifier))){
+  const originals=etoro.filter(t=>t.account_identifier===account&&Number.isFinite(Date.parse(t.entry_time||t.trade_date)));
+  const rows=originals.map(t=>({...t,entry_time:t.entry_time||t.trade_date,executions:Array.isArray(t.executions)?t.executions:[]}));
+  const records=reports.filter(r=>r.account_identifier===account).flatMap(r=>r.records||[]);
+  const metadata=statementLotMetadata(rows,records,statementSplits(records),{nativeFx});
+  for(let i=0;i<rows.length;i++){const t=originals[i],evidence=metadata.get(rows[i]);
+   if((evidence?.statementAuthority||evidence?.listingAuthority)&&evidence.marketSymbol&&evidence.currency){
+    t.history_market_symbol=historicalSymbol(new Map(),evidence.marketSymbol,new Date(t.entry_time||t.trade_date).toISOString().slice(0,10));
+    t.history_market_currency=evidence.currency;
+   }
+  }
+ }
+}
 // The same verified aliases are used for list rows, counts and analytics.
 async function tradeSymbolAliases(client,userId,search,exact=false){
  const target=String(search||'').trim().toUpperCase(),aliases=[];
@@ -66,4 +96,5 @@ function tradeSymbolAliasSql(parameter,alias='t'){
  WHERE instrument_aliases.account_identifier=${alias}.account_identifier
  AND instrument_aliases.symbol=UPPER(${alias}.symbol)))`;
 }
-module.exports={tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols};
+module.exports={applyTradeHistoricalSymbols,tradeSymbolAliases,tradeSymbolAliasSql,catalogueMapping,saveCatalogue,catalogueForAccount,cataloguesForUser,historicalSymbol,applyTradeMarketSymbols,cataloguesForUser};
+

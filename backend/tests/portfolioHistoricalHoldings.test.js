@@ -13,6 +13,18 @@ function fixture({trades=[],prices=[],reports=[],snapshots=[],catalogues=[]}={})
    sql.includes('FROM trades')?trades:[]}));
 }
 beforeEach(()=>jest.clearAllMocks());
+test('historical holdings prefer canonical completed shared prices over older reconstruction values',async()=>{
+ fixture({trades:[{symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'}],
+  prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('FROM historical_prices')?Promise.resolve({rows:[{symbol:'HELD',price_date:'2023-12-29',close:11},{symbol:'HELD',price_date:range.end_date,close:15}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[account],range);expect(result.positions[0].periodResult).toMatchObject({basis:110,pnl:40});
+});
+test('historical heatmap uses a close strictly before the start and ignores the start-day candle',async()=>{
+ fixture({trades:[{symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'}],
+  prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.start_date,close:11},{date:range.end_date,close:12}]}}]});
+ const result=await getHistoricalHoldings('u',[account],range);
+ expect(result.positions[0].periodResult).toEqual({pnl:20,percent:20,basis:100});
+});
 test('replays partial sales and splits without retaining sold or future units',()=>{
  const held=remainingLots([{date:'2023-01-01',symbol:'A',quantity:10,price:20},
   {date:'2023-02-01',symbol:'A',split:2},{date:'2023-03-01',symbol:'A',quantity:-5},
@@ -22,7 +34,7 @@ test('replays partial sales and splits without retaining sold or future units',(
 test('end-date holdings include later sales but exclude earlier sales and future purchases',async()=>{
  const trade=(symbol,entry,exit)=>({symbol,entry_time:entry,exit_time:exit,quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'});
  fixture({trades:[trade('HELD','2023-01-01','2024-03-01'),trade('SOLD','2023-01-01','2024-01-31'),trade('FUTURE','2024-02-02'),trade('NEW','2024-01-15')],
-  prices:['HELD','NEW'].map(symbol=>({symbol,payload:{currency:'USD',prices:[{date:range.start_date,close:10},{date:range.end_date,close:12}]}}))});
+  prices:['HELD','NEW'].map(symbol=>({symbol,payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}))});
  const result=await getHistoricalHoldings('u',[account],range);
  expect(result.positions.map(p=>p.symbol)).toEqual(['HELD','NEW']);
  expect(result.positions[0]).toMatchObject({currentValue:120,periodResult:{pnl:20,percent:20,basis:100}});
@@ -40,7 +52,7 @@ test('Trading 212 closed holdings come from historical orders and retain only re
   {symbol:'ABC_US_EQ',side:'BUY',date:'2023-01-01',quantity:10,amount:-50},
   {symbol:'ABC_US_EQ',side:'SELL',date:'2024-01-15',quantity:4,amount:40},
   {symbol:'ABC_US_EQ',side:'SELL',date:'2024-03-01',quantity:6,amount:60}]}],
-  prices:[{symbol:'ABC',payload:{currency:'USD',prices:[{date:range.start_date,close:10},{date:range.end_date,close:12}]}}]});
+  prices:[{symbol:'ABC',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});
  const result=await getHistoricalHoldings('u',[{...account,broker:'trading212'}],range);
  expect(result.positions).toHaveLength(1);
  expect(result.positions[0]).toMatchObject({symbol:'ABC',totalShares:6,currentValue:72,periodResult:{pnl:12,basis:60}});
@@ -52,7 +64,7 @@ test('Kraken spot and Earn wallets are counted once and selected accounts stay i
   out:{asset:'XBT',amount:'-1',fee:'0',time:time('2024-01-15')},
   earn:{asset:'XBT.F',amount:'1',fee:'0',time:time('2024-01-15')},
   future:{asset:'ETH',amount:'10',fee:'0',time:time('2024-03-01')}},
-  valuation:{rates:{BTC:{'2024-01-01':10,'2024-02-01':12}}}}}],
+  valuation:{rates:{BTC:{'2023-12-31':10,'2024-02-01':12}}}}}],
   trades:[{account_identifier:'other',broker:'kraken',symbol:'BTC',quantity:100,entry_time:'2023-01-01'}]});
  const result=await getHistoricalHoldings('u',[{...account,broker:'kraken'}],range);
  expect(result.positions).toHaveLength(1);
@@ -66,4 +78,23 @@ test('historical EUR display conversion uses EUR instead of GBP',async()=>{
  expect(result.displayRates.USD).toBeCloseTo(.9);
 });
 
-test('closed Trading 212 instruments use saved catalogue identity without current holdings or broker requests',async()=>{fixture({catalogues:[{instruments:[{ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'}]}],reports:[{account_id:'a',broker_type:'trading212',records:[{symbol:'LOKB_US_EQ',side:'BUY',date:'2023-01-01',quantity:10,amount:-50},{symbol:'LOKB_US_EQ',side:'SELL',date:'2024-03-01',quantity:10,amount:100}]}],prices:[{symbol:'NVTS',payload:{currency:'USD',prices:[{date:range.start_date,close:10},{date:range.end_date,close:12}]}}]});const r=await getHistoricalHoldings('owner',[{...account,broker:'trading212'}],range);expect(r.positions).toHaveLength(1);expect(r.positions[0]).toMatchObject({symbol:'NVTS',totalShares:10,currentValue:120,periodResult:{pnl:20,basis:100}});expect(db.query).toHaveBeenCalledWith(expect.stringContaining('broker_instrument_catalogues'),['owner','one']);expect(db.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true)});
+test('closed Trading 212 instruments use saved catalogue identity without current holdings or broker requests',async()=>{fixture({catalogues:[{instruments:[{ticker:'LOKB_US_EQ',shortName:'NVTS',isin:'US63942X1063'}]}],reports:[{account_id:'a',broker_type:'trading212',records:[{symbol:'LOKB_US_EQ',side:'BUY',date:'2023-01-01',quantity:10,amount:-50},{symbol:'LOKB_US_EQ',side:'SELL',date:'2024-03-01',quantity:10,amount:100}]}],prices:[{symbol:'NVTS',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});const r=await getHistoricalHoldings('owner',[{...account,broker:'trading212'}],range);expect(r.positions).toHaveLength(1);expect(r.positions[0]).toMatchObject({symbol:'NVTS',totalShares:10,currentValue:120,periodResult:{pnl:20,basis:100}});expect(db.query).toHaveBeenCalledWith(expect.stringContaining('broker_instrument_catalogues'),['owner','one']);expect(db.query.mock.calls.every(([sql])=>sql.startsWith('SELECT'))).toBe(true)});
+
+
+test('combined account holdings never treat a partial period basis as complete',async()=>{
+ const accounts=[{...account,broker:'kraken'},{...account,id:'b',account_identifier:'two',broker:'kraken'}];
+ fixture({snapshots:accounts.map((a,i)=>({broker_type:'kraken',account_identifier:a.account_identifier,payload:{ledger:{deposit:{asset:'XBT',amount:'2',fee:'0',time:Date.parse(i?'2024-01-15':'2023-01-01')/1000}},valuation:{rates:{BTC:{'2023-12-31':10,'2024-02-01':12}}}}}))});
+ const result=await getHistoricalHoldings('u',accounts,range);
+ expect(result.positions[0]).toMatchObject({totalShares:4,currentValue:48,periodResult:{basis:null,pnl:null,percent:null}});
+ const {currentRangeResult}=require('../src/services/portfolioDashboardService');
+ expect(currentRangeResult({instrumentType:'crypto',totalShares:4,currentValue:52},range,result.positions[0])).toEqual({pnl:null,percent:null});
+});
+
+test('combined complete bases remain usable with a current quote when historical ending prices are missing',async()=>{
+ const accounts=[account,{...account,id:'b',account_identifier:'two'}];
+ fixture({trades:accounts.map(a=>({symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:a.account_identifier})),prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10}]}}]});
+ const result=await getHistoricalHoldings('u',accounts,range);
+ expect(result.positions[0].periodResult).toEqual({basis:200,pnl:null,percent:null});
+ const {currentRangeResult}=require('../src/services/portfolioDashboardService');
+ expect(currentRangeResult({instrumentType:'stock',totalShares:20,currentValue:240},range,result.positions[0])).toEqual({pnl:40,percent:20,basis:200});
+});

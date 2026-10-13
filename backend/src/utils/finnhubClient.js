@@ -231,13 +231,6 @@ class FinnhubClient {
       // Cache the result
       await cache.set('quote', symbolUpper, quote);
 
-      // Persist today's price to historical_prices DB table
-      try {
-        await historicalPriceCache.upsertToday(symbolUpper, quote, 'finnhub');
-      } catch (dbErr) {
-        console.warn(`[PRICE-CACHE] Failed to persist quote for ${symbolUpper}: ${dbErr.message}`);
-      }
-
       // Track usage if userId provided
       if (userId) {
         await ApiUsageService.trackApiCall(userId, 'quote');
@@ -361,13 +354,6 @@ class FinnhubClient {
       };
 
       await cache.set('crypto_quote', cacheKey, quote, 15 * 60000);
-
-      // Persist today's crypto price to historical_prices DB table
-      try {
-        await historicalPriceCache.upsertToday(symbolUpper, quote, 'coingecko');
-      } catch (dbErr) {
-        console.warn(`[PRICE-CACHE] Failed to persist crypto quote for ${symbolUpper}: ${dbErr.message}`);
-      }
 
       console.log(`[CRYPTO] Quote for ${symbolUpper}: $${quote.c.toLocaleString()}`);
       return quote;
@@ -716,13 +702,9 @@ class FinnhubClient {
           max_completion_tokens: 50
         };
         
-        // Only add temperature for models that support it.
-        // Reasoning models (o-series, all gpt-5 variants) reject any non-default temperature.
+        // OpenAI model capabilities change independently of model names, so
+        // omit temperature and let the selected model use its default.
         const modelName = settings.default_ai_model || 'gpt-3.5-turbo';
-        const isReasoningModel = /^(o\d|gpt-5)/i.test(modelName);
-        if (!isReasoningModel) {
-          requestParams.temperature = 0.1;
-        }
         
         // For GPT-5 models, use the official guide format (no extra parameters)
         if (modelName.includes('gpt-5')) {

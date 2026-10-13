@@ -1,0 +1,194 @@
+{
+  "notes": "Source-backed broker listing and share-class representations. Responses must match exact mapped listing, venue and native currency; never infer arbitrary bare or trailing A/B aliases.",
+  "listings": [
+    {
+      "symbol": "HUSQB.ST",
+      "ticker": "HUSQ-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/husqb.st/"
+    },
+    {
+      "symbol": "HUSQA.ST",
+      "ticker": "HUSQ-A.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/husqa.st/"
+    },
+    {
+      "symbol": "NIBEB.ST",
+      "ticker": "NIBE-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/nibeb.st/"
+    },
+    {
+      "symbol": "EMBRACB.ST",
+      "ticker": "EMBRAC-B.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/embracb.st/"
+    },
+    {
+      "symbol": "MAERSKB.CO",
+      "ticker": "MAERSK-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/maerskb.co/"
+    },
+    {
+      "symbol": "DANSKE.CO",
+      "ticker": "DANSKE.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/da-dk/markets/danske.co"
+    },
+    {
+      "symbol": "NHY.OL",
+      "ticker": "NHY.OL",
+      "currency": "NOK",
+      "venue": "OSL",
+      "source": "https://www.etoro.com/markets/nhy.ol"
+    },
+    {
+      "symbol": "BOL.ST",
+      "ticker": "BOL.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/bol.st"
+    },
+    {
+      "symbol": "SWED-A.ST",
+      "ticker": "SWED-A.ST",
+      "currency": "SEK",
+      "venue": "STO",
+      "source": "https://www.etoro.com/markets/swed-a.st"
+    },
+    {
+      "symbol": "NOVO-B.CO",
+      "ticker": "NOVO-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/novo-b.co"
+    },
+    {
+      "symbol": "ORSTED.CO",
+      "ticker": "ORSTED.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/orsted.co"
+    },
+    {
+      "symbol": "PRY.MI",
+      "ticker": "PRY.MI",
+      "currency": "EUR",
+      "venue": "MIL",
+      "source": "https://www.etoro.com/markets/pry.mi"
+    },
+    {
+      "symbol": "ENI.MI",
+      "ticker": "ENI.MI",
+      "currency": "EUR",
+      "venue": "MIL",
+      "source": "https://www.etoro.com/markets/eni.mi"
+    },
+    {
+      "symbol": "ANA.MC",
+      "ticker": "ANA.MC",
+      "currency": "EUR",
+      "venue": "MCE",
+      "source": "https://www.etoro.com/markets/ana.mc"
+    },
+    {
+      "symbol": "VIE.PA",
+      "ticker": "VIE.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://www.etoro.com/markets/vie.pa"
+    },
+    {
+      "symbol": "ROCKB.CO",
+      "ticker": "ROCK-B.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://www.etoro.com/markets/rockb.co"
+    },
+    {
+      "symbol": "PBR.A",
+      "ticker": "PBR-A",
+      "currency": "USD",
+      "venue": "NYQ",
+      "source": "https://www.etoro.com/markets/pbr.a"
+    },
+    {
+      "symbol": "HDD.F",
+      "ticker": "HDD.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GYC.F",
+      "ticker": "GYC.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "HLAG.F",
+      "ticker": "HLAG.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SZG.F",
+      "ticker": "SZG.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "EVK.F",
+      "ticker": "EVK.F",
+      "currency": "EUR",
+      "venue": "FRA",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "KER.PA",
+      "ticker": "KER.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "GLE.PA",
+      "ticker": "GLE.PA",
+      "currency": "EUR",
+      "venue": "PAR",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "IBE.MC",
+      "ticker": "IBE.MC",
+      "currency": "EUR",
+      "venue": "MCE",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "VWS.CO",
+      "ticker": "VWS.CO",
+      "currency": "DKK",
+      "venue": "CPH",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    },
+    {
+      "symbol": "SUBC.OL",
+      "ticker": "SUBC.OL",
+      "currency": "NOK",
+      "venue": "OSL",
+      "source": "https://etoro-cdn.etorostatic.com/e-marketing/AUM/FulllistofavailableStocksoneToro.pdf"
+    }
+  ]
+}

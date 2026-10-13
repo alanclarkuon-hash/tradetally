@@ -8,6 +8,8 @@ const ibkrService = require('../services/brokerSync/ibkrService');
 const schwabService = require('../services/brokerSync/schwabService');
 const tradestationService = require('../services/brokerSync/tradestationService');
 const alpacaService = require('../services/brokerSync/alpacaService');
+const webullService = require('../services/brokerSync/webullService');
+const tradovateService = require('../services/brokerSync/tradovateService');
 const trading212Service = require('../services/brokerSync/trading212Service');
 const etoroService = require('../services/brokerSync/etoroService');
 const okxService = require('../services/brokerSync/okxService');
@@ -27,7 +29,9 @@ const SCHWAB_REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const OAUTH_BROKER_SERVICES = {
   tradestation: tradestationService,
-  alpaca: alpacaService
+  alpaca: alpacaService,
+  webull: webullService,
+  tradovate: tradovateService
 };
 
 function redactAccountNumber(accountNumber) {
@@ -217,7 +221,7 @@ const brokerSyncController = {
       });
 
       // Update status to active after validation
-      await BrokerConnection.updateStatus(connection.id, 'active', 'Connection validated successfully');
+      await BrokerConnection.updateStatus(connection.id, 'active', validation.message);
 
       // Calculate next sync time if auto-sync enabled
       if (autoSyncEnabled && syncFrequency !== 'manual') {
@@ -236,7 +240,8 @@ const brokerSyncController = {
       res.status(201).json({
         success: true,
         data: updatedConnection,
-        message: 'IBKR connection added successfully'
+        message: 'IBKR connection added successfully',
+        warnings: validation.warnings || []
       });
     } catch (error) {
       logger.logError('Error adding IBKR connection:', error);
@@ -555,6 +560,21 @@ const brokerSyncController = {
         details: error.message || 'oauth_failed',
         status: errorCode
       });
+    }
+  },
+
+  /**
+   * Report which OAuth broker integrations are configured on this server so
+   * the UI only offers connections that can succeed.
+   */
+  async getProviders(req, res, next) {
+    try {
+      const providers = Object.fromEntries(
+        Object.entries(OAUTH_BROKER_SERVICES).map(([broker, service]) => [broker, { configured: service.isConfigured() }])
+      );
+      res.json({ success: true, providers });
+    } catch (error) {
+      next(error);
     }
   },
 
@@ -1038,7 +1058,8 @@ const brokerSyncController = {
 
       res.json({
         success: testResult.valid,
-        message: testResult.message
+        message: testResult.message,
+        warnings: testResult.warnings || []
       });
     } catch (error) {
       logger.logError('Error testing connection:', error);

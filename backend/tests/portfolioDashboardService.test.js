@@ -1,6 +1,7 @@
 jest.mock('../src/services/portfolioDisplayMetadata',()=>({getDisplayMetadata:jest.fn()}));
 jest.mock('../src/config/database',()=>({query:jest.fn()}));
-jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn()}));
+jest.mock('../src/services/portfolioService',()=>({getPositions:jest.fn(),_getDailySeries:jest.fn()}));
+jest.mock('../src/services/exchangeCalendar',()=>({...jest.requireActual('../src/services/exchangeCalendar'),resolve:jest.fn()}));
 jest.mock('../src/models/Account',()=>({getCashflow:jest.fn()}));
 jest.mock('../src/utils/displayCurrency',()=>({getRatesToDisplay:jest.fn()}));
 jest.mock('../src/utils/yahooFinance',()=>({getSymbolProfile:jest.fn(),getStockTradeChartData:jest.fn()}));
@@ -12,16 +13,48 @@ const db=require('../src/config/database'),Portfolio=require('../src/services/po
 const {getRatesToDisplay}=require('../src/utils/displayCurrency');
 const {getDashboard,periodResult}=require('../src/services/portfolioDashboardService');
 const position={symbol:'USDT',instrumentType:'crypto',totalShares:100,currentValue:100,totalCostBasis:100,unrealizedPnL:0,unrealizedPnLPercent:0};
-beforeEach(()=>{jest.resetAllMocks();require('../src/services/portfolioDisplayMetadata').getDisplayMetadata.mockImplementation(async symbols=>({records:new Map(await Promise.all(symbols.map(async symbol=>{const profile=await require('../src/utils/yahooFinance').getSymbolProfile(symbol);return [symbol,{profile,fund_categories:['ETF','MUTUALFUND'].includes(profile?.quoteType)?await require('../src/services/fundCategoriesService').getCategories(symbol):null}]}))),updating:false}));require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+test.each([
+ ['2026-10-06','2026-10-05'], // Today / ordinary day
+ ['2026-10-05','2026-10-02'], // Monday follows weekend
+ ['2026-04-07','2026-04-02'], // UK Easter closure
+ ['2026-10-01','2026-09-30'], // calendar month
+ ['2026-01-01','2025-12-31'] // year to date
+])('uses the previous daily close before %s, never the start-day candle', (start,prior)=>{
+ const p={...position,instrumentType:'stock',currentPrice:104,currentValue:10400};
+ const result=periodResult(p,{start_date:start,end_date:start},{[prior]:100,[start]:104.5},[{quantity:100,price:80,acquired:'2025-01-01'}]);
+ // Historical end uses that day's close; opening basis still uses the prior close.
+ expect(result.basis).toBe(10000);
+ expect(result.percent).toBeCloseTo(start===new Date().toISOString().slice(0,10)?4:4.5);
+});
+test('Today compares the current quote with previous close and keeps new purchases at execution cost',()=>{
+ const today=new Date().toISOString().slice(0,10),prior=require('../src/utils/heatmapPeriod').previousDay(today);
+ const p={...position,instrumentType:'stock',currentPrice:104,currentValue:10400};
+ const rates={[prior]:100,[today]:104.5};
+ expect(periodResult(p,{start_date:today,end_date:today},rates,[{quantity:100,price:80,acquired:'2020-01-01'}]).percent).toBeCloseTo(4);
+ expect(periodResult(p,{start_date:today,end_date:today},rates,[{quantity:100,price:102,acquired:today}]).percent).toBeCloseTo(100*2/102);
+ expect(periodResult(p,{start_date:today,end_date:today},{[today]:104.5},[{quantity:100,price:80,acquired:'2020-01-01'}]).pnl).toBeNull();
+});
+beforeEach(()=>{jest.resetAllMocks();require('../src/services/portfolioDisplayMetadata').getDisplayMetadata.mockImplementation(async symbols=>({records:new Map(await Promise.all(symbols.map(async symbol=>{const profile=await require('../src/utils/yahooFinance').getSymbolProfile(symbol);return [symbol,{profile,fund_categories:['ETF','MUTUALFUND'].includes(profile?.quoteType)?await require('../src/services/fundCategoriesService').getCategories(symbol):null}]}))),updating:false}));require('../src/services/exchangeCalendar').resolve.mockResolvedValue('US');Portfolio._getDailySeries.mockResolvedValue([]);require('../src/services/assetClassificationService').getClassifications.mockResolvedValue(new Map());});
+test('a missing prior open-session close stays unavailable instead of falling back to Friday',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-06T12:00:00Z'));
+ try{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE',instrumentType:'stock',currentPrice:104}]);getRatesToDisplay.mockResolvedValue({USD:1});
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'EXAMPLE',quantity:100,price:80,acquired:'2025-01-01'}]:[]}));
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-10-02')/1000,close:100},{time:Date.parse('2026-10-06')/1000,close:104}]);
+  const result=await getDashboard('owner',{start_date:'2026-10-06',end_date:'2026-10-06'});
+  expect(result.holdings[0].pnlPercent).toBeNull();
+  expect(require('../src/utils/yahooFinance').getStockTradeChartData).not.toHaveBeenCalled();
+ }finally{jest.useRealTimers();}
+});
 test('current ticker uses original account lots for period P&L and current market symbol for charts',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEW',name:'Current company',sourceSymbols:['OLD'],accountIdentifiers:['demo'],instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'OLD',account_identifier:'demo',quantity:100,price:1,acquired:'2025-01-01'}]:[]}));
-  require('../src/utils/yahooFinance').getStockTradeChartData.mockResolvedValue({candles_currency:'USD',candles:[{time:Date.parse('2026-01-01')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]});
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]);
   require('../src/utils/currencyConverter').getForexRate.mockResolvedValue(1);
   const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
   expect(result.holdings[0]).toMatchObject({symbol:'NEW',name:'Current company',pnl:100,pnlPercent:100});
-  expect(require('../src/utils/yahooFinance').getStockTradeChartData).toHaveBeenCalledWith('NEW',expect.any(String),expect.any(String),'D');
+  expect(Portfolio._getDailySeries).toHaveBeenCalledWith('NEW',expect.any(String),expect.any(String),'test-user',expect.objectContaining({instrumentType:'stock',background:true}));
 });
 test('fund identity overrides cached industry and keeps value counted once',async()=>{
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'EXAMPLE.L',instrumentType:'stock'}]);
@@ -51,14 +84,14 @@ test('period P&L requires matching lots and explicit historical USD prices',()=>
   const p={...position,symbol:'BTC',currentPrice:12};const range={start_date:'2026-01-01',end_date:'2026-02-01'};
   const lots=[{quantity:100,price:8,acquired:new Date('2025-12-01')}];
   expect(periodResult(p,range,{},lots).pnl).toBeNull();
-  expect(periodResult(p,range,{'2026-01-01':10,'2026-02-01':12},lots)).toEqual({pnl:200,percent:20,basis:1000});
-  expect(periodResult({...p,totalShares:50},range,{'2026-01-01':10,'2026-02-01':12},lots).pnl).toBeNull();
+  expect(periodResult(p,range,{'2025-12-31':10,'2026-02-01':12},lots)).toEqual({pnl:200,percent:20,basis:1000});
+  expect(periodResult({...p,totalShares:50},range,{'2025-12-31':10,'2026-02-01':12},lots).pnl).toBeNull();
 });
 
 test('sub-cent coins use precise portfolio value rather than a rounded zero quote',()=>{
  const today=new Date().toISOString().slice(0,10);
  const result=periodResult({...position,symbol:'SHIB',totalShares:1000000,currentPrice:0,currentValue:12},
-   {start_date:'2026-01-01',end_date:today},{'2026-01-01':0.00001},
+   {start_date:'2026-01-01',end_date:today},{'2025-12-31':0.00001},
    [{quantity:1000000,price:0.000008,acquired:'2025-01-01'}]);
  expect(result.pnl).toBeCloseTo(2);
 });
@@ -75,11 +108,11 @@ test('dated stock candles are converted to USD before comparing portfolio prices
   Portfolio.getPositions.mockResolvedValue([{...position,symbol:'SYNTH.L',instrumentType:'stock',currentPrice:3}]);
   getRatesToDisplay.mockResolvedValue({USD:1});
   db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'SYNTH.L',quantity:100,price:1,acquired:'2025-01-01'}]:[]}));
-  require('../src/utils/yahooFinance').getStockTradeChartData.mockResolvedValue({candles_currency:'GBP',candles:[{time:Date.parse('2026-01-01')/1000,close:1},{time:Date.parse('2026-02-01')/1000,close:2}]});
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:1.25},{time:Date.parse('2026-02-01')/1000,close:2.5}]);
   require('../src/utils/currencyConverter').getForexRate.mockResolvedValue(1.25);
   const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
   expect(result.holdings[0].pnl).toBe(125);expect(result.holdings[0].pnlPercent).toBe(100);
-  expect(require('../src/utils/currencyConverter').getForexRate).toHaveBeenCalledWith('GBP','USD','2026-01-01');
+  expect(require('../src/utils/currencyConverter').getForexRate).not.toHaveBeenCalled();
 });
 
 test('stock reference grouping does not change valuation or reuse provider industry',async()=>{
@@ -96,9 +129,10 @@ test('stock reference grouping does not change valuation or reuse provider indus
 
 test('crypto range P&L can reuse stored USD closes without a Kraken holding',async()=>{
  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'NEAR',currentPrice:12}]);
+ Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2025-12-31')/1000,close:10},{time:Date.parse('2026-02-01')/1000,close:12}]);
  getRatesToDisplay.mockResolvedValue({USD:1});
  require('../src/services/cryptoCategoriesService').getDisplayCategories.mockResolvedValue({categories:[],primaryCategory:null});
- db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'NEAR',quantity:100,price:8,acquired:'2025-12-01'}]:sql.includes('portfolio_reconstruction_prices')?[{symbol:'NEAR-USD',payload:{currency:'USD',prices:[{date:'2026-01-01',close:10},{date:'2026-02-01',close:12}]}}]:[]}));
+ db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('FROM trades')?[{symbol:'NEAR',quantity:100,price:8,acquired:'2025-12-01'}]:sql.includes('portfolio_reconstruction_prices')?[{symbol:'NEAR-USD',payload:{currency:'USD',prices:[{date:'2025-12-31',close:10},{date:'2026-02-01',close:12}]}}]:[]}));
  const result=await getDashboard('test-user',{currency:'USD',start_date:'2026-01-01',end_date:'2026-02-01'});
  expect(result.holdings[0]).toMatchObject({pnl:200,pnlPercent:20});
 });
@@ -116,3 +150,12 @@ test('EUR dashboard converts native USD holdings to EUR',async()=>{
  expect(result.currency).toBe('EUR');expect(result.totals.stablecoinValue).toBe(90);
  expect(getRatesToDisplay).toHaveBeenCalledWith(['USD'],'EUR');
 });
+
+test('current-range P&L uses remaining native lots after partial sales, reconciled to the broker holding',()=>{const {currentRangeResult}=require('../src/services/portfolioDashboardService');const p={instrumentType:'stock',totalShares:5,currentValue:600};const native={totalShares:5,periodResult:{basis:500}};expect(currentRangeResult(p,{start_date:'2026-01-01',end_date:'2026-01-02'},native)).toMatchObject({pnl:100,percent:20,basis:500});expect(currentRangeResult({...p,totalShares:6},{},native).pnl).toBeNull();expect(currentRangeResult(p,{}, {...native,periodResult:{basis:null}}).pnl).toBeNull();});
+
+ test.each([['USD',1],['GBP',0.8],['EUR',0.9]])('current CFD heatmap preserves equity and P/L in %s',async(currency,rate)=>{
+  Portfolio.getPositions.mockResolvedValue([{symbol:'TEST',instrumentType:'cfd',totalShares:2,totalCostBasis:100,currentValue:110,unrealizedPnL:10,unrealizedPnLPercent:10,quoteSource:'Broker snapshot (etoro)'}]);
+  getRatesToDisplay.mockResolvedValue({USD:rate});db.query.mockResolvedValue({rows:[]});
+  const result=await getDashboard('owner',{currency});
+  expect(result.holdings[0]).toMatchObject({value:110*rate,cost:100*rate,pnl:10*rate,pnlPercent:10,quoteSource:'Broker snapshot (etoro)'});
+ });

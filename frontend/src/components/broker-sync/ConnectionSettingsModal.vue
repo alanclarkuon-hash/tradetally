@@ -448,6 +448,15 @@ const brokerStyles = computed(() => {
             return {name:"Kraken",abbrev:"K",bgClass:"bg-violet-100 dark:bg-violet-900/30",textClass:"text-violet-700 dark:text-violet-300"};
         case "okx":
             return {name:"OKX",abbrev:"OKX",bgClass:"bg-gray-900 dark:bg-gray-700",textClass:"text-white"};
+        case "tradovate":
+            return {
+                name: props.connection.brokerEnvironment === "demo"
+                    ? "Tradovate Demo"
+                    : "Tradovate",
+                abbrev: "TV",
+                bgClass: "bg-indigo-100 dark:bg-indigo-900/30",
+                textClass: "text-indigo-600 dark:text-indigo-400",
+            };
         case "trading212":
             return {
                 name: props.connection.brokerEnvironment === "demo"

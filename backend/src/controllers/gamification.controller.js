@@ -93,7 +93,8 @@ const gamificationController = {
   async getUserChallenges(req, res, next) {
     try {
       const userId = req.user.id;
-      
+
+      await ChallengeService.updateUserChallenges(userId);
       const challenges = await ChallengeService.getUserChallenges(userId);
       
       res.json({
@@ -108,7 +109,8 @@ const gamificationController = {
   // Get active challenges
   async getActiveChallenges(req, res, next) {
     try {
-      const challenges = await ChallengeService.getActiveChallenges();
+      await ChallengeService.updateUserChallenges(req.user.id);
+      const challenges = await ChallengeService.getActiveChallenges(req.user.id);
       
       res.json({
         success: true,
@@ -146,6 +148,14 @@ const gamificationController = {
           message: 'You have disabled challenge participation in your privacy settings'
         });
       }
+
+      if (error.message.includes('requires a feature')) {
+        return res.status(403).json({
+          error: 'Upgrade required',
+          message: 'This challenge uses revenge trade detection, which is a Pro feature',
+          upgradeRequired: true
+        });
+      }
       
       next(error);
     }
@@ -172,7 +182,8 @@ const gamificationController = {
     try {
       const { key } = req.params;
       const userId = req.user.id;
-      const limit = req.query.limit ? parseInt(req.query.limit) : 100;
+      const parsed_limit = req.query.limit === 'all' ? 0 : parseInt(req.query.limit, 10);
+      const limit = Number.isInteger(parsed_limit) && parsed_limit >= 0 ? parsed_limit : 100;
       
       const leaderboard = await LeaderboardService.getLeaderboard(key, userId, limit);
       
@@ -500,7 +511,7 @@ const gamificationController = {
           a.name,
           a.description,
           a.icon_name,
-          a.points,
+          COALESCE(ua.points_awarded, a.points) AS points,
           ua.earned_at
         FROM user_achievements ua
         JOIN achievements a ON a.id = ua.achievement_id
@@ -799,7 +810,7 @@ const gamificationController = {
       
       // Get all earned achievements for this user
       const achievementsQuery = `
-        SELECT ua.user_id, a.points, ua.earned_at, a.name
+        SELECT ua.user_id, COALESCE(ua.points_awarded, a.points) AS points, ua.earned_at, a.name
         FROM user_achievements ua
         JOIN achievements a ON a.id = ua.achievement_id
         WHERE ua.user_id = $1

@@ -1,5 +1,6 @@
 const { getSectorCategory } = require('../utils/sectorCategory');
 const { instructionsForPrompt } = require('../utils/aiAnalysisInstructions');
+const { sendAIUnavailable } = require('../utils/aiErrorResponse');
 const db = require('../config/database');
 const crypto = require('crypto');
 const aiService = require('../utils/aiService');
@@ -1955,6 +1956,8 @@ const analyticsController = {
   },
 
   async getChartData(req, res, next) {
+    const { fxUsdFromSnapshot: fxUsd, withUsdRateSnapshot } = require('../utils/tradeFx');
+    const chartQuery = (sql, params) => db.query(withUsdRateSnapshot(sql), params);
     try {
       // Include filter hash in cache key to handle different filter combinations
       const normalizedForCache = convertQueryToTradeFilters(req.query);
@@ -2047,7 +2050,7 @@ const analyticsController = {
 
         // Performance by Volume
         const performanceByVolumeQuery = `
-          WITH trade_volumes AS (
+          WITH trade_volumes AS MATERIALIZED (
             SELECT
               CASE
                 WHEN executions IS NOT NULL AND jsonb_array_length(executions) > 0 THEN
@@ -2225,11 +2228,11 @@ const analyticsController = {
         `;
 
         const [tradeDistResult, perfByPriceResult, perfByVolumeResult, perfByPositionSizeResult, perfByHoldTimeResult] = await Promise.all([
-          db.query(tradeDistributionQuery, params),
-          db.query(performanceByPriceQuery, params),
-          db.query(performanceByVolumeQuery, params),
-          db.query(performanceByPositionSizeQuery, params),
-          db.query(performanceByHoldTimeQuery, params)
+          chartQuery(tradeDistributionQuery, params),
+          chartQuery(performanceByPriceQuery, params),
+          chartQuery(performanceByVolumeQuery, params),
+          chartQuery(performanceByPositionSizeQuery, params),
+          chartQuery(performanceByHoldTimeQuery, params)
         ]);
 
         console.log('Chart data query results:', {
@@ -2379,7 +2382,7 @@ const analyticsController = {
           ORDER BY EXTRACT(DOW FROM (entry_time AT TIME ZONE $${dowTzParam}))
         `;
 
-        const dayOfWeekResult = await db.query(dayOfWeekQuery, dayOfWeekParams);
+        const dayOfWeekResult = await chartQuery(dayOfWeekQuery, dayOfWeekParams);
 
         // Process day of week data - only weekdays (1=Monday, ..., 5=Friday)
         // Skip weekends entirely since stock markets are closed
@@ -2418,7 +2421,7 @@ const analyticsController = {
           ORDER BY trade_date
         `;
 
-        const dailyVolumeResult = await db.query(dailyVolumeQuery, params);
+        const dailyVolumeResult = await chartQuery(dailyVolumeQuery, params);
 
         const responseData = {
           tradeDistribution,
@@ -2599,35 +2602,9 @@ const analyticsController = {
 
       const userSettings = await aiService.getUserSettings(req.user.id);
 
-      if (!userSettings.provider) {
-        console.log('[ERROR] AI provider not configured');
-        return res.status(400).json({
-          error: 'AI recommendations are not available. AI provider not configured in settings.'
-        });
-      }
-
-      // Check if API key is required for this provider
-      const providersRequiringApiKey = ['gemini', 'claude', 'openai', 'deepseek', 'kimi', 'perplexity'];
-      if (providersRequiringApiKey.includes(userSettings.provider) && !userSettings.apiKey) {
-        console.log(`[ERROR] API key required for ${userSettings.provider} provider`);
-        return res.status(400).json({
-          error: `AI recommendations are not available. API key required for ${userSettings.provider} provider.`
-        });
-      }
-
-      // Check if API URL is required for this provider
-      const providersRequiringApiUrl = ['ollama', 'lmstudio', 'local', 'custom'];
-      if (providersRequiringApiUrl.includes(userSettings.provider) && !userSettings.apiUrl) {
-        console.log(`[ERROR] API URL required for ${userSettings.provider} provider`);
-        return res.status(400).json({
-          error: `AI recommendations are not available. API URL required for ${userSettings.provider} provider.`
-        });
-      }
-
-      if (userSettings.provider === 'custom' && !userSettings.model) {
-        return res.status(400).json({
-          error: 'AI recommendations are not available. Model required for custom provider.'
-        });
+      if (!aiService.isProviderConfigured(userSettings)) {
+        console.error('[AI] Recommendations provider configuration is incomplete');
+        return sendAIUnavailable(res);
       }
 
       console.log(`[OK] AI provider configured: ${userSettings.provider}`);
@@ -2845,9 +2822,7 @@ const analyticsController = {
         }
       } catch (aiError) {
         console.error('[ERROR] AI service error:', aiError.message);
-        return res.status(500).json({
-          error: 'Failed to generate AI recommendations: ' + aiError.message
-        });
+        return sendAIUnavailable(res);
       }
       console.log('[SUCCESS] AI recommendations generated successfully');
       console.log('[DEBUG] Recommendations type:', typeof recommendations);
@@ -2868,7 +2843,7 @@ const analyticsController = {
 
     } catch (error) {
       console.error('Error generating recommendations:', error);
-      next(error);
+      return sendAIUnavailable(res);
     }
   },
 

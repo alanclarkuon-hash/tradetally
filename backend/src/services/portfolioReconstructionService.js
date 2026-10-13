@@ -69,29 +69,97 @@ function valueQuantities(quantities,d,price,fx,{zeroMissingPrices=false}={}) {
 function parseYahoo(result) {
  const unit=normaliseMinorUnit(result?.meta?.currency);
  if(!unit)throw Error('Missing market-price currency');
- const splits=Object.values(result.events?.splits||{}).map(s=>({date:date(Number(s.date)*1000),ratio:Number(s.numerator)/Number(s.denominator)})).sort((a,b)=>a.date.localeCompare(b.date));
+ const splits=Object.values(result.events?.splits||{}).map(s=>({date:require('./holdingsHistoryProvider').yahooSessionDate(Number(s.date),result.meta),ratio:Number(s.numerator)/Number(s.denominator)})).sort((a,b)=>a.date.localeCompare(b.date));
  if(splits.some(s=>!(s.ratio>0)))throw Error('Invalid split ratio');
  const quote=result.indicators?.quote?.[0];
  const prices=(result.timestamp||[]).flatMap((t,i)=>{
-  const d=date(t*1000),close=quote?.close?.[i];
+  const d=require('./holdingsHistoryProvider').yahooSessionDate(t,result.meta),close=quote?.close?.[i];
   if(!(close>0))return [];
   return [{date:d,close:close/unit.divisor*splits.filter(s=>s.date>d).reduce((p,s)=>p*s.ratio,1)}];
  });
  return {currency:unit.code,prices,splits,source:'Yahoo daily close; later splits reversed; minor units normalized'};
 }
 
-async function loadMarket(symbol,from,to,{fetchPrices=false}={}) {
+// Merge only verified missing sessions; failed downloads retain earlier history.
+async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
- if(cached&&cached.from<=from&&cached.to>=to)return cached;
  if(!fetchPrices)return cached||null;
+ const crypto=symbol.endsWith('-USD'),ticker=crypto?symbol.slice(0,-4):symbol;
+ const calendar=crypto?null:await require('./exchangeCalendar').resolve(ticker,{allowLookup:true,userId});
+ const candles=(cached?.prices||[]).map(p=>({time:Date.parse(p.date)/1000,close:p.close}));
+ const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
+ if(!gaps.length)return cached;
+ let currency=cached?.currency||(crypto?'USD':null),splits=[...(cached?.splits||[])];
+ const incoming=new Map();let listing=cached?.listing||null,metadataChecked=false;
  try {
-  const response=await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`,{
-   params:{interval:'1d',period1:Math.floor(Date.parse(from)/1000)-7*86400,period2:Math.floor(Date.parse(to)/1000)+86400,events:'splits'},
-   timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally portfolio history'}});
-  const payload={...parseYahoo(response.data.chart.result[0]),from,to};
-  await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[symbol,payload]);
-  return payload;
- }catch{return null;} // Do not print request objects or broker credentials.
+  for(const gap of gaps){
+   // Shared finalized daily prices use broker-first routing and USD units.
+   const shared=userId?await require('./portfolioService')._getDailySeries(ticker,gap.from,gap.to,userId,{instrumentType:crypto?'crypto':'stock',background:false}):[];
+   let native=null;
+   if(!crypto){
+    try {
+     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
+     const result=response.data?.chart?.result?.[0];
+     if(result?.meta?.symbol || require('./holdingsHistoryProvider').yahooTicker(ticker)!==ticker)require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
+     native=parseYahoo(result);
+     const first=Number(result?.meta?.firstTradeDate)||0;
+     if(first)native.prices=native.prices.filter(p=>p.date>=require('./holdingsHistoryProvider').yahooSessionDate(first,result.meta));
+     const candidate={source:'yahoo',meta:Object.fromEntries(['symbol','currency','exchangeName','exchangeTimezoneName','firstTradeDate'].filter(k=>result.meta[k]!=null).map(k=>[k,result.meta[k]]))};
+     const firstDay=require('./historyListingLifetime').firstDate(ticker,{currency:native.currency,listing:candidate});
+     if(firstDay&&!(cached?.prices||[]).some(p=>p.date<firstDay))native.listing=candidate;
+     } catch {
+     // A pre-IPO historical request may return no result. Read current listing
+     // metadata once, retaining historic prices and never using today's quote.
+     if(!metadataChecked){metadataChecked=true;
+      try {
+       const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',range:'5d'},timeout:12000,maxRedirects:0,maxContentLength:1024*1024,headers:{'User-Agent':'TradeTally listing lifetime metadata'}});
+       const meta=response.data?.chart?.result?.[0]?.meta,unit=normaliseMinorUnit(meta?.currency);
+       const candidate={source:'yahoo',meta:Object.fromEntries(['symbol','currency','exchangeName','exchangeTimezoneName','firstTradeDate'].filter(k=>meta?.[k]!=null).map(k=>[k,meta[k]]))};
+       const firstDay=unit&&require('./historyListingLifetime').firstDate(ticker,{currency:unit.code,listing:candidate});
+       if(firstDay&&(!currency||currency===unit.code)&&!(cached?.prices||[]).some(p=>p.date<firstDay)){currency ||= unit.code;listing=candidate;}
+      }catch{/* Unverified metadata cannot remove any coverage requirement. */}
+     }
+    }
+    if(!native) {
+     try {
+      const result=await require('./stockAnalysisHistory').verified(ticker,gap.from,gap.to,cached);
+      if(result.prices.length)native={currency:result.currency,prices:result.prices,splits:cached?.splits||[]};
+     }catch{/* Never substitute an unverified listing, unit or subscription range. */}
+    }
+    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;
+     for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
+    }
+   }
+   if(!currency&&shared.length){
+    // Only this separately proven native-USD route can establish currency.
+    // Ordinary normalized USD cache rows may originate in any quote currency.
+    const verified=(await db.query("SELECT price_date FROM historical_prices WHERE symbol=$1 AND is_final AND data_source='broker:etoro:statement-native-usd' AND price_date BETWEEN $2 AND $3",[ticker,gap.from,gap.to])).rows;
+    const dates=new Set(verified.map(r=>new Date(r.price_date).toISOString().slice(0,10)));
+    if(shared.every(c=>dates.has(date(c.time*1000))))currency='USD';
+   }
+   if(!currency)continue;
+   const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
+   for(const row of rows){
+    if(row.date<gap.from||row.date>gap.to||!(row.close>0))continue;
+    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom)continue;
+    const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
+    if(!(factor>0))continue;
+    const later=row.adjusted?splits.filter(s=>s.date>row.date):splits.filter(s=>s.date>row.date&&!native?.splits.some(n=>n.date===s.date));
+    incoming.set(row.date,{date:row.date,close:row.close*factor*later.reduce((v,s)=>v*s.ratio,1)});
+   }
+  }
+  if(!incoming.size&&(!listing||JSON.stringify(listing)===JSON.stringify(cached?.listing)))return cached||null;
+  return await db.withTransaction(async client=>{
+   await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['reconstruction-prices:'+symbol]);
+   const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[symbol])).rows[0]?.payload;
+   const old=current||cached;
+   if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
+   const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
+   const prices=new Map((old?.prices||[]).map(p=>[p.date,p]));for(const [d,p] of incoming)if(!prices.has(d))prices.set(d,p);
+   const payload={...old,currency,...(listing?{listing}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
+   await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[symbol,payload]);return payload;
+  });
+ }catch{return cached||null;}
 }
 
 async function loadFx(from,to,{fetchPrices=false}={}) {
@@ -120,14 +188,15 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
  const accounts=(await db.query('SELECT * FROM user_accounts WHERE user_id=$1 AND is_archived=false AND account_identifier IS NOT NULL',[userId])).rows.filter(a=>(!broker||a.broker===broker)&&(!accountIdentifiers||accountIdentifiers.includes(a.account_identifier)));
  if(!accounts.length)return [];
  const today=date(Date.now()),end=date(Date.now()-86400000),from=accounts.map(a=>date(a.initial_balance_date)).sort()[0];
- const fx=await loadFx(from,end,{fetchPrices});
+ await onProgress({stage:'fx'});
+ const priceFrom=fromDate&&fromDate>from?date(Date.parse(fromDate)-7*86400000):from;
+ const fx=await loadFx(priceFrom,end,{fetchPrices});
  const krakenPayload=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type='kraken' LIMIT 1",[userId])).rows[0]?.payload;
  const publicCryptoRates=krakenPayload?.valuation?.rates||{};
- let cryptoPairs=null;
- if(fetchPrices)try{cryptoPairs=(await axios.get('https://api.kraken.com/0/public/AssetPairs',{timeout:15000,maxRedirects:0})).data.result;}catch{/* Keep existing price coverage. */}
+
  const summaries=[];
  for(const account of accounts) {
-  onProgress({broker:account.broker,stage:'reconstructing'});
+  await onProgress({broker:account.broker,stage:'reconstructing'});
   const start=date(account.initial_balance_date),identifier=account.account_identifier;
   const snapshot=(await db.query('SELECT * FROM broker_import_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows[0];
   const portfolio=(await db.query('SELECT * FROM broker_portfolio_snapshots WHERE user_id=$1 AND broker_type=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows[0];
@@ -142,12 +211,12 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    const reports=(await db.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='etoro'",[userId,account.id])).rows;
    const records=reports.flatMap(r=>r.records||[]);
    etoroSplits=statementSplits(records);
-   etoroLots=statementLotMetadata(trades,records,etoroSplits);
+   etoroLots=statementLotMetadata(trades,records,etoroSplits,{nativeFx:fx});
   }
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');
    native=walletHistory(Object.values(payload?.ledger||{}).map(l=>({wallet:nativeWalletCode(l.asset),time:Number(l.time)*1000,amount:l.amount,fee:l.fee})),start,end);
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(Math.abs(q)>1e-9&&!FIAT.has(s))need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&!FIAT.has(s))need.add(s+'-USD');
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Full native ledger including fees and Earn wallets; dated USD closes';
   }else if(account.broker==='okx') {
@@ -157,7 +226,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    for(const p of payload?.trading?.[0]?.details||[])if(Math.abs((final[p.ccy]||0)-Number(p.cashBal))>1e-8)blockers.push(`Native crypto quantity mismatch: ${p.ccy}`);
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Reconciled Trading-wallet settlement bills; dated USD closes';
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(Math.abs(q)>1e-9&&s!=='USDT')need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&s!=='USDT')need.add(s+'-USD');
   }else {
    const ledgerService={ig:'igCashLedger',ibkr:'ibkrCashLedger',etoro:'etoroCashStatement',trading212:'trading212CashLedger'}[account.broker];
    const ledger=ledgerService?await require('./brokerSync/'+ledgerService).loadLedger(userId,account,start,end):null;
@@ -182,30 +251,19 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if(['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))need.add(marketSymbolFor(t));
+    for(const t of trades)if((['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))&&!require('./historyInstrumentIdentity').identity(t,date(t.entry_time||t.trade_date)).unsupported)need.add(marketSymbolFor(t));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];market.set(s,await loadMarket(s,start,end,{fetchPrices}));processed++;if(processed%40===0)onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length});}}));
-  if(account.broker==='kraken'&&fetchPrices&&cryptoPairs)for(const s of symbols) {
-   const coin=s.slice(0,-4),pair=Object.entries(cryptoPairs).find(([,p])=>assetCode(p.base)===coin&&assetCode(p.quote)==='USD');
-   if(!pair)continue;
-   try {
-    const response=(await axios.get('https://api.kraken.com/0/public/OHLC',{params:{pair:pair[0],interval:1440},timeout:15000,maxRedirects:0})).data;
-    if(response.error?.length)continue;
-    const prices=response.result?.[pair[0]]?.filter(c=>date(Number(c[0])*1000)<today).map(c=>({date:date(Number(c[0])*1000),close:Number(c[4])}));
-    if(prices?.length){const series={currency:'USD',prices,splits:[],from:start,to:today,source:'Kraken daily UTC closes'};market.set(s,series);await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[s,series]);}
-   }catch{/* Preserve gaps when a public market is unavailable. */}
-   await new Promise(resolve=>setTimeout(resolve,1100));
-  }
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});market.set(s,await loadMarket(s,priceFrom>start?priceFrom:start,end,{fetchPrices,userId}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   // Retired markets may have disappeared from live pair metadata. Their
   // official daily archive retains actual historical closes.
   if(account.broker==='kraken'&&fetchPrices)for(const s of symbols) {
    const coin=s.slice(0,-4);
-   const missing=native.some(r=>r.date<=cutoff&&r.quantities[coin]>1e-9&&
+   const missing=native.some(r=>r.date>=priceFrom&&r.date<=cutoff&&r.quantities[coin]>1e-9&&
     !(Number(cryptoRates[coin]?.[r.date])||Number(publicCryptoRates[coin]?.[r.date])||stockPrice(s,r.date)));
    if(!missing)continue;
    try {
@@ -221,7 +279,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Sonic launched before Kraken retired FTM. Use its dated market price only
   // where the original FTM close is absent and this import proves a 1:1 swap.
   if(account.broker==='kraken'&&fetchPrices&&[...migrationAliases].some(([key,old])=>key.startsWith('S:')&&old==='FTM')) {
-   const missing=native.filter(r=>r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
+   const missing=native.filter(r=>r.date>=priceFrom&&r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
    if(missing.length)try {
     const candles=(await axios.get('https://data-api.binance.vision/api/v3/klines',{params:{symbol:'SUSDT',interval:'1d',startTime:Date.parse(missing[0].date),endTime:Date.parse(missing.at(-1).date)+86400000-1,limit:1000},timeout:15000,maxRedirects:0,maxContentLength:1024*1024})).data;
     const existing=market.get('FTM-USD'),prices=new Map((existing?.prices||[]).map(p=>[p.date,p.close])),proxyDates=new Set(existing?.proxyDates||[]);
@@ -245,7 +303,10 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   }
   const rows=[];
   const writeFrom=fromDate&&fromDate>start?fromDate:start;
-  for(const d of days(writeFrom,end)) {
+  const valuationDays=days(writeFrom,end);
+  await onProgress({stage:'values',processed:0,total:valuationDays.length});
+  for(const [dayIndex,d] of valuationDays.entries()) {
+   if(dayIndex%100===0)await onProgress({stage:'values',processed:dayIndex,total:valuationDays.length,currentDate:d});
    let value={holdings_usd:0,cash_usd:0,stablecoins_usd:0,issues:[...blockers]};
    if(d>cutoff)value.issues.push('Beyond saved statement or sync coverage');
    if(['kraken','okx'].includes(account.broker)) {
@@ -277,7 +338,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
       // These broker contract names are not listed-security identifiers.
       // Missing contract prices use the explicitly approved zero estimate;
       // do not inspect splits for an unrelated similarly named Yahoo stock.
-      const unsupportedContract=isEtoroCfd&&(['OIL','GOLD','SILVER','COPPER','NGAS','NATGAS','PLATINUM','PALLADIUM'].includes(t.symbol)||t.symbol.endsWith('.FUT'));
+      const unsupportedContract=account.broker==='etoro'&&require('./historyInstrumentIdentity').identity({...t,broker:account.broker},opened).unsupported;
       if(unsupportedContract){value.issues.push(priceIssue(t.symbol,zeroMissingPrices));continue;}
       const s=marketSymbolFor(t),series=market.get(s);
       // Statement lot quantities may be adjusted to a later split. Without a
@@ -306,14 +367,16 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    if(blocksValue(value.issues))value.holdings_usd=value.cash_usd=value.stablecoins_usd=null;
    rows.push({...value,date:d,gbp_per_usd:fx('GBP',d)>0?1/fx('GBP',d):null});
   }
+  await onProgress({stage:'saving',processed:rows.length,total:rows.length});
   if(apply)await db.withTransaction(async client=>{
-   await client.query('DELETE FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3',[userId,identifier,writeFrom]);
-   for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
+   const previous=(await client.query('SELECT * FROM portfolio_reconstructed_values WHERE user_id=$1 AND account_identifier=$2 AND value_date >= $3 FOR UPDATE',[userId,identifier,writeFrom])).rows;
+   for(const r of rows){const prior=previous.find(p=>date(p.value_date)===r.date);if(prior&&prior.holdings_usd!=null&&(r.holdings_usd==null||(r.issues.some(i=>i.startsWith(estimatePrefix))&&!prior.issues?.some(i=>i.startsWith(estimatePrefix))))){Object.assign(r,{holdings_usd:Number(prior.holdings_usd),cash_usd:prior.cash_usd==null?null:Number(prior.cash_usd),stablecoins_usd:prior.stablecoins_usd==null?null:Number(prior.stablecoins_usd),gbp_per_usd:prior.gbp_per_usd==null?null:Number(prior.gbp_per_usd),issues:[...new Set([...(prior.issues||[]),...r.issues,'Existing history retained while missing coverage is retried'])]});}}
+   for(const r of rows)await client.query(`INSERT INTO portfolio_reconstructed_values(user_id,account_identifier,value_date,holdings_usd,cash_usd,stablecoins_usd,gbp_per_usd,issues,method) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(user_id,account_identifier,value_date) DO UPDATE SET holdings_usd=EXCLUDED.holdings_usd,cash_usd=EXCLUDED.cash_usd,stablecoins_usd=EXCLUDED.stablecoins_usd,gbp_per_usd=EXCLUDED.gbp_per_usd,issues=EXCLUDED.issues,method=EXCLUDED.method,reconstructed_at=NOW()`,[userId,identifier,r.date,r.holdings_usd,r.cash_usd,r.stablecoins_usd,r.gbp_per_usd,JSON.stringify(r.issues),method]);
   });
   const valid=rows.filter(r=>r.holdings_usd!=null);
   summaries.push({broker:account.broker,days:valid.length,estimatedDays:valid.filter(r=>r.issues.length).length,first:valid[0]?.date,last:valid.at(-1)?.date,gaps:rows.length-valid.length,issues:[...new Set(rows.flatMap(r=>r.issues))]});
-  onProgress({broker:account.broker,stage:'complete',days:valid.length,gaps:rows.length-valid.length});
+  await onProgress({broker:account.broker,stage:'complete',days:valid.length,gaps:rows.length-valid.length});
  }
  return summaries;
 }
-module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares,migrationPriceAliases};
+module.exports={reconstruct,walletHistory,historicalPrice,valueQuantities,parseYahoo,replayShares,migrationPriceAliases,loadMarket};
