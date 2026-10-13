@@ -61,13 +61,15 @@ async function applyTradeHistoricalSymbols(client,userId,trades) {
   JOIN user_accounts a ON a.id=r.account_id
   WHERE r.user_id=$1 AND r.broker_type='etoro' AND a.user_id=$1`,[userId])).rows;
  const {statementLotMetadata,statementSplits}=require('./etoroHistoricalSplits');
+ const fxRows=(await client.query("SELECT rate_date,rates FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date")).rows.filter(r=>r.rate_date&&r.rates).map(r=>({...r,date:new Date(r.rate_date).toISOString().slice(0,10)}));
+ const nativeFx=(currency,date)=>{if(currency==='USD')return 1;const r=fxRows.filter(r=>r.date<=date).at(-1);return r&&Date.parse(date)-Date.parse(r.date)<=7*86400000&&r.rates[currency]>0?1/Number(r.rates[currency]):null;};
  for(const account of new Set(etoro.map(t=>t.account_identifier))){
   const originals=etoro.filter(t=>t.account_identifier===account&&Number.isFinite(Date.parse(t.entry_time||t.trade_date)));
   const rows=originals.map(t=>({...t,entry_time:t.entry_time||t.trade_date,executions:Array.isArray(t.executions)?t.executions:[]}));
   const records=reports.filter(r=>r.account_identifier===account).flatMap(r=>r.records||[]);
-  const metadata=statementLotMetadata(rows,records,statementSplits(records));
+  const metadata=statementLotMetadata(rows,records,statementSplits(records),{nativeFx});
   for(let i=0;i<rows.length;i++){const t=originals[i],evidence=metadata.get(rows[i]);
-   if(evidence?.statementAuthority&&evidence.marketSymbol&&evidence.currency){
+   if((evidence?.statementAuthority||evidence?.listingAuthority)&&evidence.marketSymbol&&evidence.currency){
     t.history_market_symbol=historicalSymbol(new Map(),evidence.marketSymbol,new Date(t.entry_time||t.trade_date).toISOString().slice(0,10));
     t.history_market_currency=evidence.currency;
    }

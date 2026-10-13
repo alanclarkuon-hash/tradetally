@@ -140,7 +140,7 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         add(s,'stock',account,q,p>0?q*p:null,known?basis:null);
       }
     }else {
-      const records=ownReports.flatMap(r=>r.records||[]),metadata=account.broker==='etoro'?statementLotMetadata(accountTrades,records,statementSplits(records)):new Map();
+      const records=ownReports.flatMap(r=>r.records||[]),metadata=account.broker==='etoro'?statementLotMetadata(accountTrades,records,statementSplits(records),{nativeFx:fx}):new Map();
       for(const t of accountTrades) {
         const opened=day(t.entry_time||t.trade_date),closed=t.exit_time?day(t.exit_time):null;
         if(opened>range.end_date||(closed&&closed<=range.end_date))continue;

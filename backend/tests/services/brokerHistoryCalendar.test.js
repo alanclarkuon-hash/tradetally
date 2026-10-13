@@ -1,4 +1,5 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
+jest.mock('../../src/services/brokerInstrumentSymbols',()=>({applyTradeHistoricalSymbols:jest.fn().mockResolvedValue()}));
 jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn()}));
 jest.mock('../../src/services/brokerHistoryProviders',()=>({etoroArchivedEquities:jest.fn()}));
 const db=require('../../src/config/database'),BC=require('../../src/models/BrokerConnection'),provider=require('../../src/services/brokerHistoryProviders'),calendar=require('../../src/services/exchangeCalendar');
@@ -16,4 +17,10 @@ test('other brokers cannot inherit a same-named retired venue',async()=>{
 test.each([{metadata:[]},{metadata:[{symbolFull:'UNKNOWN',instrumentTypeId:5,exchange:'FX'}]},{metadata:[{symbolFull:'UNKNOWN',instrumentTypeId:5,exchange:'Nasdaq'},{symbolFull:'UNKNOWN',instrumentTypeId:5,exchange:'NYSE'}]}])('unverified or ambiguous archived venue does not supply a calendar: %p',async ({metadata})=>{
  db.query.mockResolvedValueOnce({rows:[{broker:'etoro'}]}).mockResolvedValueOnce({rows:[{id:'synthetic'}]});BC.findById.mockResolvedValue({});provider.etoroArchivedEquities.mockResolvedValue(metadata);
  expect(await calendar.brokerCalendar('owner-'+JSON.stringify(metadata),'UNKNOWN')).toBeNull();
+});
+test('a different historical broker mapping removes a raw-symbol collision',async()=>{
+ db.query.mockResolvedValueOnce({rows:[{symbol:'DISTINCT',broker:'etoro'},{symbol:'DISTINCT',broker:'other'}]}).mockResolvedValueOnce({rows:[{id:'synthetic'}]});
+ require('../../src/services/brokerInstrumentSymbols').applyTradeHistoricalSymbols.mockImplementation(async(_db,_owner,rows)=>{rows[1].history_market_symbol='DISTINCT.L'});
+ BC.findById.mockResolvedValue({});provider.etoroArchivedEquities.mockResolvedValue([{symbolFull:'DISTINCT',instrumentTypeId:5,exchange:'Nasdaq'}]);
+ expect(await calendar.brokerCalendar('owner','DISTINCT')).toBe('US');
 });

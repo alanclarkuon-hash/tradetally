@@ -216,3 +216,5 @@ test('Frankfurt joint exchange calendar preserves full and partial session disti
 });
 
 test('explicit non-Frankfurt suffix keeps its own venue despite a conflicting venue label',()=>expect(calendar.identify('KER.PA','FRA')).toBe('EURONEXT'));
+
+test.each(['Chicago Board Options Exchange','OTC Markets Stock Exchange'])('qualified broker stock venue %s uses the US equity calendar',venue=>expect(calendar.identify('VERIFIED',venue)).toBe('US'));

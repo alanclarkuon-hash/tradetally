@@ -40,7 +40,21 @@ function historicalLotQuantity(trade,day,opened,closed,splits,marketSplits=[],{s
  return Number.isFinite(quantity)&&quantity>=0?quantity:null;
 }
 const legacyListings=require('./calendars/etoro-legacy-listings.json').listings;
-function statementLotMetadata(trades,records,splits) {
+function closedListingProof(trade,nativeFx) {
+ if(trade.broker!=='etoro')return null;
+ const symbol=String(trade.symbol).toUpperCase(),listing=legacyListings.find(l=>l.symbol===symbol||l.marketSymbol===symbol);
+ if(!listing)return null;
+ const candidates=(trade.executions||[]).filter(e=>e.etoro_statement_source===true&&String(e.etoro_statement_symbol).toUpperCase()===symbol&&['Stocks','ETF','CFD'].includes(e.etoro_source_type));
+ const valid=candidates.some(e=>{
+  const fx=Number(e.etoro_fx),native=Number(e.etoro_native_price),price=Number(e.price),position=String(e.etoro_position_id),expected=e.type==='entry'?trade.entry_time:e.type==='exit'?trade.exit_time:null;
+  const unit=require('../utils/quoteCurrency').normaliseMinorUnit(listing.currency),day=expected&&Number.isFinite(Date.parse(expected))?new Date(expected).toISOString().slice(0,10):null;
+  const rate=unit&&day?(unit.code==='USD'?1:nativeFx?.(unit.code,day)):null;
+  if(!(rate>0)||unit.code!=='USD'&&fx===1||Math.abs(fx/(rate/unit.divisor)-1)>.02)return false;
+  return /^\d+$/.test(position)&&e.etoro_record_key==='statement:'+position&&expected&&Number.isFinite(Date.parse(e.datetime))&&Math.abs(Date.parse(e.datetime)-Date.parse(expected))<1000&&fx>0&&native>0&&price>0&&Number.isFinite(fx)&&Number.isFinite(native)&&Number.isFinite(price)&&Math.abs(price/(native*fx)-1)<1e-6;
+ });
+ return valid?listing:null;
+}
+function statementLotMetadata(trades,records,splits,{nativeFx}={}) {
  const openings=new Map(),byId=new Map();
  // Compare documented broker listing representations within statement evidence.
  // The full statement symbol remains the returned historical listing; account
@@ -88,11 +102,11 @@ function statementLotMetadata(trades,records,splits) {
   const inherited=chosen&&ids.size?chosen.map(s=>({...s,symbol:t.symbol.toUpperCase(),positionId:[...ids][0]})):[];
   const currencies=new Set(candidates.map(o=>o.currency));
   const symbols=new Set(candidates.map(o=>o.symbol));
-  const currency=currencies.size===1?[...currencies][0]:null;
+  let currency=currencies.size===1?[...currencies][0]:null;
   let marketSymbol=symbols.size===1?[...symbols][0]:null;
   if((t.broker==='etoro'||!t.broker)&&currency==='GBX'&&marketSymbol&&!marketSymbol.includes('.'))marketSymbol+='.L';
   const unchanged=candidates.length&&candidates.every(o=>near(ratioFor(o),1));
-  const authority=original.length>0||!!chosen?.length||unchanged;
+  const authority=original.length>0||!!chosen?.length||!!unchanged;
   // An older bare statement label must not discard a fuller broker listing.
   if(!authority)marketSymbol=null;
   else if(marketSymbol&&!marketSymbol.includes('.')&&canonical(t.symbol,currency)===marketSymbol&&canonical(t.symbol,currency)!==t.symbol.toUpperCase())marketSymbol=t.symbol.toUpperCase();
@@ -102,9 +116,15 @@ function statementLotMetadata(trades,records,splits) {
     (marketSymbol===l.symbol||l.statementSymbols?.includes(marketSymbol)));
    if(listing)marketSymbol=t.symbol.includes('.')&&canonical(t.symbol,currency)!==t.symbol.toUpperCase()?t.symbol.toUpperCase():listing.marketSymbol;
   }
+  let listingAuthority=false;
+  if(!authority){
+   const closed=closedListingProof(t,nativeFx);
+   const compatible=closed&&(!candidates.length||currencies.size===1&&currencies.has(closed.currency)&&symbols.size===1&&canonical([...symbols][0],closed.currency)===canonical(t.symbol,closed.currency));
+   if(compatible){currency=closed.currency;marketSymbol=closed.marketSymbol;listingAuthority=true;}
+  }
   // A mapped statement profile replaces the provider or differently named
   // broker profile, rather than applying both to the same lot.
-  result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority});
+  result.set(t,{splits:statementSplitsLike(inherited.length?inherited:direct),currency,marketSymbol,statementAuthority:authority,listingAuthority});
  }
  return result;
 }
