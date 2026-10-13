@@ -119,3 +119,16 @@ test('a lagging detailed range uses only verified coverage currency for the alte
  expect(await request({symbol:'LAG.L',instrumentType:'stock'})).toEqual([expect.objectContaining({close:1,currency:'GBP'})]);
  expect(etoro.get.mock.calls.at(-1)[1]).toBe('/market-data/instruments/77/history/candles/desc/OneDay/1000');
 });
+
+test('retired USD statement recovery uses canonical connection/account identity, not snapshot keys',async()=>{
+ const symbol='RETIRED',days=['2023-05-01','2023-05-03','2023-05-05'];
+ const trades=days.map((date,i)=>({symbol,broker:'etoro',account_identifier:'eToro ****1234',entry_time:date+'T12:00:00Z',entry_price:10,quantity:1,executions:[{type:'entry',datetime:date+'T12:00:00Z',price:10,quantity:1,etoro_leverage:1,etoro_statement_source:true,etoro_position_id:String(i+1),etoro_record_key:'statement:'+(i+1),etoro_native_price:10,etoro_fx:1}]}));
+ const records=trades.map((t,i)=>({sourceType:'Open Position',details:'RETIRED/USD',positionId:String(i+1),time:t.entry_time,amount:-10,units:1}));
+ db.query.mockImplementation(async sql=>({rows:sql.includes('broker_import_snapshots')?[{payload:{instruments:[{instrumentId:77,symbolFull:symbol,instrumentTypeId:5,exchangeId:4}],instrumentTypes:[{instrumentTypeId:5,instrumentTypeDescription:'Stocks'}]}}]:sql.startsWith('SELECT * FROM trades')?trades:sql.includes('broker_cash_reports')?[{records}]:[]}));
+ etoro.get.mockResolvedValueOnce({instrumentId:77,symbol:'RETIRED/USD',intervals:[{interval:'1d',candles:100}]})
+ .mockResolvedValueOnce({instrumentId:77,symbol:'RETIRED/USD',interval:'1d',side:'bid',pagination:{hasNext:false},results:days.map(date=>({time:date+'T00:00:00Z',close:10}))})
+ .mockResolvedValueOnce({interval:'OneDay',candles:[{instrumentId:77,candles:days.map(date=>({instrumentId:77,fromDate:date+'T00:00:00Z',open:10,high:11,low:9,close:10,volume:0}))}]});
+ const result=await request({symbol,instrumentType:'stock',from:'2023-05-01',to:'2023-05-05',connection:{id:'connection',externalAccountId:'1234'}});
+ expect(result).toHaveLength(3);expect(result[0]).toMatchObject({currency:'USD',nativeEvidence:'statement-usd-unsplit'});
+ expect(db.query.mock.calls.find(([sql])=>sql.startsWith('SELECT * FROM trades'))[1]).toEqual(['synthetic','connection','eToro ****1234',symbol]);
+});

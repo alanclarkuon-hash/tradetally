@@ -189,7 +189,7 @@ async function etoroCandles({ symbol, instrumentType, from, to, connection, user
       try {
         const legacy=await directory(`etoro-legacy-history:${id}`,()=>etoro.get(connection,`/market-data/instruments/${id}/history/candles/desc/OneDay/1000`));
         if(!reference?.prices?.length&&quoteCurrency==='USD'&&[4,5,19,20].includes(Number(field(matches[0],'exchangeId')))) {
-          const trades=(await db.query("SELECT * FROM trades WHERE user_id=$1 AND broker='etoro' AND account_identifier=$2 AND UPPER(symbol)=$3",[userId,'etoro:'+connection.externalAccountId,symbol])).rows;
+          const trades=(await db.query("SELECT * FROM trades WHERE user_id=$1 AND broker='etoro' AND (broker_connection_id=$2 OR (broker_connection_id IS NULL AND account_identifier=$3)) AND UPPER(symbol)=$4",[userId,connection.id,'eToro ****'+String(connection.externalAccountId).slice(-4),symbol])).rows;
           if(trades.length){const reports=(await db.query("SELECT r.records FROM broker_cash_reports r JOIN user_accounts a ON a.id=r.account_id WHERE r.user_id=$1 AND a.user_id=$1 AND a.account_identifier=$2 AND r.broker_type='etoro'",[userId,trades[0].account_identifier])).rows.flatMap(r=>r.records||[]);
             const proof=require('./etoroHistoricalSplits'),profiles=proof.statementLotMetadata(trades,reports,proof.statementSplits(reports));
             return require('./etoroStatementEquityHistory').corroborate(legacy,id,trades,profiles,from,to,nativeRows);

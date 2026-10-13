@@ -175,3 +175,28 @@ test('closed price requirements stop at the last held day while open lots stay c
  expect(tasks.find(t=>t.symbol==='DAY').to).toBe('2026-09-01');
  jest.useRealTimers();
 });
+
+test('unsupported history respects scoped ownership and merges repeated lots',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-13T12:00:00Z'));
+ portfolio._getPositionComponents.mockResolvedValue([]);
+ db.query.mockImplementation(async sql=>({rows:sql.startsWith('SELECT symbol,instrument_type')?[
+  {symbol:'IX.D.OLD.DAILY',instrument_type:'spread_bet',entry_time:'2025-01-01',exit_time:'2025-02-01'},
+  {symbol:'IX.D.HELD.DAILY',instrument_type:'spread_bet',entry_time:'2025-01-01',exit_time:'2026-02-01'},
+  {symbol:'IX.D.HELD.DAILY',instrument_type:'spread_bet',entry_time:'2026-03-01',exit_time:'2026-04-01'}
+ ]:[]}));
+ try {
+  const tasks=await service.plan('owner',{accounts:{a:'2026-01-01'}});
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({symbol:'IX.D.HELD.DAILY',unsupported:true,from:'2026-01-01',to:'2026-03-31'});
+ } finally {jest.useRealTimers();}
+});
+test('unsupported positions obey the scope floor and combined accounts retain earlier requirements',async()=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-13T12:00:00Z'));
+ db.query.mockResolvedValue({rows:[]});
+ portfolio._getPositionComponents.mockImplementation(async(_user,accounts)=>[{symbol:'IX.D.HELD.DAILY',instrumentType:'spread_bet',effectiveDate:accounts[0]==='a'?'2025-01-01':'2026-02-01'}]);
+ try {
+  const tasks=await service.plan('owner',{accounts:{a:'2026-01-01',b:'2026-03-01'}});
+  expect(tasks).toHaveLength(1);
+  expect(tasks[0]).toMatchObject({unsupported:true,from:'2026-01-01',to:'2026-10-12'});
+ } finally {jest.useRealTimers();}
+});

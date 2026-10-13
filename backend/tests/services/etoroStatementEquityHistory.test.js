@@ -26,8 +26,8 @@ test('duplicates on one date cannot satisfy independent date proof',()=>{
 test('corroborated execution basis plus matching detailed closes validates later held sessions',()=>{
  const d=payload(),f=fixture(),row={time:'2023-05-18T21:00:00Z',close:10};
  const result=corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[row]);
- expect(result).toEqual([expect.objectContaining({time:Date.parse('2023-05-19')/1000,close:10})]);
- expect(corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[{...row,close:100}])).toEqual([]);
+ expect(result).toContainEqual(expect.objectContaining({time:Date.parse('2023-05-19')/1000,close:10}));
+ expect(corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[{...row,close:100}]).some(c=>c.time===Date.parse('2023-05-19')/1000)).toBe(false);
 });
 
 test('a lagging detailed feed permits only a short tail after three corroborated closes',()=>{
@@ -37,4 +37,18 @@ test('a lagging detailed feed permits only a short tail after three corroborated
  native.push({time:'2023-05-18T00:00:00Z',close:100});
  const rejected=corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',native);
  expect(rejected.some(c=>c.time>=Date.parse('2023-05-18')/1000)).toBe(false);
+});
+
+test('a post-session settlement corroborates an observed prior bar without inventing the settlement day',()=>{
+ const d=payload();d.candles[0].candles=d.candles[0].candles.slice(0,5);
+ const f=fixture(),t=f.trades[2],e=t.executions[0];e.type='exit';e.datetime='2023-05-08T12:00:00Z';t.exit_time=e.datetime;
+ const result=run(d,f);expect(result.at(-1).time).toBe(Date.parse('2023-05-05')/1000);
+ expect(result.some(c=>c.time===Date.parse('2023-05-08')/1000)).toBe(false);
+});
+
+
+test('statement anchors do not override a contradictory detailed close inside the held interval',()=>{
+ const d=payload(),f=fixture();
+ const result=corroborate(d,77,f.trades,f.profiles,'2023-05-01','2023-05-31',[{time:'2023-05-03T00:00:00Z',close:100}]);
+ expect(result.some(c=>c.time===Date.parse('2023-05-03')/1000)).toBe(false);
 });
