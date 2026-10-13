@@ -9,7 +9,7 @@ DROP CONSTRAINT IF EXISTS broker_connections_broker_type_check;
 
 ALTER TABLE broker_connections
 ADD CONSTRAINT broker_connections_broker_type_check
-CHECK (broker_type IN ('ibkr', 'schwab', 'tradestation', 'alpaca', 'trading212', 'tradovate', 'webull'));
+CHECK (broker_type IN ('ibkr', 'schwab', 'tradestation', 'alpaca', 'trading212', 'etoro', 'okx', 'kraken', 'tradovate', 'webull'));
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_broker_connections_user_tradovate_login
     ON broker_connections (user_id, COALESCE(external_user_id, ''))
