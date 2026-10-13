@@ -1,7 +1,8 @@
 const {candle,bounded}=require('./brokerHistoryProviders');
 const {field}=require('./brokerSync/etoroService');
 const DAY=86400000;
-function corroborate(data,id,trades,profiles,from,to,nativeRows=[]) {
+function corroborate(data,id,trades,profiles,from,to,nativeRows=[],{calendar='US'}={}) {
+ if(!['US','LSE'].includes(calendar))return [];
  if(data?.interval!=='OneDay'||data.candles?.length!==1)return [];
  const group=data.candles[0];if(Number(field(group,'instrumentId'))!==id||!Array.isArray(group.candles)||group.candles.length>1000)return [];
  const prices=new Map();
@@ -24,7 +25,7 @@ function corroborate(data,id,trades,profiles,from,to,nativeRows=[]) {
    // Weekend or post-delisting settlements can occur after the last broker
    // market session. Corroborate the observed prior bar; never invent a bar
    // or relabel the execution date as a trading session.
-   if(!c&&e.type==='exit')c=[...prices.values()].filter(p=>p.time<=time&&time-p.time<=7*DAY/1000&&require('./exchangeCalendar').isTradingDay(new Date(p.time*1000).toISOString().slice(0,10),'US')).sort((a,b)=>a.time-b.time).at(-1);
+   if(!c&&e.type==='exit')c=[...prices.values()].filter(p=>p.time<=time&&time-p.time<=7*DAY/1000&&require('./exchangeCalendar').isTradingDay(new Date(p.time*1000).toISOString().slice(0,10),calendar)).sort((a,b)=>a.time-b.time).at(-1);
    if(!c)continue;
    const native=Number(e.etoro_native_price);
    // Native statement executions corroborate the broker's intraday envelope,
@@ -41,6 +42,6 @@ function corroborate(data,id,trades,profiles,from,to,nativeRows=[]) {
   if(c&&close>0&&Number.isFinite(close)){if(Math.abs(close/c.close-1)<=.01)paired.add(t);else conflicts.push(t);}
  }
  const latest=[...paired].sort((a,b)=>a-b).at(-1),tailEnd=paired.size>=3?Math.min(latest+7*DAY/1000,...conflicts.filter(t=>t>latest).map(t=>t-1)):null;
- return bounded([...prices.values()].filter(c=>c.time>=first&&(c.time<=last||paired.has(c.time)||tailEnd!=null&&c.time>latest&&c.time<=tailEnd)&&(!nativeRows.length||paired.has(c.time)||tailEnd!=null&&c.time>latest&&c.time<=tailEnd)&&require('./exchangeCalendar').isTradingDay(new Date(c.time*1000).toISOString().slice(0,10),'US')),from,to).map(c=>({...c,currency:'USD',nativeEvidence:'statement-usd-unsplit'})).sort((a,b)=>a.time-b.time);
+ return bounded([...prices.values()].filter(c=>c.time>=first&&(c.time<=last||paired.has(c.time)||tailEnd!=null&&c.time>latest&&c.time<=tailEnd)&&(!nativeRows.length||paired.has(c.time)||tailEnd!=null&&c.time>latest&&c.time<=tailEnd)&&require('./exchangeCalendar').isTradingDay(new Date(c.time*1000).toISOString().slice(0,10),calendar)),from,to).map(c=>({...c,currency:'USD',nativeEvidence:'statement-usd-unsplit'})).sort((a,b)=>a.time-b.time);
 }
 module.exports={corroborate};
