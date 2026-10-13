@@ -69,7 +69,7 @@ async function splitProof(data) {
   const $=cheerio.load(html),fields=new Map();
   for(const tr of $('tr').toArray()){const cells=$(tr).find('td');if(cells.length===2)fields.set($(cells[0]).text().trim(),$(cells[1]).text().trim());}
   const last=fields.get('Last Split Date'),type=fields.get('Split Type'),ratio=fields.get('Split Ratio');
-  if(last==='n/a'&&type==='n/a'&&ratio==='n/a')data.unadjustedAfter='1900-01-01';
+  if(last==='n/a'&&type==='n/a'&&ratio==='n/a'&&$('main').text().includes('This stock does not have any record of stock splits.'))data.unadjustedAfter='1900-01-01';
   else if(last&&last!=='n/a'&&Number.isFinite(Date.parse(last))&&ratio&&ratio!=='n/a')data.unadjustedAfter=new Date(last).toISOString().slice(0,10);
  })().catch(()=>{});
  await data.proofPromise;
@@ -77,7 +77,7 @@ async function splitProof(data) {
 // Native dated quotes are the reference for both security continuity and split
 // basis. Only fill near an independently verified overlap; never overwrite it.
 function verifiedRows(data,from,to,cached) {
- if(cached?.currency&&cached.currency!==data.currency)return [];
+ if((cached?.prices?.length&&!cached.currency)||(cached?.currency&&cached.currency!==data.currency))return [];
  const existing=new Map((cached?.prices||[]).map(p=>[p.date,p.close]));
  const splits=cached?.splits||[];
  const factor=d=>splits.filter(s=>s.date>d).reduce((v,s)=>v*s.ratio,1);
