@@ -18,22 +18,26 @@ function missingRanges(candles, from, to, crypto = false, calendar = null) {
   return ranges;
 }
 
+// Provider formatting preserves the caller's broker/cache identity.
+function yahooTicker(symbol) {
+  return symbol === 'BRK.B' ? 'BRK-B' : /^0[0-9]{4}\.HK$/i.test(symbol) ? symbol.slice(1).toUpperCase() : symbol;
+}
+function verifyYahooListing(symbol,meta) {
+  if(String(meta?.symbol||'').toUpperCase()!==yahooTicker(symbol).toUpperCase())
+    throw new Error('Historical listing identity does not match requested symbol');
+  if(/^0[0-9]{4}\.HK$/i.test(symbol) &&
+     (meta.currency !== 'HKD' || !/^(HKG|HKEX|XHKG|HONG KONG)$/i.test(meta.exchangeName || '')))
+    throw new Error('Historical Hong Kong listing venue or currency does not match requested symbol');
+}
 async function yahoo(symbol, from, to) {
-  // HKEX broker codes may pad a four-digit stock code to five digits.
-  // Only remove that representational zero, not digits from genuine five-digit codes.
-  const ticker = symbol === 'BRK.B' ? 'BRK-B' : /^0[0-9]{4}\.HK$/i.test(symbol) ? symbol.slice(1).toUpperCase() : symbol;
+  const ticker = yahooTicker(symbol);
   const response = await axios.get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}`, {
     params: { interval: '1d', period1: Date.parse(from) / 1000, period2: Date.parse(to) / 1000 + 86400 },
     timeout: 12000, maxRedirects: 0, maxContentLength: 8 * 1024 * 1024,
     headers: { 'User-Agent': 'TradeTally historical prices' }
   });
   const result = response.data?.chart?.result?.[0], quote = result?.indicators?.quote?.[0];
-  if(String(result?.meta?.symbol||'').toUpperCase()!==ticker.toUpperCase())
-    throw new Error('Historical listing identity does not match requested symbol');
-  if (/^0[0-9]{4}\.HK$/i.test(symbol) &&
-      (result.meta.currency !== 'HKD' ||
-       !/^(HKG|HKEX|XHKG|HONG KONG)$/i.test(result.meta.exchangeName || '')))
-    throw new Error('Historical Hong Kong listing venue or currency does not match requested symbol');
+  verifyYahooListing(symbol,result?.meta);
   const first=Number(result.meta.firstTradeDate)||0;
   return (result?.timestamp || []).flatMap((time, i) => quote?.close?.[i] > 0 && Number.isFinite(time) && iso(time*1000)>=from && iso(time*1000)<=to && (!first||iso(time*1000)>=iso(first*1000))
     ? [{ time: Date.parse(iso(time * 1000)) / 1000, close: quote.close[i], open: quote.open?.[i] ?? quote.close[i], high: quote.high?.[i] ?? quote.close[i], low: quote.low?.[i] ?? quote.close[i], volume: quote.volume?.[i] || 0, currency:result.meta?.currency || null }] : []);
@@ -57,4 +61,4 @@ async function crypto(symbol, from, to) {
   }
   return [...daily.values()];
 }
-module.exports = { missingRanges, yahoo, crypto };
+module.exports = { missingRanges, yahoo, crypto, yahooTicker, verifyYahooListing };

@@ -13,3 +13,20 @@ test('unavailable providers preserve existing coverage without a replacement wri
 test('currency or split conflicts preserve saved history',async()=>{axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'EUR'},timestamp:[],events:{},indicators:{quote:[{}]}}]}}});expect(await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'})).toEqual(saved);expect(db.withTransaction).not.toHaveBeenCalled();});
 
 test('conflicting split ratios cannot revise stored historical price units',async()=>{saved.splits=[{date:'2026-01-05',ratio:2}];axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'SYNTH',currency:'USD'},timestamp:[],events:{splits:{one:{date:Date.parse('2026-01-05')/1000,numerator:3,denominator:1}}},indicators:{quote:[{}]}}]}}});const before=JSON.stringify(saved);await loadMarket('SYNTH','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(JSON.stringify(saved)).toBe(before);expect(db.withTransaction).not.toHaveBeenCalled();});
+
+
+test('HK reconstruction uses matching provider metadata but preserves broker/cache identity and older closes',async()=>{
+ saved={currency:'HKD',from:'2026-01-02',to:'2026-01-02',prices:[{date:'2026-01-02',close:10}],splits:[]};
+ portfolio._getDailySeries.mockResolvedValue([]);
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'0257.HK',currency:'HKD',exchangeName:'HKG'},timestamp:[Date.parse('2026-01-05')/1000],events:{},indicators:{quote:[{close:[11]}]}}]}}});
+ const result=await loadMarket('00257.HK','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});
+ expect(axios.get.mock.calls[0][0]).toContain('/0257.HK');
+ expect(result.currency).toBe('HKD');expect(result.prices).toEqual([{date:'2026-01-02',close:10},{date:'2026-01-05',close:11}]);
+ expect(db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT'))[1][0]).toBe('00257.HK');
+});
+test.each([{symbol:'0257.HK',currency:'USD',exchangeName:'HKG'},{symbol:'0257.HK',currency:'HKD',exchangeName:'NYSE'},{symbol:'1093.HK',currency:'HKD',exchangeName:'HKG'}])('invalid HK native metadata does not assign a currency or write reconstructed history %#',async(meta)=>{
+ saved=null;portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-01-05')/1000,close:10}]);
+ axios.get.mockResolvedValue({data:{chart:{result:[{meta,timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ expect(await loadMarket('00257.HK','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'})).toBeNull();
+ expect(db.withTransaction).not.toHaveBeenCalled();
+});
