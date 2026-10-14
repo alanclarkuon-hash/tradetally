@@ -26,6 +26,7 @@
     </div>
 
     <template v-else-if="income">
+      <p v-if="income.cashActivityIncomplete" role="status" class="mb-4 rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-900/20 dark:text-amber-200">Some IG statement cash movements are not itemised. These totals include identified transactions only; unitemised movements are excluded from income and trade P&amp;L.</p>
       <!-- Summary cards -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         <div class="bg-white dark:bg-gray-800 shadow-sm rounded-lg p-5">

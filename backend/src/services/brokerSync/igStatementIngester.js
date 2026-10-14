@@ -10,6 +10,7 @@ const reasons={invalid_date:'The statement date could not be verified.',unknown_
  conflicting_statement:'Different values are already stored for this account and date. Review the correction before applying it.',
  changed_accounts:'An account changed during processing. Retry after other imports finish.',import_failed:'The statement could not be reconciled with saved history. Updated reports or a review are needed.',
  fx_unavailable:'The dated GBP exchange rate is unavailable. Retry later.',maintenance:'Imported, but portfolio maintenance needs a retry.',
+ unitemised_cash:'Statement balance confirmed. Itemised transactions imported. Some cash movement is not itemised and is excluded from income and trade P&L.',
  activity_pending:'Portfolio valuation imported. Cash or trade history needs reconciliation with the missing statements or CSV reports.',
  resolved_by_later_history:'Resolved by subsequent statement and transaction history. Original PDF retained for audit; its conflicting chart value remains excluded.',
  backup_failed:'The required backup failed. No financial changes were applied. Check backup status before retrying.'};
@@ -120,9 +121,10 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
  }finally{active.delete(userId);}
 }
 async function status(userId){
- const rows=(await db.query(`SELECT i.id,i.statement_date,i.status,i.reason,i.processed_at,a.account_name FROM ig_statement_ingestion i
+ const rows=(await db.query(`SELECT i.id,i.statement_date,i.status,i.reason,i.processed_at,a.account_name,c.currency,c.reported_cash,c.calculated_cash,c.unitemised_cash FROM ig_statement_ingestion i
+ LEFT JOIN ig_statement_cash_coverage c ON c.receipt_id=i.id AND c.user_id=i.user_id
  LEFT JOIN user_accounts a ON a.user_id=i.user_id AND a.account_identifier=i.account_identifier WHERE i.user_id=$1 ORDER BY i.received_at DESC LIMIT 100`,[userId])).rows;
  return {enabled:process.env.ENABLE_IG_STATEMENT_INGESTER==='true'&&process.env.IG_INGEST_USER_ID===userId,
-  running:active.has(userId),documents:rows.map(r=>({...r,needsReview:['review','conflict','rejected'].includes(r.status)||['activity_pending','cash_date_conflict'].includes(r.reason),reason:reasons[r.reason]||null}))};
+  running:active.has(userId),documents:rows.map(r=>({...r,cashActivityIncomplete:r.reason==='unitemised_cash'&&Number(r.unitemised_cash)!==0,needsReview:['review','conflict','rejected'].includes(r.status)||['activity_pending','cash_date_conflict'].includes(r.reason),reason:reasons[r.reason]||null}))};
 }
 module.exports={ingest,status,samePoint,reasons};
