@@ -178,3 +178,28 @@ test('closed listing proof can supplement consistent opening currency but never 
  expect(statementLotMetadata([lot],[record],[],{nativeFx:()=>1}).get(lot)).toMatchObject({marketSymbol:'MONY.L',listingAuthority:true,statementAuthority:false});
  expect(statementLotMetadata([lot],[{...record,details:'MONY/EUR'}],[],{nativeFx:()=>1}).get(lot).marketSymbol).toBeNull();
 });
+
+describe('partial closure native-currency identity',()=>{
+ const make=()=>({broker:'etoro',symbol:'SYNTH.OL',side:'long',instrument_type:'cfd',entry_time:'2024-01-02T10:00:00Z',entry_price:10,quantity:1,executions:[{type:'entry',etoro_position_id:'child',etoro_leverage:2,etoro_native_price:100}]});
+ const opening={sourceType:'Open Position',positionId:'parent',details:'SYNTH/NOK',time:'2024-01-02T10:00:00Z',units:4,amount:20};
+ test('recovers native currency from the original larger opening without rewriting broker fills',()=>{
+  const lot=make(),before=JSON.stringify(lot),meta=statementLotMetadata([lot],[opening,opening],[]).get(lot);
+  expect(meta).toMatchObject({currency:'NOK',marketSymbol:'SYNTH.OL',statementAuthority:true,unsplitCostAuthority:true});
+  expect(JSON.stringify(lot)).toBe(before);
+  const {cfdEquity}=require('../src/services/etoroHistoricalCfd');
+  expect(cfdEquity(lot,1,110,.1)).toBeCloseTo(6);
+ });
+ test.each(['time','currency','cost','venue'])('rejects incompatible %s opening evidence',kind=>{
+  const lot=make(),record={...opening};
+  if(kind==='time')record.time='2024-01-02T10:00:01Z';
+  if(kind==='currency')record.details='SYNTH/USD';
+  if(kind==='cost')record.amount=40;
+  if(kind==='venue'){lot.symbol='SYNTH.PA';record.details='SYNTH.DE/EUR';}
+  expect(statementLotMetadata([lot],[record],[]).get(lot)).toMatchObject({currency:null,marketSymbol:null,statementAuthority:false});
+ });
+ test('conflicting same-time currencies remain unresolved for a bare symbol',()=>{
+  const lot={...make(),symbol:'SYNTH'};
+  const other={...opening,positionId:'another',details:'SYNTH/USD'};
+  expect(statementLotMetadata([lot],[opening,other],[]).get(lot)).toMatchObject({currency:null,marketSymbol:null});
+ });
+});
