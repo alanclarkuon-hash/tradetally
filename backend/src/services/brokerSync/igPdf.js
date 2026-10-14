@@ -88,4 +88,10 @@ function confirmation(base,tradingText,ledgerText,transactions) {
   }
   return {cash,cutoff,holdings,...(openBets?{openBets}:{})};
 }
-module.exports={text,identity,confirmation,spreadPositions};
+async function ledgerGeometry(buffer){
+ const {PDFParse}=require('pdf-parse'),parser=new PDFParse({data:new Uint8Array(buffer),isEvalSupported:false,enableXfa:false});
+ try{const doc=await parser.load();if(doc.numPages>30)throw Error('Ledger exceeds page limit');const pages=[];
+  for(let n=1;n<=doc.numPages;n++){const page=await doc.getPage(n);pages.push((await page.getTextContent()).items.filter(i=>typeof i.str==='string'&&i.str.trim()).map(i=>({text:i.str,x:i.transform[4],y:i.transform[5],width:i.width})));}return pages;
+ }finally{await parser.destroy();}
+}
+module.exports={text,identity,confirmation,spreadPositions,ledgerGeometry};
