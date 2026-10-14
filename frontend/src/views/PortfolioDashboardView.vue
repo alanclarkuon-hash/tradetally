@@ -23,7 +23,6 @@
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
     <section v-if="!hasAccountSelection && !loading" class="card-dense p-6" role="status"><h2 class="heading-card">No accounts selected</h2><p class="subtitle">Select an account using the accounts filter to view your portfolio.</p></section>
-    <template>
       <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing" :data-available="!!(hasAccountSelection && data && !loading)">
         <template #total><CurrencyCard preference-key="portfoliodashboardview-1" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency,currency:cardCurrency}"><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</p><div class="money main-money">{{ formatCurrency(data.totals.portfolioValue) }}</div><p class="card-foot">Latest · {{ data.accountCount }} accounts · {{ cardCurrency }}</p></article></CurrencyCard></template>
         <template #holdings><CurrencyCard preference-key="portfoliodashboardview-2" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency,currency:cardCurrency}"><article class="card-dense value-card"><p class="text-sm font-medium text-gray-500 dark:text-gray-400">Holdings value</p><div class="money">{{ formatCurrency(data.totals.holdingsValue) }}</div></article></CurrencyCard></template>
@@ -59,7 +58,6 @@
       <div v-if="incomplete || heatmapCoverage.missingPnl || heatmapCoverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="heatmapCoverage.missingPnl"> {{ heatmapCoverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="heatmapCoverage.unclassified"> {{ heatmapCoverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps. Run a broker sync to fetch the latest transactions from your brokers.</p>
       </template>
-    </template>
   </div>
 </template>
 
