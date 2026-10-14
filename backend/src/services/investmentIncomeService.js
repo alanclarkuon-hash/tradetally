@@ -38,7 +38,13 @@ async function getIncomeSummary(userId,{startDate=null,endDate=null,currency='US
       records.push({date,currency:sourceCurrency,category,value:Number(e.amount)*(category==='fee'?1:-1),symbol:e.symbol || 'Account cash'});
     }
   }
-  return aggregate(records,currency);
+  const coverage=(await db.query(`SELECT c.unitemised_cash FROM ig_statement_cash_coverage c
+    JOIN user_accounts a ON a.user_id=c.user_id AND a.account_identifier=c.account_identifier AND a.broker='ig'
+    WHERE c.user_id=$1 AND COALESCE(a.include_in_reports,true)=true AND NOT a.is_archived
+    AND ($2::date IS NULL OR c.statement_date >= $2) AND ($3::date IS NULL OR c.statement_date <= $3)`,[userId,startDate,endDate]))?.rows||[];
+  const result=await aggregate(records,currency);
+  result.cashActivityIncomplete=coverage.some(r=>Number.isFinite(Number(r.unitemised_cash))&&Number(r.unitemised_cash)!==0);
+  return result;
 }
 function normalizeTicker(value) {
   const london=String(value).match(/^(.+)l_EQ$/) || String(value).match(/^(.+)_GB_EQ$/i);

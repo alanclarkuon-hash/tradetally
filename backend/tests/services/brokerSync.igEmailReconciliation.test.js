@@ -85,3 +85,11 @@ test('unmatched activity, later balance conflicts or changed holdings cannot sup
  expect(superseded(p,later,records,'2026-10-05')).toBe(false);
 });
 
+
+test('later complete evidence clears partial coverage without changing reported balances',async()=>{
+ const {clear}=require('../../src/services/brokerSync/igEmailReconciliation');const client={query:jest.fn().mockResolvedValue({rows:[{id:'partial',reason:'unitemised_cash',evidence:point}]})};
+ await clear(client,'owner','account',[{time:'2026-10-01T00:00:00.000Z',cash:10},event],'2026-10-06T23:59:59Z');
+ expect(client.query).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM ig_statement_cash_coverage'),['partial','owner']);
+ expect(client.query).toHaveBeenCalledWith(expect.stringContaining('SET reason=NULL'),['partial','owner']);
+ expect(client.query.mock.calls.some(([sql])=>sql.includes('portfolio_statement_values'))).toBe(false);
+});
