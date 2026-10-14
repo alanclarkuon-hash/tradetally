@@ -1946,7 +1946,7 @@ class PortfolioService {
       if (reusable.length) await historicalPriceCache.insertCandles(symbol, reusable, 'coingecko');
       cachedCandles = [...cachedCandles, ...reusable].sort((a,b)=>a.time-b.time);
     }
-    const calendar = instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(symbol);
+    const calendar = instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(symbol,{from:startDate,to:endDate});
     // A candle count cannot distinguish real session gaps from market closures.
     // Only require dates on which this instrument's exchange actually traded.
     if (!historyProvider.missingRanges(cachedCandles, startDate, endDate, instrumentType === 'crypto', calendar).length) {
@@ -1988,7 +1988,7 @@ class PortfolioService {
     const crypto = instrumentType === 'crypto';
     const ticker = crypto ? symbol.slice(7) : symbol;
     const merged = new Map(cachedCandles.map(c => [c.time, c]));
-    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true,userId});
+    const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true,userId,from:startDate,to:endDate});
     const persist = async (candles, source) => {
       const normalized=await require('../utils/dailyPriceCurrency').toUsd(candles,crypto||calendar==='US'?'USD':null);
       const fresh = normalized.filter(c => !merged.has(c.time));
@@ -2267,7 +2267,7 @@ class PortfolioService {
       try {
         const startDate = this._addCalendarDays(earliest, -LEADING_COVERAGE_BUFFER_DAYS);
         const existing = await historicalPriceCache.getRange(symbol, startDate, endDate);
-        const calendar=await require('./exchangeCalendar').resolve(symbol);
+        const calendar=await require('./exchangeCalendar').resolve(symbol,{from:startDate,to:endDate});
         const covered=!historyProvider.missingRanges(existing,startDate,endDate,false,calendar).length;
         if (covered) {
           summary.cached += 1;
