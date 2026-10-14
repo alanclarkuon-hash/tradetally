@@ -122,10 +122,13 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
       }catch{/* Unverified metadata cannot remove any coverage requirement. */}
      }
     }
-    if(!native) {
+    if(!native?.prices?.length) {
      try {
       const result=await require('./stockAnalysisHistory').verified(ticker,gap.from,gap.to,cached);
-      if(result.prices.length)native={currency:result.currency,prices:result.prices,splits:cached?.splits||[],historicalIdentity:result.historicalIdentity};
+      if(result.prices.length){
+       if(native?.currency&&native.currency!==result.currency)throw Error('Fallback price currency conflicts with verified listing');
+       native={currency:result.currency,prices:result.prices,splits:cached?.splits||[],listing:native?.listing,historicalIdentity:result.historicalIdentity};
+      }
      }catch{/* Never substitute an unverified listing, unit or subscription range. */}
     }
     if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;if(native.historicalIdentity)historicalIdentity=native.historicalIdentity;
@@ -143,7 +146,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
    for(const row of rows){
     if(row.date<gap.from||row.date>gap.to||!(row.close>0)||crypto&&identity.coin(symbol)&&row.date<identity.coin(symbol).firstDate)continue;
-    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom&&!require('./verifiedMergerPriceBasis').covers(ticker,row.date,historicalIdentity))continue;
+    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom&&!require('./verifiedMergerPriceBasis').covers(ticker,row.date,historicalIdentity)&&!require('./verifiedListingTransfers').covers(ticker,row.date,historicalIdentity))continue;
     const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
     if(!(factor>0))continue;
     const later=row.adjusted?splits.filter(s=>s.date>row.date):splits.filter(s=>s.date>row.date&&!native?.splits.some(n=>n.date===s.date));

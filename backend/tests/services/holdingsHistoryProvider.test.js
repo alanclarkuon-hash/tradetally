@@ -73,7 +73,7 @@ test('formatted HK listing retains date/lifetime bounds',async()=>{
 
 
 test.each([
- ['EXAMPLE.US','EXAMPLE','USD','NYQ'],['EXAMPLE.NV','EXAMPLE.AS','EUR','AMS'],
+ ['EXAMPLE.US','EXAMPLE','USD','NYQ'],['ET.US','ET','USD','TEX'],['EXAMPLE.NV','EXAMPLE.AS','EUR','AMS'],
  ['EXAMPLE.ZU','EXAMPLE.SW','CHF','EBS'],['EXAMPLE.ASX','EXAMPLE.AX','AUD','ASX'],
  ['EXAMPLE.B.US','EXAMPLE-B','USD','NMS']
 ])('broker namespace %s requests verified provider listing %s',async(symbol,ticker,currency,exchangeName)=>{
