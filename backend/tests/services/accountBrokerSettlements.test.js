@@ -35,3 +35,38 @@ test('conflicting source evidence never produces a complete reconstructed result
  const reports=reportingSettlements(originalGroups([make('buy',5),a,b]));
  expect(reports.get('a').status).toBe('unavailable');expect(reports.get('b').status).toBe('unavailable');
 });
+
+const splitEvidence={TEST:{currency:'USD',splits:[{date:'2026-01-02',ratio:10}]}};
+test('dated stock split recovers apparent shorts with broker gross and pooled entry fees',()=>{
+ const buy=make('buy',1),exit={...sell('exit',10),side:'short'};
+ exit.executions[0].datetime='2026-01-03T12:00:00Z';
+ exit.executions[0].broker_result=12;
+ const before=JSON.stringify([buy,exit]);
+ expect(reportingSettlements(originalGroups([buy,exit])).get('exit').status).toBe('unavailable');
+ const groups=originalGroups([buy,exit],[],splitEvidence),report=reportingSettlements(groups).get('exit');
+ // One original acquisition fee (0.1 / 1.25) plus the whole exit fee (1 / 1.25).
+ expect(report).toMatchObject({status:'complete',currency:'GBP',pnl:11.12,fees:.88});
+ expect(report.events[0].gross_pnl).toBe(12);
+ expect(originalSettlementReports(groups).legacy.get('exit').pnl).toBeCloseTo(report.pnl);
+ expect(originalSettlementReports(groups).canonical.get(groups.find(g=>g.fill.action==='exit').key).pnl).toBeCloseTo(report.pnl);
+ expect(JSON.stringify([buy,exit])).toBe(before);
+});
+test('split-aware original fees supersede incomplete legacy matched slices',()=>{
+ const buy=make('buy',1),a=sell('a',1),b={...sell('b',9),side:'short'};
+ for(const t of [a,b])t.executions[0].datetime='2026-01-03T12:00:00Z';
+ const reports=reportingSettlements(originalGroups([buy,a,b],[],splitEvidence));
+ expect(reports.get('a').pnl+reports.get('b').pnl).toBeCloseTo(79.12);
+ expect(reports.get('a').fees+reports.get('b').fees).toBeCloseTo(.88);
+});
+test('reverse splits preserve total acquisition fees across partial exits',()=>{
+ const buy=make('buy',10),exit=sell('exit',.5);exit.executions[0].datetime='2026-01-03T12:00:00Z';
+ const evidence={TEST:{currency:'USD',splits:[{date:'2026-01-02',ratio:.1}]}};
+ const r=reportingSettlements(originalGroups([buy,exit],[],evidence)).get('exit');
+ expect(r.status).toBe('complete');expect(r.fees).toBeCloseTo(.44);
+});
+test('wrong-currency or conflicting split evidence cannot manufacture a result',()=>{
+ const buy=make('buy',1),exit={...sell('exit',10),side:'short'};exit.executions[0].datetime='2026-01-03T12:00:00Z';
+ for(const evidence of [undefined,{TEST:{currency:'EUR',splits:splitEvidence.TEST.splits}},{TEST:{currency:'USD',splits:[...splitEvidence.TEST.splits,...splitEvidence.TEST.splits]}}]){
+  expect(reportingSettlements(originalGroups([buy,exit],[],evidence)).get('exit').status).toBe('unavailable');
+ }
+});
