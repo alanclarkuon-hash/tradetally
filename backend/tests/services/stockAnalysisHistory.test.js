@@ -58,3 +58,15 @@ test('unavailable listings are not re-requested for each missing range',async()=
 test('a rate-limit response prevents requests for other symbols during cooldown',async()=>{
  axios.get.mockRejectedValueOnce({response:{status:429,headers:{'retry-after':'120'}}});await expect(provider.download('ZZLIMIT1')).rejects.toEqual({response:{status:429,headers:{'retry-after':'120'}}});await expect(provider.download('ZZLIMIT2')).rejects.toThrow('rate-limit cooldown');expect(axios.get).toHaveBeenCalledTimes(1);
 });
+
+
+test('verified merger history keeps adjusted chart candles distinct from original-share prices',async()=>{
+ clock+=180000;
+ const days=['2026-07-20','2026-07-21','2026-07-22'];
+ const page=html('AVB').replace('NASDAQ','NYSE').replace('Synthetic security','AvalonBay Communities, Inc.');
+ const table='<main><p>This stock does not have any record of stock splits.</p><table><tr><td>Last Split Date</td><td>n/a</td></tr><tr><td>Split Type</td><td>n/a</td></tr><tr><td>Split Ratio</td><td>n/a</td></tr></table></main>';
+ axios.get.mockResolvedValueOnce({data:page}).mockResolvedValueOnce({data:{data:[row('2021-11-03',10),...days.map((d,i)=>row(d,100+i))]}}).mockResolvedValueOnce({data:page+table});
+ const cached={currency:'USD',splits:[{date:'2026-08-17',ratio:2.793}],prices:days.map((date,i)=>({date,close:(100+i)*2.793}))};
+ const r=await provider.verified('AVB','2021-11-03','2021-11-03',cached);
+ expect(r.prices).toEqual([{date:'2021-11-03',close:27.93}]);expect(r.candles[0].close).toBe(10);expect(r.historicalIdentity).toMatchObject({symbol:'AVB',successor:'VMRK',nativeAnchorCount:3});
+});

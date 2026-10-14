@@ -90,7 +90,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
  if(!gaps.length)return cached;
  let currency=cached?.currency||(crypto?'USD':null),splits=[...(cached?.splits||[])];
- const incoming=new Map();let listing=cached?.listing||null,metadataChecked=false;
+ const incoming=new Map();let listing=cached?.listing||null,historicalIdentity=cached?.historicalIdentity||null,metadataChecked=false;
  try {
   for(const gap of gaps){
    // Shared finalized daily prices use broker-first routing and USD units.
@@ -123,10 +123,10 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
     if(!native) {
      try {
       const result=await require('./stockAnalysisHistory').verified(ticker,gap.from,gap.to,cached);
-      if(result.prices.length)native={currency:result.currency,prices:result.prices,splits:cached?.splits||[]};
+      if(result.prices.length)native={currency:result.currency,prices:result.prices,splits:cached?.splits||[],historicalIdentity:result.historicalIdentity};
      }catch{/* Never substitute an unverified listing, unit or subscription range. */}
     }
-    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;
+    if(native){if(currency&&currency!==native.currency)throw Error('Price currency changed');currency ||= native.currency;if(native.listing)listing=native.listing;if(native.historicalIdentity)historicalIdentity=native.historicalIdentity;
      for(const split of native.splits){const existing=splits.find(s=>s.date===split.date);if(existing&&existing.ratio!==split.ratio)throw Error('Split basis changed');if(!existing){if(cached?.to&&split.date<=cached.to&&cached.prices.some(p=>p.date<split.date))throw Error('Previously unverified split basis');splits.push(split);}}
     }
    }
@@ -141,7 +141,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
    for(const row of rows){
     if(row.date<gap.from||row.date>gap.to||!(row.close>0))continue;
-    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom)continue;
+    const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom&&!require('./verifiedMergerPriceBasis').covers(ticker,row.date,historicalIdentity))continue;
     const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
     if(!(factor>0))continue;
     const later=row.adjusted?splits.filter(s=>s.date>row.date):splits.filter(s=>s.date>row.date&&!native?.splits.some(n=>n.date===s.date));
@@ -156,7 +156,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
    const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
    const prices=new Map((old?.prices||[]).map(p=>[p.date,p]));for(const [d,p] of incoming)if(!prices.has(d))prices.set(d,p);
-   const payload={...old,currency,...(listing?{listing}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
+   const payload={...old,currency,...(listing?{listing}:{}),...(historicalIdentity?{historicalIdentity}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
    await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[symbol,payload]);return payload;
   });
  }catch{return cached||null;}

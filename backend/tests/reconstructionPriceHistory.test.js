@@ -85,3 +85,21 @@ test('a separately corroborated native-USD cache route establishes native curren
  expect(result).toMatchObject({currency:'USD',splits:[],prices:[{date:'2026-01-05',close:101}]});
  expect(db.query.mock.calls.find(([sql])=>sql.startsWith('SELECT price_date'))[0]).toContain("data_source='broker:etoro:statement-native-usd'");
 });
+
+
+test('verified predecessor history bypasses successor IPO metadata and restores native units exactly once',async()=>{
+ const days=['2026-07-20','2026-07-21','2026-07-22'];
+ saved={currency:'USD',from:days[0],to:days.at(-1),prices:days.map((date,i)=>({date,close:(100+i)*2.793})),splits:[{date:'2026-08-17',ratio:2.793}],listing:{source:'yahoo',meta:{symbol:'AVB',currency:'USD',exchangeName:'NYQ',firstTradeDate:Date.parse('2026-07-17')/1000}}};
+ const old=JSON.stringify(saved.prices);
+ const d={ticker:'AVB',name:'AvalonBay Communities, Inc.',exchange:'NYSE',currency:'USD',source:'stockanalysis:spg',unadjustedAfter:'1900-01-01',prices:[{date:'2021-11-03',close:10},...days.map((date,i)=>({date,close:100+i}))]};
+ const proof=require('../src/services/verifiedMergerPriceBasis').proof(d,saved);
+ const fallback=jest.spyOn(require('../src/services/stockAnalysisHistory'),'verified').mockResolvedValue({currency:'USD',prices:[{date:'2021-11-03',close:27.93}],historicalIdentity:proof});
+ portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2021-11-03')/1000,close:10}]);
+ const r=await loadMarket('AVB','2021-11-03','2021-11-03',{fetchPrices:true,userId:'owner'});
+ expect(r.prices.find(p=>p.date==='2021-11-03').close).toBeCloseTo(27.93,10);
+ expect(JSON.stringify(r.prices.filter(p=>p.date!=='2021-11-03'))).toBe(old);
+ expect(r.listing.meta.firstTradeDate).toBe(saved.listing.meta.firstTradeDate);
+ expect(r.historicalIdentity).toEqual(proof);
+ expect(db.query.mock.calls.filter(([q])=>q.startsWith('INSERT')).every(([q])=>q.includes('portfolio_reconstruction_prices'))).toBe(true);
+ fallback.mockRestore();
+});
