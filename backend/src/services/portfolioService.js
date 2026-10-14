@@ -2007,6 +2007,9 @@ class PortfolioService {
         try { await persist(await historyProvider.crypto(ticker, range.from, range.to), 'coingecko'); }
         catch { break; } // Shared client enforces cooldown and the persistent API budget.
       }
+      if(require('./cryptoHistoryIdentity').yahooListing(ticker))for(const range of ranges()) {
+        try{await persist(await historyProvider.yahooCrypto(ticker,range.from,range.to),'yahoo:coin-id='+require('./cryptoHistoryIdentity').yahooListing(ticker).coinGeckoId);}catch{/* An unverified ticker or unit remains a gap. */}
+      }
       return [...merged.values()].sort((a, b) => a.time - b.time);
     }
 

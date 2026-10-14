@@ -154,6 +154,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
   return await db.withTransaction(async client=>{
    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['reconstruction-prices:'+symbol]);
    const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[storageSymbol])).rows[0]?.payload;
+   if(crypto&&current&&!identity.usableNative(symbol,current))throw Error('Crypto cache identity conflict');
    const old=current||cached;
    if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
    const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
