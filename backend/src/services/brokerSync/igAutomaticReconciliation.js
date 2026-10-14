@@ -6,7 +6,7 @@ async function run(userId,{backup}={}){
  if(running.has(userId))return {busy:true};
  running.add(userId);
  try{
-  const pending=(await db.query("SELECT account_identifier,statement_date::text,reason FROM ig_statement_ingestion WHERE user_id=$1 AND ((status='imported' AND reason IN ('activity_pending','cash_date_conflict','maintenance')) OR (status='review' AND reason='cash_date_conflict') OR (status='conflict' AND reason='conflicting_statement'))",[userId])).rows;
+  const pending=(await db.query("SELECT account_identifier,statement_date::text,reason FROM ig_statement_ingestion WHERE user_id=$1 AND ((status='imported' AND reason IN ('activity_pending','unitemised_cash','cash_date_conflict','maintenance')) OR (status='review' AND reason='cash_date_conflict') OR (status='conflict' AND reason='conflicting_statement'))",[userId])).rows;
   if(!pending.length)return {reconciled:false};
   const rows=await saved(userId),inputs=rows.map(r=>r.payload.igFileInput),selected=[];
   for(let i=0;i<rows.length;i++){
@@ -21,7 +21,8 @@ async function run(userId,{backup}={}){
     }
     inputs[i]=updated;selected.push(rows[i].account_identifier);
    }
-   catch(e){if(!e.message?.startsWith('IG upload:')&&!e.message?.startsWith('IG statement:'))throw e;}
+   catch(e){if(e.message?.includes('Transactions do not reconcile')){await require('./igEmailCashCoverage').apply(userId,rows[i].account_identifier,{backup});}
+    if(!e.message?.startsWith('IG upload:')&&!e.message?.startsWith('IG statement:'))throw e;}
   }
   let corrections=[];
   if(selected.length){
