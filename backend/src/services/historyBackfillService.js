@@ -140,7 +140,7 @@ async function process(job) {
       }
       try {
         const prices = await require('./portfolioService')._getDailySeries(task.symbol, task.from, task.to, job.user_id, { instrumentType: task.instrumentType });
-        task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol,{allowLookup:true,userId:job.user_id});
+        task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol,{allowLookup:true,userId:job.user_id,from:task.from,to:task.to});
         const absent = missingRanges(prices, task.from, task.to, task.instrumentType === 'crypto', task.calendar);
         if (absent.length) state.gaps.push({ ...task, ranges: absent, reason: task.instrumentType === 'crypto' ? 'No finalized broker/provider prices for these dates' : calendarCoverageReason(task.calendar,task.from,task.to) });
         else state.complete++;
@@ -169,12 +169,7 @@ async function status(userId) {
   rows.sort((a,b)=>({processing:0,pending:1}[a.status]??2)-({processing:0,pending:1}[b.status]??2)||new Date(b.created_at)-new Date(a.created_at));
   return Promise.all(rows.map(async row => {
     const result = typeof row.result === 'string' ? JSON.parse(row.result) : row.result || {};
-    const gaps = await Promise.all((result.gaps || []).map(async gap => {
-      if(gap.unsupported || gap.instrumentType === 'crypto') return gap;
-      const calendar=gap.calendar || await require('./exchangeCalendar').resolve(gap.symbol);
-      const ranges=(gap.ranges || []).flatMap(r => missingRanges([],r.from,r.to,false,calendar));
-      return ranges.length ? {...gap,calendar,ranges,reason:calendarCoverageReason(calendar,gap.from||ranges[0]?.from,gap.to||ranges.at(-1)?.to)} : null;
-    }));
+    const gaps = await Promise.all((result.gaps || []).map(gap => require('./savedHistoryCoverage').remaining(gap)));
     const remaining=gaps.filter(Boolean);
     return { id: row.id, status: row.status, stage: result.stage || 'queued', processed: result.processed || 0,
       total: result.total || 0, complete: (result.complete || 0)+(gaps.length-remaining.length), currentSymbol: result.currentSymbol || null,
