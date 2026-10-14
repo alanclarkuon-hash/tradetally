@@ -20,14 +20,16 @@ async function relay({source,target}){
  if(source===target)throw Error('Source and target must differ');
  await fs.mkdir(target,{recursive:true});
  if((await fs.lstat(target)).isSymbolicLink())throw Error('Invalid destination');
- const result={copied:0,archived:0,errors:0,lastRun:new Date().toISOString()};
+ const result={copied:0,archived:0,errors:0,failures:{},lastRun:new Date().toISOString()};
+ const failure=stage=>{result.errors++;result.failures[stage]=(result.failures[stage]||0)+1;};
  try{
   const status=await regular(source,'.collector-status.json');if(status.st.size>8192)throw Error('Invalid collector status');
   const value=JSON.parse(await fs.readFile(status.file,'utf8'));
   if(value.version!==1||!Number.isFinite(Date.parse(value.lastRun))||!Number.isInteger(value.errors)||value.errors<0)throw Error('Invalid collector status');
   result.collector={lastRun:value.lastRun,errors:value.errors};
- }catch(e){if(e.code!=='ENOENT')result.errors++;}
+ }catch(e){if(e.code!=='ENOENT')failure('collector_status');}
  for(const name of (await fs.readdir(source)).filter(n=>/^[a-f0-9]{64} - .*\.pdf$/i.test(n))){
+  let stage='read';
   try{
    const {file,st}=await regular(source,name);if(Date.now()-st.mtimeMs<3000)continue;
    const bytes=await fs.readFile(file),prefix=name.slice(0,64),metaName=prefix+'.json';
@@ -36,15 +38,17 @@ async function relay({source,target}){
    if(digest(bytes)!==prefix||decoded.sha256!==prefix||decoded.version!==1)throw Error('Invalid checksum');
    const processed=path.join(target,'Processed');
    try{const receipt=await regular(processed,name);const done=await fs.readFile(receipt.file);if(!done.equals(bytes))throw Error('Receipt conflict');
+    stage='archive';
     await archive(source,name,bytes);await archive(source,metaName,metadata);result.archived++;continue;
    }catch(e){if(e.code!=='ENOENT')throw e;}
+   stage='delivery';
    const destination=path.join(target,name);
    try{if(!(await fs.readFile(destination)).equals(bytes))throw Error('Destination conflict');}
    catch(e){if(e.code!=='ENOENT')throw e;const temporary=destination+'.part-'+crypto.randomUUID();await fs.writeFile(temporary,bytes,{flag:'wx'});await fs.rename(temporary,destination);result.copied++;}
    const destinationMeta=path.join(target,metaName);
    try{if(!(await fs.readFile(destinationMeta)).equals(metadata))throw Error('Metadata conflict');}
    catch(e){if(e.code!=='ENOENT')throw e;const temporary=destinationMeta+'.part-'+crypto.randomUUID();await fs.writeFile(temporary,metadata,{flag:'wx'});await fs.rename(temporary,destinationMeta);}
-  }catch{result.errors++;}
+  }catch{failure(stage);}
  }
  await fs.writeFile(path.join(target,'.relay-status.json'),JSON.stringify(result));return result;
 }

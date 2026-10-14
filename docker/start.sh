@@ -30,5 +30,8 @@ mkdir -p \
   /app/backend/src/logs
 chown -R appuser:appgroup /app/backend/uploads /app/backend/src/data /app/backend/src/logs
 
+# A pre-existing host/root-owned archive must remain writable by the service.
+node /app/backend/src/utils/prepareIgIngestion.js
+
 # Supervise both services; Docker must see backend failure to restart the app.
 exec /app/supervise.sh
