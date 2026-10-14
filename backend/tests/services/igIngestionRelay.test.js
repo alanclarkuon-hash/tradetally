@@ -21,3 +21,10 @@ test('collector failures are delivered as safe health metadata without blocking 
  const result=await relay({source,target});expect(result.copied).toBe(1);expect(result.collector).toEqual({lastRun:expect.any(String),errors:1});
  expect(await fs.readFile(path.join(target,'.relay-status.json'),'utf8')).not.toContain('privateExtra');
 });
+
+test('safe failure stages identify delivery conflicts without exposing document names or contents',async()=>{
+ await fs.mkdir(target);await fs.writeFile(path.join(target,name),'private conflicting contents');
+ const result=await relay({source,target});expect(result).toMatchObject({errors:1,failures:{delivery:1}});
+ const status=await fs.readFile(path.join(target,'.relay-status.json'),'utf8');expect(status).not.toContain(name);expect(status).not.toContain('private conflicting contents');
+ expect(await fs.readFile(path.join(source,name))).toEqual(bytes);
+});
