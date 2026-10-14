@@ -35,3 +35,11 @@ describe('Portfolio card customization',()=>{
     expect(view.text()).not.toContain('History chart');view.unmount()
   })
 })
+
+
+it('renders sync status without invoking financial slots while balances are unavailable',async()=>{
+ const view=mount(PortfolioCardLayout,{props:{dataAvailable:false},slots:{total:()=>{throw Error('Financial data unavailable')},brokerSyncs:'<p>All connections status</p>'}});await flushPromises();
+ expect(view.text()).toContain('All connections status');
+ expect(view.find('[data-card="total"]').classes()).toContain('hidden-card');
+ view.unmount();
+});
