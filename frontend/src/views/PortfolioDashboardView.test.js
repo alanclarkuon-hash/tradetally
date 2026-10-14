@@ -282,7 +282,9 @@ it('keeps a recovery currency button available when portfolio loading fails',asy
 
 it('keeps the independent sync card mounted with no accounts selected or portfolio loading failure',async()=>{
  mock.selection.value='__none__';const view=create();await flushPromises();
+ expect(view.find('template').exists()).toBe(false);
  expect(view.find('broker-sync-status-card-stub').exists()).toBe(true);
  mock.selection.value='one';mock.get.mockRejectedValue(new Error('offline'));await flushPromises();
+ expect(view.find('template').exists()).toBe(false);
  expect(view.find('broker-sync-status-card-stub').exists()).toBe(true);view.unmount();
 });
