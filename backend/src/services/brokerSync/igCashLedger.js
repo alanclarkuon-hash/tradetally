@@ -33,7 +33,12 @@ async function loadLedger(userId,account,start,end) {
   const report=(await db.query("SELECT * FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='ig' ORDER BY to_date DESC,updated_at DESC LIMIT 1",[userId,account.id])).rows[0];
   if(!report)return null;
   if(report.currency!==account.currency)throw Error('IG statement/account currency mismatch');
-  return calculate(report,start,end);
+  const input=(await db.query("SELECT payload FROM broker_import_snapshots WHERE user_id=$1 AND account_identifier=$2 AND broker_type='ig'",[userId,account.account_identifier])).rows[0]?.payload?.igFileInput;
+  if(input?.emailCashRecords)report.records=require('./igEmailCash').merge(report.records,input.emailCashRecords).records;
+  const result=calculate(report,start,end);
+  const coverage=(await db.query('SELECT * FROM ig_statement_cash_coverage WHERE user_id=$1 AND account_identifier=$2 AND statement_date<=$3 ORDER BY statement_date DESC LIMIT 1',[userId,account.account_identifier,end])).rows[0];
+  if(coverage&&Number(coverage.unitemised_cash)!==0){result.fundingPending=true;result.cashActivityIncomplete=true;result.reconciliation={statementDate:dateKey(coverage.statement_date),reportedBalance:Number(coverage.reported_cash),calculatedBalance:result.balance,difference:(cents(result.balance)-cents(coverage.reported_cash))/100,matched:false,unitemised:true};}
+  return result;
 }
 async function dayActivity(userId,account,date) {
   const ledger=await loadLedger(userId,account,date,date);if(!ledger)return null;

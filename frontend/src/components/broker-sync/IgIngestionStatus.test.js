@@ -11,3 +11,8 @@ it('shows failed and successful results with no financial amounts',async()=>{
 it('reports a status endpoint failure without a raw server error',async()=>{
  api.get.mockRejectedValue(new Error('private details'));const w=mount(IgIngestionStatus);await flushPromises();expect(w.text()).toContain('Unable to load IG statement status');expect(w.text()).not.toContain('private details');w.unmount()
 })
+
+it('separates confirmed balances with incomplete cash activity from trade review',async()=>{
+ api.get.mockResolvedValue({data:{data:{enabled:true,documents:[{id:'partial',status:'imported',cashActivityIncomplete:true,needsReview:false,reason:'Itemised payments imported; unitemised movements excluded from income.'}]}}});
+ const w=mount(IgIngestionStatus);await flushPromises();expect(w.text()).toContain('Balance confirmed');expect(w.text()).toContain('1 statements have partly itemised cash activity');expect(w.text()).not.toContain('need reconciliation or review');w.unmount();
+});

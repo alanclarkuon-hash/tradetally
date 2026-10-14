@@ -1,6 +1,7 @@
 jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/services/brokerSync/igCsvReconciliation',()=>({reconcile:jest.fn()}));
 jest.mock('../../src/services/brokerSync/igImport',()=>({importAccounts:jest.fn()}));
+jest.mock('../../src/services/brokerSync/igEmailCashCoverage',()=>({apply:jest.fn().mockResolvedValue({changed:false})}));
 jest.mock('../../src/services/manualPortfolioMaintenance',()=>({rebuild:jest.fn()}));
 const db=require('../../src/config/database'),csv=require('../../src/services/brokerSync/igCsvReconciliation'),imports=require('../../src/services/brokerSync/igImport'),maintenance=require('../../src/services/manualPortfolioMaintenance'),{run}=require('../../src/services/brokerSync/igAutomaticReconciliation');
 const row={account_identifier:'synthetic',payload:{igFileInput:{kind:'share_dealing',transactions:'private synthetic'}}};

@@ -59,3 +59,8 @@ test('missing currency rates cannot silently mix currencies',async()=>{
   fx.getForexRate.mockResolvedValue(null);
   await expect(service.aggregate([{date:'2025-02-01',currency:'USD',category:'interest',value:1,symbol:'Cash'}],'GBP')).rejects.toThrow('conversion unavailable');
 });
+
+test('unitemised cash is disclosed without being counted as income',async()=>{
+ db.query.mockResolvedValueOnce({rows:[event('interest',1)]}).mockResolvedValueOnce({rows:[{unitemised_cash:2}]});
+ const r=await service.getIncomeSummary('owner',{currency:'GBP'});expect(r.cashActivityIncomplete).toBe(true);expect(r.summary.totalInterest).toBe(1);
+});
