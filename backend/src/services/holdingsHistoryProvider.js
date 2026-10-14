@@ -101,3 +101,19 @@ async function crypto(symbol, from, to) {
   return require('./cryptoPriceUnits').scale([...daily.values()],quote.units);
 }
 module.exports = { missingRanges, yahoo, crypto, yahooTicker, verifyYahooListing, yahooSessionDate };
+
+// Registered provider IDs and issuer names must both agree; SKY-USD is Skycoin.
+async function yahooCrypto(symbol,from,to) {
+ const identity=require('./cryptoHistoryIdentity'),listing=identity.yahooListing(symbol);
+ if(!listing)throw Error('Verified crypto listing unavailable');
+ const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+listing.ticker,{params:{interval:'1d',period1:Date.parse(from)/1000,period2:Date.parse(to)/1000+86400},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally verified crypto history'}});
+ const r=response.data?.chart?.result?.[0],meta=r?.meta;
+ if(meta?.symbol!==listing.ticker||meta.currency!=='USD'||meta.exchangeName!=='CCC'||(meta.longName||meta.shortName)!==listing.name)throw Error('Crypto listing identity mismatch');
+ const quote=r.indicators?.quote?.[0];
+ return identity.dated(symbol,(r.timestamp||[]).flatMap((time,i)=>{
+  if(!Number.isFinite(time)||time%86400||!(quote?.close?.[i]>0))return [];
+  const d=iso(time*1000);if(d<from||d>to)return [];
+  return [{time,close:quote.close[i],open:quote.open?.[i]??quote.close[i],high:quote.high?.[i]??quote.close[i],low:quote.low?.[i]??quote.close[i],volume:quote.volume?.[i]||0,currency:'USD'}];
+ }));
+}
+module.exports.yahooCrypto=yahooCrypto;
