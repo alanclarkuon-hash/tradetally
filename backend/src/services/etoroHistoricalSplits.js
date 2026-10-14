@@ -69,7 +69,7 @@ function statementLotMetadata(trades,records,splits,{nativeFx}={}) {
   if(r.sourceType!=='Open Position'||!r.positionId)continue;
   const match=/^([^/]+)\/([A-Z]{3})/.exec(r.details||'');if(!match)continue;
   const entry={...r,symbol:match[1].toUpperCase(),currency:match[2]};
-  const key=[canonical(entry.symbol,entry.currency),String(r.time).slice(0,19)].join('|');
+  const key=String(r.time).slice(0,19);
   const entries=openings.get(key)||new Map();entries.set(String(r.positionId),entry);openings.set(key,entries);byId.set(String(r.positionId),entry);
  }
  const result=new Map();
@@ -77,7 +77,12 @@ function statementLotMetadata(trades,records,splits,{nativeFx}={}) {
   const ids=new Set((t.executions||[]).flatMap(e=>[e.etoro_position_id,e.etoro_parent_position_id]).filter(v=>v!=null).map(String));
   const direct=splits.filter(s=>ids.has(s.positionId));
   const original=[...ids].map(id=>byId.get(id)).filter(o=>o&&canonical(o.symbol,o.currency)===canonical(t.symbol,o.currency));
-  const candidates=original.length?original:[...(openings.get([t.symbol.toUpperCase(),new Date(t.entry_time).toISOString().slice(0,19)].join('|'))?.values()||[])];
+  // Partial closures have their own ID. Match the original opening by time
+  // and its documented native currency, canonicalizing both symbol forms.
+  // Never merge two different fully qualified venues by stripping suffixes.
+  const candidates=original.length?original:[...(openings.get(new Date(t.entry_time).toISOString().slice(0,19))?.values()||[])].filter(o=>
+   canonical(o.symbol,o.currency)===canonical(t.symbol,o.currency)&&
+   (o.symbol===t.symbol.toUpperCase()||!o.symbol.includes('.')||!t.symbol.includes('.')));
   const closed=t.exit_time?new Date(t.exit_time).toISOString().slice(0,10):null;
   const profiles=candidates.map(o=>splits.filter(s=>s.positionId===o.positionId&&(!closed||s.date<=closed)));
   const signature=events=>JSON.stringify(events.map(s=>[s.symbol,s.date,s.ratio]).sort());
@@ -103,12 +108,12 @@ function statementLotMetadata(trades,records,splits,{nativeFx}={}) {
   const currencies=new Set(candidates.map(o=>o.currency));
   const symbols=new Set(candidates.map(o=>o.symbol));
   let currency=currencies.size===1?[...currencies][0]:null;
-  let marketSymbol=symbols.size===1?[...symbols][0]:null;
+  let marketSymbol=currencies.size===1&&symbols.size===1?[...symbols][0]:null;
   if((t.broker==='etoro'||!t.broker)&&currency==='GBX'&&marketSymbol&&!marketSymbol.includes('.'))marketSymbol+='.L';
   const unchanged=candidates.length&&candidates.every(o=>near(ratioFor(o),1));
   const authority=original.length>0||!!chosen?.length||!!unchanged;
   // An older bare statement label must not discard a fuller broker listing.
-  if(!authority)marketSymbol=null;
+  if(!authority){marketSymbol=null;currency=null;}
   else if(marketSymbol&&!marketSymbol.includes('.')&&canonical(t.symbol,currency)===marketSymbol&&canonical(t.symbol,currency)!==t.symbol.toUpperCase())marketSymbol=t.symbol.toUpperCase();
   // Legacy bare symbols are broker-specific and require proven native identity.
   if(authority&&t.broker==='etoro') {
