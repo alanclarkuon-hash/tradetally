@@ -70,3 +70,12 @@ test('verified merger history keeps adjusted chart candles distinct from origina
  const r=await provider.verified('AVB','2021-11-03','2021-11-03',cached);
  expect(r.prices).toEqual([{date:'2021-11-03',close:27.93}]);expect(r.candles[0].close).toBe(10);expect(r.historicalIdentity).toMatchObject({symbol:'AVB',successor:'VMRK',nativeAnchorCount:3});
 });
+
+test('TXSE continuous history retains native pre-transfer rows with exact issuer and split proof',async()=>{
+ clock+=180000;
+ const page=html('ET').replace('NASDAQ','TXSE').replace('Synthetic security','Energy Transfer LP');
+ const table='<main><table><tr><td>Last Split Date</td><td>Jul 27, 2015</td></tr><tr><td>Split Type</td><td>Forward</td></tr><tr><td>Split Ratio</td><td>2:1</td></tr></table></main>';
+ const days=['2026-07-20','2026-07-21','2026-07-22'],cached={currency:'USD',splits:[],prices:days.map((date,i)=>({date,close:100+i}))};
+ axios.get.mockResolvedValueOnce({data:page}).mockResolvedValueOnce({data:{data:[row('2021-11-23',10),...days.map((d,i)=>row(d,100+i))]}}).mockResolvedValueOnce({data:page+table});
+ const r=await provider.verified('ET','2021-11-23','2021-11-23',cached);expect(r.prices).toEqual([{date:'2021-11-23',close:10}]);expect(r.historicalIdentity).toMatchObject({kind:'exchange-transfer',nativeAnchorCount:3});
+});

@@ -48,7 +48,7 @@ async function download(symbol) {
   try{html=await page(r.path);}catch(e){if(e.response?.status!==404||r.type!=='s')throw e;r.path='/etf/'+r.ticker.toLowerCase()+'/history/';html=await page(r.path);}
   const pos=html.indexOf('info:{');if(pos<0)throw Error('Public listing identity missing');
   const info=literalObject(html,pos+5),ticker=stringField(info,'ticker')||stringField(info,'symbol'),exchange=stringField(info,'exchange_code')||stringField(info,'exchange'),curr=info.match(/curr:\{([^}]+)\}/)?.[1],priceCurrency=stringField('{'+curr+'}','price'),unit=normaliseMinorUnit(priceCurrency),currency=unit?.code;
-  if(ticker?.toUpperCase()!==r.ticker||(!unit||!(r.venue==='LON'?['GBP','USD']: [r.currency]).includes(currency))||(r.venue&&exchange!==r.venue)||(!r.venue&&!/^(NASDAQ|NYSE|NYSEARCA|NYSEAMERICAN|OTC|OTCQX|OTCQB|OTCPK)$/i.test(exchange||'')))throw Error('Stock Analysis listing identity mismatch');
+  if(ticker?.toUpperCase()!==r.ticker||(!unit||!(r.venue==='LON'?['GBP','USD']: [r.currency]).includes(currency))||(r.venue&&exchange!==r.venue)||(!r.venue&&!/^(NASDAQ|NYSE|NYSEARCA|NYSEAMERICAN|TXSE|OTC|OTCQX|OTCQB|OTCPK)$/i.test(exchange||'')))throw Error('Stock Analysis listing identity mismatch');
   const uid=stringField(info,'db_symbol')||stringField(info,'uid')||ticker;
   const type=stringField(info,'type')?.charAt(0);if(!['s','e','a'].includes(type))throw Error('Unsupported public listing type');
   const response=(await get(`https://api.stockanalysis.com/api/symbol/${type}/${encodeURIComponent(uid)}/history`,{params:{range:'5Y',period:'Daily'},timeout:20000,maxRedirects:0,maxContentLength:8*1024*1024})).data;
@@ -91,7 +91,7 @@ async function verified(symbol,from,to,cached) {
  const prices=verifiedRows(data,from,to,cached);
  const dates=new Set(prices.map(p=>p.date));
  const {proofPromise,...publicData}=data;
- const historicalIdentity=require('./verifiedMergerPriceBasis').proof(data,cached);
+ const historicalIdentity=require('./verifiedMergerPriceBasis').proof(data,cached)||require('./verifiedListingTransfers').proof(data,cached);
  return {...publicData,...(historicalIdentity?{historicalIdentity}:{}),prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
 }
 module.exports={download,verified,verifiedRows,splitProof,route,literalObject,stringField};
