@@ -305,6 +305,7 @@ async function fetch({ userId, symbol, instrumentType, ranges, onPrices }) {
     WHERE user_id=$1 AND connection_status='active' ORDER BY created_at`, [userId])).rows;
   for (const row of connections) {
     if(!ranges().length)break;
+    if(instrumentType==='crypto'&&!require('./cryptoHistoryIdentity').sourceAllowed(symbol,'broker:'+row.broker_type))continue;
     const adapter = adapters.get(row.broker_type);
     if (!adapter) continue;
     try {

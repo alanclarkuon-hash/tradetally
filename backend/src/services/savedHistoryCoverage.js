@@ -12,9 +12,9 @@ async function remaining(gap) {
  const venue=gap.calendar||await calendar.resolve(gap.symbol,{from,to});
  const crypto=gap.instrumentType==='crypto';
  const candles=(await cache.getRange(crypto?'crypto:'+gap.symbol:gap.symbol,from,to)).filter(c=>Number.isFinite(c.time)&&Number.isFinite(c.close)&&c.close>0);
- const payload=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[crypto?gap.symbol+'-USD':gap.symbol])).rows[0]?.payload;
+ const payload=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[require('./cryptoHistoryIdentity').nativeKey(crypto?gap.symbol+'-USD':gap.symbol)])).rows[0]?.payload;
  const unit=normaliseMinorUnit(payload?.currency);
- if(unit&&Array.isArray(payload?.prices)) {
+ if(unit&&Array.isArray(payload?.prices)&&(!crypto||require('./cryptoHistoryIdentity').usableNative('crypto:'+gap.symbol,payload))) {
    const rates=unit.code==='USD'?new Map():new Map((await db.query("SELECT rate_date,rates FROM fx_daily_rates WHERE base_code='USD' AND rate_date BETWEEN $1 AND $2",[from,to])).rows.map(r=>[new Date(r.rate_date).toISOString().slice(0,10),r.rates]));
    const proxies=new Set(payload.proxyDates||[]);
    for(const p of payload.prices) {

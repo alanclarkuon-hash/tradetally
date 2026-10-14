@@ -122,8 +122,8 @@ async function getDashboard(userId, query={}, historical=null) {
     // broker's valuation payload. Reuse them for range P&L across accounts.
     const cryptoSymbols=positions.filter(p=>p.instrumentType==='crypto').map(p=>p.symbol+'-USD');
     if(cryptoSymbols.length) {
-      const cached=(await db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1)',[cryptoSymbols])).rows;
-      for(const {symbol,payload} of cached)if(payload?.currency==='USD') {
+      const cached=(await db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1)',[cryptoSymbols.map(require('./cryptoHistoryIdentity').nativeKey)])).rows;
+      for(const {symbol,payload} of cached.map(require('./cryptoHistoryIdentity').nativeRow).filter(Boolean))if(payload?.currency==='USD') {
         const coin=symbol.slice(0,-4),prices=cryptoRates[coin]||{};
         for(const p of payload.prices||[])if(Number(p.close)>0&&!prices[p.date])prices[p.date]=Number(p.close);
         cryptoRates[coin]=prices;
