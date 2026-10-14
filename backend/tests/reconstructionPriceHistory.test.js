@@ -1,4 +1,5 @@
 jest.mock('../src/config/database',()=>({query:jest.fn(),withTransaction:jest.fn()}));
+jest.mock('../src/services/stockAnalysisHistory',()=>({verified:jest.fn().mockResolvedValue({prices:[]})}));
 jest.mock('axios',()=>({get:jest.fn()}));
 jest.mock('../src/services/exchangeCalendar',()=>({resolve:jest.fn().mockResolvedValue('US'),isTradingDay:d=>![0,6].includes(new Date(d).getUTCDay())}));
 jest.mock('../src/services/portfolioService',()=>({_getDailySeries:jest.fn()}));
@@ -109,3 +110,20 @@ test('legacy Skycoin reconstruction is not trusted even when its envelope is com
 test('new SKY history retains explicit coin identity and native token units in a separate namespace',async()=>{saved=null;portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-01-05')/1000,close:.07}]);const r=await loadMarket('SKY-USD','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(r.cryptoIdentity).toEqual({coinGeckoId:'sky',quoteCurrency:'USD',units:'native-token'});expect(db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT'))[1][0]).toBe('SKY@sky-USD');expect(axios.get).not.toHaveBeenCalled()});
 
 test('an equity sharing SKY ticker keeps its original reconstruction behavior',async()=>{expect(await loadMarket('SKY','2026-01-02','2026-01-02')).toEqual(saved);expect(db.query.mock.calls[0][1][0]).toBe('SKY')});
+
+test.each([true,false])('empty Yahoo rows use fallback; only proven transfer bypasses recent listing start (%s)',async verified=>{
+ const days=['2026-07-20','2026-07-21','2026-07-22'];
+ saved={currency:'USD',from:days[0],to:days.at(-1),prices:days.map((date,i)=>({date,close:100+i})),splits:[],listing:{source:'yahoo',meta:{symbol:'ET',currency:'USD',exchangeName:'TEX',firstTradeDate:Date.parse('2026-07-17')/1000}}};
+ const old=JSON.stringify(saved.prices),data={ticker:'ET',name:'Energy Transfer LP',exchange:'TXSE',currency:'USD',source:'stockanalysis:spg',unadjustedAfter:'2015-07-27',prices:[{date:'2021-11-23',close:10},...saved.prices]};
+ const identity=verified?require('../src/services/verifiedListingTransfers').proof(data,saved):null;
+ portfolio._getDailySeries.mockResolvedValue([]);axios.get.mockResolvedValue({data:{chart:{result:[{meta:saved.listing.meta,timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ const fallback=require('../src/services/stockAnalysisHistory').verified;fallback.mockResolvedValueOnce({currency:'USD',prices:[{date:'2021-11-23',close:10}],historicalIdentity:identity});
+ const r=await loadMarket('ET','2021-11-23','2021-11-23',{fetchPrices:true,userId:'owner'});
+ expect(fallback).toHaveBeenCalledWith('ET','2021-11-23','2021-11-23',expect.any(Object));expect(r.prices.some(p=>p.date==='2021-11-23')).toBe(verified);expect(JSON.stringify(r.prices.filter(p=>p.date!=='2021-11-23'))).toBe(old);
+});
+
+test('fallback cannot discard a newly verified IPO cutoff when the native response is empty',async()=>{
+ saved=null;portfolio._getDailySeries.mockResolvedValue([]);axios.get.mockResolvedValue({data:{chart:{result:[{meta:{symbol:'NEWCO',currency:'USD',exchangeName:'NMS',firstTradeDate:Date.parse('2026-01-05')/1000},timestamp:[],events:{},indicators:{quote:[{}]}}]}}});
+ require('../src/services/stockAnalysisHistory').verified.mockResolvedValueOnce({currency:'USD',prices:[{date:'2026-01-02',close:10}]});
+ const r=await loadMarket('NEWCO','2026-01-02','2026-01-05',{fetchPrices:true,userId:'owner'});expect(r.prices).toEqual([]);expect(r.listing.meta.firstTradeDate).toBe(Date.parse('2026-01-05')/1000);
+});

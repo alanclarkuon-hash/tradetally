@@ -33,7 +33,7 @@ function missingRanges(candles, from, to, crypto = false, calendar = null) {
 // Broker namespaces differ from provider listing suffixes. Formatting changes
 // the provider request only; financial records and cache keys remain untouched.
 const namespaceRules={
- US:{suffix:'',currency:'USD',venues:/^(NYQ|NMS|NGM|NCM|PCX|ASE|BTS|NYSE|NASDAQ|NYSEARCA)$/i},
+ US:{suffix:'',currency:'USD',venues:/^(NYQ|NMS|NGM|NCM|PCX|ASE|BTS|NYSE|NASDAQ|NYSEARCA|TEX|TXSE)$/i},
  NV:{suffix:'.AS',currency:'EUR',venues:/^(AMS|XAMS|AMSTERDAM)$/i},
  ZU:{suffix:'.SW',currency:'CHF',venues:/^(EBS|SWX|SIX|XSWX)$/i},
  ASX:{suffix:'.AX',currency:'AUD',venues:/^(ASX|XASX)$/i}
