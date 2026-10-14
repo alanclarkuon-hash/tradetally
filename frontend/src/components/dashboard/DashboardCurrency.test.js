@@ -27,6 +27,28 @@ describe('Net P/L currency and R control',()=>{
   mock.selection.value='gbp';let w=mount(HeroMetricsRibbon,{props:{analytics},global:{stubs:{MiniBarChart:true}}});await flushPromises();expect(w.find('button').attributes('disabled')).toBeUndefined();await w.find('button').trigger('click');expect(w.find('button').text()).toBe('R');w.unmount();w=mount(HeroMetricsRibbon,{props:{analytics},global:{stubs:{MiniBarChart:true}}});await flushPromises();expect(w.find('button').text()).toBe('R');useAuthStore().user.settings.display_currency='EUR';await flushPromises();expect(w.find('button').text()).toBe('€');w.unmount();
  });
 })
+describe('daily R availability',()=>{
+ it.each([null, undefined, '', 'invalid', NaN, Infinity])('keeps missing daily R unavailable even when the range has known R (%s)',async value=>{
+  mock.selection.value='gbp';const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,dailyPnL:[...analytics.dailyPnL,{trade_date:today,daily_pnl:8,r_value:value,trade_count:2}]}},global:{stubs:{MiniBarChart:true}}});
+  await flushPromises();expect(w.find('[aria-label="Today results"]').text()).toContain('+\u00a38.00');await w.find('button').trigger('click');
+  expect(w.text()).toContain('+2.00R');expect(w.find('[aria-label="Today results"]').text()).toContain('R unavailable');expect(w.find('[aria-label="Today results"]').text()).not.toContain('+0.00R');
+  expect(w.findComponent({name:'MiniBarChart'}).props('values')).toEqual([.75,1.25]);expect(w.findComponent({name:'MiniBarChart'}).props('labels')).toEqual(['2026-01-02: +0.75R','2026-01-03: +1.25R']);
+  await w.find('button').trigger('click');expect(w.find('[aria-label="Today results"]').text()).toContain('+\u00a38.00');w.unmount();
+ });
+ it.each([[0,'+0.00R'],['0','+0.00R'],[-1.25,'-1.25R'],['2.5','+2.50R']])('shows measured daily R (%s), including genuine zero',async(value,expected)=>{
+  mock.selection.value='gbp';const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,dailyPnL:[analytics.dailyPnL[0],{tradeDate:today,dailyPnL:8,rValue:value,tradeCount:2}]}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');
+  expect(w.find('[aria-label="Today results"]').text()).toContain(expected);expect(w.findComponent({name:'MiniBarChart'}).props('values')).toEqual([.75,Number(value)]);w.unmount();
+ });
+ it.each([null, 0, '0'])('shows unavailable for both total and Today when no risk evidence exists (%s)',async value=>{
+  mock.selection.value='gbp';const now=new Date();const today=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const w=mount(HeroMetricsRibbon,{props:{analytics:{...analytics,summary:{...analytics.summary,totalRValue:null},dailyPnL:[{trade_date:today,daily_pnl:8,r_value:value,trade_count:2}]}},global:{stubs:{MiniBarChart:true}}});await flushPromises();await w.find('button').trigger('click');
+  expect(w.text().match(/R unavailable/g)).toHaveLength(2);expect(w.text()).not.toContain('+0.00R');expect(w.findComponent({name:'MiniBarChart'}).exists()).toBe(false);w.unmount();
+ });
+
+})
+
 describe('cumulative chart currency and lifecycle',()=>{
  it('converts actual plotted points and labels exactly once and preserves date navigation',async()=>{
   const days=[{trade_date:'2026-01-02',cumulative_pnl:30},{trade_date:'2026-01-03',cumulative_pnl:80}];const w=mount(EquityCurveChart,{props:{dailyPnL:days,sourceCurrency:'GBP'}});await flushPromises();expect(mock.charts.at(-1).data.datasets[0].data).toEqual([30,80]);await w.find('button').trigger('click');const config=mock.charts.at(-1);expect(config.data.datasets[0].data).toEqual([37.5,100]);expect(config.options.plugins.tooltip.callbacks.label({parsed:{y:100}})).toBe('$100.00');expect(config.options.scales.y.ticks.callback(100)).toBe('$100.00');config.options.onClick({},[{index:1}]);expect(w.emitted('select-date')[0]).toEqual(['2026-01-03']);await w.find('button').trigger('click');expect(mock.charts.at(-1).data.datasets[0].data).toEqual([33.75,90]);mock.hidden.value=true;await flushPromises();expect(mock.charts.at(-1).options.scales.y.ticks.callback(90)).toBe('hidden');w.unmount();expect(mock.destroy).toHaveBeenCalled();

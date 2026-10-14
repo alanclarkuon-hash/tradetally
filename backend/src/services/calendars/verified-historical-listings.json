@@ -1,0 +1,12 @@
+{
+  "listings": [
+    {
+      "symbol": "SMLR",
+      "calendar": "US",
+      "from": "2024-01-01",
+      "to": "2025-01-31",
+      "source": "https://www.sec.gov/Archives/edgar/data/1554859/000155485925000011/smlr-20241231x10k.htm",
+      "note": "2024 annual report identifies Nasdaq-listed common stock and January 2025 outstanding shares. Evidence is restricted to this historical interval."
+    }
+  ]
+}

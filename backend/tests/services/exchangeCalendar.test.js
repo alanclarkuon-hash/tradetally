@@ -231,3 +231,23 @@ test('Saudi Exchange has Sunday sessions and Friday/Saturday weekends',()=>{
 });
 test.each(['2021-05-16','2022-04-28','2022-07-12','2023-09-24','2024-04-11','2025-02-23','2025-06-10','2026-03-23','2026-05-28'])('announced Saudi closure %s',date=>expect(calendar.isTradingDay(date,'TADAWUL')).toBe(false));
 test.each(['2021-07-15','2021-07-25','2022-07-06','2022-07-13','2022-05-08','2023-04-17','2023-04-25','2023-06-22','2023-07-02','2024-04-04','2024-04-14','2024-06-13','2024-06-23','2025-03-27','2025-04-03','2026-03-16','2026-03-24'])('Saudi last/resumed trading date %s still needs a price',date=>expect(calendar.isTradingDay(date,'TADAWUL')).toBe(true));
+
+
+test('saved verified listing metadata resolves calendars without a network lookup',async()=>{
+ const db=require('../../src/config/database'),axios=require('axios');
+ const before=axios.get.mock.calls.length;
+ db.query.mockImplementation(async q=>({rows:q.includes('portfolio_reconstruction_prices')?[{payload:{listing:{source:'yahoo',meta:{symbol:'SAVED_VENUE_SYNTH',exchangeName:'NMS'}}}}]:[]}));
+ expect(await calendar.resolve('SAVED_VENUE_SYNTH')).toBe('US');
+ expect(axios.get).toHaveBeenCalledTimes(before);
+});
+test('saved metadata for a different security is rejected',async()=>{
+ const db=require('../../src/config/database');
+ db.query.mockImplementation(async q=>({rows:q.includes('portfolio_reconstruction_prices')?[{payload:{listing:{source:'yahoo',meta:{symbol:'OTHER_SYNTH',exchangeName:'NMS'}}}}]:[]}));
+ expect(await calendar.resolve('CONFLICTING_SAVED_SYNTH')).toBeNull();
+});
+test('documented historical listing calendars apply only within their proven interval',async()=>{
+ const db=require('../../src/config/database');db.query.mockResolvedValue({rows:[]});
+ expect(await calendar.resolve('SMLR',{from:'2024-07-26',to:'2025-01-22'})).toBe('US');
+ expect(await calendar.resolve('SMLR',{from:'2020-01-01',to:'2020-02-01'})).toBeNull();
+ expect(await calendar.resolve('SMLR')).toBeNull();
+});
