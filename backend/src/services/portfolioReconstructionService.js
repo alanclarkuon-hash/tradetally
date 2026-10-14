@@ -82,9 +82,11 @@ function parseYahoo(result) {
 
 // Merge only verified missing sessions; failed downloads retain earlier history.
 async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
- const cached=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
+ const identity=require('./cryptoHistoryIdentity'),storageSymbol=identity.nativeKey(symbol),crypto=symbol.endsWith('-USD');
+ const stored=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[storageSymbol])).rows[0]?.payload;
+ const cached=!crypto||identity.usableNative(symbol,stored)?stored:null;
  if(!fetchPrices)return cached||null;
- const crypto=symbol.endsWith('-USD'),ticker=crypto?symbol.slice(0,-4):symbol;
+ const ticker=crypto?symbol.slice(0,-4):symbol;
  const calendar=crypto?null:await require('./exchangeCalendar').resolve(ticker,{allowLookup:true,userId});
  const candles=(cached?.prices||[]).map(p=>({time:Date.parse(p.date)/1000,close:p.close}));
  const gaps=require('./holdingsHistoryProvider').missingRanges(candles,from,to,crypto,calendar);
@@ -140,7 +142,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    if(!currency)continue;
    const rows=shared.length?shared.map(c=>({date:date(c.time*1000),close:c.close,currency:'USD',adjusted:true})):crypto?[]:(native?.prices||[]).map(p=>({...p,currency:native.currency,adjusted:false}));
    for(const row of rows){
-    if(row.date<gap.from||row.date>gap.to||!(row.close>0))continue;
+    if(row.date<gap.from||row.date>gap.to||!(row.close>0)||crypto&&identity.coin(symbol)&&row.date<identity.coin(symbol).firstDate)continue;
     const listedFrom=require('./historyListingLifetime').firstDate(ticker,{currency,listing});if(listedFrom&&row.date<listedFrom&&!require('./verifiedMergerPriceBasis').covers(ticker,row.date,historicalIdentity))continue;
     const factor=row.currency===currency?1:await require('../utils/currencyConverter').getForexRate(row.currency,currency,row.date);
     if(!(factor>0))continue;
@@ -151,13 +153,13 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
   if(!incoming.size&&(!listing||JSON.stringify(listing)===JSON.stringify(cached?.listing)))return cached||null;
   return await db.withTransaction(async client=>{
    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))',['reconstruction-prices:'+symbol]);
-   const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[symbol])).rows[0]?.payload;
+   const current=(await client.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1 FOR UPDATE',[storageSymbol])).rows[0]?.payload;
    const old=current||cached;
    if(old?.currency&&old.currency!==currency)throw Error('Price currency changed');
    const finalSplits=[...(old?.splits||[])];for(const split of splits){const exists=finalSplits.find(s=>s.date===split.date);if(exists&&exists.ratio!==split.ratio)throw Error('Split basis changed');if(!exists)finalSplits.push(split);}
    const prices=new Map((old?.prices||[]).map(p=>[p.date,p]));for(const [d,p] of incoming)if(!prices.has(d))prices.set(d,p);
-   const payload={...old,currency,...(listing?{listing}:{}),...(historicalIdentity?{historicalIdentity}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
-   await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[symbol,payload]);return payload;
+   const payload={...old,currency,...(crypto&&identity.evidence(symbol)?{cryptoIdentity:identity.evidence(symbol)}:{}),...(listing?{listing}:{}),...(historicalIdentity?{historicalIdentity}:{}),splits:finalSplits.sort((a,b)=>a.date.localeCompare(b.date)),prices:[...prices.values()].sort((a,b)=>a.date.localeCompare(b.date)),from:old?.from<from?old.from:from,to:old?.to>to?old.to:to,source:'Merged verified daily history; native units and historical splits preserved'};
+   await client.query('INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()',[storageSymbol,payload]);return payload;
   });
  }catch{return cached||null;}
 }
@@ -203,7 +205,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   const trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND broker=$2 AND account_identifier=$3',[userId,account.broker,identifier])).rows;
   let native=[],cashRows=[],cashOpening=Number(account.initial_balance||0),cutoff=end,method,blockers=[];
   const market=new Map(),cryptoRates=snapshot?.payload?.valuation?.rates||{},payload=snapshot?.payload;
-  const marketSymbolFor=t=>account.broker==='etoro'&&t.instrument_type!=='crypto'&&etoroLots.get(t)?.marketSymbol?
+  const marketSymbolFor=t=>require('./cryptoHistoryIdentity').lotIdentity(t)?.symbol?require('./cryptoHistoryIdentity').lotIdentity(t).symbol+'-USD':account.broker==='etoro'&&t.instrument_type!=='crypto'&&etoroLots.get(t)?.marketSymbol?
    historySymbol(etoroLots.get(t).marketSymbol,date(t.entry_time||t.trade_date)):historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date));
   const need=new Set();
   let fills=[],splits=[],etoroSplits=[],etoroLots=new Map();
@@ -270,9 +272,9 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
     const archive=await require('./brokerSync/krakenArchivePrices').dailyPrices(coin+'USD');
     const merged=new Map((market.get(s)?.prices||[]).map(p=>[p.date,p.close]));
     for(const [d,p] of Object.entries(archive.prices))if(!merged.has(d))merged.set(d,p);
-    const series={currency:'USD',prices:[...merged].sort(([a],[b])=>a.localeCompare(b)).map(([date,close])=>({date,close})),splits:[],from:start,to:end,proxyDates:market.get(s)?.proxyDates||[],source:'Kraken daily closes supplemented by official OHLCVT archive'};
+    const series={currency:'USD',...(require('./cryptoHistoryIdentity').evidence(s)?{cryptoIdentity:require('./cryptoHistoryIdentity').evidence(s)}:{}),prices:[...merged].sort(([a],[b])=>a.localeCompare(b)).map(([date,close])=>({date,close})),splits:[],from:start,to:end,proxyDates:market.get(s)?.proxyDates||[],source:'Kraken daily closes supplemented by official OHLCVT archive'};
     market.set(s,series);
-    await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[s,series]);
+    await db.query(`INSERT INTO portfolio_reconstruction_prices(symbol,payload) VALUES($1,$2) ON CONFLICT(symbol) DO UPDATE SET payload=EXCLUDED.payload,fetched_at=NOW()`,[require('./cryptoHistoryIdentity').nativeKey(s),series]);
    }catch{/* A missing archive remains an explicit gap. */}
   }
   const migrationAliases=account.broker==='kraken'?migrationPriceAliases(payload?.ledger):new Map();

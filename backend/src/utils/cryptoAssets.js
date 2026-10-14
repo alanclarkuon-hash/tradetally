@@ -37,6 +37,7 @@ const CRYPTO_ASSETS = Object.freeze([
   { symbol: 'AAVE', name: 'Aave', coin_gecko_id: 'aave' },
   { symbol: 'EOS', name: 'EOS', coin_gecko_id: 'eos' },
   { symbol: 'MKR', name: 'Maker', coin_gecko_id: 'maker' },
+  { symbol: 'SKY', name: 'Sky Protocol', coin_gecko_id: 'sky' },
   { symbol: 'COMP', name: 'Compound', coin_gecko_id: 'compound-governance-token' },
   { symbol: 'SHIB', name: 'Shiba Inu', coin_gecko_id: 'shiba-inu' },
   { symbol: 'CRO', name: 'Cronos', coin_gecko_id: 'crypto-com-chain' },

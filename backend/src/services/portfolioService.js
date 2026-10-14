@@ -1920,9 +1920,9 @@ class PortfolioService {
     let cachedCandles = await historicalPriceCache.getRange(symbol, startDate, endDate);
     // Reuse already-downloaded split-aware USD series. Reconstructed/proxy
     // portfolio totals are never prices; only dated instrument closes qualify.
-    const rawKey = instrumentType === 'crypto' ? symbol.slice(7) + '-USD' : symbol;
+    const rawKey = require('./cryptoHistoryIdentity').nativeKey(instrumentType === 'crypto' ? symbol.slice(7) + '-USD' : symbol);
     const rawSeries = (await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1', [rawKey])).rows[0]?.payload;
-    if (rawSeries?.currency && Array.isArray(rawSeries.prices)) {
+    if (rawSeries?.currency && Array.isArray(rawSeries.prices) && (instrumentType!=='crypto'||require('./cryptoHistoryIdentity').usableNative(symbol,rawSeries))) {
       const known = new Set(cachedCandles.map(c => c.time));
       const proxies = new Set(rawSeries.proxyDates || []);
       const candidates = rawSeries.prices.filter(p => p.date >= startDate && p.date <= endDate && !proxies.has(p.date) && p.close > 0).map(p => {
@@ -1932,11 +1932,11 @@ class PortfolioService {
       }).filter(c => Number.isFinite(c.close) && c.close > 0 && !known.has(c.time));
       const reusable=await require('../utils/dailyPriceCurrency').toUsd(candidates);
       if (reusable.length) {
-        await historicalPriceCache.insertCandles(symbol, reusable, 'reconstruction_cache');
+        await historicalPriceCache.insertCandles(symbol, reusable, instrumentType==='crypto'&&require('./cryptoHistoryIdentity').coin(symbol)?'reconstruction_cache:sky':'reconstruction_cache');
         cachedCandles = [...cachedCandles, ...reusable].sort((a,b) => a.time-b.time);
       }
     }
-    if (instrumentType === 'crypto') {
+    if (instrumentType === 'crypto' && !require('./cryptoHistoryIdentity').coin(symbol)) {
       // Earlier coin monitoring stored unprefixed rows; accept only verified
       // CoinGecko history, never a same-ticker stock quote.
       const legacy = await db.query(`SELECT price_date, close FROM historical_prices
@@ -1990,6 +1990,9 @@ class PortfolioService {
     const merged = new Map(cachedCandles.map(c => [c.time, c]));
     const calendar = crypto ? null : await require('./exchangeCalendar').resolve(ticker, {allowLookup:true,userId,from:startDate,to:endDate});
     const persist = async (candles, source) => {
+      const identity=require('./cryptoHistoryIdentity');
+      if(crypto&&!identity.sourceAllowed(symbol,source))return;
+      if(crypto)candles=identity.dated(symbol,candles);
       const normalized=await require('../utils/dailyPriceCurrency').toUsd(candles,crypto||calendar==='US'?'USD':null);
       const fresh = normalized.filter(c => !merged.has(c.time));
       await historicalPriceCache.insertCandles(symbol, fresh, source,{currency:'USD'});
