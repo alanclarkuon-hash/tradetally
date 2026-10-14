@@ -28,21 +28,25 @@ async function relay({source,target}){
   if(value.version!==1||!Number.isFinite(Date.parse(value.lastRun))||!Number.isInteger(value.errors)||value.errors<0)throw Error('Invalid collector status');
   result.collector={lastRun:value.lastRun,errors:value.errors};
  }catch(e){if(e.code!=='ENOENT')failure('collector_status');}
- for(const name of (await fs.readdir(source)).filter(n=>/^[a-f0-9]{64} - .*\.pdf$/i.test(n))){
+ for(const name of (await fs.readdir(source)).filter(n=>/\.pdf$/i.test(n))){
   let stage='read';
   try{
    const {file,st}=await regular(source,name);if(Date.now()-st.mtimeMs<3000)continue;
-   const bytes=await fs.readFile(file),prefix=name.slice(0,64),metaName=prefix+'.json';
-   const meta=await regular(source,metaName);if(meta.st.size>8192)throw Error('Invalid metadata');
-   const metadata=await fs.readFile(meta.file),decoded=JSON.parse(metadata);
-   if(digest(bytes)!==prefix||decoded.sha256!==prefix||decoded.version!==1)throw Error('Invalid checksum');
+   const bytes=await fs.readFile(file),after=await fs.stat(file);if(after.size!==st.size||after.mtimeMs!==st.mtimeMs)continue;
+   if(bytes.subarray(0,16).indexOf(Buffer.from('%PDF'))<0)throw Error('Invalid PDF');
+   const supplied=name.match(/^([a-f0-9]{64}) - /i),prefix=supplied?supplied[1]:digest(bytes),metaName=prefix+'.json';
+   const stagedName=supplied?name:prefix+' - '+name;
+   let metadata;
+   if(supplied){const meta=await regular(source,metaName);if(meta.st.size>8192)throw Error('Invalid metadata');metadata=await fs.readFile(meta.file);const decoded=JSON.parse(metadata);
+    if(digest(bytes)!==prefix||decoded.sha256!==prefix||decoded.version!==1)throw Error('Invalid checksum');
+   }else metadata=Buffer.from(JSON.stringify({version:1,sha256:prefix,source:'manual'}));
    const processed=path.join(target,'Processed');
-   try{const receipt=await regular(processed,name);const done=await fs.readFile(receipt.file);if(!done.equals(bytes))throw Error('Receipt conflict');
+   try{const receipt=await regular(processed,stagedName);const done=await fs.readFile(receipt.file);if(!done.equals(bytes))throw Error('Receipt conflict');
     stage='archive';
-    await archive(source,name,bytes);await archive(source,metaName,metadata);result.archived++;continue;
+    await archive(source,name,bytes);if(supplied)await archive(source,metaName,metadata);result.archived++;continue;
    }catch(e){if(e.code!=='ENOENT')throw e;}
    stage='delivery';
-   const destination=path.join(target,name);
+   const destination=path.join(target,stagedName);
    try{if(!(await fs.readFile(destination)).equals(bytes))throw Error('Destination conflict');}
    catch(e){if(e.code!=='ENOENT')throw e;const temporary=destination+'.part-'+crypto.randomUUID();await fs.writeFile(temporary,bytes,{flag:'wx'});await fs.rename(temporary,destination);result.copied++;}
    const destinationMeta=path.join(target,metaName);
