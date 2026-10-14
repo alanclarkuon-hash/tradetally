@@ -11,6 +11,13 @@ function folderSource(root){
   if(path.dirname(real)!==realBase)throw Error('Invalid ingestion path');return {file,st};
  }
  return {
+  async checkArchive(){
+   const archive=path.join(base,'Processed');
+   try{await fs.mkdir(archive);}catch(e){if(e.code!=='EEXIST')throw e;}
+   const st=await fs.lstat(archive);
+   if(!st.isDirectory()||st.isSymbolicLink()||path.dirname(await fs.realpath(archive))!==await fs.realpath(base))throw Error('Invalid archive path');
+   await fs.access(archive,require('fs').constants.W_OK|require('fs').constants.X_OK);
+  },
   async deliveryHealth(){
    try{const entry=await safe('.relay-status.json');if(entry.st.size>8192)throw Error('Invalid delivery status');
     const value=JSON.parse(await fs.readFile(entry.file,'utf8'));return {lastRun:typeof value.lastRun==='string'?value.lastRun:null,errors:Number(value.errors)||0,collector:value.collector?{lastRun:value.collector.lastRun,errors:Number(value.collector.errors)||0}:null};

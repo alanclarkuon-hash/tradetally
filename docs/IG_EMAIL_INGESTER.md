@@ -58,3 +58,11 @@ Manual CSV/PDF applications recheck their saved-account revision inside the advi
 
 Monthly, quarterly and annual report routing remains follow-up work in issue #88. The daily collector does not interpret those periodic statement subjects.
 
+
+## Windows relay task without console windows
+
+Use `wscript.exe` as the Task Scheduler action rather than starting PowerShell. Keep `relay-ingestion-folder.vbs` and `relay-ingestion-folder.cjs` together in the environment's private runtime directory. Set the action arguments to `//B //Nologo "<private-runtime>/relay-ingestion-folder.vbs" "<private-config.json>" "<absolute-node.exe>"`. Resolve Node's executable during installation; do not depend on Task Scheduler's PATH. The launcher waits for the relay and returns its exit code without opening a console. Keep the task in the signed-in user's session so Drive desktop is accessible. A task's Hidden setting or PowerShell's hidden-window argument alone does not guarantee a console-free launch.
+
+Back up an existing task's XML privately before updating its action. Preserve its triggers, user, settings and enabled/disabled state; do not enable a user-disabled task during an upgrade. Test the launcher first against synthetic files and a separate private staging folder. Review safe relay health metadata and Task Scheduler's exit result rather than opening a diagnostic console.
+
+At container startup, an enabled IG ingester prepares ownership and owner access on its `Processed` directory only. It does not recursively change the mounted inbox or archived documents. Symlink/non-directory archives are rejected. If archive access is unavailable, folder checks leave statements queued before parsing/importing and show an archive-specific warning. Existing durable receipts still prevent repeat financial postings after a later archive retry.

@@ -13,6 +13,12 @@ async function run(){
     (delivery.collector&&(delivery.collector.errors||!Number.isFinite(Date.parse(delivery.collector.lastRun))||Date.now()-Date.parse(delivery.collector.lastRun)>60*60000)))
     state.error='Gmail statement collection needs attention. Check the collector execution log and pending emails.';
   }
+  if(files.length){
+   try{await source.checkArchive();}catch{
+    state.error='IG statement archiving is unavailable. The server needs access to the private Processed folder. Statements remain queued.';
+    state.lastRun=new Date().toISOString();return;
+   }
+  }
   let backupPromise;
   const backup=()=>backupPromise||(backupPromise=require('./backup.service').createFullSiteBackup(userId));
   let attempted=0;
