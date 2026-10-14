@@ -79,10 +79,11 @@ async function splitProof(data) {
 function verifiedRows(data,from,to,cached) {
  if((cached?.prices?.length&&!cached.currency)||(cached?.currency&&cached.currency!==data.currency))return [];
  const existing=new Map((cached?.prices||[]).map(p=>[p.date,p.close]));
+ const merger=require('./verifiedMergerPriceBasis'),conversion=merger.conversionFor(data),continuity=merger.proof(data,cached);
  const splits=cached?.splits||[];
  const factor=d=>splits.filter(s=>s.date>d).reduce((v,s)=>v*s.ratio,1);
  const anchors=data.prices.filter(p=>existing.has(p.date)&&Math.abs(existing.get(p.date)/(p.close*factor(p.date))-1)<=0.02).map(p=>p.date).sort();
- return data.prices.filter(p=>p.date>=from&&p.date<=to&&!existing.has(p.date)&&(anchors.some(d=>Math.abs(Date.parse(d)-Date.parse(p.date))<=3*86400000)||(data.unadjustedAfter&&p.date>=data.unadjustedAfter&&!splits.some(s=>s.date>p.date)))).map(p=>({...p,close:p.close*factor(p.date)}));
+ return data.prices.filter(p=>p.date>=from&&p.date<=to&&(!conversion||p.date<conversion.date)&&!existing.has(p.date)&&(merger.covers(data.ticker,p.date,continuity)||anchors.some(d=>Math.abs(Date.parse(d)-Date.parse(p.date))<=3*86400000)||(data.unadjustedAfter&&p.date>=data.unadjustedAfter&&!splits.some(s=>s.date>p.date)))).map(p=>({...p,close:p.close*factor(p.date)}));
 }
 async function verified(symbol,from,to,cached) {
  const data=await download(symbol);
@@ -90,6 +91,7 @@ async function verified(symbol,from,to,cached) {
  const prices=verifiedRows(data,from,to,cached);
  const dates=new Set(prices.map(p=>p.date));
  const {proofPromise,...publicData}=data;
- return {...publicData,prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
+ const historicalIdentity=require('./verifiedMergerPriceBasis').proof(data,cached);
+ return {...publicData,...(historicalIdentity?{historicalIdentity}:{}),prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
 }
 module.exports={download,verified,verifiedRows,splitProof,route,literalObject,stringField};
