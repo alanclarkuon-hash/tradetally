@@ -59,6 +59,19 @@ async function download(symbol) {
  })();
  memo.set(key,{time:Date.now(),promise});promise.catch(error=>{if(error.response?.status===429||error.message==='Stock Analysis rate-limit cooldown')memo.delete(key);else if(error.response?.status>=500||error.code==='ECONNABORTED'){const entry=memo.get(key);if(entry)entry.time=Date.now()-55*60000;}});if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
 }
+// Provider split dates are calendar labels, not local-midnight timestamps.
+// Accept explicit ISO or English month labels only; never normalize bad dates.
+function parseCalendarDate(value) {
+ if(typeof value!=='string')return null;
+ const text=value.trim(),iso=/^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+ const label=/^([A-Za-z]+) (\d{1,2}), (\d{4})$/.exec(text);
+ const months=['january','february','march','april','may','june','july','august','september','october','november','december'];
+ const month=iso?Number(iso[2]):label?months.findIndex(m=>m===label[1].toLowerCase()||m.slice(0,3)===label[1].toLowerCase())+1:0;
+ const year=Number(iso?.[1]||label?.[3]),day=Number(iso?.[3]||label?.[2]);
+ if(!(year>=1000&&year<=9999&&month>=1&&month<=12&&day>=1&&day<=31))return null;
+ const date=new Date(Date.UTC(year,month-1,day));
+ return date.getUTCFullYear()===year&&date.getUTCMonth()===month-1&&date.getUTCDate()===day?date.toISOString().slice(0,10):null;
+}
 async function splitProof(data) {
  if(!data.proofPromise)data.proofPromise=(async()=>{
   const html=await page(data.path.replace(/history\/$/,'statistics/'));
@@ -70,7 +83,7 @@ async function splitProof(data) {
   for(const tr of $('tr').toArray()){const cells=$(tr).find('td');if(cells.length===2)fields.set($(cells[0]).text().trim(),$(cells[1]).text().trim());}
   const last=fields.get('Last Split Date'),type=fields.get('Split Type'),ratio=fields.get('Split Ratio');
   if(last==='n/a'&&type==='n/a'&&ratio==='n/a'&&$('main').text().includes('This stock does not have any record of stock splits.'))data.unadjustedAfter='1900-01-01';
-  else if(last&&last!=='n/a'&&Number.isFinite(Date.parse(last))&&ratio&&ratio!=='n/a')data.unadjustedAfter=new Date(last).toISOString().slice(0,10);
+  else if(ratio&&ratio!=='n/a'){const calendarDate=parseCalendarDate(last);if(calendarDate)data.unadjustedAfter=calendarDate;}
  })().catch(()=>{});
  await data.proofPromise;
 }
@@ -94,4 +107,4 @@ async function verified(symbol,from,to,cached) {
  const historicalIdentity=require('./verifiedMergerPriceBasis').proof(data,cached)||require('./verifiedListingTransfers').proof(data,cached);
  return {...publicData,...(historicalIdentity?{historicalIdentity}:{}),prices,candles:data.candles.filter(c=>dates.has(new Date(c.time*1000).toISOString().slice(0,10)))};
 }
-module.exports={download,verified,verifiedRows,splitProof,route,literalObject,stringField};
+module.exports={download,verified,verifiedRows,splitProof,route,literalObject,stringField,parseCalendarDate};
