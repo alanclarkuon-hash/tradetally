@@ -132,6 +132,7 @@
       <!-- Today strip (when there is activity today) -->
       <div
         v-if="todayTradeCount > 0"
+        aria-label="Today results"
         class="mt-4 pt-3 border-t border-dashed border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-x-6 gap-y-1 text-xs"
       >
         <span class="text-label">Today</span>
@@ -170,9 +171,17 @@ const props = defineProps({
 const { currency:cardCurrency, choices, formatCurrency, formatSignedCurrency, convert } = useCardCurrency(computed(()=>props.analytics?.display_currency),undefined,'hero-metrics',['R'])
 const rMode = computed(() => cardCurrency.value === 'R')
 
+// Missing risk is unknown, while a measured zero is a valid breakeven result.
+function nullableR(value) {
+  if (value == null || String(value).trim() === '') return null
+  const number = Number(value)
+  return Number.isFinite(number) ? number : null
+}
+
 // R-multiples are unitless; show a signed value with a trailing R.
 function formatSignedR(value) {
-  const v = Number(value) || 0
+  const v = nullableR(value)
+  if (v === null) return 'R unavailable'
   return `${v >= 0 ? '+' : ''}${v.toFixed(2)}R`
 }
 
@@ -181,8 +190,8 @@ const summary = computed(() => props.analytics?.summary || {})
 const netPnl = computed(() => parseFloat(summary.value.totalNetPnL ?? summary.value.totalPnL ?? 0) || 0)
 // Total R across trades with a defined stop loss (NULL r_value trades are
 // excluded server-side, matching the analytics performance endpoint).
-const rAvailable = computed(() => (summary.value.totalRValue ?? summary.value.total_r_value) != null)
-const totalR = computed(() => parseFloat(summary.value.totalRValue ?? summary.value.total_r_value ?? 0) || 0)
+const totalR = computed(() => nullableR(summary.value.totalRValue ?? summary.value.total_r_value))
+const rAvailable = computed(() => totalR.value !== null)
 
 // The active hero metric: drives both the displayed string and the sign-based
 // color/size classes so $ and R modes share one code path.
@@ -222,7 +231,7 @@ const dailyPnL = computed(() => Array.isArray(props.analytics?.dailyPnL) ? props
 const streakStats = computed(() => {
   const days = dailyPnL.value
   if (days.length === 0) {
-    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayR: 0, todayTrades: 0, avgDailyTrades: 0 }
+    return { current: 0, bestWin: 0, worstLoss: 0, todayPnl: 0, todayR: null, todayTrades: 0, avgDailyTrades: 0 }
   }
   let current = 0
   let bestWin = 0
@@ -263,7 +272,7 @@ const streakStats = computed(() => {
   // Today's data (last entry, if it's today)
   const lastDay = days[days.length - 1]
   const todayPnl = parseFloat(lastDay?.daily_pnl ?? lastDay?.dailyPnL ?? 0) || 0
-  const todayR = parseFloat(lastDay?.r_value ?? lastDay?.rValue ?? 0) || 0
+  const todayR = nullableR(lastDay?.r_value ?? lastDay?.rValue)
   const todayTrades = parseInt(lastDay?.trade_count ?? lastDay?.tradeCount ?? 0) || 0
 
   // Is the last entry actually today? Compare as YYYY-MM-DD strings in LOCAL
@@ -281,7 +290,7 @@ const streakStats = computed(() => {
     bestWin,
     worstLoss,
     todayPnl: isToday ? todayPnl : 0,
-    todayR: isToday ? todayR : 0,
+    todayR: isToday ? todayR : null,
     todayTrades: isToday ? todayTrades : 0,
     avgDailyTrades
   }
@@ -349,7 +358,7 @@ const profitFactorClass = computed(() => {
   return 'text-red-600 dark:text-red-400'
 })
 
-const todayR = computed(() => streakStats.value.todayR)
+const todayR = computed(() => rAvailable.value ? streakStats.value.todayR : null)
 
 const todayPnlClass = computed(() => {
   const v = rMode.value ? todayR.value : todayPnl.value
@@ -363,17 +372,21 @@ const todayPnlClass = computed(() => {
 // curve below and surfaces recent rhythm and volatility at a glance.
 const recentDays = computed(() => dailyPnL.value.slice(-30))
 
-const dailyBarValues = computed(() => rMode.value && !rAvailable.value ? [] :
-  recentDays.value.map(d => rMode.value
-    ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+// Keep values and tooltip dates aligned, omitting unknown R rather than plotting zero.
+const barDays = computed(() => rMode.value
+  ? (rAvailable.value ? recentDays.value.filter(d => nullableR(d.r_value ?? d.rValue) !== null) : [])
+  : recentDays.value)
+const dailyBarValues = computed(() =>
+  barDays.value.map(d => rMode.value
+    ? nullableR(d.r_value ?? d.rValue)
     : convert(parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0))
 )
 
 const dailyBarLabels = computed(() =>
-  recentDays.value.map(d => {
+  barDays.value.map(d => {
     const date = String(d.trade_date ?? d.tradeDate ?? '').slice(0, 10)
     const value = rMode.value
-      ? parseFloat(d.r_value ?? d.rValue ?? 0) || 0
+      ? nullableR(d.r_value ?? d.rValue)
       : parseFloat(d.daily_pnl ?? d.dailyPnL ?? 0) || 0
     const formatted = rMode.value ? formatSignedR(value) : formatSignedCurrency(value)
     return date ? `${date}: ${formatted}` : formatted

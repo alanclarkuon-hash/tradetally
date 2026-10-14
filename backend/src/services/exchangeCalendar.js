@@ -194,10 +194,12 @@ async function brokerCalendar(userId,symbol) {
  if(brokerIdentities.size>4096)brokerIdentities.delete(brokerIdentities.keys().next().value);
  return value;
 }
-async function resolve(symbol,{allowLookup=false,userId=null}={}) {
+const historicalListings=require('./calendars/verified-historical-listings.json').listings;
+async function resolve(symbol,{allowLookup=false,userId=null,from=null,to=null}={}) {
   symbol=String(symbol).toUpperCase();
   const suffix=identify(symbol); if(suffix) return suffix;
-  const scoped=async known=>known||(allowLookup&&userId?await brokerCalendar(userId,symbol):null);
+  const historical=from&&to?historicalListings.find(l=>l.symbol===symbol&&from>=l.from&&to<=l.to)?.calendar:null;
+  const scoped=async known=>known||historical||(allowLookup&&userId?await brokerCalendar(userId,symbol):null);
   const old=identities.get(symbol);
   if(old && Date.now()<old.expires) {
     const known=await old.value;
@@ -208,7 +210,15 @@ async function resolve(symbol,{allowLookup=false,userId=null}={}) {
       UNION ALL SELECT exchange,'classification' AS source FROM symbol_categories WHERE symbol=$1`,[symbol])).rows;
     const listing=saved.find(row=>row.source==='yahoo');
     if(listing) { verifiedListings.add(symbol); return identify(symbol,listing.exchange); }
-    return saved.map(row=>identify(symbol,row.exchange)).find(Boolean)||null;
+    const classified=saved.map(row=>identify(symbol,row.exchange)).find(Boolean);
+    if(classified)return classified;
+    const payload=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[symbol])).rows[0]?.payload;
+    if(payload?.listing?.source==='yahoo') {
+      try {require('./holdingsHistoryProvider').verifyYahooListing(symbol,payload.listing.meta);
+        return identify(symbol,payload.listing.meta.exchangeName);
+      } catch { /* Conflicting listing metadata cannot identify this security. */ }
+    }
+    return null;
   })();
   identities.set(symbol,{value,expires:Date.now()+3600000});
   if(identities.size>4096) identities.delete(identities.keys().next().value);

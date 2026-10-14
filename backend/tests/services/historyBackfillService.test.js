@@ -211,3 +211,11 @@ test('portfolio coverage does not require optional pre-entry chart warmup',async
   expect((await service.plan('owner')).find(t=>t.symbol==='SYNTH')).toMatchObject({from:'2026-09-03',to:'2026-09-29'});
  } finally {jest.useRealTimers();}
 });
+
+
+test('status removes filled historical gaps using current saved prices without modifying the job',async()=>{
+ const saved={processed:1,total:1,complete:0,gaps:[{symbol:'SYNTH_LATE_PRICE',instrumentType:'stock',calendar:'US',from:'2026-01-05',to:'2026-01-05',ranges:[{from:'2026-01-05',to:'2026-01-05'}]}]};
+ db.query.mockImplementation(async q=>({rows:q.includes('FROM job_queue')?[{id:'old-gap',status:'completed',result:saved}]:q.includes('FROM historical_prices')?[{price_date:'2026-01-05',close:10}]:[]}));
+ const [status]=await service.status('owner');expect(status.gaps).toEqual([]);expect(status.complete).toBe(1);expect(saved.gaps).toHaveLength(1);
+ expect(db.query.mock.calls.every(([q])=>q.trim().startsWith('SELECT'))).toBe(true);
+});
