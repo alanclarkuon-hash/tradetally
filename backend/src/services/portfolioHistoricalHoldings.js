@@ -38,13 +38,14 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     db.query('SELECT account_identifier,positions FROM broker_portfolio_snapshots WHERE user_id=$1',[userId]),
     db.query('SELECT * FROM trades WHERE user_id=$1',[userId])
   ]);
-  const market=new Map(prices.rows.map(r=>[r.symbol,r.payload]));
+  const identity=require('./cryptoHistoryIdentity');
+  const market=new Map(prices.rows.map(identity.nativeRow).filter(Boolean).map(r=>[r.symbol,r.payload]));
   const baselineFrom=new Date(baselineDate+'T00:00:00Z');baselineFrom.setUTCDate(baselineFrom.getUTCDate()-14);
   const sharedRows=(await db.query(`SELECT symbol,price_date,close FROM historical_prices
     WHERE price_date BETWEEN $1 AND $2 AND is_final AND price_currency='USD'
     AND (symbol LIKE 'crypto:%' OR data_source NOT IN ('coingecko','okx','kraken'))`,[day(baselineFrom),range.end_date])).rows;
   const shared=new Map();
-  for(const row of sharedRows){const list=shared.get(row.symbol)||new Map();list.set(day(row.price_date),Number(row.close));shared.set(row.symbol,list);}
+  for(const row of sharedRows.map(identity.canonicalRow).filter(Boolean)){const list=shared.get(row.symbol)||new Map();list.set(day(row.price_date),Number(row.close));shared.set(row.symbol,list);}
   const calendarMap=new Map();
   const calendarSymbols=[...new Set(trades.rows.filter(t=>t.instrument_type!=='crypto'&&Number.isFinite(Date.parse(t.entry_time||t.trade_date))).map(t=>historicalMarketSymbol(t.symbol,t.instrument_type,day(t.entry_time||t.trade_date))))];
   for(const s of calendarSymbols)calendarMap.set(s,await require('./exchangeCalendar').resolve(s));
@@ -144,7 +145,9 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
       for(const t of accountTrades) {
         const opened=day(t.entry_time||t.trade_date),closed=t.exit_time?day(t.exit_time):null;
         if(opened>range.end_date||(closed&&closed<=range.end_date))continue;
-        const meta=metadata.get(t),s=account.broker==='etoro'&&t.instrument_type!=='crypto'&&meta?.marketSymbol?historySymbol(meta.marketSymbol,opened):historicalMarketSymbol(t.symbol,t.instrument_type,opened);
+        const cryptoLot=identity.lotIdentity(t);
+        if(cryptoLot?.unsupported){add(t.symbol,t.instrument_type,account,Number(t.quantity),null,null,[cryptoLot.reason]);continue;}
+        const meta=metadata.get(t),s=cryptoLot?.symbol?cryptoLot.symbol+'-USD':account.broker==='etoro'&&t.instrument_type!=='crypto'&&meta?.marketSymbol?historySymbol(meta.marketSymbol,opened):historicalMarketSymbol(t.symbol,t.instrument_type,opened);
         const series=market.get(s);
         const units=d=>account.broker==='etoro'?historicalLotQuantity(t,d,opened,closed,meta?.splits||[],series?.splits||[],meta):
           Number(t.quantity)/(series?.splits||[]).filter(x=>x.date>d&&x.date>opened&&(!closed||x.date<=closed)).reduce((n,x)=>n*x.ratio,1);

@@ -23,4 +23,12 @@ function lotIdentity(t){
 }
 const yahooListings={MKR:{ticker:'MKR-USD',name:'Maker USD',coinGeckoId:'maker'},SKY:{ticker:'SKY33038-USD',name:'Sky USD',coinGeckoId:'sky'}};
 function yahooListing(symbol){return yahooListings[String(symbol).toUpperCase()]||null;}
-module.exports={yahooListing,coin,historyKey,nativeKey,evidence,usableNative,sourceAllowed,dated,lotIdentity};
+// Bulk display readers must never reintroduce retired ticker-only cache rows.
+function logicalNativeKey(key){return key==='SKY@sky-USD'?'SKY-USD':key;}
+function nativeRow(row){
+ if(row.symbol==='SKY-USD')return null;
+ if(row.symbol==='SKY@sky-USD')return usableNative('SKY',row.payload)?{...row,symbol:'SKY-USD'}:null;
+ return row;
+}
+function canonicalRow(row){if(row.symbol==='crypto:SKY')return null;return row.symbol==='crypto:SKY:sky'?{...row,symbol:'crypto:SKY'}:row;}
+module.exports={nativeRow,canonicalRow,logicalNativeKey,yahooListing,coin,historyKey,nativeKey,evidence,usableNative,sourceAllowed,dated,lotIdentity};

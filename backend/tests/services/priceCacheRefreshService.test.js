@@ -34,3 +34,5 @@ test('saved native broker keys never enter stock history or quote refresh',async
  expect(result.gaps[0].unsupported).toBe(true);expect(result.complete).toBe(0);expect(quote).not.toHaveBeenCalled();expect(require('../../src/services/portfolioService')._getDailySeries).not.toHaveBeenCalled();}
  finally {quote.mockRestore();maintenance.mockRestore();invalidation.mockRestore();}
 });
+
+test('refresh planning decodes protocol namespaces and excludes retired Skycoin history',async()=>{db.query.mockImplementation(async sql=>({rows:sql.includes('FROM historical_prices')?[{symbol:'crypto:SKY',data_source:'reconstruction_cache',first:'2022-01-01',last:'2025-01-03'},{symbol:'crypto:SKY:sky',data_source:'broker:kraken',first:'2025-01-01',last:'2025-01-03'}]:sql.includes('FROM portfolio_reconstruction_prices')?[{symbol:'SKY-USD',first:'2022-01-01',last:'2025-01-03'},{symbol:'SKY@sky-USD',first:'2025-01-01',last:'2025-01-03'}]:[]}));const tasks=await require('../../src/services/priceCacheRefreshService').plan();expect(tasks).toHaveLength(1);expect(tasks[0]).toMatchObject({symbol:'SKY',instrumentType:'crypto',from:'2025-01-01'});});
