@@ -103,3 +103,9 @@ test('verified predecessor history bypasses successor IPO metadata and restores 
  expect(db.query.mock.calls.filter(([q])=>q.startsWith('INSERT')).every(([q])=>q.includes('portfolio_reconstruction_prices'))).toBe(true);
  fallback.mockRestore();
 });
+
+
+test('legacy Skycoin reconstruction is not trusted even when its envelope is complete',async()=>{saved={currency:'USD',prices:[{date:'2022-01-01',close:.2}],splits:[]};expect(await loadMarket('SKY-USD','2022-01-01','2022-01-01')).toBeNull();expect(db.query.mock.calls[0][1][0]).toBe('SKY@sky-USD');expect(db.withTransaction).not.toHaveBeenCalled()});
+test('new SKY history retains explicit coin identity and native token units in a separate namespace',async()=>{saved=null;portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-01-05')/1000,close:.07}]);const r=await loadMarket('SKY-USD','2026-01-05','2026-01-05',{fetchPrices:true,userId:'owner'});expect(r.cryptoIdentity).toEqual({coinGeckoId:'sky',quoteCurrency:'USD',units:'native-token'});expect(db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT'))[1][0]).toBe('SKY@sky-USD');expect(axios.get).not.toHaveBeenCalled()});
+
+test('an equity sharing SKY ticker keeps its original reconstruction behavior',async()=>{expect(await loadMarket('SKY','2026-01-02','2026-01-02')).toEqual(saved);expect(db.query.mock.calls[0][1][0]).toBe('SKY')});

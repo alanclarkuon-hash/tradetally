@@ -74,6 +74,7 @@ test('reconstruction requests current ticker history for a closed broker asset w
 
 
 test('bounded reconstruction fetches only recent prices while replaying older native holdings',async()=>{
+ const network=jest.spyOn(require('axios'),'get').mockRejectedValue(Error('Offline synthetic test'));
  jest.useFakeTimers().setSystemTime(new Date('2026-01-20T12:00:00Z'));
  const db=require('../src/config/database'),portfolio=require('../src/services/portfolioService');
  const prices=jest.spyOn(portfolio,'_getDailySeries').mockResolvedValue(Array.from({length:11},(_,i)=>({time:Date.parse('2026-01-09')/1000+i*86400,close:100})));
@@ -90,5 +91,5 @@ test('bounded reconstruction fetches only recent prices while replaying older na
   expect(prices).toHaveBeenCalledTimes(1);expect(result[0].gaps).toBe(0);
   const values=client.query.mock.calls.filter(([sql])=>sql.startsWith('INSERT INTO portfolio_reconstructed_values'));
   expect(values).toHaveLength(4);expect(values.every(([,args])=>args[3]===200)).toBe(true);
- } finally {prices.mockRestore();jest.useRealTimers();}
+ } finally {prices.mockRestore();network.mockRestore();jest.useRealTimers();}
 });

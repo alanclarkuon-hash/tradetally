@@ -15,6 +15,9 @@ function identity(row,date) {
  }
  if(type==='cfd'&&(['OIL','GOLD','SILVER','COPPER','NGAS','NATGAS','PLATINUM','PALLADIUM'].includes(row.symbol)||row.symbol?.endsWith('.FUT')))
   return {symbol:row.symbol,instrumentType:type,unsupported:true,reason:'Broker commodity/futures contract has no verified listed-security price history. Broker statement valuations are retained.'};
+ const cryptoLot=require('./cryptoHistoryIdentity').lotIdentity(row);
+ if(cryptoLot?.unsupported)return {symbol:row.symbol,instrumentType:'crypto',...cryptoLot};
+ if(cryptoLot?.symbol)return {symbol:cryptoLot.symbol,instrumentType:'crypto'};
  const kind=type==='crypto'?'crypto':'stock';
  const symbol=historicalMarketSymbol(row.history_market_symbol||row.symbol,kind,date);
  return {symbol:kind==='crypto'?symbol.replace(/-USD$/,''):symbol,instrumentType:kind};

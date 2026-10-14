@@ -17,6 +17,8 @@ function match(symbol) {
 }
 async function resolve(symbol) {
   symbol = String(symbol).trim().toUpperCase();
+  const token=require('./cryptoHistoryIdentity').coin(symbol);
+  if(token)return {id:token.coinGeckoId};
   if (CRYPTO_TO_COINGECKO[symbol]) return { id: CRYPTO_TO_COINGECKO[symbol] };
   await load();
   if (Date.now() - directory.asOf >= 7 * 86400000) {
@@ -35,6 +37,8 @@ async function resolve(symbol) {
 }
 async function cached(symbol) {
   symbol = String(symbol).trim().toUpperCase();
+  const token=require('./cryptoHistoryIdentity').coin(symbol);
+  if(token)return {id:token.coinGeckoId};
   if (CRYPTO_TO_COINGECKO[symbol]) return { id: CRYPTO_TO_COINGECKO[symbol] };
   await load();
   return match(symbol);

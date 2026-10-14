@@ -20,7 +20,7 @@ async function getRange(symbol, startDate, endDate) {
      WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND (is_final OR price_date=CURRENT_DATE) AND price_currency='USD'
        AND (symbol LIKE 'crypto:%' OR data_source NOT IN ('coingecko','okx','kraken'))
      ORDER BY price_date ASC`,
-    [cacheKey(symbol), startDate, endDate]
+    [require('../services/cryptoHistoryIdentity').historyKey(cacheKey(symbol)), startDate, endDate]
   );
 
   return result.rows.map(row => ({
@@ -47,7 +47,7 @@ async function hasRange(symbol, startDate, endDate) {
     `SELECT COUNT(*) as count
      FROM historical_prices
      WHERE symbol = $1 AND price_date BETWEEN $2 AND $3 AND is_final AND price_currency='USD'`,
-    [cacheKey(symbol), startDate, endDate]
+    [require('../services/cryptoHistoryIdentity').historyKey(cacheKey(symbol)), startDate, endDate]
   );
 
   const count = parseInt(result.rows[0].count);
@@ -74,12 +74,18 @@ async function hasRange(symbol, startDate, endDate) {
  */
 async function insertCandles(symbol, candles, dataSource, {currency=null,replaceFinal=false}={}) {
   if (!candles || candles.length === 0) return;
+  const identity=require('../services/cryptoHistoryIdentity');
+  if(/^crypto:/i.test(symbol)&&identity.coin(symbol)){
+    if(!identity.sourceAllowed(symbol,dataSource))return;
+    candles=identity.dated(symbol,candles);
+    if(!candles.length)return;
+  }
   if (candles.length > 1000) {
     for (let offset=0; offset<candles.length; offset+=1000) await insertCandles(symbol, candles.slice(offset,offset+1000), dataSource,{currency,replaceFinal});
     return;
   }
 
-  const symbolUpper = cacheKey(symbol);
+  const symbolUpper = require('../services/cryptoHistoryIdentity').historyKey(cacheKey(symbol));
 
   // Build bulk INSERT with VALUES list
   const values = [];
