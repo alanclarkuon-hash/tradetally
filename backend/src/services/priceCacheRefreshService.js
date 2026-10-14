@@ -16,7 +16,8 @@ async function plan() {
  const reconstructed=(await db.query("SELECT symbol,payload->'prices'->0->>'date' AS first,payload->'prices'->-1->>'date' AS last FROM portfolio_reconstruction_prices WHERE jsonb_array_length(COALESCE(payload->'prices','[]'::jsonb))>0")).rows;
  const unsupported=await require('./historyInstrumentIdentity').unsupportedSymbols(db);
  const yesterday=day(Date.now()-86400000);
- for(const row of [...rows,...quotes,...reconstructed.map(r=>r.symbol.endsWith('-USD')?{...r,symbol:'crypto:'+r.symbol.slice(0,-4)}:r)]) {
+ const identity=require('./cryptoHistoryIdentity');
+ for(const row of [...rows.map(identity.canonicalRow).filter(Boolean),...quotes,...reconstructed.filter(r=>r.symbol!=='SKY-USD').map(r=>({...r,symbol:identity.logicalNativeKey(r.symbol)})).map(r=>r.symbol.endsWith('-USD')?{...r,symbol:'crypto:'+r.symbol.slice(0,-4)}:r)]) {
   const instrumentType=kind(row.symbol,row.data_source),symbol=row.symbol.replace(/^crypto:/i,''),key=priceCacheKey(symbol,instrumentType);
   const old=tasks.get(key)||{symbol,instrumentType,key,quote:false};
   if(row.first){const from=day(row.first),to=day(row.last)>yesterday?yesterday:day(row.last);if(from<=to){old.from=!old.from||from<old.from?from:old.from;old.to=!old.to||to>old.to?to:old.to;}}
@@ -31,12 +32,15 @@ async function refreshHistory(userId,task) {
  const {missingRanges}=require('./holdingsHistoryProvider'),cache=require('../utils/historicalPriceCache');
  const calendar=task.instrumentType==='crypto'?null:await require('./exchangeCalendar').resolve(task.symbol,{allowLookup:true});
  const old=(await db.query(`SELECT price_date,close FROM historical_prices WHERE symbol=$1 AND price_currency='USD' AND is_final
-   AND (data_source LIKE 'broker:%' OR data_source IN ('kraken','okx')) AND price_date BETWEEN $2 AND $3`,[task.key,task.from,task.to])).rows;
+   AND (data_source LIKE 'broker:%' OR data_source IN ('kraken','okx')) AND price_date BETWEEN $2 AND $3`,[require('./cryptoHistoryIdentity').historyKey(task.key),task.from,task.to])).rows;
  const brokerPrices=new Map(old.map(r=>[Date.parse(r.price_date)/1000,{time:Date.parse(r.price_date)/1000,close:Number(r.close)}]));
  let brokerRows=0;
  await require('./brokerHistoryProviders').fetch({userId,symbol:task.symbol,instrumentType:task.instrumentType,
   ranges:()=>missingRanges([...brokerPrices.values()],task.from,task.to,task.instrumentType==='crypto',calendar),
   onPrices:async(candles,broker)=>{
+   const identity=require('./cryptoHistoryIdentity');
+   if(task.instrumentType==='crypto'&&!identity.sourceAllowed(task.symbol,'broker:'+broker))return;
+   if(task.instrumentType==='crypto')candles=identity.dated(task.symbol,candles);
    const prices=await require('../utils/dailyPriceCurrency').toUsd(candles,task.instrumentType==='crypto'||calendar==='US'?'USD':null);
    await cache.insertCandles(task.key,prices,'broker:'+broker,{currency:'USD',replaceFinal:true});
    await updateReconstruction(task,prices);
@@ -50,8 +54,9 @@ async function refreshHistory(userId,task) {
 }
 async function updateReconstruction(task,prices) {
  if(!prices.length)return;
- const key=task.instrumentType==='crypto'?task.symbol+'-USD':task.symbol;
+ const key=require('./cryptoHistoryIdentity').nativeKey(task.instrumentType==='crypto'?task.symbol+'-USD':task.symbol);
  const old=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[key])).rows[0]?.payload;
+ if(task.instrumentType==='crypto'&&!require('./cryptoHistoryIdentity').usableNative(task.symbol,old))return;
  if(!old?.currency)return; // Split/identity metadata must not be invented.
  const merged=new Map((old.prices||[]).map(p=>[p.date,p]));
  for(const c of prices){const date=day(c.time*1000),fx=old.currency==='USD'?1:await require('../utils/currencyConverter').getForexRate('USD',old.currency,date);

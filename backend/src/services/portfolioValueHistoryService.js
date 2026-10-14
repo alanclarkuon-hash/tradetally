@@ -214,7 +214,7 @@ async function getHistory(userId,query={}) {
   const snapshots=(await db.query("SELECT broker_type,account_identifier,payload FROM broker_import_snapshots WHERE user_id=$1 AND broker_type IN ('kraken','okx')",[userId])).rows;
   const marketRows=(await db.query("SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol LIKE '%-USD'")).rows;
   const cryptoEvents=require('./portfolioCryptoFunding').cryptoFundingEvents(snapshots,accounts,pairs,
-    new Map(marketRows.map(r=>[r.symbol,r.payload])),(date,base,quote)=>fundingFx(fx,date,base,quote),currency,range);
+    new Map(marketRows.map(require('./cryptoHistoryIdentity').nativeRow).filter(Boolean).map(r=>[r.symbol,r.payload])),(date,base,quote)=>fundingFx(fx,date,base,quote),currency,range);
   events.push(...cryptoEvents);
   const series=combineValues(rows,accounts,currency,fx);
   const valid=series.filter(p=>p.value!=null);
