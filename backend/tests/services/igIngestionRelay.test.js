@@ -28,3 +28,24 @@ test('safe failure stages identify delivery conflicts without exposing document 
  const status=await fs.readFile(path.join(target,'.relay-status.json'),'utf8');expect(status).not.toContain(name);expect(status).not.toContain('private conflicting contents');
  expect(await fs.readFile(path.join(source,name))).toEqual(bytes);
 });
+
+test('manual original PDF is staged with checksum metadata and kept until the matching receipt',async()=>{
+ const original='Account ledger.pdf';await fs.rename(path.join(source,name),path.join(source,original));
+ const staged=name.slice(0,67)+original;
+ expect(await relay({source,target})).toMatchObject({copied:1,archived:0,errors:0});
+ expect(await fs.readFile(path.join(source,original))).toEqual(bytes);
+ const metadata=JSON.parse(await fs.readFile(path.join(target,name.slice(0,64)+'.json'),'utf8'));expect(metadata.source).toBe('manual');
+ expect(await relay({source,target})).toMatchObject({copied:0,errors:0});
+ await fs.mkdir(path.join(target,'Processed'));await fs.rename(path.join(target,staged),path.join(target,'Processed',staged));
+ expect(await relay({source,target})).toMatchObject({archived:1,errors:0});expect(await fs.readFile(path.join(source,'Processed',original))).toEqual(bytes);
+ // Redropping the identical PDF has the same durable receipt.
+ await fs.writeFile(path.join(source,original),bytes);await fs.utimes(path.join(source,original),new Date(0),new Date(0));
+ expect(await relay({source,target})).toMatchObject({copied:0,archived:1,errors:0});
+});
+test('manual invalid files and receipt mismatches cannot archive originals',async()=>{
+ const original='ledger.pdf';await fs.rename(path.join(source,name),path.join(source,original));await relay({source,target});
+ const staged=name.slice(0,67)+original;await fs.mkdir(path.join(target,'Processed'));await fs.writeFile(path.join(target,'Processed',staged),'%PDF wrong');
+ expect(await relay({source,target})).toMatchObject({errors:1,archived:0});expect(await fs.readFile(path.join(source,original))).toEqual(bytes);
+ await fs.writeFile(path.join(source,original),'not a PDF');await fs.utimes(path.join(source,original),new Date(0),new Date(0));
+ expect(await relay({source,target})).toMatchObject({errors:1,copied:0});
+});

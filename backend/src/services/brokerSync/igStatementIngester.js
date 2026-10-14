@@ -4,6 +4,7 @@ const pdf=require('./igPdf'),daily=require('./igDailyStatement');
 const {cents}=require('./igStatement');
 const active=new Set();
 const reasons={invalid_date:'The statement date could not be verified.',unknown_account:'The PDF does not match exactly one configured IG account.',
+ ledger_unsupported_activity:'This ledger contains unsupported trade, position or currency activity. No financial changes were applied.',ledger_cash_incomplete:'The ledger does not yet provide enough dated cash activity to reconcile the saved statement balance. The original is retained for review.',
  unsupported_layout:'The statement layout is not supported.',unsupported_positions:'The complete positions table could not be reconciled.',
  new_share_execution_required:'A new share holding needs its execution statement and CSV history.',equity_conflict:'Reported equity does not equal cash plus holdings or running P&L.',
  cash_conflict:'The statement cash activity does not reconcile.',cash_date_conflict:'The PDF cash summary conflicts with transaction history on its reporting date. Its conflicting chart value is excluded; original statement evidence is retained for review.',unsupported_activity:'The PDF includes activity that needs updated CSV or execution reports.',
@@ -36,7 +37,7 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
   const rows=await saved(userId);
   // Bump the parser version when layout support changes. Retry after evidence
   // or reporting-date corrections, never repeatedly against unchanged inputs.
-  context=hash(Buffer.from(JSON.stringify({parserVersion:1,revision:revision(rows),date:statementDate||null,filenameDate:daily.dateFromName(filename)||null})));
+  context=hash(Buffer.from(JSON.stringify({parserVersion:2,revision:revision(rows),date:statementDate||null,filenameDate:daily.dateFromName(filename)||null})));
   if(prior&&['review','rejected','conflict'].includes(prior.status)){
    const timed=['backup_failed','fx_unavailable','changed_accounts'].includes(prior.reason);
    if(prior.reason==='conflicting_statement'||(prior.retry_context===context&&(!timed||Date.now()-Date.parse(prior.processed_at)<5*60000)))
@@ -44,7 +45,9 @@ async function ingest(userId,buffer,{statementDate,filename,backup}={}){
   }
   await db.query(`INSERT INTO ig_statement_ingestion(user_id,attachment_hash,status,retry_context) VALUES($1,$2,'processing',$3)
     ON CONFLICT(user_id,attachment_hash) DO UPDATE SET status='processing',reason=NULL,retry_context=EXCLUDED.retry_context`,[userId,fingerprint,context]);
-  const text=await pdf.text(buffer),id=daily.identity(text);
+  const text=await pdf.text(buffer);
+  if(text.replace(/\s/g,'').includes('LedgerHistoryStatement'))return await require('./igLedgerImport').ingest(userId,buffer,text,rows,{fingerprint,backup:ensureBackup});
+  const id=daily.identity(text);
   const matches=rows.filter(r=>r.payload?.igFileInput?.statementMask===id.mask&&r.payload?.igFileInput?.statementLabel===id.label);
   if(matches.length!==1)daily.fail('unknown_account');account=matches[0];const base=account.payload.igFileInput;
   const named=daily.dateFromName(filename);if(statementDate&&named&&statementDate!==named)daily.fail('invalid_date');
