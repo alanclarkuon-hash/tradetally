@@ -1,6 +1,6 @@
 // Reconstruct broker pooled cost without changing FIFO trade identities.
 const {sourceFills}=require('./planningLedger');
-function settlements(trades) {
+function settlements(trades, marketSplits = {}) {
  const groups=new Map(),output=new Map();
  for(const t of trades){
   if(t.broker!=='trading212'||t.side!=='long'||(t.instrument_type||'stock')!=='stock')continue;
@@ -16,8 +16,16 @@ function settlements(trades) {
    if(!old)fills.set(key,{...f,quantity:0,costs:0,slices:[]});
    const total=fills.get(key);total.quantity+=f.quantity;total.costs+=f.costs;total.slices.push({trade:t,fill:f});
   }
-  let units=0,cost=0,fees=0;
+  // Splits change share units, never the cash cost or fees already paid.
+  // Use dated native-market evidence; never infer a ratio from a shortfall.
+  const evidence=marketSplits[rows[0].symbol];
+  const splits=evidence?.splits||[];
+  const validSplits=Array.isArray(splits)&&splits.every(s=>/^\d{4}-\d{2}-\d{2}$/.test(s.date)&&Number.isFinite(s.ratio)&&s.ratio>0)&&new Set(splits.map(s=>s.date)).size===splits.length;
+  if(!validSplits||(splits.length&&rows.some(t=>t.original_currency!==evidence.currency)))invalid=true;
+  const events=validSplits?[...splits].sort((a,b)=>a.date.localeCompare(b.date)):[];
+  let splitIndex=0,units=0,cost=0,fees=0;
   for(const f of [...fills.values()].sort((a,b)=>a.time.localeCompare(b.time)||(a.action==='entry'?-1:1))){
+   while(splitIndex<events.length&&events[splitIndex].date<=f.time.slice(0,10))units*=events[splitIndex++].ratio;
    const rate=f.transactionFx.rate;
    if(f.action==='entry'){units+=f.quantity;cost+=f.quantity*f.price/rate;fees+=f.costs/rate;continue;}
    if(units+1e-8<f.quantity||units<=0)invalid=true;

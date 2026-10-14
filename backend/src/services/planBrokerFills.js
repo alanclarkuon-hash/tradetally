@@ -7,7 +7,7 @@ function executionIdentity(trade,e){
  const id=e.order_id??e.orderId??e.fill_id??e.execution_id;
  return trade.broker==='trading212'&&id!=null&&['buy','sell'].includes(e.action)?String(id):null;
 }
-function originalGroups(trades,detached=[]){
+function originalGroups(trades,detached=[],marketSplits={}){
  const groups=new Map();
  const add=(trade,e,index,isDetached=false)=>{
   const identity=executionIdentity(trade,e);if(!identity||trade.original_entry_price_currency!=null)return;
@@ -33,7 +33,7 @@ function originalGroups(trades,detached=[]){
   g.trade={id:g.key,side:'long',symbol:g.symbol,broker:g.broker,account_identifier:g.account,instrument_type:'stock',original_currency:g.fill.currency,commission:g.commission,fees:g.fees,executions:[e]};
   g.fill={...sourceFills(g.trade)[0],brokerExecution:{identity:g.identity,key:g.key,broker:g.broker,account:g.account},tradeId:anchor,account:g.account};
  }
- const result=[...groups.values()];result.sourceTrades=trades;return result;
+ const result=[...groups.values()];result.sourceTrades=trades;result.marketSplits=marketSplits;return result;
 }
 function usedQuantity(group,allocations){
  return allocations.reduce((sum,a)=>sum+(a.source_snapshot?.brokerExecution?.key===group.key||a.source_key===group.key||group.parts.some(p=>p.key&&p.tradeId===a.trade_id&&p.key===a.source_key)?Number(a.quantity):0),0);
@@ -45,13 +45,19 @@ async function loadGroups(client,userId,account=null,symbol=null,locked=false,al
  const params=[userId,account,symbol,aliases];
  const trades=(await client.query(`SELECT * FROM trades WHERE user_id=$1 AND broker='trading212' AND COALESCE(instrument_type,'stock')='stock' AND ($2::text IS NULL OR account_identifier=$2) AND ($3::text IS NULL OR UPPER(symbol)=UPPER($3) OR UPPER(symbol)=ANY($4::text[])) ORDER BY id ${locked?'FOR UPDATE':''}`,params)).rows;
  const detached=(await client.query(`SELECT d.execution,t.* FROM detached_trade_exits d JOIN trades t ON t.id=d.origin_trade_id WHERE d.user_id=$1 AND t.user_id=$1 AND d.assigned_trade_id IS NULL AND t.broker='trading212' AND COALESCE(t.instrument_type,'stock')='stock' AND ($2::text IS NULL OR t.account_identifier=$2) AND ($3::text IS NULL OR UPPER(t.symbol)=UPPER($3) OR UPPER(t.symbol)=ANY($4::text[])) ORDER BY d.id ${locked?'FOR UPDATE OF d':''}`,params)).rows.map(t=>({trade:t,execution:t.execution}));
- return originalGroups(trades,detached);
+ const symbols=[...new Set(trades.map(t=>t.symbol))];
+ const market=(await client.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1::text[])',[symbols])).rows;
+ const marketSplits=Object.fromEntries(market.map(r=>[r.symbol,{currency:r.payload.currency,splits:r.payload.splits||[]} ]));
+ return originalGroups(trades,detached,marketSplits);
 }
 function originalSettlementReports(groups){
  const settle=require('./trading212Settlements').settlements;
  const legacy=settle(groups.sourceTrades||[]);
- const canonical=settle(groups.filter(g=>g.valid).map(g=>g.trade));
+ const canonical=settle(groups.filter(g=>g.valid).map(g=>g.trade),groups.marketSplits);
  for(const g of groups.filter(g=>g.valid&&g.fill.action==='exit')){
+  // A complete split-aware original pool takes precedence over legacy matches,
+  // whose apparent short covers can omit acquisitions or allocate fees twice.
+  if(groups.marketSplits?.[g.symbol]?.splits?.length&&canonical.get(g.key)?.status==='complete')continue;
   let units=0,gross=0,entryFees=0;
   const exitFeePerUnit=(g.commission+g.fees)/g.quantity/(g.fill.transactionFx?.rate||1);
   for(const part of g.parts){
@@ -70,7 +76,37 @@ function originalSettlementReports(groups){
    canonical.set(g.key,{status:'complete',basis:'original_broker_execution',currency:g.fill.transactionFx?.accountCurrency,events:[event],pnl:event.pnl,fees,commission:0});
   }
  }
- return {legacy,canonical};
+ const splitGroups=groups.filter(g=>groups.marketSplits?.[g.symbol]?.splits?.length);
+ return {legacy:projectOriginalReports(splitGroups,legacy,canonical),canonical};
+}
+function projectOriginalReports(groups,legacy,canonical){
+ const output=new Map(legacy),events=new Map(),unsupported=new Map();
+ for(const g of groups) {
+  const report=canonical.get(g.key);
+  const parts=g.parts.filter(p=>!p.detached);
+  if(!g.valid||(g.fill.action==='exit'&&report?.status!=='complete')) {
+   for(const p of parts)unsupported.set(p.tradeId,g.fill.transactionFx?.accountCurrency);
+   continue;
+  }
+  // Attribute the complete sale once across its remaining matched records.
+  // This includes detached quantity in the cash settlement, without restoring
+  // matching, changing holdings, or making a former entry appear sold.
+  const represented=parts.reduce((s,p)=>s+p.quantity,0);
+  for(const p of parts) {
+   if(!events.has(p.tradeId))events.set(p.tradeId,{currency:g.fill.transactionFx?.accountCurrency,events:[]});
+   const target=events.get(p.tradeId);
+   if(target.currency!==g.fill.transactionFx?.accountCurrency){unsupported.set(p.tradeId,g.fill.transactionFx?.accountCurrency);continue;}
+   if(g.fill.action!=='exit')continue;
+   const share=p.quantity/represented,e=report.events[0];
+   target.events.push({...e,sourceIndex:p.index,sourceKey:p.key,brokerExecutionKey:g.key,
+    brokerQuantity:g.quantity,reportingQuantity:p.quantity,gross_pnl:e.gross_pnl*share,
+    pnl:e.pnl*share,fees:e.fees*share,commission:(e.commission||0)*share});
+  }
+ }
+ for(const [id,r]of events)if(!unsupported.has(id))output.set(id,{...r,status:'complete',basis:'original_broker_execution',
+  pnl:r.events.reduce((s,e)=>s+e.pnl,0),fees:r.events.reduce((s,e)=>s+e.fees,0),commission:r.events.reduce((s,e)=>s+e.commission,0)});
+ for(const [id,currency]of unsupported)output.set(id,{status:'unavailable',currency,basis:'original_broker_execution',pnl:null,events:[],reason:'Original broker settlement evidence needs reconciliation'});
+ return output;
 }
 function attachSources(trades,allocations,groups){
  const {legacy,canonical}=originalSettlementReports(groups);
@@ -93,4 +129,4 @@ function attachSources(trades,allocations,groups){
  });
 }
 
-module.exports={originalGroups,usedQuantity,availableGroups,loadGroups,attachSources,originalSettlementReports};
+module.exports={originalGroups,usedQuantity,availableGroups,loadGroups,attachSources,originalSettlementReports,projectOriginalReports};
