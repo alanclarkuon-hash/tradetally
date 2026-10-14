@@ -36,3 +36,12 @@ test('never reports success for an unfinished run or a never-synced connection',
  db.query.mockResolvedValueOnce({rows:[{id:'new',broker_type:'etoro'},{id:'old',broker_type:'kraken',status:'completed',completed_at:'2026-10-02',last_sync_status:'success',failed_at:'2026-10-01',error_message:'restart interrupted'}]}).mockResolvedValueOnce({rows:[]});
  const rows=await getStatus('owner');expect(rows[0]).toMatchObject({status:'never',lastSuccessfulSyncAt:null});expect(rows[1].failure).toContain('interrupted');
 });
+
+
+test('uses sanitized sync warnings rather than the unrelated connection-test message',async()=>{
+ db.query.mockResolvedValueOnce({rows:[{id:'one',broker_type:'etoro',status:'completed',outcome:'warning',last_sync_status:'success',last_sync_message:'Connection test successful',warnings:['Older CopyTrader trades need an account statement. secret raw account=example']},
+ {id:'two',broker_type:'kraken',status:'completed',outcome:'warning',warnings:['Incoming transfers original tax basis is unknown','Estimated prices are unavailable for retired tokens']}]}).mockResolvedValueOnce({rows:[]});
+ const rows=await getStatus('owner');expect(rows[0].warning).toBe('Older broker activity may require an account statement.');
+ expect(rows[1].warning).toContain('Original acquisition costs');expect(rows[1].warning).toContain('historical values');
+ expect(JSON.stringify(rows)).not.toMatch(/secret|could not be reached|test successful/);
+});
