@@ -20,7 +20,7 @@ vi.mock('@/composables/useGlobalAccountFilter', async () => {
 const dashboard = { accountCount: 1, asOf: '2026-10-04T12:00:00Z', holdings: [],
   totals: { portfolioValue: 100, holdingsValue: 60, cashValue: 40, stablecoinValue: 0, pnl: 0, pnlPercent: 0 },
   coverage: { missingCash: 0, missingPrices: 0, missingPnl: 0, unclassified: 0 } }
-const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, StockLogo: true, HistoryBackfillStatus: true } } })
+const create = () => mount(PortfolioDashboardView, { global: { stubs: { RouterLink: true, PortfolioValueChart: true, BrokerSyncStatusCard: true, StockLogo: true, HistoryBackfillStatus: true } } })
 
 beforeEach(() => {
   localStorage.clear()
@@ -277,4 +277,12 @@ it('keeps a recovery currency button available when portfolio loading fails',asy
  const view=create();await flushPromises();expect(view.find('[role="alert"]').exists()).toBe(true);
  await view.find('button.currency-toggle').trigger('click');await flushPromises();
  expect(view.find('article').exists()).toBe(true);expect(useAuthStore().user.settings.display_currency).toBe('EUR');view.unmount();
+});
+
+
+it('keeps the independent sync card mounted with no accounts selected or portfolio loading failure',async()=>{
+ mock.selection.value='__none__';const view=create();await flushPromises();
+ expect(view.find('broker-sync-status-card-stub').exists()).toBe(true);
+ mock.selection.value='one';mock.get.mockRejectedValue(new Error('offline'));await flushPromises();
+ expect(view.find('broker-sync-status-card-stub').exists()).toBe(true);view.unmount();
 });

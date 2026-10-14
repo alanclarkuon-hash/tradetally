@@ -54,9 +54,11 @@
         <p class="scope-note">Stocks use FinanceDatabase sector and industry classifications, which are community reference data and may be outdated or incorrect. Funds & ETFs use Yahoo Finance categories; crypto uses CoinGecko themes with AI taking priority. Your correction files take precedence for all three asset classes.</p>
       </section></CurrencyCard></template>
       </PortfolioCardLayout>
+      <template v-if="hasAccountSelection && data && !loading">
       <p v-if="data.heatmapDate && historicalWarnings.length" class="coverage">{{ historicalWarnings.join(' · ') }}</p>
       <div v-if="incomplete || heatmapCoverage.missingPnl || heatmapCoverage.unclassified" class="coverage"><strong>Data coverage</strong> <span v-if="data.coverage.missingCash"> {{ data.coverage.missingCash }} accounts lack a verified cash balance.</span><span v-if="data.coverage.missingPrices"> {{ data.coverage.missingPrices }} holdings lack a price.</span><span v-if="heatmapCoverage.missingPnl"> {{ heatmapCoverage.missingPnl }} holdings lack reliable P&amp;L for this range; their tiles are grey.</span><span v-if="heatmapCoverage.unclassified"> {{ heatmapCoverage.unclassified }} holdings have no industry classification.</span></div>
       <p class="updated">View refreshed {{ new Date(data.asOf).toLocaleString() }}. Broker balances and quotes may have different timestamps. Run a broker sync to fetch the latest transactions from your brokers.</p>
+      </template>
     </template>
   </div>
 </template>
