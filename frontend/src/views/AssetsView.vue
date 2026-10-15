@@ -2,7 +2,7 @@
   <div class="content-wrapper py-8 assets-page">
     <header class="mb-7"><p class="asset-eyebrow">ANALYSIS / ASSETS</p><h1 class="heading-page">Asset library</h1><p class="text-gray-500 dark:text-gray-400 mt-2">Explore the information TradeTally has saved about an asset.</p></header>
     <form @submit.prevent="search" class="asset-search">
-      <div class="flex-1"><label for="asset-symbol" class="block text-sm font-medium mb-2">Asset symbol</label><input id="asset-symbol" v-model="input" placeholder="NEAR, NVDA or an exchange symbol such as SPXL.L" autocomplete="off" maxlength="30" class="input-field w-full" required /></div>
+      <div class="flex-1"><label for="asset-symbol" class="block text-sm font-medium mb-2">Asset symbol</label><SymbolAutocomplete id="asset-symbol" v-model="input" placeholder="Search symbol or asset name" input-class="w-full" required /></div>
       <button class="btn-primary" :disabled="loading || !input.trim()">{{ loading ? 'Loading…' : 'View asset' }}</button>
     </form>
     <p class="text-xs text-gray-500 dark:text-gray-400 mt-3 mb-7">Saved information only. This page does not request new prices, enrichment or broker data. Values retain their stored currencies and dates.</p>
@@ -79,6 +79,7 @@ import {useRoute,useRouter} from 'vue-router'
 import api from '@/services/api'
 import {useAuthStore} from '@/stores/auth'
 import AssetDataValue from '@/components/AssetDataValue.vue'
+import SymbolAutocomplete from '@/components/common/SymbolAutocomplete.vue'
 const route=useRoute(),router=useRouter(),input=ref(String(route.query.symbol||'')),asset=ref(null),loading=ref(false),error=ref(''),pageLoading=ref('')
 const auth=useAuthStore()
 const price=p=>new Intl.NumberFormat('en-GB',{style:'currency',currency:p.currency,maximumFractionDigits:10}).format(p.amount)
