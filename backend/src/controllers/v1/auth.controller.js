@@ -1,3 +1,4 @@
+const { registerUser } = require('../../services/userRegistrationService');
 const User = require('../../models/User');
 const refreshTokenService = require('../../services/refreshToken.service');
 const deviceService = require('../../services/device.service');
@@ -96,38 +97,10 @@ const authV1Controller = {
         username = await generateUsername(email);
       }
 
-      // Check if this is the first user (make them admin)
-      const userCount = await User.getUserCount();
-      const isFirstUser = userCount === 0;
-
-      // Check if email verification is configured
       const emailConfigured = isEmailConfigured();
-      
-      let verificationToken = null;
-      let verificationExpires = null;
-      let isVerified = !emailConfigured || isFirstUser;
-      const adminApproved = registrationMode !== 'approval' || isFirstUser;
-
-      // The first user is auto-verified, so only later users get a token.
-      const needsVerificationEmail = emailConfigured && !isFirstUser;
-      if (needsVerificationEmail) {
-        verificationToken = crypto.randomBytes(32).toString('hex');
-        verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      }
-
-      const user = await User.create({ 
-        email, 
-        username, 
-        password, 
-        fullName,
-        verificationToken,
-        verificationExpires,
-        role: isFirstUser ? 'admin' : 'user',
-        isVerified,
-        adminApproved
-      });
-      
-      await User.createSettings(user.id);
+      const { user, isFirstUser, isVerified, adminApproved, verificationToken, needsVerificationEmail } = await registerUser({
+        email, username, password, fullName
+      }, { emailConfigured, registrationMode });
       await applyNewUserTrial(user, { host: req.headers.host, isFirstUser });
 
       // Register device if provided

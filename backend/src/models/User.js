@@ -39,7 +39,7 @@ function decryptSettingsRow(row) {
 }
 
 class User {
-  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', marketingConsent = false }) {
+  static async create({ email, username, password, fullName, verificationToken, verificationExpires, role = 'user', isVerified = false, adminApproved = true, tier = 'free', marketingConsent = false }, queryable = db) {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Admins get Pro tier by default
@@ -54,7 +54,7 @@ class User {
     `;
 
     const values = [normalizeEmail(email), username, hashedPassword, fullName, hashLookupToken(verificationToken), verificationExpires, role, isVerified, adminApproved, tier, marketingConsent];
-    const result = await db.query(query, values);
+    const result = await queryable.query(query, values);
 
     return result.rows[0];
   }
@@ -145,7 +145,7 @@ class User {
     return bcrypt.compare(password, user.password_hash);
   }
 
-  static async createSettings(userId) {
+  static async createSettings(userId, queryable = db) {
     const query = `
       INSERT INTO user_settings (user_id)
       VALUES ($1)
@@ -153,12 +153,13 @@ class User {
       RETURNING *
     `;
     
-    const result = await db.query(query, [userId]);
+    const result = await queryable.query(query, [userId]);
     settingsCache.invalidate(userId);
 
     // If no row was returned due to conflict, fetch the existing settings
     if (result.rows.length === 0) {
-      return await this.getSettings(userId);
+      if (queryable === db) return await this.getSettings(userId);
+      return (await queryable.query('SELECT * FROM user_settings WHERE user_id = $1', [userId])).rows[0];
     }
 
     return result.rows[0];
