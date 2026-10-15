@@ -16,13 +16,13 @@ const { cleanString, parseDateTime, parseNumeric, parseInteger } = require('../s
 async function parseQuestradeTransactions(records, existingPositions = {}, context = {}) {
   console.log(`\n=== QUESTRADE TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} Questrade transaction records`);
-  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+  console.log(`Existing open positions passed to parser: [detail omitted]`);
   const diagnostics = context.diagnostics;
 
   if (Object.keys(existingPositions).length > 0) {
     console.log(`Existing positions:`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
-      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+      console.log(`  [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted] (Trade ID: [detail omitted])`);
     });
   }
 
@@ -32,7 +32,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
   // Debug: Log first few records to see structure
   console.log('\nSample Questrade records:');
   records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // Helper to parse Questrade date format: "16 Dec 2025 11:15:58 AM"
@@ -62,7 +62,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
 
     const match = dateStr.match(/^(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(AM|PM)?$/i);
     if (!match) {
-      console.log(`[QUESTRADE] Failed to parse date: ${dateStr}`);
+      console.log(`[QUESTRADE] Failed to parse date: [detail omitted]`);
       return null;
     }
 
@@ -70,7 +70,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
     const month = months[monthStr.toLowerCase()];
 
     if (month === undefined) {
-      console.log(`[QUESTRADE] Unknown month: ${monthStr}`);
+      console.log(`[QUESTRADE] Unknown month: [detail omitted]`);
       return null;
     }
 
@@ -162,7 +162,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
 
       // Skip if missing essential data
       if (!symbol || fillQty === 0 || fillPrice === 0 || !execTime) {
-        console.log(`Skipping Questrade record missing data:`, { symbol, action, fillQty, fillPrice, execTime });
+        console.log(`Skipping Questrade record missing data:`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required fields (symbol, quantity, price, or exec time)' });
@@ -173,7 +173,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       // Parse execution time
       const execDateTime = parseQuestradeDate(execTime);
       if (!execDateTime) {
-        console.log(`Skipping Questrade record with invalid date: ${execTime}`);
+        console.log(`Skipping Questrade record with invalid date: [detail omitted]`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Invalid exec time: ${execTime}` });
@@ -184,7 +184,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       // Validate date is reasonable (compare as strings - naive dates are YYYY-MM-DD format)
       const execYear = parseInt(execDateTime.substring(0, 4));
       if (execYear < 2000 || execYear > new Date().getFullYear() + 1) {
-        console.log(`Skipping Questrade record with invalid date range: ${execTime}`);
+        console.log(`Skipping Questrade record with invalid date range: [detail omitted]`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Exec time out of range: ${execTime}` });
@@ -208,7 +208,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
           tradeAction = 'sell';
           break;
         default:
-          console.log(`Skipping Questrade record with unknown action: ${action}`);
+          console.log(`Skipping Questrade record with unknown action: [detail omitted]`);
           if (diagnostics) {
             diagnostics.skippedRows++;
             diagnostics.skippedReasons.push({ row: rowIndex, reason: `Unknown action: ${action}` });
@@ -247,9 +247,9 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
         instrumentData
       });
 
-      console.log(`Parsed Questrade transaction: ${action} ${fillQty} ${symbol} @ $${fillPrice.toFixed(2)} (${currency})`);
+      console.log(`Parsed Questrade transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] ([detail omitted])`);
     } catch (error) {
-      console.error('Error parsing Questrade transaction:', error, record);
+      console.error('Error parsing Questrade transaction:');
       if (diagnostics) {
         diagnostics.invalidRows++;
         diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
@@ -284,8 +284,8 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
     const firstTx = symbolTransactions[0];
     const instrumentData = firstTx.instrumentData;
 
-    console.log(`\n=== Processing ${symbolTransactions.length} Questrade transactions for ${symbolKey} ===`);
-    console.log(`Instrument type: ${instrumentData.instrumentType}`);
+    console.log(`\n=== Processing [detail omitted] Questrade transactions for [detail omitted] ===`);
+    console.log(`Instrument type: [detail omitted]`);
 
     // Value multiplier for options
     const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 : 1;
@@ -298,7 +298,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
     const existingPosition = existingPositions[firstTx.symbol] || existingPositions[symbolKey];
     if (existingPosition) {
       currentPosition = existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity;
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} @ $${existingPosition.entryPrice}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] @ $[detail omitted]`);
 
       // Initialize currentTrade from the existing position so we don't create duplicate trades
       currentTrade = {
@@ -321,14 +321,14 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
         optionType: existingPosition.optionType,
         ...instrumentData
       };
-      console.log(`  → Initialized trade from existing position with ${currentTrade.executions.length} executions`);
+      console.log(`  → Initialized trade from existing position with [detail omitted] executions`);
     }
 
     // Debug: Log existing executions for this symbol
-    console.log(`  → Existing executions for ${symbolKey}: ${context.existingExecutions?.[symbolKey]?.length || 0}`);
+    console.log(`  → Existing executions for [detail omitted]: [detail omitted]`);
     if (context.existingExecutions?.[symbolKey]?.length > 0) {
       context.existingExecutions[symbolKey].forEach((exec, i) => {
-        console.log(`    [${i}] ${exec.action || 'unknown'} ${exec.quantity} @ $${exec.price || exec.entryPrice} at ${exec.datetime || exec.entryTime}`);
+        console.log(`    [[detail omitted]] [detail omitted] [detail omitted] @ $[detail omitted] at [detail omitted]`);
       });
     }
 
@@ -341,9 +341,9 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
         action: transaction.action
       };
       const isDuplicate = isExecutionDuplicate(executionToCheck, symbolKey, context);
-      console.log(`  [DUPLICATE CHECK] ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} at ${transaction.datetime} → ${isDuplicate ? 'DUPLICATE' : 'NEW'}`);
+      console.log(`  [DUPLICATE CHECK] [detail omitted] [detail omitted] @ $[detail omitted] at [detail omitted] → [detail omitted]`);
       if (isDuplicate) {
-        console.log(`  [SKIP] Duplicate execution: ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)}`);
+        console.log(`  [SKIP] Duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
         continue; // Skip this transaction entirely
       }
 
@@ -351,7 +351,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
       const prevPosition = currentPosition;
       currentPosition += signedQty;
 
-      console.log(`  ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} → Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  [detail omitted] [detail omitted] @ $[detail omitted] → Position: [detail omitted] → [detail omitted]`);
 
       // Opening or adding to position
       if ((prevPosition >= 0 && signedQty > 0) || (prevPosition <= 0 && signedQty < 0)) {
@@ -380,7 +380,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
             }],
             ...instrumentData
           };
-          console.log(`  [NEW] Started ${side} position: ${Math.abs(signedQty)} @ $${transaction.price.toFixed(2)}`);
+          console.log(`  [NEW] Started [detail omitted] position: [detail omitted] @ $[detail omitted]`);
         } else {
           // Adding to existing position - calculate weighted average entry
           const prevValue = currentTrade.entryPrice * currentTrade.quantity;
@@ -397,7 +397,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
             commission: transaction.commission,
             fees: 0
           });
-          console.log(`  [ADD] Added to position: now ${totalQty} @ avg $${currentTrade.entryPrice.toFixed(2)}`);
+          console.log(`  [ADD] Added to position: now [detail omitted] @ avg $[detail omitted]`);
         }
       }
       // Closing position (fully or partially)
@@ -441,7 +441,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
             // Track realized P&L from partial close (position still open)
             currentTrade.realizedPnl = (currentTrade.realizedPnl || 0) + pnl;
 
-            console.log(`  [PARTIAL CLOSE] Sold ${closeQty} @ $${transaction.price.toFixed(2)}, realized P&L: $${pnl.toFixed(2)}, remaining: ${remainingQty} shares`);
+            console.log(`  [PARTIAL CLOSE] Sold [detail omitted] @ $[detail omitted], realized P&L: $[detail omitted], remaining: [detail omitted] shares`);
           }
           // Handle full close (and possible reversal)
           else {
@@ -463,7 +463,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
             currentTrade.commission += transaction.commission;
             currentTrade.executionData = currentTrade.executions;
 
-            console.log(`  [CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, P&L: $${pnl.toFixed(2)}`);
+            console.log(`  [CLOSE] Closed [detail omitted] @ $[detail omitted], P&L: $[detail omitted]`);
             completedTrades.push(currentTrade);
 
             // Handle reversal (closing more than position - start new position in opposite direction)
@@ -492,7 +492,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
                 }],
                 ...instrumentData
               };
-              console.log(`  [REVERSAL] Started new ${newSide} position: ${reversalQty} @ $${transaction.price.toFixed(2)}`);
+              console.log(`  [REVERSAL] Started new [detail omitted] position: [detail omitted] @ $[detail omitted]`);
             } else {
               currentTrade = null;
             }
@@ -513,7 +513,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
           currentTrade.isUpdate = true;
           currentTrade.existingTradeId = currentTrade.id;
         }
-        console.log(`  [OPEN] Remaining open ${currentTrade.side} position: ${Math.abs(currentPosition)} @ $${currentTrade.entryPrice.toFixed(2)}${currentTrade.id ? ' (updating existing)' : ''}`);
+        console.log(`  [OPEN] Remaining open [detail omitted] position: [detail omitted] @ $[detail omitted][detail omitted]`);
         completedTrades.push(currentTrade);
       }
     }
@@ -522,7 +522,7 @@ async function parseQuestradeTransactions(records, existingPositions = {}, conte
   console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Questrade transactions`);
   // Debug: Log all created trades
   completedTrades.forEach((trade, i) => {
-    console.log(`  Trade ${i + 1}: ${trade.symbol} ${trade.side} ${trade.quantity} shares, entry $${trade.entryPrice?.toFixed(2)}, exit $${trade.exitPrice?.toFixed(2) || 'OPEN'}, P&L: $${trade.pnl?.toFixed(2) || 'N/A'}, executions: ${trade.executions?.length || 0}${trade.isUpdate ? ' (UPDATE)' : ''}`);
+    console.log(`  Trade [detail omitted]: [detail omitted] [detail omitted] [detail omitted] shares, entry $[detail omitted], exit $[detail omitted], P&L: $[detail omitted], executions: [detail omitted][detail omitted]`);
   });
   return completedTrades;
 }

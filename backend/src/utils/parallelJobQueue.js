@@ -37,7 +37,7 @@ class ParallelJobQueue {
       this.startWorkerForJobType(jobType, concurrencyByType[jobType] || 1);
     }
 
-    logger.logImport(`Started ${this.workers.size} parallel workers`);
+    logger.logImport(`Started [detail omitted] parallel workers`);
   }
 
   /**
@@ -65,7 +65,7 @@ class ParallelJobQueue {
 
     this.workers.set(jobType, workerInfo);
     this.scheduleWorkerPoll(workerInfo, workerInfo.currentPollIntervalMs);
-    logger.logImport(`Started worker for ${jobType} (max concurrent: ${maxConcurrent})`);
+    logger.logImport(`Started worker for [detail omitted] (max concurrent: [detail omitted])`);
   }
 
   /**
@@ -96,7 +96,7 @@ class ParallelJobQueue {
       try {
         claimed = await this.processNextJobOfType(workerInfo.jobType, workerInfo);
       } catch (error) {
-        logger.logError(`Error in ${workerInfo.jobType} worker:`, error.message);
+        logger.logError(`Error in [detail omitted] worker:`);
       }
     }
 
@@ -164,18 +164,18 @@ class ParallelJobQueue {
       const job = result.rows[0];
       workerInfo.activeJobs.add(job.id);
 
-      logger.logImport(`[START] [${jobType}] Processing job ${job.id}`);
+      logger.logImport(`[START] [[detail omitted]] Processing job [detail omitted]`);
 
       // Process the job without blocking the poll loop (processJobByType
       // handles its own errors and always removes the job from activeJobs)
       this.processJobByType(job, workerInfo).catch(error => {
-        logger.logError(`Unhandled error processing ${jobType} job ${job.id}:`, error.message);
+        logger.logError(`Unhandled error processing [detail omitted] job [detail omitted]:`);
         workerInfo.activeJobs.delete(job.id);
       });
 
       return true;
     } catch (error) {
-      logger.logError(`Error processing ${jobType} job:`, error.message);
+      logger.logError(`Error processing [detail omitted] job:`);
       return false;
     }
   }
@@ -238,13 +238,13 @@ class ParallelJobQueue {
       // CRITICAL: Update trade enrichment status when job completes
       await this.updateTradeEnrichmentStatus(job, data);
       
-      logger.logImport(`[${job.type}] Job ${job.id} completed in time`);
+      logger.logImport(`[[detail omitted]] Job [detail omitted] completed in time`);
 
     } catch (error) {
       // Clear timeout
       if (timeoutId) clearTimeout(timeoutId);
       
-      logger.logError(`[ERROR] [${job.type}] Job ${job.id} failed:`, error.message);
+      logger.logError(`[ERROR] [[detail omitted]] Job [detail omitted] failed:`);
       
       // Check if this is a timeout or regular failure
       if (error.message.includes('timed out')) {
@@ -299,7 +299,7 @@ class ParallelJobQueue {
         WHERE id = $1
       `;
       await db.query(retryQuery, [jobId, `Timeout retry ${retry_count + 1}: ${error}`]);
-      logger.info(`Job ${jobId} timed out, retrying (attempt ${retry_count + 1})`, 'import');
+      logger.info(`Job [detail omitted] timed out, retrying (attempt [detail omitted])`, 'import');
     } else {
       // Give up after 2 retries
       const failQuery = `
@@ -308,7 +308,7 @@ class ParallelJobQueue {
         WHERE id = $1
       `;
       await db.query(failQuery, [jobId, `Failed after timeout retries: ${error}`]);
-      logger.logError(`[ERROR] Job ${jobId} failed permanently after timeout retries`);
+      logger.logError(`[ERROR] Job [detail omitted] failed permanently after timeout retries`);
     }
   }
 
@@ -330,7 +330,7 @@ class ParallelJobQueue {
           RETURNING id, user_id
         `, [data.tradeId]);
         
-        logger.info(`Updated trade ${data.tradeId} enrichment status to completed`, 'import');
+        logger.info(`Updated trade [detail omitted] enrichment status to completed`, 'import');
         publishEnrichmentCompletedForRows(completed.rows, 'jobs_finished', 'parallelJobQueue');
         if (completed.rows.length > 0) scheduleEnrichmentStatusPush(completed.rows[0].user_id);
       }
@@ -347,13 +347,13 @@ class ParallelJobQueue {
           RETURNING id, user_id
         `, [data.userId]);
         
-        logger.info(`Updated CUSIP trades for user ${data.userId} to completed`, 'import');
+        logger.info(`Updated CUSIP trades for user [detail omitted] to completed`, 'import');
         publishEnrichmentCompletedForRows(completed.rows, 'cusip_resolved', 'parallelJobQueue');
         if (completed.rows.length > 0) scheduleEnrichmentStatusPush(completed.rows[0].user_id);
       }
       
     } catch (error) {
-      logger.logError(`Failed to update trade enrichment status: ${error.message}`);
+      logger.logError(`Failed to update trade enrichment status: [detail omitted]`);
     }
   }
 
@@ -371,7 +371,7 @@ class ParallelJobQueue {
         clearTimeout(workerInfo.timer);
         workerInfo.timer = null;
       }
-      logger.logImport(`[STOP] Stopped worker for ${jobType}`);
+      logger.logImport(`[STOP] Stopped worker for [detail omitted]`);
     }
     
     this.workers.clear();
@@ -420,7 +420,7 @@ class ParallelJobQueue {
       const result = await db.query(query);
       return result.rows;
     } catch (error) {
-      logger.logError('Error getting job stats:', error.message);
+      logger.logError('Error getting job stats:');
       return [];
     }
   }

@@ -39,12 +39,12 @@ class JobQueue {
       try {
         serializedData = JSON.stringify(data);
       } catch (stringifyError) {
-        logger.logError(`Failed to serialize job data: ${stringifyError.message}`);
-        logger.logError(`Job data: ${data}`);
+        logger.logError(`Failed to serialize job data: [detail omitted]`);
+        logger.logError(`Job data: [detail omitted]`);
         throw new Error(`Cannot serialize job data: ${stringifyError.message}`);
       }
       const result = await db.query(query, [type, serializedData, priority, userId]);
-      logger.logImport(`Added job ${result.rows[0].id} of type ${type} to queue`);
+      logger.logImport(`Added job [detail omitted] of type [detail omitted] to queue`);
 
       // Start processing if not already running
       this.startProcessing();
@@ -53,7 +53,7 @@ class JobQueue {
 
       return result.rows[0].id;
     } catch (error) {
-      logger.logError(`Failed to add job to queue: ${error.message}`);
+      logger.logError(`Failed to add job to queue: [detail omitted]`);
       throw error;
     }
   }
@@ -81,7 +81,7 @@ class JobQueue {
 
     try {
       const result = await db.query(query, values);
-      logger.logImport(`Added ${result.rows.length} jobs to queue`);
+      logger.logImport(`Added [detail omitted] jobs to queue`);
 
       // Start processing if not already running
       this.startProcessing();
@@ -90,7 +90,7 @@ class JobQueue {
 
       return result.rows;
     } catch (error) {
-      logger.logError(`Failed to add batch jobs to queue: ${error.message}`);
+      logger.logError(`Failed to add batch jobs to queue: [detail omitted]`);
       throw error;
     }
   }
@@ -118,7 +118,7 @@ class JobQueue {
         }
       }
     } catch (error) {
-      logger.logError(`Failed to notify pollers of enqueued jobs: ${error.message}`);
+      logger.logError(`Failed to notify pollers of enqueued jobs: [detail omitted]`);
     }
   }
 
@@ -161,14 +161,14 @@ class JobQueue {
       const result = await db.query(query, [[...PARALLEL_JOB_TYPES, ...DEDICATED_JOB_TYPES]]);
       
       if (result.rows[0]) {
-        logger.logImport(`Claimed job ${result.rows[0].id} of type ${result.rows[0].type}`);
+        logger.logImport(`Claimed job [detail omitted] of type [detail omitted]`);
         return result.rows[0];
       }
       
       // No jobs found - this is normal when queue is empty, don't log it
       return null;
     } catch (error) {
-      logger.logError(`[ERROR] Failed to get next job: ${error.message}`);
+      logger.logError(`[ERROR] Failed to get next job: [detail omitted]`);
       return null;
     }
   }
@@ -187,7 +187,7 @@ class JobQueue {
     try {
       const jobResult = await db.query(query, [jobId, result ? JSON.stringify(result) : null]);
       const job = jobResult.rows[0];
-      logger.logImport(`Job ${jobId} completed successfully`);
+      logger.logImport(`Job [detail omitted] completed successfully`);
       
       // Check if this job was for trade enrichment
       if (job && job.data) {
@@ -213,7 +213,7 @@ class JobQueue {
         }
       }
     } catch (error) {
-      logger.logError(`Failed to complete job ${jobId}: ${error.message}`);
+      logger.logError(`Failed to complete job [detail omitted]: [detail omitted]`);
     }
   }
 
@@ -230,9 +230,9 @@ class JobQueue {
     try {
       const errorMessage = typeof error === 'string' ? error : error.message || JSON.stringify(error);
       await db.query(query, [jobId, errorMessage]);
-      logger.logError(`Job ${jobId} failed: ${errorMessage}`);
+      logger.logError(`Job [detail omitted] failed: [detail omitted]`);
     } catch (dbError) {
-      logger.logError(`Failed to mark job ${jobId} as failed: ${dbError.message}`);
+      logger.logError(`Failed to mark job [detail omitted] as failed: [detail omitted]`);
     }
   }
 
@@ -252,7 +252,7 @@ class JobQueue {
 
     this.scheduleNextPoll(this.currentPollIntervalMs);
 
-    logger.logImport(`[SUCCESS] Job queue polling started (base ${this.basePollIntervalMs}ms, idle backoff up to ${this.maxPollIntervalMs}ms)`);
+    logger.logImport(`[SUCCESS] Job queue polling started (base [detail omitted]ms, idle backoff up to [detail omitted]ms)`);
   }
 
   /**
@@ -281,8 +281,8 @@ class JobQueue {
     try {
       processed = await this.processNextJob();
     } catch (error) {
-      logger.logError(`[ERROR] Error in job processing: ${error.message}`);
-      logger.logError(`Stack trace: ${error.stack}`);
+      logger.logError(`[ERROR] Error in job processing: [detail omitted]`);
+      logger.logError(`Stack trace: [detail omitted]`);
     } finally {
       this.pollInFlight = false;
     }
@@ -321,7 +321,7 @@ class JobQueue {
       return false; // No job found - this is normal, don't log it
     }
 
-    logger.logImport(`[START] Processing job ${job.id} of type ${job.type}`);
+    logger.logImport(`[START] Processing job [detail omitted] of type [detail omitted]`);
 
     try {
       let data;
@@ -330,16 +330,16 @@ class JobQueue {
         try {
           data = JSON.parse(job.data);
         } catch (parseError) {
-          logger.logError(`Failed to parse job data for job ${job.id}: ${parseError.message}`);
-          logger.logError(`Raw job data: ${job.data}`);
+          logger.logError(`Failed to parse job data for job [detail omitted]: [detail omitted]`);
+          logger.logError(`Raw job data: [detail omitted]`);
           throw new Error(`Invalid job data format: ${parseError.message}`);
         }
       } else if (typeof job.data === 'object' && job.data !== null) {
         // Data is already parsed (jsonb column type)
         data = job.data;
       } else {
-        logger.logError(`Unexpected job data type for job ${job.id}: ${typeof job.data}`);
-        logger.logError(`Raw job data: ${job.data}`);
+        logger.logError(`Unexpected job data type for job [detail omitted]: [detail omitted]`);
+        logger.logError(`Raw job data: [detail omitted]`);
         throw new Error(`Unexpected job data type: ${typeof job.data}`);
       }
       let result = null;
@@ -392,11 +392,11 @@ class JobQueue {
       }
 
       await this.completeJob(job.id, result);
-      logger.logImport(`Job ${job.id} completed successfully`);
+      logger.logImport(`Job [detail omitted] completed successfully`);
       return true; // Job was processed
     } catch (error) {
-      logger.logError(`[ERROR] Job ${job.id} failed: ${error.message}`);
-      logger.logError(`Stack trace: ${error.stack}`);
+      logger.logError(`[ERROR] Job [detail omitted] failed: [detail omitted]`);
+      logger.logError(`Stack trace: [detail omitted]`);
       await this.failJob(job.id, error.message);
       return true; // Job was processed (but failed)
     }
@@ -409,7 +409,7 @@ class JobQueue {
     const cusipResolver = require('./cusipResolver');
     const { cusips, userId } = data;
     
-    logger.logImport(`Resolving ${cusips.length} CUSIPs for user ${userId}`);
+    logger.logImport(`Resolving [detail omitted] CUSIPs for user [detail omitted]`);
     
     // Use the full CusipResolver process which handles mapping storage
     await cusipResolver.processCusipResolution(userId, cusips);
@@ -437,7 +437,7 @@ class JobQueue {
       throw new Error('No trade ID(s) provided in strategy classification job');
     }
     
-    logger.logImport(`Classifying strategies for ${tradesToProcess.length} trades`);
+    logger.logImport(`Classifying strategies for [detail omitted] trades`);
     
     for (const tradeData of tradesToProcess) {
       try {
@@ -491,7 +491,7 @@ class JobQueue {
               trade.id
             ]);
             
-            logger.logImport(`Updated strategy for trade ${trade.id}: ${classification.strategy} (${Math.round((classification.confidence || 0.5) * 100)}% confidence)`);
+            logger.logImport(`Updated strategy for trade [detail omitted]: [detail omitted] ([detail omitted]% confidence)`);
             
             // Store the classification data in enrichment cache
             try {
@@ -503,12 +503,12 @@ class JobQueue {
                 api_provider: marketData.providerName || 'finnhub'
               });
             } catch (cacheError) {
-              logger.logError(`Failed to cache strategy classification for trade ${trade.id}: ${cacheError.message}`);
+              logger.logError(`Failed to cache strategy classification for trade [detail omitted]: [detail omitted]`);
             }
           }
         }
       } catch (error) {
-        logger.logError(`Failed to classify trade ${tradeData.tradeId}: ${error.message}`);
+        logger.logError(`Failed to classify trade [detail omitted]: [detail omitted]`);
       }
     }
     
@@ -532,7 +532,7 @@ class JobQueue {
       const result = await db.query(query);
       return result.rows;
     } catch (error) {
-      logger.logError(`Failed to get queue status: ${error.message}`);
+      logger.logError(`Failed to get queue status: [detail omitted]`);
       return [];
     }
   }
@@ -547,7 +547,7 @@ class JobQueue {
       const tradeExists = await db.query(tradeExistsQuery, [tradeId]);
       
       if (tradeExists.rows.length === 0) {
-        logger.logImport(`Trade ${tradeId} no longer exists - skipping enrichment status update`);
+        logger.logImport(`Trade [detail omitted] no longer exists - skipping enrichment status update`);
         return;
       }
       
@@ -579,13 +579,13 @@ class JobQueue {
         
         if (updateResult.rowCount > 0) {
           const userId = tradeExists.rows[0].user_id;
-          logger.logImport(`Trade ${tradeId} enrichment completed - all background jobs finished`);
+          logger.logImport(`Trade [detail omitted] enrichment completed - all background jobs finished`);
           publishEnrichmentCompleted(userId, [tradeId], 'jobs_finished', 'jobQueue');
           scheduleEnrichmentStatusPush(userId);
         }
       }
     } catch (error) {
-      logger.logError(`Failed to update trade enrichment status for ${tradeId}: ${error.message}`);
+      logger.logError(`Failed to update trade enrichment status for [detail omitted]: [detail omitted]`);
     }
   }
 
@@ -620,13 +620,13 @@ class JobQueue {
           WHERE id = ANY($1)
         `, [jobIds]);
         
-        logger.logImport(`Cancelled ${staleJobs.rows.length} jobs for deleted trades`);
+        logger.logImport(`Cancelled [detail omitted] jobs for deleted trades`);
         return staleJobs.rows.length;
       }
       
       return 0;
     } catch (error) {
-      logger.logError(`Failed to cleanup jobs for deleted trades: ${error.message}`);
+      logger.logError(`Failed to cleanup jobs for deleted trades: [detail omitted]`);
       return 0;
     }
   }
@@ -638,7 +638,7 @@ class JobQueue {
     const newsEnrichmentService = require('../services/newsEnrichmentService');
     const { userId, batchSize = 50, maxTrades = null } = data;
 
-    logger.logImport(`Starting news backfill for user ${userId || 'all users'}`);
+    logger.logImport(`Starting news backfill for user [detail omitted]`);
 
     await newsEnrichmentService.backfillTradeNews({
       userId,
@@ -658,7 +658,7 @@ class JobQueue {
     const staleQualityCondition = tradeQualityService.getStaleQualityCondition();
     const tradeLimit = parseInt(maxTrades, 10);
 
-    logger.logImport(`Starting quality backfill for user ${userId}`);
+    logger.logImport(`Starting quality backfill for user [detail omitted]`);
 
     // Get trades that need quality grading
     const tradesQuery = `
@@ -719,7 +719,7 @@ class JobQueue {
             skipped++;
           }
         } catch (error) {
-          logger.logError(`Failed to grade quality for trade ${trade.id}: ${error.message}`);
+          logger.logError(`Failed to grade quality for trade [detail omitted]: [detail omitted]`);
           skipped++;
         }
       }
@@ -730,7 +730,7 @@ class JobQueue {
       }
     }
 
-    logger.logImport(`Quality backfill completed: ${graded} graded, ${skipped} skipped`);
+    logger.logImport(`Quality backfill completed: [detail omitted] graded, [detail omitted] skipped`);
     return { message: `Quality backfill completed: ${graded} graded, ${skipped} skipped` };
   }
 
@@ -824,7 +824,7 @@ class JobQueue {
     );
     const trades = result.rows;
 
-    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user ${userId}${importId ? ` (import ${importId})` : ''}`);
+    logger.logImport(`MAE recalc: found ${trades.length} trades needing MAE/MFE for user [detail omitted][detail omitted]`);
 
     let updated = 0;
     let skipped = 0;
@@ -867,7 +867,7 @@ class JobQueue {
             skipped++;
           }
         } catch (error) {
-          logger.logError(`MAE recalc failed for trade ${trade.id} (${trade.symbol}): ${error.message}`);
+          logger.logError(`MAE recalc failed for trade [detail omitted] ([detail omitted]): [detail omitted]`);
           skipped++;
         }
       }
@@ -890,11 +890,11 @@ class JobQueue {
       );
       if (remaining.rows[0].n > 0) {
         await this.addJob('mae_recalc', { userId, batchSize, maxTrades, importId, includePostExit }, 4, userId);
-        logger.logImport(`MAE recalc: ${remaining.rows[0].n} trades remaining for user ${userId}, re-enqueued`);
+        logger.logImport(`MAE recalc: [detail omitted] trades remaining for user [detail omitted], re-enqueued`);
       }
     }
 
-    logger.logImport(`MAE recalc completed for user ${userId}: ${updated} updated, ${skipped} skipped`);
+    logger.logImport(`MAE recalc completed for user [detail omitted]: [detail omitted] updated, [detail omitted] skipped`);
     return { message: `MAE recalc completed: ${updated} updated, ${skipped} skipped` };
   }
 
@@ -937,7 +937,7 @@ class JobQueue {
     const newsEnrichmentService = require('../services/newsEnrichmentService');
     const { userId, importId, tradeCount } = data;
 
-    logger.logImport(`Starting news enrichment for ${tradeCount} trades from import ${importId}`);
+    logger.logImport(`Starting news enrichment for [detail omitted] trades from import [detail omitted]`);
 
     // Get trades from the import that need news enrichment. Open trades need
     // sentiment too because setup quality consumes stored news_sentiment.
@@ -983,9 +983,9 @@ class JobQueue {
           ]);
 
           enriched++;
-          logger.logImport(`Enriched trade ${trade.id} (${trade.symbol}): hasNews=${newsData.hasNews}`);
+          logger.logImport(`Enriched trade [detail omitted] ([detail omitted]): hasNews=[detail omitted]`);
         } catch (error) {
-          logger.logError(`Failed to enrich trade ${trade.id}: ${error.message}`);
+          logger.logError(`Failed to enrich trade [detail omitted]: [detail omitted]`);
           skipped++;
         }
       }
@@ -996,7 +996,7 @@ class JobQueue {
         total: trades.length
       };
     } catch (error) {
-      logger.logError(`News enrichment job failed: ${error.message}`);
+      logger.logError(`News enrichment job failed: [detail omitted]`);
       throw error;
     }
   }

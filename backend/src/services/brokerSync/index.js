@@ -71,7 +71,7 @@ class BrokerSyncService {
     const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
     if (!syncAccess.allowed) {
       if (['scheduled', 'ibkr_timeout_retry'].includes(syncType)) {
-        console.log(`[BROKER-SYNC] Skipping scheduled sync for connection ${connectionId}: broker sync is Pro-only for this free user`);
+        console.log(`[BROKER-SYNC] Skipping scheduled sync for connection [detail omitted]: broker sync is Pro-only for this free user`);
         return { success: false, skippedForTier: true, reason: 'tier_pro_required', imported: 0, duplicates: 0 };
       }
       const tierError = new Error(syncAccess.message);
@@ -303,7 +303,7 @@ class BrokerSyncService {
           }];
           result.outcome = 'failed';
           retryStopped = true;
-          console.warn(`[BROKER-SYNC] ${message}`);
+          console.warn(`[BROKER-SYNC] [detail omitted]`);
         } else {
           await BrokerConnection.scheduleIBKRBackfillRetry(connectionId, {
             floor: result.backfillFloor,
@@ -315,14 +315,14 @@ class BrokerSyncService {
           }, IBKR_BACKFILL_RETRY_DELAY_MINUTES);
           result.retryScheduled = true;
           result.retryAttempt = retriesConsumed + 1;
-          console.log(`[BROKER-SYNC] Scheduled IBKR backfill retry ${result.retryAttempt} of ${IBKR_BACKFILL_RETRY_LIMIT} for ${connectionId} in one hour`);
+          console.log(`[BROKER-SYNC] Scheduled IBKR backfill retry [detail omitted] of [detail omitted] for [detail omitted] in one hour`);
         }
       } else if (connection.brokerType === 'ibkr' && connection.ibkrBackfillRetry) {
         await BrokerConnection.clearIBKRBackfillRetry(connectionId);
       }
 
       if (latestReportRetrieved) {
-        console.log(`[BROKER-SYNC] Sync completed: ${result.imported} imported, ${result.duplicates} duplicates, ${expiredClosed} expired options closed`);
+        console.log(`[BROKER-SYNC] Sync completed: [detail omitted] imported, [detail omitted] duplicates, [detail omitted] expired options closed`);
       } else {
         console.warn('[BROKER-SYNC] Sync completed with no retrievable IBKR statement; preserving the previous successful-sync cursor');
       }
@@ -372,7 +372,7 @@ class BrokerSyncService {
         };
       }
 
-      console.error(`[BROKER-SYNC] Sync failed:`, error.message);
+      console.error(`[BROKER-SYNC] Sync failed:`);
 
       // Capture error code + raw message into error_details for diagnosability.
       // Without this we only have the human-friendly message and can't tell
@@ -408,9 +408,9 @@ class BrokerSyncService {
       if (connection.brokerType !== 'ibkr' && error.transient && syncType === 'scheduled') {
         try {
           await BrokerConnection.scheduleTransientRetry(connectionId, 30);
-          console.log(`[BROKER-SYNC] Scheduled transient-failure retry for ${connectionId} in 30 min`);
+          console.log(`[BROKER-SYNC] Scheduled transient-failure retry for [detail omitted] in 30 min`);
         } catch (retryErr) {
-          console.error(`[BROKER-SYNC] Failed to schedule retry: ${retryErr.message}`);
+          console.error(`[BROKER-SYNC] Failed to schedule retry: [detail omitted]`);
         }
       }
 
@@ -438,13 +438,13 @@ class BrokerSyncService {
     console.log('[BROKER-SYNC] Processing scheduled syncs...');
 
     const dueConnections = await BrokerConnection.findDueForSync();
-    console.log(`[BROKER-SYNC] Found ${dueConnections.length} connections due for sync`);
+    console.log(`[BROKER-SYNC] Found [detail omitted] connections due for sync`);
 
     const results = [];
 
     for (const connection of dueConnections) {
       try {
-        console.log(`[BROKER-SYNC] Processing scheduled sync for connection ${connection.id}`);
+        console.log(`[BROKER-SYNC] Processing scheduled sync for connection [detail omitted]`);
 
         const result = await this.syncConnection(connection.id, {
           syncType: 'scheduled'
@@ -459,7 +459,7 @@ class BrokerSyncService {
         // Small delay between syncs to avoid rate limiting
         await this.sleep(2000);
       } catch (error) {
-        console.error(`[BROKER-SYNC] Scheduled sync failed for ${connection.id}:`, error.message);
+        console.error(`[BROKER-SYNC] Scheduled sync failed for [detail omitted]:`);
         results.push({
           connectionId: connection.id,
           brokerType: connection.brokerType,
@@ -553,7 +553,7 @@ class BrokerSyncService {
         return 0;
       }
 
-      console.log(`[BROKER-SYNC] Found ${result.rows.length} expired option(s) to auto-close`);
+      console.log(`[BROKER-SYNC] Found [detail omitted] expired option(s) to auto-close`);
 
       const now = new Date();
 
@@ -591,7 +591,7 @@ class BrokerSyncService {
           const entryPrice = parseFloat(trade.entry_price);
           const contractSize = trade.contract_size || 100;
 
-          console.log(`[BROKER-SYNC] Auto-closing expired ${trade.side} option: ${trade.symbol} (exp: ${expDate}), ${quantity} contracts @ $${entryPrice}`);
+          console.log(`[BROKER-SYNC] Auto-closing expired [detail omitted] option: [detail omitted] (exp: [detail omitted]), [detail omitted] contracts @ $[detail omitted]`);
 
           // Direct SQL UPDATE - avoids Trade.update() complex side effects
           const updateQuery = `
@@ -616,17 +616,17 @@ class BrokerSyncService {
           await db.query(updateQuery, [exitTime, JSON.stringify(executions), now, trade.id, userId]);
           closed++;
         } catch (error) {
-          console.error(`[BROKER-SYNC] Failed to auto-close expired option ${trade.id}:`, error.message);
+          console.error(`[BROKER-SYNC] Failed to auto-close expired option [detail omitted]:`);
         }
       }
 
       if (closed > 0) {
-        console.log(`[BROKER-SYNC] Auto-closed ${closed} expired option(s)`);
+        console.log(`[BROKER-SYNC] Auto-closed [detail omitted] expired option(s)`);
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'expired option auto-close');
         await AnalyticsCache.invalidate(userId);
       }
     } catch (error) {
-      console.error('[BROKER-SYNC] Error checking for expired options:', error.message);
+      console.error('[BROKER-SYNC] Error checking for expired options:');
     }
 
     return closed;

@@ -32,22 +32,22 @@ class BrokerSyncScheduler {
     const logPrefix = '[BROKER-SCHEDULER]';
 
     try {
-      console.log(`${logPrefix} Checking for scheduled syncs...`);
+      console.log(`[detail omitted] Checking for scheduled syncs...`);
 
       const reminderResults = await BrokerReauthNotificationService.sendDueReminders();
       if (reminderResults.claimed > 0) {
-        console.log(`${logPrefix} Sent ${reminderResults.sent} Schwab reauthorization reminder(s)`);
+        console.log(`[detail omitted] Sent [detail omitted] Schwab reauthorization reminder(s)`);
       }
 
       // Find connections due for sync
       const dueConnections = await BrokerConnection.findDueForSync();
 
       if (dueConnections.length === 0) {
-        console.log(`${logPrefix} No connections due for sync`);
+        console.log(`[detail omitted] No connections due for sync`);
         return;
       }
 
-      console.log(`${logPrefix} Found ${dueConnections.length} connections due for sync`);
+      console.log(`[detail omitted] Found [detail omitted] connections due for sync`);
 
       // Process syncs with concurrency limit
       const results = [];
@@ -96,18 +96,18 @@ class BrokerSyncScheduler {
       const failCount = results.filter(r => !r.success).length;
       const totalImported = results.reduce((sum, r) => sum + (r.imported || 0), 0);
 
-      console.log(`${logPrefix} Scheduled sync batch complete:`);
-      console.log(`${logPrefix}   Successful: ${successCount}`);
-      console.log(`${logPrefix}   Failed: ${failCount}`);
-      console.log(`${logPrefix}   Total trades imported: ${totalImported}`);
+      console.log(`[detail omitted] Scheduled sync batch complete:`);
+      console.log(`[detail omitted]   Successful: [detail omitted]`);
+      console.log(`[detail omitted]   Failed: [detail omitted]`);
+      console.log(`[detail omitted]   Total trades imported: [detail omitted]`);
 
       // Log failures for debugging
       results.filter(r => !r.success).forEach(r => {
-        console.error(`${logPrefix} Failed sync for ${r.brokerType} connection ${r.connectionId}: ${r.error}`);
+        console.error(`[detail omitted] Failed sync for [detail omitted] connection [detail omitted]: [detail omitted]`);
       });
 
     } catch (error) {
-      console.error(`${logPrefix} [ERROR] Scheduler error:`, error);
+      console.error(`[detail omitted] [ERROR] Scheduler error:`);
     } finally {
       this.isRunning = false;
     }
@@ -117,7 +117,7 @@ class BrokerSyncScheduler {
    * Sync a single connection
    */
   async syncConnection(connection) {
-    console.log(`[BROKER-SCHEDULER] Syncing ${connection.brokerType} connection ${connection.id}...`);
+    console.log(`[BROKER-SCHEDULER] Syncing [detail omitted] connection [detail omitted]...`);
 
     try {
       const retry = connection.brokerType === 'ibkr'
@@ -134,7 +134,7 @@ class BrokerSyncScheduler {
 
       return result;
     } catch (error) {
-      console.error(`[BROKER-SCHEDULER] Sync failed for ${connection.id}:`, error.message);
+      console.error(`[BROKER-SCHEDULER] Sync failed for [detail omitted]:`);
 
       // Update connection failure status
       await BrokerConnection.updateAfterFailure(connection.id, error.message);
@@ -151,17 +151,17 @@ class BrokerSyncScheduler {
    */
   start() {
     console.log('[BROKER-SCHEDULER] Starting broker sync scheduler...');
-    console.log(`[BROKER-SCHEDULER] Check interval: ${SCHEDULER_INTERVAL / 60000} minutes`);
+    console.log(`[BROKER-SCHEDULER] Check interval: [detail omitted] minutes`);
 
     // Run immediately on start
     this.processDueSyncs().catch(error => {
-      console.error('[BROKER-SCHEDULER] Initial run failed:', error);
+      console.error('[BROKER-SCHEDULER] Initial run failed:');
     });
 
     // Schedule regular runs
     this.interval = setInterval(() => {
       this.processDueSyncs().catch(error => {
-        console.error('[BROKER-SCHEDULER] Scheduled run failed:', error);
+        console.error('[BROKER-SCHEDULER] Scheduled run failed:');
       });
     }, SCHEDULER_INTERVAL);
 

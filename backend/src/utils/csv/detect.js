@@ -175,7 +175,7 @@ function localizeRecords(records) {
     return { records, localized: false };
   }
 
-  console.log('[LOCALIZE] Detected non-English headers, translating:', renameMap);
+  console.log('[LOCALIZE] Detected non-English headers, translating:');
 
   // Build the set of columns that need value translation
   // Map englishColumnName → lookup table
@@ -306,7 +306,7 @@ function normalizeWholeLineQuotedCsvRows(csvString) {
   });
 
   if (normalizedRows > 0) {
-    console.log(`[CSV] Normalized ${normalizedRows} whole-line quoted CSV row(s)`);
+    console.log(`[CSV] Normalized [detail omitted] whole-line quoted CSV row(s)`);
   }
 
   return normalizedLines.join('\n');
@@ -655,7 +655,7 @@ function detectBrokerFormat(fileBuffer) {
     }
     if (multiSectionDetected) {
       const detected = captraderMarkerFound ? 'captrader' : 'ibkr';
-      console.log(`[AUTO-DETECT] Detected: ${captraderMarkerFound ? 'CapTrader' : 'Interactive Brokers'} Activity Statement (multi-section)`);
+      console.log(`[AUTO-DETECT] Detected: [detail omitted] Activity Statement (multi-section)`);
       return detected;
     }
 
@@ -1081,7 +1081,7 @@ function detectBrokerFormat(fileBuffer) {
     return 'generic';
 
   } catch (error) {
-    console.error('[AUTO-DETECT] Error detecting broker format:', error);
+    console.error('[AUTO-DETECT] Error detecting broker format:');
     return 'generic';
   }
 }
@@ -1153,7 +1153,7 @@ function getCsvHeaderLine(fileBuffer) {
     const lines = csvString.split('\n');
     return findLikelyDelimitedHeaderLine(lines)?.line || null;
   } catch (error) {
-    console.error('[CSV] Error extracting header line:', error);
+    console.error('[CSV] Error extracting header line:');
     return null;
   }
 }
@@ -1184,7 +1184,7 @@ function getCsvSampleRows(fileBuffer, maxRows = 5) {
     }
     return sampleRows.length > 0 ? sampleRows.join('\n') : null;
   } catch (error) {
-    console.error('[CSV] Error extracting sample rows:', error);
+    console.error('[CSV] Error extracting sample rows:');
     return null;
   }
 }

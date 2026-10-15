@@ -45,7 +45,7 @@ async function parseTradovatePerformanceReport(records, context = {}) {
   // Debug: Log first few records
   console.log('Sample Tradovate Performance Report records:');
   records.slice(0, 3).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   for (let i = 0; i < records.length; i++) {
@@ -76,7 +76,7 @@ async function parseTradovatePerformanceReport(records, context = {}) {
       const soldTime = parseTradovateTimestamp(rawSold);
 
       if (!boughtTime || !soldTime) {
-        console.log(`[WARNING] Skipping row ${i + 1}: invalid timestamps - bought: "${rawBought}", sold: "${rawSold}"`);
+        console.log(`[WARNING] Skipping row [detail omitted]: invalid timestamps - bought: "[detail omitted]", sold: "[detail omitted]"`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: i + 1, reason: 'Invalid bought/sold timestamps in Tradovate paired trade row' });
@@ -85,7 +85,7 @@ async function parseTradovatePerformanceReport(records, context = {}) {
       }
 
       if (!rawSymbol || quantity === 0) {
-        console.log(`[WARNING] Skipping row ${i + 1}: missing symbol or zero quantity`);
+        console.log(`[WARNING] Skipping row [detail omitted]: missing symbol or zero quantity`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: i + 1, reason: 'Missing contract/product symbol or paired quantity in Tradovate paired trade row' });
@@ -216,9 +216,9 @@ async function parseTradovatePerformanceReport(records, context = {}) {
       };
 
       completedTrades.push(trade);
-      console.log(`Parsed Tradovate performance trade: ${side} ${quantity} ${rawSymbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
+      console.log(`Parsed Tradovate performance trade: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] -> $[detail omitted], P&L: $[detail omitted]`);
     } catch (error) {
-      console.error(`Error parsing Tradovate Performance Report row ${i + 1}:`, error.message, record);
+      console.error(`Error parsing Tradovate Performance Report row [detail omitted]:`);
     }
   }
 
@@ -240,7 +240,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
   // Debug: Log first few records to see structure
   console.log('Sample Tradovate records:');
   records.slice(0, 3).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // First, parse all filled orders
@@ -266,7 +266,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
 
       // Skip if missing essential data
       if (!contract || !side || quantity === 0 || fillPrice === 0 || !fillTime) {
-        console.log(`Skipping Tradovate record missing data:`, { contract, side, quantity, fillPrice, fillTime });
+        console.log(`Skipping Tradovate record missing data:`);
         continue;
       }
 
@@ -275,7 +275,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       const entryTime = parseDateTime(fillTime);
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping Tradovate record with invalid date: ${fillTime}`);
+        console.log(`Skipping Tradovate record with invalid date: [detail omitted]`);
         continue;
       }
 
@@ -306,9 +306,9 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         accountIdentifier
       });
 
-      console.log(`Parsed Tradovate transaction: ${side} ${quantity} ${contract} @ $${fillPrice} (${isExit ? 'EXIT' : 'ENTRY'})`);
+      console.log(`Parsed Tradovate transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] ([detail omitted])`);
     } catch (error) {
-      console.error('Error parsing Tradovate transaction:', error, record);
+      console.error('Error parsing Tradovate transaction:');
     }
   }
 
@@ -340,7 +340,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} Tradovate transactions for ${symbol} ===`);
+    console.log(`\n=== Processing [detail omitted] Tradovate transactions for [detail omitted] ===`);
 
     // Get the base product for point value lookup
     const baseProduct = symbolTransactions[0]?.product || symbol.replace(/[A-Z]?\d+$/, '');
@@ -353,7 +353,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
     // For futures, the value multiplier is the point value
     const valueMultiplier = pointValue;
 
-    console.log(`  Product: ${baseProduct}, Point Value: $${pointValue}`);
+    console.log(`  Product: [detail omitted], Point Value: $[detail omitted]`);
 
     const instrumentData = {
       instrumentType: 'future',
@@ -410,7 +410,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
     } : null;
 
     if (existingPosition) {
-      console.log(`  Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} contracts @ $${existingPosition.entryPrice}`);
+      console.log(`  Starting with existing [detail omitted] position: [detail omitted] contracts @ $[detail omitted]`);
     }
 
     const startTradovateTrade = (transaction, actionOverride = transaction.action) => {
@@ -427,7 +427,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         broker: 'tradovate',
         accountIdentifier: transaction.accountIdentifier
       };
-      console.log(`  Started new ${currentTrade.side} trade`);
+      console.log(`  Started new [detail omitted] trade`);
     };
 
     const finalizeTradovateTrade = (transaction) => {
@@ -478,10 +478,10 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} contracts, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] contracts, P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} contracts, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] contracts, P/L: $[detail omitted]`);
         }
 
         completedTrades.push(currentTrade);
@@ -513,7 +513,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       });
 
       if (executionExists) {
-        console.log(`  Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+        console.log(`  Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
         return false;
       }
 
@@ -552,7 +552,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       let remainingQty = qty;
       let remainingFees = totalFees;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted]`);
 
       while (remainingQty > 0) {
         if (currentPosition === 0) {
@@ -573,7 +573,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         const previousPosition = currentPosition;
 
         if (!appendTradovateExecution(transaction, consumeQty, feesForExecution)) {
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          console.log(`  Position: [detail omitted] (unchanged - duplicate)`);
           remainingQty = 0;
           remainingFees = 0;
           continue;
@@ -583,7 +583,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
         remainingQty -= consumeQty;
         remainingFees -= feesForExecution;
 
-        console.log(`  Position: ${previousPosition} -> ${currentPosition}`);
+        console.log(`  Position: [detail omitted] -> [detail omitted]`);
 
         if (!sameDirection) {
           finalizeTradovateTrade(transaction);
@@ -598,7 +598,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} contracts`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] contracts`);
 
     // Handle remaining open position
     if (currentTrade && Math.abs(currentPosition) > 0) {
@@ -627,7 +627,7 @@ async function parseTradovateTransactions(records, existingPositions = {}, conte
       currentTrade.executionData = currentTrade.executions;
       Object.assign(currentTrade, instrumentData);
 
-      console.log(`  [CHECK] Open ${currentTrade.side} position: ${netQuantity} contracts`);
+      console.log(`  [CHECK] Open [detail omitted] position: [detail omitted] contracts`);
       completedTrades.push(currentTrade);
     }
   }

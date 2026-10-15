@@ -13,7 +13,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
   // Debug: Log first few records to see structure
   console.log('Sample PaperMoney records:');
   records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   const parsePaperMoneyExpiration = (value) => {
@@ -79,14 +79,14 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       const status = cleanString(record.Status || '').toUpperCase();
 
       if (status && !['FILLED', 'EXECUTED'].includes(status)) {
-        console.log(`Skipping PaperMoney order with non-filled status: ${status}`);
+        console.log(`Skipping PaperMoney order with non-filled status: [detail omitted]`);
         recordSkip(rowIndex, `Order not filled (status: ${status})`, true);
         continue;
       }
 
       // Skip if missing essential data
       if (!symbol || !side || quantity === 0 || !Number.isFinite(price) || price === 0 || !execTime) {
-        console.log(`Skipping PaperMoney record missing data:`, { symbol, side, quantity, price, execTime });
+        console.log(`Skipping PaperMoney record missing data:`);
         const missing = [
           !symbol && 'symbol',
           !side && 'side',
@@ -120,7 +120,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       }
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping PaperMoney record with invalid date: ${execTime}`);
+        console.log(`Skipping PaperMoney record with invalid date: [detail omitted]`);
         recordSkip(rowIndex, `Could not import this row: unrecognized execution time "${execTime}".`);
         continue;
       }
@@ -131,13 +131,13 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       const minPastDate = new Date('2000-01-01');
 
       if (entryTime > maxFutureDate) {
-        console.log(`Skipping PaperMoney record with future date: ${execTime}`);
+        console.log(`Skipping PaperMoney record with future date: [detail omitted]`);
         recordSkip(rowIndex, `Could not import this row: execution time ${execTime} is in the future.`);
         continue;
       }
 
       if (entryTime < minPastDate) {
-        console.log(`Skipping PaperMoney record with date too far in past: ${execTime}`);
+        console.log(`Skipping PaperMoney record with date too far in past: [detail omitted]`);
         recordSkip(rowIndex, `Could not import this row: execution time ${execTime} is before 2000.`);
         continue;
       }
@@ -165,9 +165,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         accountIdentifier
       });
 
-      console.log(`Parsed PaperMoney transaction: ${side} ${quantity} ${symbol} @ $${price} (${posEffect})`);
+      console.log(`Parsed PaperMoney transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] ([detail omitted])`);
     } catch (error) {
-      console.error('Error parsing PaperMoney transaction:', error, record);
+      console.error('Error parsing PaperMoney transaction:');
     }
   }
 
@@ -201,7 +201,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
                             (instrumentData.instrumentType === 'option' ? 100 :
                               instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1);
 
-    console.log(`\n=== Processing ${symbolTransactions.length} PaperMoney transactions for ${symbol} ===`);
+    console.log(`\n=== Processing [detail omitted] PaperMoney transactions for [detail omitted] ===`);
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
@@ -225,15 +225,15 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
     } : null;
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] shares @ $[detail omitted]`);
+      console.log(`  → Initial position: [detail omitted]`);
     }
 
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted]`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -250,7 +250,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
           broker: 'papermoney',
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
+        console.log(`  → Started new [detail omitted] trade`);
       }
 
       // Add execution to current trade (check for duplicates first)
@@ -279,7 +279,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         });
 
         if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
         }
 
         if (!executionExists) {
@@ -289,9 +289,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
           // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          console.log(`  Position: [detail omitted] (unchanged - duplicate)`);
           continue;
         }
       }
@@ -317,7 +317,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  Position: [detail omitted] → [detail omitted]`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -357,10 +357,10 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] shares, P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] shares, [detail omitted] executions, P/L: $[detail omitted]`);
         }
 
         // Only add trade if it has executions (skip if all were duplicates)
@@ -375,9 +375,9 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] shares`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      console.log(`Active trade: [detail omitted] [detail omitted] shares, [detail omitted] executions`);
 
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
@@ -404,7 +404,7 @@ async function parsePaperMoneyTransactions(records, existingPositions = {}, cont
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
         currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open [detail omitted] position: [detail omitted] shares, [detail omitted] new executions`);
       }
 
       // Map executions to executionData for Trade.create

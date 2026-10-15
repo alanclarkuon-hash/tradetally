@@ -119,7 +119,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     const originalBroker = broker;
     if (broker === 'auto') {
       const detectedBroker = detectBrokerFormat(fileBuffer);
-      console.log(`[AUTO-DETECT] Using detected broker format: ${detectedBroker}`);
+      console.log(`[AUTO-DETECT] Using detected broker format: [detail omitted]`);
       diagnostics.detectedBroker = detectedBroker;
       diagnostics.headerAnalysis.recognizedAs = detectedBroker;
       broker = detectedBroker;
@@ -131,7 +131,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       // returns 'generic'.
       const detectedBroker = detectBrokerFormat(fileBuffer);
       if (detectedBroker && detectedBroker !== 'generic') {
-        console.log(`[AUTO-DETECT] Generic selected but headers match ${detectedBroker} — using ${detectedBroker} parser`);
+        console.log(`[AUTO-DETECT] Generic selected but headers match [detail omitted] — using [detail omitted] parser`);
         broker = detectedBroker;
       }
       diagnostics.detectedBroker = broker;
@@ -234,7 +234,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     if (['projectx', 'tradingview'].includes(broker) && hasProjectXOrderHistoryHeaders(firstHeaders)) {
       if (broker === 'tradingview') {
         const warning = 'Selected broker was TradingView, but the CSV headers match ProjectX order history. TradeTally used the ProjectX parser for this import.';
-        console.log(`[BROKER MISMATCH] ${warning}`);
+        console.log(`[BROKER MISMATCH] [detail omitted]`);
         diagnostics.warnings.push(warning);
       }
       diagnostics.detectedBroker = 'projectx_orders';
@@ -243,7 +243,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     }
     if (broker === 'tradestation' && hasTradingViewOrderHistoryHeaders(firstHeaders)) {
       const warning = 'Selected broker was TradeStation, but the CSV headers match TradingView order history. TradeTally used the TradingView parser for this import.';
-      console.log(`[BROKER MISMATCH] ${warning}`);
+      console.log(`[BROKER MISMATCH] [detail omitted]`);
       diagnostics.warnings.push(warning);
       diagnostics.detectedBroker = 'tradingview';
       diagnostics.headerAnalysis.recognizedAs = 'tradingview';
@@ -333,7 +333,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
 
         // Extract only the filled orders section
         csvString = lines.slice(filledOrdersStart, filledOrdersEnd).join('\n');
-        console.log(`[PAPERMONEY] Extracted filled orders section: lines ${filledOrdersStart} to ${filledOrdersEnd}`);
+        console.log(`[PAPERMONEY] Extracted filled orders section: lines [detail omitted] to [detail omitted]`);
       } else {
         // No "Filled Orders" section header - check if the CSV starts directly
         // with the header row or contains a standalone trade activity table.
@@ -355,7 +355,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             }
           }
           csvString = lines.slice(headerLineIndex, dataEnd).join('\n');
-          console.log(`[PAPERMONEY] No section header found, using CSV directly from line ${headerLineIndex} to ${dataEnd}`);
+          console.log(`[PAPERMONEY] No section header found, using CSV directly from line [detail omitted] to [detail omitted]`);
         } else {
           throw new Error('Could not find "Filled Orders" section or valid header row in PaperMoney CSV');
         }
@@ -430,7 +430,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         const accountWithDotsMatch = line.match(/(?:account|Account)[^\d]*\.{2,}(\d{4})/i);
         if (accountWithDotsMatch) {
           schwabAccountNumber = `****${accountWithDotsMatch[1]}`;
-          console.log(`[ACCOUNT] Extracted Schwab account from header (dots pattern): ${schwabAccountNumber}`);
+          console.log(`[ACCOUNT] Extracted Schwab account from header (dots pattern): [detail omitted]`);
           break;
         }
 
@@ -439,7 +439,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         if (accountColonMatch) {
           const accountNum = accountColonMatch[1];
           schwabAccountNumber = accountNum.length <= 4 ? `****${accountNum}` : redactAccountId(accountNum);
-          console.log(`[ACCOUNT] Extracted Schwab account from header (colon pattern): ${schwabAccountNumber}`);
+          console.log(`[ACCOUNT] Extracted Schwab account from header (colon pattern): [detail omitted]`);
           break;
         }
 
@@ -447,7 +447,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         const redactedMatch = line.match(/(?:\.{2,}|\*{2,})(\d{4})/);
         if (redactedMatch) {
           schwabAccountNumber = `****${redactedMatch[1]}`;
-          console.log(`[ACCOUNT] Found Schwab redacted account in header: ${schwabAccountNumber}`);
+          console.log(`[ACCOUNT] Found Schwab redacted account in header: [detail omitted]`);
           break;
         }
 
@@ -456,14 +456,14 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         if (brokerageMatch) {
           const accountNum = brokerageMatch[1];
           schwabAccountNumber = accountNum.length <= 4 ? `****${accountNum}` : redactAccountId(accountNum);
-          console.log(`[ACCOUNT] Extracted Schwab account from brokerage header: ${schwabAccountNumber}`);
+          console.log(`[ACCOUNT] Extracted Schwab account from brokerage header: [detail omitted]`);
           break;
         }
       }
 
       if (schwabAccountNumber) {
         context.schwabAccountNumber = schwabAccountNumber;
-        console.log(`[ACCOUNT] Will use Schwab account: ${schwabAccountNumber}`);
+        console.log(`[ACCOUNT] Will use Schwab account: [detail omitted]`);
       } else {
         console.log(`[ACCOUNT] No Schwab account number found in header rows`);
       }
@@ -498,14 +498,14 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         const accountMatch = line.match(/Account(?:\s+Statement\s+for|:|,)\s*(\d{6,12})/i);
         if (accountMatch) {
           tosAccountNumber = redactAccountId(accountMatch[1]);
-          console.log(`[ACCOUNT] Extracted thinkorswim account from header: ${tosAccountNumber}`);
+          console.log(`[ACCOUNT] Extracted thinkorswim account from header: [detail omitted]`);
           break;
         }
         // Also check for standalone account number pattern in the line
         const standaloneMatch = line.match(/^\s*(\d{9,12})\s*$/);
         if (standaloneMatch) {
           tosAccountNumber = redactAccountId(standaloneMatch[1]);
-          console.log(`[ACCOUNT] Found thinkorswim account number in header: ${tosAccountNumber}`);
+          console.log(`[ACCOUNT] Found thinkorswim account number in header: [detail omitted]`);
           break;
         }
       }
@@ -513,7 +513,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       // Store the account number in context for use during parsing
       if (tosAccountNumber) {
         context.tosAccountNumber = tosAccountNumber;
-        console.log(`[ACCOUNT] Will use thinkorswim account: ${tosAccountNumber}`);
+        console.log(`[ACCOUNT] Will use thinkorswim account: [detail omitted]`);
       }
 
       // Find the actual header line - check multiple possible patterns
@@ -566,7 +566,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         // Some TOS exports don't properly CSV-quote these, causing csv-parse to misinterpret
         // the bare quotes as field delimiters and silently drop rows
         csvString = csvString.replace(/(^|,)="(\d+)"(?=,|$)/gm, '$1$2');
-        console.log(`Skipped ${headerIndex} header rows, using ${endIndex - headerIndex} lines from Cash Balance section`);
+        console.log(`Skipped [detail omitted] header rows, using [detail omitted] lines from Cash Balance section`);
       } else {
         console.log('Warning: Could not find thinkorswim header pattern, trying to parse as-is');
       }
@@ -587,7 +587,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       console.log('Using special parsing options for thinkorswim CSV');
 
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
-      console.log(`Prepared thinkorswim CSV for parsing (preview lines redacted, count=${previewLineCount})`);
+      console.log(`Prepared thinkorswim CSV for parsing (preview lines redacted, count=[detail omitted])`);
     }
 
     // Special handling for TradingView Paper Trading CSV (Margin column has commas in quotes)
@@ -653,7 +653,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       // the parser sees mismatched column counts across sections and aborts.
       const sectionExtracted = extractIBKRActivityStatementSection(csvString);
       if (sectionExtracted) {
-        console.log(`[IBKR] Extracted multi-section Activity Statement (${sectionExtracted.section} section, ${sectionExtracted.dataRows} data rows)`);
+        console.log(`[IBKR] Extracted multi-section Activity Statement ([detail omitted] section, [detail omitted] data rows)`);
         csvString = sectionExtracted.csv;
       } else {
         // IBKR Flex Query exports can also contain multiple sections, but with
@@ -670,13 +670,13 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             // and contain column names rather than data values
             if (/^"?ClientAccountID"?,"?AccountAlias"?/i.test(line) ||
                 /^"?CurrencyPrimary"?,"?AssetClass"?/i.test(line)) {
-              console.log(`[IBKR] Stopping at section header on line ${i + 1} (multi-section Flex Query)`);
+              console.log(`[IBKR] Stopping at section header on line [detail omitted] (multi-section Flex Query)`);
               break;
             }
             filteredLines.push(lines[i]);
           }
           if (filteredLines.length < lines.length) {
-            console.log(`[IBKR] Trimmed multi-section CSV from ${lines.length} to ${filteredLines.length} lines`);
+            console.log(`[IBKR] Trimmed multi-section CSV from [detail omitted] to [detail omitted] lines`);
             csvString = filteredLines.join('\n');
           }
         }
@@ -698,19 +698,19 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       console.log('Using special parsing options for IBKR CSV');
 
       const previewLineCount = Math.min(csvString.split('\n').length, 5);
-      console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=${previewLineCount})`);
+      console.log(`Prepared IBKR CSV for parsing (preview lines redacted, count=[detail omitted])`);
     }
 
     // Custom mapping delimiter, or auto-detect semicolon/tab (e.g. NinjaTrader grid exports).
     // Must run after broker-specific parseOptions overrides so saved mappings win.
     if (context.customMapping?.delimiter) {
       parseOptions.delimiter = context.customMapping.delimiter;
-      console.log(`[CUSTOM MAPPING] Using delimiter from mapping: ${JSON.stringify(context.customMapping.delimiter)}`);
+      console.log(`[CUSTOM MAPPING] Using delimiter from mapping: [detail omitted]`);
     } else {
       const headerInfo = findLikelyDelimitedHeaderLine(csvString.split('\n'));
       if (headerInfo?.delimiter) {
         parseOptions.delimiter = headerInfo.delimiter;
-        console.log(`[CSV] Auto-detected delimiter: ${JSON.stringify(headerInfo.delimiter)}`);
+        console.log(`[CSV] Auto-detected delimiter: [detail omitted]`);
       }
     }
 
@@ -738,7 +738,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
           on_record: (record, context) => {
             // Log problematic records
             if (context.error) {
-              console.log(`Error on line ${context.lines}: ${context.error.message}`);
+              console.log(`Error on line [detail omitted]: [detail omitted]`);
             }
             return record;
           }
@@ -747,14 +747,14 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         try {
           records = parse(csvString, parseOptions);
         } catch (retryError) {
-          console.error('Alternative parsing also failed:', retryError.message);
+          console.error('Alternative parsing also failed:');
           throw new Error(`CSV parsing failed: ${retryError.message}`);
         }
       }
       // If thinkorswim parsing fails, try alternative approach
       else if (broker === 'thinkorswim') {
         console.log('Trying alternative parsing approach for thinkorswim');
-        console.log('Original error:', parseError.message);
+        console.log('Original error:');
 
         // Try to find the header line again with more aggressive pattern matching
         const lines = csvString.split('\n');
@@ -768,7 +768,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
           const hasTypeWord = /type|transaction|description/i.test(line);
 
           if (commaCount >= 3 && hasDateWord && hasTypeWord) {
-            console.log(`Found potential header at line ${i}`);
+            console.log(`Found potential header at line [detail omitted]`);
             csvString = lines.slice(i).join('\n');
             headerFound = true;
             break;
@@ -794,7 +794,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
           on_record: (record, context) => {
             // Log problematic records
             if (context.error) {
-              console.log(`Error on line ${context.lines}: ${context.error.message}`);
+              console.log(`Error on line [detail omitted]: [detail omitted]`);
             }
             return record;
           }
@@ -803,7 +803,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         try {
           records = parse(csvString, parseOptions);
         } catch (retryError) {
-          console.error('Alternative parsing also failed:', retryError.message);
+          console.error('Alternative parsing also failed:');
           throw new Error(`CSV parsing failed for thinkorswim: ${retryError.message}`);
         }
       } else {
@@ -811,7 +811,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       }
     }
 
-    console.log(`Parsing ${records.length} records with ${broker} parser`);
+    console.log(`Parsing ${records.length} records with [detail omitted] parser`);
 
     // Update diagnostics with row count and headers
     diagnostics.totalRows = records.length;
@@ -841,7 +841,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       const inferredDateOrder = inferGenericOpenCloseDateOrder(records);
       if (inferredDateOrder) {
         context.generic_date_order = inferredDateOrder;
-        console.log(`[GENERIC] Inferred ${inferredDateOrder} slash-date order from Open Date/Close Date values`);
+        console.log(`[GENERIC] Inferred [detail omitted] slash-date order from Open Date/Close Date values`);
       }
     }
 
@@ -855,7 +855,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
       // and do not require USD conversion at import time.
       const preservesSourceCurrency = broker === 'questrade';
       if (preservesSourceCurrency) {
-        console.log(`[CURRENCY] ${broker} parser preserves source currency; skipping Pro conversion gate`);
+        console.log(`[CURRENCY] [detail omitted] parser preserves source currency; skipping Pro conversion gate`);
       } else {
         const userId = context.userId;
         const hasProAccess = userId ? await currencyConverter.userHasProAccess(userId) : false;
@@ -909,7 +909,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     }
 
     if (['etrade', 'fidelity', 'wealthsimple', 'projectx_orders'].includes(broker)) {
-      console.log(`Starting normalized ${broker} transaction parsing`);
+      console.log(`Starting normalized [detail omitted] transaction parsing`);
       const normalized = normalizeSupportedBrokerRows(records, broker);
       diagnostics.skippedRows += normalized.ignored.length;
       diagnostics.expected_skipped_rows += normalized.ignored.length;
@@ -932,7 +932,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         ? applyTradeGrouping(result, tradeGroupingSettings)
         : result;
 
-      console.log(`Finished normalized ${broker} transaction parsing`);
+      console.log(`Finished normalized [detail omitted] transaction parsing`);
       return wrapResultWithDiagnostics(finalTrades, diagnostics, [], userTimezone);
     }
 
@@ -1072,7 +1072,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     }
 
     if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
-      console.log(`Starting IBKR transaction parsing (${broker} format)`);
+      console.log(`Starting IBKR transaction parsing ([detail omitted] format)`);
       const result = await parseIBKRRecords(records, context, broker, diagnostics);
       console.log('Finished IBKR transaction parsing');
       return result;
@@ -1191,7 +1191,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             });
           }
         } catch (error) {
-          console.error(`Error parsing TradeStation record:`, error.message);
+          console.error(`Error parsing TradeStation record:`);
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
         }
@@ -1311,7 +1311,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields' });
           }
         } catch (error) {
-          console.error(`Error parsing ProjectX record:`, error.message);
+          console.error(`Error parsing ProjectX record:`);
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
         }
@@ -1347,7 +1347,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Invalid trade: missing required fields' });
           }
         } catch (error) {
-          console.error(`Error parsing TradingView Performance record:`, error.message);
+          console.error(`Error parsing TradingView Performance record:`);
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
         }
@@ -1433,15 +1433,8 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     let parser;
     if (context.customMapping) {
       const mapping = context.customMapping;
-      console.log(`[CUSTOM MAPPING] Using custom mapping: ${mapping.mapping_name}`);
-      console.log(`[CUSTOM MAPPING] Column mappings:`, {
-        symbol: mapping.symbol_column,
-        side: mapping.side_column,
-        quantity: mapping.quantity_column,
-        entryPrice: mapping.entry_price_column,
-        exitPrice: mapping.exit_price_column,
-        date: mapping.entry_date_column
-      });
+      console.log(`[CUSTOM MAPPING] Using custom mapping: [detail omitted]`);
+      console.log(`[CUSTOM MAPPING] Column mappings:`);
 
       parser = (row) => {
         const quantity = parseNumeric(row[mapping.quantity_column]);
@@ -1517,13 +1510,13 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
             if (currency && currency.toString().toUpperCase().trim() !== 'USD') {
               const tradeDate = trade.tradeDate || trade.date;
               if (!tradeDate) {
-                console.warn(`[CURRENCY] Cannot convert trade without date: ${JSON.stringify(trade)}`);
+                console.warn(`[CURRENCY] Cannot convert trade without date: [detail omitted]`);
               } else {
                 try {
-                  console.log(`[CURRENCY] Converting trade from ${currency} to USD on ${tradeDate}`);
+                  console.log(`[CURRENCY] Converting trade from [detail omitted] to USD on [detail omitted]`);
                   trade = await currencyConverter.convertTradeToUSD(trade, currency, tradeDate);
                 } catch (conversionError) {
-                  console.error(`[CURRENCY] Failed to convert trade: ${conversionError.message}`);
+                  console.error(`[CURRENCY] Failed to convert trade: [detail omitted]`);
                   throw new Error(`Currency conversion failed for ${currency}: ${conversionError.message}`);
                 }
               }
@@ -1547,7 +1540,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
           diagnostics.skippedReasons.push({ row: rowIndex, reason: buildGenericValidationReason(trade, record, context) });
         }
       } catch (error) {
-        console.error('Error parsing row:', error, record);
+        console.error('Error parsing row:');
         diagnostics.invalidRows++;
         diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
       }
@@ -1616,7 +1609,7 @@ async function parseCSV(rawFileBuffer, broker = 'generic', context = {}) {
     try {
       const fallbackResult = await parseCSVForBroker(fileBuffer, fallbackBroker, context);
       if (getParsedTradeCount(fallbackResult) > 0) {
-        console.log(`[AUTO-DETECT] ${broker} parser produced no trades; ${fallbackBroker} parser matched instead`);
+        console.log(`[AUTO-DETECT] [detail omitted] parser produced no trades; [detail omitted] parser matched instead`);
         if (fallbackResult && !Array.isArray(fallbackResult) && fallbackResult.diagnostics) {
           fallbackResult.diagnostics.brokerFallback = {
             selectedBroker: broker,

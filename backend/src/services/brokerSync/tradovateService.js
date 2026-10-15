@@ -129,7 +129,7 @@ class TradovateService extends OAuthBrokerBase {
           return { accessToken: renewed.accessToken, needsReauth: false };
         }
       } catch (error) {
-        console.warn(`[TRADOVATE] Access token renewal failed for connection ${connection.id}: ${error.message}`);
+        console.warn(`[TRADOVATE] Access token renewal failed for connection [detail omitted]: [detail omitted]`);
       }
     }
 
@@ -192,7 +192,7 @@ class TradovateService extends OAuthBrokerBase {
       this.fetchItems(accessToken, '/contract/items', inWindow.map(fill => fill.contractId), connection),
       this.fetchItems(accessToken, '/fillFee/items', inWindow.map(fill => fill.id), connection)
         .catch(error => {
-          console.warn(`[TRADOVATE] Could not load fill fees: ${error.message}`);
+          console.warn(`[TRADOVATE] Could not load fill fees: [detail omitted]`);
           return new Map();
         })
     ]);

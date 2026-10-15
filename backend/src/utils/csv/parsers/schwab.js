@@ -9,7 +9,7 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
   // Check if this is the new transaction format: Date,Action,Symbol,Description,Quantity,Price,Fees & Comm,Amount
   if (records.length > 0 && !Array.isArray(records[0])) {
     const columns = Object.keys(records[0]);
-    console.log('Available columns:', columns);
+    console.log('Available columns:');
 
     // Check for the new transaction format
     if (columns.includes('Date') && columns.includes('Action') && columns.includes('Symbol') && columns.includes('Price')) {
@@ -91,10 +91,10 @@ async function parseSchwabTrades(records, existingPositions = {}, context = {}) 
         completedTrades.push(trade);
         totalCommissions += estimatedCommission;
         totalPnL += gainLoss;
-        console.log(`Valid trade added: ${trade.symbol} - P&L: $${gainLoss.toFixed(2)}`);
+        console.log(`Valid trade added: [detail omitted] - P&L: $[detail omitted]`);
       }
     } catch (error) {
-      console.error('Error parsing Schwab trade:', error, record);
+      console.error('Error parsing Schwab trade:');
     }
   }
 
@@ -122,13 +122,13 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
 
       // Only process buy and sell transactions
       if (!action.includes('buy') && !action.includes('sell')) {
-        console.log(`Skipping non-trade action: ${action}`);
+        console.log(`Skipping non-trade action: [detail omitted]`);
         continue;
       }
 
       // Skip if missing essential data
       if (!symbol || !quantityStr || !priceStr) {
-        console.log(`Skipping transaction missing data:`, { symbol, quantityStr, priceStr, action });
+        console.log(`Skipping transaction missing data:`);
         continue;
       }
 
@@ -138,7 +138,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
       const fees = parseFloat(feesStr) || 0;
 
       if (quantity === 0 || price === 0) {
-        console.log(`Skipping transaction with zero values:`, { symbol, quantity, price });
+        console.log(`Skipping transaction with zero values:`);
         continue;
       }
 
@@ -156,13 +156,13 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
       // Parse date and skip if invalid
       const parsedDate = parseDate(date);
       if (!parsedDate) {
-        console.log(`Skipping transaction with invalid date:`, { symbol, date, action });
+        console.log(`Skipping transaction with invalid date:`);
         continue;
       }
 
       const parsedDateTime = parseDateTime(date + ' 09:30');
       if (!parsedDateTime) {
-        console.log(`Skipping transaction with invalid datetime:`, { symbol, date, action });
+        console.log(`Skipping transaction with invalid datetime:`);
         continue;
       }
 
@@ -188,9 +188,9 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         accountIdentifier
       });
 
-      console.log(`Parsed transaction: ${transactionType} ${quantity} ${symbol} @ $${price} ${isShort ? '(SHORT)' : ''}`);
+      console.log(`Parsed transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] [detail omitted]`);
     } catch (error) {
-      console.error('Error parsing Schwab transaction:', error, record);
+      console.error('Error parsing Schwab transaction:');
     }
   }
 
@@ -201,7 +201,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     // txn.date is a string in YYYY-MM-DD format from parseDate()
     // Ensure date is valid (not null) before using it
     if (!txn.date) {
-      console.warn(`[WARNING] Transaction missing date field:`, txn);
+      console.warn(`[WARNING] Transaction missing date field:`);
       continue;
     }
     const key = `${txn.symbol}_${txn.date}`;
@@ -217,7 +217,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   for (const key in transactionsByDateSymbol) {
     const group = transactionsByDateSymbol[key];
     if (group.length > 1) {
-      console.log(`[DEBUG] Found ${group.length} transactions for ${key}:`);
+      console.log(`[DEBUG] Found [detail omitted] transactions for [detail omitted]:`);
       group.forEach((txn, index) => {
         const originalTime = txn.datetime;
         // Add incremental seconds to make each unique while keeping naive format
@@ -228,9 +228,9 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           const newSec = String(Math.min(parseInt(secStr) + index, 59)).padStart(2, '0');
           txn.datetime = `${prefix}:${newSec}${suffix}`;
         }
-        console.log(`[DEBUG]   [${index}] ${txn.action} ${txn.quantity} @ $${txn.price} - Time: ${originalTime} → ${txn.datetime}`);
+        console.log(`[DEBUG]   [[detail omitted]] [detail omitted] [detail omitted] @ $[detail omitted] - Time: [detail omitted] → [detail omitted]`);
       });
-      console.log(`[INFO] Assigned unique times to ${group.length} transactions for ${key} to preserve order`);
+      console.log(`[INFO] Assigned unique times to [detail omitted] transactions for [detail omitted] to preserve order`);
     }
   }
 
@@ -258,14 +258,14 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${symbol} ===`);
+    console.log(`\n=== Processing [detail omitted] transactions for [detail omitted] ===`);
 
     // Detect instrument type to apply correct multiplier
     const instrumentData = parseInstrumentData(symbol);
     const valueMultiplier = instrumentData.instrumentType === 'option' ? 100 :
                             instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
-    console.log(`Instrument type: ${instrumentData.instrumentType}, value multiplier: ${valueMultiplier}`);
+    console.log(`Instrument type: [detail omitted], value multiplier: [detail omitted]`);
 
     // Start with existing position if we have one for this symbol
     const existingPosition = existingPositions[symbol];
@@ -291,15 +291,15 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
     const openLots = []; // FIFO queue of position lots
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] [detail omitted] @ $[detail omitted]`);
+      console.log(`  → Initial position: [detail omitted], entryValue: $[detail omitted]`);
     }
 
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted]`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -318,7 +318,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           broker: 'schwab',
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
+        console.log(`  → Started new [detail omitted] trade`);
       }
 
       // Add execution to current trade (check for duplicates first)
@@ -347,18 +347,18 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         });
 
         if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
         }
 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += (transaction.fees || 0);
-          console.log(`  → Added execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
+          console.log(`  → Added execution: [detail omitted] [detail omitted] @ $[detail omitted] at [detail omitted]`);
           if (currentTrade.isExistingPosition) {
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price} at ${newExecution.datetime}`);
+          console.log(`  → Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted] at [detail omitted]`);
         }
       }
 
@@ -372,10 +372,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
           const beforeQty = currentTrade.totalQuantity;
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
-          console.log(`  → [LONG BUY] Added to entry: ${beforeEntry} + ${qty * transaction.price} = ${currentTrade.entryValue}, Qty: ${beforeQty} + ${qty} = ${currentTrade.totalQuantity}`);
+          console.log(`  → [LONG BUY] Added to entry: [detail omitted] + [detail omitted] = [detail omitted], Qty: [detail omitted] + [detail omitted] = [detail omitted]`);
         } else if (currentTrade && currentTrade.side === 'short') {
           currentTrade.exitValue += qty * transaction.price;
-          console.log(`  → [SHORT BUY] Added to exit: ${currentTrade.exitValue}`);
+          console.log(`  → [SHORT BUY] Added to exit: [detail omitted]`);
 
           // Check if this is a partial close (position will still be negative after this buy)
           if (currentPosition < 0 && currentTrade.totalQuantity > 0) {
@@ -394,7 +394,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
               lastExec.pnl = netPartialPnl;
-              console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+              console.log(`  → [PARTIAL COVER] Covered [detail omitted] @ $[detail omitted], Entry avg: $[detail omitted], P&L: $[detail omitted], Remaining: [detail omitted] shares short`);
             }
           }
         }
@@ -414,11 +414,11 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         if (currentTrade && currentTrade.side === 'short') {
           currentTrade.entryValue += qty * transaction.price;
           currentTrade.totalQuantity += qty;
-          console.log(`  → [SHORT SELL] Added to entry: ${currentTrade.entryValue}, Qty: ${currentTrade.totalQuantity}`);
+          console.log(`  → [SHORT SELL] Added to entry: [detail omitted], Qty: [detail omitted]`);
         } else if (currentTrade && currentTrade.side === 'long') {
           const beforeExit = currentTrade.exitValue;
           currentTrade.exitValue += qty * transaction.price;
-          console.log(`  → [LONG SELL] Added to exit: ${beforeExit} + ${qty * transaction.price} = ${currentTrade.exitValue}`);
+          console.log(`  → [LONG SELL] Added to exit: [detail omitted] + [detail omitted] = [detail omitted]`);
 
           // Check if this is a partial close (position will still be positive after this sell)
           if (currentPosition > 0 && currentTrade.totalQuantity > 0) {
@@ -437,7 +437,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
               lastExec.exitPrice = transaction.price;
               lastExec.entryPrice = avgEntryPrice;
               lastExec.pnl = netPartialPnl;
-              console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+              console.log(`  → [PARTIAL CLOSE] Sold [detail omitted] @ $[detail omitted], Entry avg: $[detail omitted], P&L: $[detail omitted], Remaining: [detail omitted] shares`);
             }
           }
         }
@@ -453,7 +453,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  Position: [detail omitted] → [detail omitted]`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -487,10 +487,10 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         if (currentTrade.isExistingPosition) {
           currentTrade.shouldUpdate = true;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} total executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] shares, P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] shares, [detail omitted] executions, P/L: $[detail omitted]`);
         }
 
         completedTrades.push(currentTrade);
@@ -503,7 +503,7 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] shares`);
     if (currentTrade && currentPosition !== 0) {
       // Add open position as incomplete trade
       // Check if this is an update to existing position or new position
@@ -511,11 +511,11 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
         // Updated existing position - mark for update
         currentTrade.shouldUpdate = true;
         currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open [detail omitted] position: [detail omitted] shares, [detail omitted] new executions`);
       } else if (!currentTrade.isExistingPosition) {
         // New open position
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-        console.log(`  → Added open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares`);
+        console.log(`  → Added open [detail omitted] position: [detail omitted] shares`);
       }
 
       // Calculate weighted average entry price for display
@@ -527,14 +527,14 @@ async function parseSchwabTransactions(records, existingPositions = {}, context 
       currentTrade.executionData = currentTrade.executions;
 
       completedTrades.push(currentTrade);
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      console.log(`Active trade: [detail omitted] [detail omitted] shares, [detail omitted] executions`);
     }
   }
 
   console.log(`Created ${completedTrades.length} completed trades (including open positions) from transaction pairing`);
   console.log(`\n[DEBUG] Schwab trades summary:`);
   completedTrades.forEach((trade, index) => {
-    console.log(`  Trade #${index + 1}: ${trade.symbol} ${trade.side} ${trade.quantity} shares, Entry: $${trade.entryPrice?.toFixed(2)}, Exit: $${trade.exitPrice?.toFixed(2)}, P&L: $${trade.pnl?.toFixed(2)}`);
+    console.log(`  Trade #[detail omitted]: [detail omitted] [detail omitted] [detail omitted] shares, Entry: $[detail omitted], Exit: $[detail omitted], P&L: $[detail omitted]`);
   });
 
   return completedTrades;
