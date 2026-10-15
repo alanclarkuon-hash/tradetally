@@ -29,7 +29,7 @@ function remainingLots(events,end) {
 
 async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
   const baselineDate=previousDay(range.start_date);
-  const {historicalPrice,migrationPriceAliases}=require('./portfolioReconstructionService');
+  const {migrationPriceAliases}=require('./portfolioReconstructionService');
   const [prices,fxRows,snapshots,reports,portfolios,trades]=await Promise.all([
     db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices'),
     db.query("SELECT rate_date,rates FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date"),
@@ -158,7 +158,16 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
         let value=p>0?q*p:null,basis=startPrice>0&&startQ!=null?startQ*startPrice:null;
         if(t.instrument_type==='cfd'&&account.broker==='etoro') {
           const unit=normaliseMinorUnit(meta?.currency||series?.currency);
-          const equity=d=>unit&&series&&unit.code===series.currency?cfdEquity(t,units(d),historicalPrice(series,d),fx(series.currency,d),{nativeDivisor:unit.divisor}):null;
+          const equity=d=>{
+            if(!unit||(series&&unit.code!==series.currency))return null;
+            const session=quoteDate(s,d),usdClose=quote(s,d);
+            const closeFx=session&&fx(unit.code,session),valueFx=fx(unit.code,d);
+            if(!(usdClose>0&&closeFx>0&&valueFx>0))return null;
+            // The shared close is USD and split-restated like quote(). Undo
+            // its session FX once so only native price P&L is converted;
+            // posted USD collateral must never be converted a second time.
+            return cfdEquity(t,units(d),usdClose/closeFx,valueFx,{nativeDivisor:unit.divisor});
+          };
           value=equity(range.end_date);basis=equity(startDate);
         }else if(!['stock','crypto'].includes(t.instrument_type)||t.side!=='long') {value=null;basis=null;}
         // Acquisition basis uses recorded execution cost, retaining a split-
