@@ -2,7 +2,7 @@ jest.mock('../../src/config/database',()=>({query:jest.fn()}));
 jest.mock('../../src/models/BrokerConnection',()=>({findById:jest.fn()}));
 jest.mock('../../src/services/brokerSync/etoroService',()=>({
  get:jest.fn(),field:(o,k)=>o?.[Object.keys(o||{}).find(n=>n.toLowerCase()===k.toLowerCase())],
- flattenPositions:p=>{if(!Array.isArray(p?.positions))throw Error('Incomplete');return [...p.positions,...(p.mirrors||[]).flatMap(m=>m.positions||[])];}
+ flattenPositions:p=>{if(!Array.isArray(p?.positions))throw Error('Incomplete');return [...new Map([...p.positions,...(p.mirrors||[]).flatMap(m=>m.positions||[])].map(r=>[r.positionID,r])).values()];}
 }));
 const db=require('../../src/config/database'),BC=require('../../src/models/BrokerConnection'),etoro=require('../../src/services/brokerSync/etoroService');
 const service=require('../../src/services/brokerPositionValuations');
@@ -63,4 +63,20 @@ test('an incomplete later response retains the last verified valuation and repor
   now+=31000;const bad=position();bad.unrealizedPnL.pnL=null;response([bad]);await service.read('owner');await new Promise(setImmediate);
   expect((await service.read('owner')).positions[0]).toMatchObject({value:110,status:'unavailable'});
  }finally{clock.mockRestore();}
+});
+
+test('copied positions are valued once and conflicting copied P&L is rejected',async()=>{
+ const live=position();etoro.get.mockImplementation(async(c,path)=>path==='/me'?{realCid:12}:{clientPortfolio:{positions:[live],mirrors:[{positions:[{...live}]}]}});
+ expect((await service.etoroValues(connection,fixture()))[0].value).toBe(110);
+ etoro.get.mockImplementation(async(c,path)=>path==='/me'?{realCid:12}:{clientPortfolio:{positions:[live],mirrors:[{positions:[{...live,unrealizedPnL:{...live.unrealizedPnL,pnL:99}}]}]}});
+ await expect(service.etoroValues(connection,fixture())).rejects.toThrow('Conflicting copied valuation');
+});
+test('selected accounts are isolated and mixed unsupported components retain oldest freshness',async()=>{
+ const row={...fixture(),connection_id:'mixed'},other={...fixture(),connection_id:'other-mixed',account_identifier:'other',broker_type:'ibkr'};
+ BC.findById.mockResolvedValue({...connection,id:'mixed'});response([position()]);
+ db.query.mockImplementation(async sql=>({rows:sql.includes('LEFT JOIN')?[row,other]:[row]}));
+ await service.read('owner');await new Promise(setImmediate);const both=(await service.read('owner')).positions[0];
+ expect(both).toMatchObject({value:200,quantity:4,capital:200,status:'unsupported',asOf:'2026-01-01T12:00:00.000Z'});
+ expect((await service.read('owner',['account'])).positions[0]).toMatchObject({value:110,quantity:2,status:'ready'});
+ expect(db.query.mock.calls.find(([q])=>q.includes('LEFT JOIN'))[1][0]).toBe('owner');
 });
