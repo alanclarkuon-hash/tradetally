@@ -31,6 +31,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      BACKUP_DIR: /app/backend/src/data/backups
+      LOG_DIR: /app/backend/src/logs
       # Backend environment variables
       NODE_ENV: ${NODE_ENV:-development}
       PORT: ${PORT:-3000}
@@ -84,9 +86,9 @@ services:
       - "8081:80"
       - "3000:3000"
     volumes:
-      - ./backend/src/logs:/app/backend/src/logs
-      - ./backend/src/data:/app/backend/src/data
-      - ./backend/uploads:/app/backend/uploads
+      - app_logs:/app/backend/src/logs
+      - app_data:/app/backend/src/data
+      - uploads:/app/backend/uploads
       # Mount source code for development (optional - enables hot reload if supported)
       - ./backend/src:/app/backend/src
       - ./frontend/src:/app/frontend/src
@@ -113,5 +115,8 @@ networks:
     driver: bridge
 
 volumes:
+  app_logs:
+  app_data:
+  uploads:
   postgres_data_dev:
     driver: local

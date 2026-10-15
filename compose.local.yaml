@@ -28,6 +28,8 @@ services:
         condition: service_healthy
     env_file: ${TRADETALLY_PRODUCTION_ENV_FILE:?Use scripts/production-compose.ps1 or set the external production environment file}
     environment:
+      LOG_DIR: /app/backend/src/logs
+      BACKUP_DIR: /app/backend/src/data/backups
       CODEX_HOME: /home/appuser/.codex
       CODEX_CLI_AUTH_MODE: chatgpt
     ports:

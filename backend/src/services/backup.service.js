@@ -1,3 +1,4 @@
+const { getRuntimeDirectory } = require('../utils/runtimeStorage');
 const db = require('../config/database');
 const fs = require('fs').promises;
 const path = require('path');
@@ -69,7 +70,7 @@ const maskEmail = require('../utils/maskEmail');
  */
 class BackupService {
   constructor() {
-    this.backupDir = path.resolve(process.env.BACKUP_DIR || path.join(__dirname, '../data/backups'));
+    this.backupDir = getRuntimeDirectory('backups');
   }
 
   resolveBackupPath(filePath) {

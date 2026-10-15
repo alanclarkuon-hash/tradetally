@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { getRuntimeDirectory } = require('./runtimeStorage');
 const { sanitizeForLogging, sanitizeErrorForLogging } = require('./logSanitizer');
 
 const FLUSH_BYTES = 64 * 1024;      // flush a file's buffer once it reaches ~64KB
@@ -9,7 +10,7 @@ const RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000;
 
 class Logger {
   constructor() {
-    this.logDir = path.join(__dirname, '../logs');
+    this.logDir = getRuntimeDirectory('logs');
     this.allowedLogFilenamePattern = /^[a-z0-9-]+_\d{4}-\d{2}-\d{2}\.log$/i;
     this.ensureLogDirectory();
 
@@ -73,7 +74,7 @@ class Logger {
 
   ensureLogDirectory() {
     if (!fs.existsSync(this.logDir)) {
-      fs.mkdirSync(this.logDir, { recursive: true });
+      fs.mkdirSync(this.logDir, { recursive: true, mode: 0o700 });
     }
   }
 
