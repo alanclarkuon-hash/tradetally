@@ -13,6 +13,22 @@
         <div><p class="asset-eyebrow">{{ asset.kind }}</p><h2>{{ asset.symbol }}</h2><p v-if="asset.name!==asset.symbol" class="mt-1 text-gray-500 dark:text-gray-400">{{ asset.name }}</p></div>
         <div class="text-right"><strong class="text-2xl tabular-nums">{{ asset.recordCount.toLocaleString() }}</strong><p class="text-sm text-gray-500 dark:text-gray-400">saved records</p></div>
       </section>
+      <section v-if="asset.previousClose" class="asset-section asset-close mb-5" aria-labelledby="asset-close-title">
+        <header><p class="asset-eyebrow">DAILY PRICE REFERENCE</p><h3 id="asset-close-title">Previous session close</h3></header>
+        <template v-if="asset.previousClose.status==='available'">
+          <div class="asset-close-price"><strong>{{ price(asset.previousClose.nativeEquivalent || asset.previousClose) }}</strong><span>{{ asset.previousClose.nativeEquivalent ? asset.previousClose.nativeEquivalent.currency+' equivalent' : asset.previousClose.currency+' stored close' }}</span></div>
+          <dl class="asset-fields">
+            <div><dt>Session date</dt><dd>{{ sessionDate(asset.previousClose.sessionDate) }}</dd></div>
+            <div><dt>Source</dt><dd>{{ closeSource(asset.previousClose.source) }}</dd></div>
+            <div v-if="asset.previousClose.nativeEquivalent"><dt>Stored close</dt><dd>{{ price(asset.previousClose) }} USD</dd></div>
+            <div v-if="asset.previousClose.nativeEquivalent"><dt>Dated FX</dt><dd>1 USD = {{ asset.previousClose.nativeEquivalent.usdRate }} {{ asset.previousClose.nativeEquivalent.currency }} · {{ sessionDate(asset.previousClose.nativeEquivalent.fxDate) }}</dd></div>
+            <div><dt>Saved</dt><dd>{{ savedTime(asset.previousClose.savedAt) }}</dd></div>
+          </dl>
+          <p v-if="asset.previousClose.nativeCurrency && !asset.previousClose.nativeEquivalent" class="text-xs text-gray-500 dark:text-gray-400 mt-3">{{ asset.previousClose.nativeCurrency }} equivalent unavailable: no usable saved FX for this session.</p>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-3">Saved is the database update time. The exact market capture time of the closing price is not recorded.</p>
+        </template>
+        <p v-else class="text-sm text-gray-500 dark:text-gray-400 mt-3">{{ closeUnavailable(asset.previousClose) }}</p>
+      </section>
       <p v-if="asset.warning" class="asset-notice">{{ asset.warning }}</p>
       <p v-if="asset.categoryWarning" class="asset-notice" role="alert">{{ asset.categoryWarning }}</p>
       <section v-if="asset.categoryOverride" class="asset-section mb-5">
@@ -61,8 +77,15 @@
 import {ref,computed} from 'vue'
 import {useRoute,useRouter} from 'vue-router'
 import api from '@/services/api'
+import {useAuthStore} from '@/stores/auth'
 import AssetDataValue from '@/components/AssetDataValue.vue'
 const route=useRoute(),router=useRouter(),input=ref(String(route.query.symbol||'')),asset=ref(null),loading=ref(false),error=ref(''),pageLoading=ref('')
+const auth=useAuthStore()
+const price=p=>new Intl.NumberFormat('en-GB',{style:'currency',currency:p.currency,maximumFractionDigits:10}).format(p.amount)
+const sessionDate=value=>value?new Date(value+'T12:00:00Z').toLocaleDateString('en-GB',{timeZone:'UTC',day:'numeric',month:'long',year:'numeric'}):'Unavailable'
+const savedTime=value=>value?new Intl.DateTimeFormat('en-GB',{timeZone:auth.user?.timezone||'UTC',dateStyle:'medium',timeStyle:'long'}).format(new Date(value)):'Unavailable'
+const closeSource=value=>({'stockanalysis:twelve':'Stock Analysis / Twelve Data','stockanalysis:spg':'Stock Analysis / S&P Global','stockanalysis:spg-api':'Stock Analysis / S&P Global','stockanalysis:tiingo':'Stock Analysis / Tiingo',yahoo:'Yahoo Finance',coingecko:'CoinGecko','broker:etoro':'eToro','broker:kraken':'Kraken','broker:okx':'OKX',reconstruction_cache:'Saved daily history'})[value]||value||'Unavailable'
+const closeUnavailable=p=>p.status==='calendar_unavailable'?'Previous session unavailable: no verified exchange calendar is saved.':`No verified closing price is saved for ${sessionDate(p.sessionDate)}${p.status==='provisional'?' (the saved price is provisional)':''}.`
 const classificationLevels=[{key:'sector',label:'Sector · 2 digits'},{key:'industry_group',label:'Industry group · 4 digits'},{key:'industry',label:'Industry · 6 digits'}]
 const populated=computed(()=>asset.value?.sections.filter(s=>s.count)||[]),empty=computed(()=>asset.value?.sections.filter(s=>!s.count)||[])
 const label=key=>String(key).replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())
@@ -86,5 +109,6 @@ if(input.value)search()
 </script>
 <style>
 .assets-page{max-width:1440px}.asset-eyebrow{font-size:10px;letter-spacing:.16em;color:#718d86;font-weight:700;margin-bottom:8px}.asset-search{display:flex;align-items:end;gap:16px;padding:24px;border:1px solid #718d8633;border-radius:10px;background:#718d8608}.asset-identity{display:flex;justify-content:space-between;align-items:center;padding:28px 0;border-top:2px solid #75b49c;margin-bottom:12px}.asset-identity h2{font-size:36px;letter-spacing:-.04em;font-weight:650}.asset-labels{padding:20px 0 28px}.assets-page h3{font-size:16px;font-weight:600;margin-bottom:8px}.asset-chip{padding:6px 10px;border:1px solid #718d8655;border-radius:5px;font-size:12px}.asset-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;margin-top:24px}.asset-index{align-self:start;position:sticky;top:70px}.asset-index a{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #718d8622;font-size:12px}.asset-index span{color:#718d86;font-variant-numeric:tabular-nums}.asset-section{border:1px solid #718d8633;border-radius:8px;padding:20px;scroll-margin-top:90px}.asset-record{padding:12px 0;border-top:1px solid #718d8622}.asset-record summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;font-size:12px}.asset-record summary:before{content:'▸';color:#718d86}.asset-record[open] summary:before{content:'▾'}.asset-fields{margin-top:16px;font-size:12px}.asset-fields>div{display:grid;grid-template-columns:minmax(100px,190px) minmax(0,1fr);gap:16px;padding:9px 0;border-top:1px solid #718d861a}.asset-fields dt{color:#718d86;overflow-wrap:anywhere}.asset-fields dd{min-width:0;overflow-wrap:anywhere}.asset-notice{padding:14px 18px;border-left:3px solid #718d86;background:#718d860d;margin:16px 0;font-size:13px}.asset-placeholder{padding:64px 20px;text-align:center;color:#718d86}.nested-data summary{cursor:pointer}.assets-page summary:focus-visible,.asset-index a:focus-visible{outline:2px solid #75b49c;outline-offset:3px}@media(max-width:800px){.asset-layout{grid-template-columns:1fr}.asset-index{position:static}.asset-search{flex-direction:column;align-items:stretch}.asset-fields>div{grid-template-columns:1fr;gap:4px}}
+.asset-close header{border-bottom:1px solid #718d8633;padding-bottom:12px}.asset-close-price{display:flex;align-items:baseline;gap:12px;padding-top:18px;flex-wrap:wrap}.asset-close-price strong{font-size:30px;letter-spacing:-.035em;font-weight:650;font-variant-numeric:tabular-nums}.asset-close-price span{font-size:12px;color:#718d86}
 </style>
 <style>.asset-search input{background:transparent;color:inherit;border:1px solid #718d8655;border-radius:6px;padding:12px 14px;min-height:48px}.asset-search input:focus{outline:2px solid #75b49c;outline-offset:2px}.asset-search input::placeholder{color:#81948f}</style>
