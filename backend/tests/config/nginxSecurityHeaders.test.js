@@ -38,5 +38,10 @@ test('nginx access logs exclude request queries and referrers', () => {
   const format = config.match(/log_format tradetally_safe ([\s\S]*?);/)[1];
   expect(format).toContain('$uri');
   expect(format).not.toMatch(/\$request(?:["'\s]|_uri)|\$args|\$query_string|\$http_referer/);
-  expect(config).toContain('access_log /var/log/nginx/access.log tradetally_safe;');
+  // Server-level overrides prevent the inherited HTTP-level log from also running.
+  const servers = config.split(/\nserver \{/).slice(1);
+  expect(servers).toHaveLength(2);
+  for (const server of servers) {
+    expect(server.split('location ')[0]).toContain('access_log /var/log/nginx/access.log tradetally_safe;');
+  }
 });
