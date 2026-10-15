@@ -38,7 +38,6 @@ function applyTradeGrouping(trades, settings) {
 
   // Process each group separately
   for (const [groupKey, symbolTrades] of Object.entries(tradesByGroupKey)) {
-    console.log(`\n[GROUPING] Processing ${symbolTrades.length} trades for ${groupKey}`);
 
     // Sort by entry time
     symbolTrades.sort((a, b) => new Date(a.entryTime) - new Date(b.entryTime));
@@ -72,7 +71,6 @@ function applyTradeGrouping(trades, settings) {
           }]
         };
         lastEntryTime = entryTime;
-        console.log(`  [GROUPING] Started new group at ${trade.entryTime}`);
       } else {
         // Check time gap
         const timeSinceLastEntry = (entryTime - lastEntryTime) / (1000 * 60); // minutes
@@ -80,7 +78,6 @@ function applyTradeGrouping(trades, settings) {
         // Only group if same side and within time gap
         if (timeSinceLastEntry <= settings.timeGapMinutes && trade.side === currentGroup.side) {
           // Merge into current group
-          console.log(`  [GROUPING] Merging trade: ${timeSinceLastEntry.toFixed(1)}min gap (${trade.side} ${trade.quantity}@${trade.entryPrice})`);
 
           // Add this trade's execution to the executionData array
           // For grouped trades, each execution represents a complete round-trip sub-trade
@@ -223,8 +220,6 @@ function applyTradeGrouping(trades, settings) {
           }
         } else {
           // Time gap exceeded or different side, save current group and start new one
-          const reason = trade.side !== currentGroup.side ? 'different side' : `gap exceeded (${timeSinceLastEntry.toFixed(1)}min)`;
-          console.log(`  [GROUPING] ${reason}, starting new group`);
           groupedTrades.push(currentGroup);
           // Handle both 'pnl' and 'profitLoss' field names
           const newGroupPnl = trade.pnl !== undefined ? trade.pnl : (trade.profitLoss || 0);
@@ -246,7 +241,6 @@ function applyTradeGrouping(trades, settings) {
             }]
           };
           lastEntryTime = entryTime;
-          console.log(`  [GROUPING] Started new group at ${trade.entryTime}`);
         }
       }
     }

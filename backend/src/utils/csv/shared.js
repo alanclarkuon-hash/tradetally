@@ -370,7 +370,7 @@ function parseDate(dateStr, options = {}) {
     const dd = String(date.getDate()).padStart(2, '0');
     return `${yyyy}-${mm}-${dd}`;
   } catch (error) {
-    console.warn(`Invalid date format: ${cleanDateStr}`);
+    console.warn('Invalid date format in import');
     return null;
   }
 }
@@ -719,7 +719,7 @@ function parseDateTime(dateTimeStr, options = {}) {
     const ss = String(date.getSeconds()).padStart(2, '0');
     return withTrailingTimezone(`${yyyy}-${mm}-${dd}T${hh}:${min}:${ss}`);
   } catch (error) {
-    console.warn(`Invalid datetime format: ${cleanDateTimeStr}`);
+    console.warn('Invalid datetime format in import');
     return null;
   }
 }

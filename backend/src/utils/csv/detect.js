@@ -328,7 +328,7 @@ function detectCurrencyColumn(records) {
   // Get all field names from the first record (case-insensitive)
   const firstRecord = records[0];
   const fieldNames = Object.keys(firstRecord);
-  console.log(`[CURRENCY] Available fields: ${fieldNames.join(', ')}`);
+  console.log('[CSV] Inspecting import headers');
 
   const currencyFieldPatterns = new Set([
     'currency',
@@ -355,11 +355,11 @@ function detectCurrencyColumn(records) {
         const value = record[fieldName];
         if (value && value.toString().trim() !== '') {
           const currencyValue = value.toString().toUpperCase().trim();
-          console.log(`[CURRENCY] Found currency field '${fieldName}' with value '${currencyValue}'`);
+          console.log('[CURRENCY] Currency field detected');
 
           // Detect non-USD currency
           if (validCurrencyCodePattern.test(currencyValue) && currencyValue !== 'USD') {
-            console.log(`[CURRENCY] Detected non-USD currency: ${currencyValue}`);
+            console.log('[CURRENCY] Currency field detected');
             return true;
           }
         }
@@ -409,7 +409,7 @@ function detectAccountColumn(records) {
   const fieldNames = Object.keys(firstRecord);
 
   // Log all available columns for debugging
-  console.log(`[ACCOUNT] Checking ${fieldNames.length} columns for account field: ${fieldNames.slice(0, 15).join(', ')}${fieldNames.length > 15 ? '...' : ''}`);
+  console.log('[CSV] Inspecting import headers');
 
   // Normalize field names for comparison
   for (const fieldName of fieldNames) {
@@ -425,10 +425,10 @@ function detectAccountColumn(records) {
         });
 
         if (hasData) {
-          console.log(`[ACCOUNT] Detected account column: "${fieldName}"`);
+          console.log('[ACCOUNT] Account field inspected');
           return fieldName;
         } else {
-          console.log(`[ACCOUNT] Found potential account column "${fieldName}" but it has no data`);
+          console.log('[ACCOUNT] Account field inspected');
         }
       }
     }
@@ -710,7 +710,7 @@ function detectBrokerFormat(fileBuffer) {
     }
 
     const headers = headerLine.toLowerCase();
-    console.log(`[AUTO-DETECT] Analyzing headers (line ${headerLineIndex + 1}): ${headerLine.substring(0, 200)}...`);
+    console.log('[CSV] Inspecting import headers');
 
     // Sierra Chart Trade Activity Log > File > Export. The distinctive
     // activity/fill/position columns keep this ahead of the generic IBKR
