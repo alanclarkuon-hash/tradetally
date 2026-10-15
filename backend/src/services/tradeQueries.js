@@ -23,10 +23,10 @@ async function timedDbQuery(label, query, values = []) {
   const startedAt = Date.now();
   try {
     const result = await db.query(query, values);
-    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms (${result.rowCount ?? result.rows?.length ?? 0} rows)`);
+    console.log("[PERF]");
     return result;
   } catch (error) {
-    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    console.warn("[PERF]");
     throw error;
   }
 }
@@ -479,7 +479,7 @@ class TradeQueries {
   // Find trades for a user matching the given filters.
   static async findByUser(userId, filters = {}) {
     const startTime = Date.now();
-    console.log('[PERF] findByUser started for user:', userId);
+    console.log("[PERF] findByUser started");
 
     const { whereClause, values, paramCount: pcAfterWhere, needsSectorOuterJoin } =
       await this._buildWhereClause(userId, filters);
@@ -544,8 +544,8 @@ class TradeQueries {
     const queryStartTime = Date.now();
     const result = await db.query(mainQuery, values);
     const queryEndTime = Date.now();
-    console.log('[PERF] findByUser query took:', queryEndTime - queryStartTime, 'ms, returned', result.rows.length, 'rows');
-    console.log('[PERF] findByUser total time:', queryEndTime - startTime, 'ms');
+    console.log("[PERF] findByUser query took");
+    console.log("[PERF] findByUser total time");
     return applyTradeSectorCategories(result.rows);
   }
 
@@ -553,7 +553,7 @@ class TradeQueries {
   // Fans out to 7 parallel queries that all share the same WHERE clause.
   static async getAnalytics(userId, filters = {}) {
     const analyticsStartedAt = Date.now();
-    console.log('Getting analytics for user:', userId, 'with filters:', filters);
+    console.log("Getting analytics");
 
     const User = require('../models/User');
     const { configFromSettings, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
@@ -579,12 +579,12 @@ class TradeQueries {
         dollarRisk = stopLossDollars;
       }
     } catch (error) {
-      console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+      console.warn("Could not fetch user settings for analytics, using default (average)");
     }
     try {
       userTimezone = await getUserTimezone(userId);
     } catch (error) {
-      console.warn('Could not fetch user timezone for daily analytics, using UTC:', error.message);
+      console.warn("Could not fetch user timezone for daily analytics, using UTC");
     }
 
     // Pass the config we just fetched into the WHERE builder so it doesn't
@@ -1164,7 +1164,7 @@ class TradeQueries {
     const executionMaxDailyLoss = dailyPnlValues.length > 0
       ? Math.min(...dailyPnlValues)
       : 0;
-    console.log('[PERF] getAnalytics total time:', Date.now() - analyticsStartedAt, 'ms');
+    console.log("[PERF] getAnalytics total time");
 
     const bestTrade = bestWorstResult.rows.find(t => t.type === 'best') || null;
     const worstTrade = bestWorstResult.rows.find(t => t.type === 'worst') || null;

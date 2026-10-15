@@ -92,17 +92,10 @@ class HealthController {
       
       // Enhanced logging for debugging mobile app submissions
       console.log('\n[INFO] HEALTH DATA SUBMISSION RECEIVED FROM MOBILE APP');
-      console.log('  User ID:', userId);
-      console.log('  Timestamp:', new Date().toISOString());
-      console.log('  Request Headers:', {
-        'user-agent': req.headers['user-agent'],
-        'content-type': req.headers['content-type'],
-        'x-device-id': req.headers['x-device-id'] || 'not provided'
-      });
-      console.log('  Request Body Summary:', {
-        hasHealthDataArray: Array.isArray(healthData),
-        healthDataPoints: Array.isArray(healthData) ? healthData.length : 0
-      });
+      console.log("[health] Request diagnostic");
+      console.log("Timestamp");
+      console.log("[health] Request diagnostic");
+      console.log("[health] Request diagnostic");
 
       if (!Array.isArray(healthData)) {
         console.log('  [ERROR] Health data must be an array');
@@ -112,16 +105,16 @@ class HealthController {
         });
       }
 
-      logger.info(`Receiving ${healthData.length} health data points for user ${userId}`, 'health');
-      console.log(`  [PROCESS] Processing ${healthData.length} health data points...`);
+      logger.info("Receiving", "health");
+      console.log("[PROCESS] Processing");
 
       // Debug: Count data types
       const dataTypeCounts = {};
       healthData.forEach(point => {
         dataTypeCounts[point.type] = (dataTypeCounts[point.type] || 0) + 1;
       });
-      console.log('  [INFO] Data types received:', dataTypeCounts);
-      logger.info(`Data types received: ${JSON.stringify(dataTypeCounts)}`, 'health');
+      console.log("[health] Request diagnostic");
+      logger.info("[health] Request diagnostic", "health");
 
       let insertedCount = 0;
       let updatedCount = 0;
@@ -134,7 +127,7 @@ class HealthController {
 
           // Validate required fields
           if (!date || !dataType || value === undefined) {
-            logger.warn(`Invalid health data point received (date=${date || 'missing'}, type=${type || 'missing'})`, 'health');
+            logger.warn("Invalid health data point received (date", "health");
             continue;
           }
 
@@ -181,13 +174,13 @@ class HealthController {
         }
       });
 
-      logger.info(`Health data submitted: ${insertedCount} inserted, ${updatedCount} updated for user ${userId}`, 'health');
+      logger.info("Health data submitted", "health");
       
       console.log('  [SUCCESS] Health data processed');
-      console.log(`     Inserted: ${insertedCount} new records`);
-      console.log(`     Updated: ${updatedCount} existing records`);
-      console.log(`     Total processed: ${insertedCount + updatedCount}`);
-      console.log('='.repeat(60));
+      console.log("Inserted");
+      console.log("Updated");
+      console.log("Total processed");
+      console.log("Operation diagnostic");
 
       res.status(200).json({
         success: true,
@@ -200,7 +193,7 @@ class HealthController {
       });
 
     } catch (error) {
-      logger.error(`Error submitting health data: ${error.message}`, 'health');
+      logger.error("Error submitting health data", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to submit health data',
@@ -269,7 +262,7 @@ class HealthController {
       });
 
     } catch (error) {
-      logger.error(`Error getting health data: ${error.message}`, 'health');
+      logger.error("Error getting health data", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve health data',
@@ -288,7 +281,7 @@ class HealthController {
       const end = endDate ? new Date(endDate) : new Date();
       const start = startDate ? new Date(startDate) : new Date(end.getTime() - (30 * 24 * 60 * 60 * 1000));
 
-      logger.info(`Analyzing health-trading correlations for user ${userId} from ${start.toISOString()} to ${end.toISOString()}`, 'health');
+      logger.info("Analyzing health-trading correlations", "health");
 
       // Get health data for the date range
       const healthQuery = `
@@ -339,7 +332,7 @@ class HealthController {
       }, { clone: false }));
 
     } catch (error) {
-      logger.error(`Error analyzing health correlations: ${error.message}`, 'health');
+      logger.error("Error analyzing health correlations", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to analyze health correlations',
@@ -370,7 +363,7 @@ class HealthController {
       });
 
     } catch (error) {
-      logger.error(`Error getting health insights: ${error.message}`, 'health');
+      logger.error("Error getting health insights", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve health insights',
@@ -466,7 +459,7 @@ class HealthController {
         ]);
       }
     } catch (error) {
-      logger.error(`Error storing correlation results: ${error.message}`, 'health');
+      logger.error("Error storing correlation results", "health");
     }
   }
 
@@ -491,7 +484,7 @@ class HealthController {
         insights.push(...aiInsights);
       }
     } catch (aiError) {
-      console.log('AI insights generation failed, falling back to rule-based insights:', aiError.message);
+      console.log("AI insights generation failed, falling back to rule-based insights");
 
       // Fall back to rule-based analysis
       // Analyze sleep vs trading performance
@@ -511,7 +504,7 @@ class HealthController {
     try {
       await db.query(`DELETE FROM health_insights WHERE user_id = $1`, [userId]);
     } catch (error) {
-      logger.error(`Error clearing old insights: ${error.message}`, 'health');
+      logger.error("Error clearing old insights", "health");
     }
 
     // Store new insights in database
@@ -522,7 +515,7 @@ class HealthController {
           VALUES ($1, $2, $3, $4, $5, $6)
         `, [userId, insight.type, insight.title, insight.description, insight.confidence, insight.actionable]);
       } catch (error) {
-        logger.error(`Error storing insight: ${error.message}`, 'health');
+        logger.error("Error storing insight", "health");
       }
     }
 
@@ -614,7 +607,7 @@ class HealthController {
       }));
 
     } catch (error) {
-      console.error('Error generating AI insights:', error);
+      console.error("Error generating AI insights");
       throw error;
     }
   }
@@ -745,7 +738,7 @@ class HealthController {
 
       return null;
     } catch (error) {
-      logger.error(`Error analyzing composure: ${error.message}`, 'health');
+      logger.error("Error analyzing composure", "health");
       return null;
     }
   }
@@ -755,7 +748,7 @@ class HealthController {
     try {
       const userId = req.user.id;
 
-      console.log(`[HEALTH] Correlating health data with trades for user ${userId}`);
+      console.log("[HEALTH] Correlating health data with trades");
 
       // Get all trades with entry_time for this user
       const tradesQuery = `
@@ -766,7 +759,7 @@ class HealthController {
         ORDER BY entry_time
       `;
       const tradesResult = await db.query(tradesQuery, [userId]);
-      console.log(`[HEALTH] Found ${tradesResult.rows.length} trades with entry_time`);
+      console.log("[HEALTH] Found");
 
       // Get time-series heart rate data
       const heartRateQuery = `
@@ -778,7 +771,7 @@ class HealthController {
         ORDER BY timestamp
       `;
       const heartRateResult = await db.query(heartRateQuery, [userId, this.getDataTypeAliases('heart_rate')]);
-      console.log(`[HEALTH] Found ${heartRateResult.rows.length} heart rate samples with timestamps`);
+      console.log("[HEALTH] Found");
 
       // Get daily sleep data
       const sleepQuery = `
@@ -802,7 +795,7 @@ class HealthController {
           try {
             metadata = JSON.parse(metadata);
           } catch (e) {
-            console.error('Failed to parse sleep metadata:', e);
+            console.error("Failed to parse sleep metadata");
             metadata = {};
           }
         }
@@ -920,7 +913,7 @@ class HealthController {
         }
       }
 
-      console.log(`[HEALTH] Updated ${updatedCount} trades with health data`);
+      console.log("[HEALTH] Updated");
 
       res.status(200).json({
         success: true,
@@ -931,8 +924,8 @@ class HealthController {
       });
 
     } catch (error) {
-      console.error(`[HEALTH] Error correlating health with trades:`, error);
-      logger.error(`Error correlating health with trades: ${error.message}`, 'health');
+      console.error("[HEALTH] Error correlating health with trades");
+      logger.error("Error correlating health with trades", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to correlate health data with trades',
@@ -969,7 +962,7 @@ class HealthController {
       });
 
     } catch (error) {
-      logger.error(`Error retrieving health insights: ${error.message}`, 'health');
+      logger.error("Error retrieving health insights", "health");
       res.status(500).json({
         success: false,
         message: 'Failed to retrieve health insights',

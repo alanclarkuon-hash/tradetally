@@ -212,7 +212,7 @@ const settingsController = {
       try {
         await AnalyticsCache.invalidate(req.user.id);
       } catch (cacheErr) {
-        console.warn(`[SETTINGS] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+        console.warn("[SETTINGS] AnalyticsCache invalidation failed");
       }
 
       const safeSettings = settings
@@ -690,7 +690,7 @@ const settingsController = {
   async exportUserData(req, res, next) {
     try {
       const userId = req.user.id;
-      console.log('[EXPORT] Starting full data export for user:', userId);
+      console.log("[EXPORT] Starting full data export");
 
       // Get user profile
       const userResult = await db.query(
@@ -712,7 +712,7 @@ const settingsController = {
         [userId]
       );
       const trades = tradesResult.rows;
-      console.log(`[EXPORT] Exporting ${trades.length} trades`);
+      console.log("[EXPORT] Exporting");
 
       // Get all tags
       const tagsResult = await db.query(
@@ -758,9 +758,9 @@ const settingsController = {
           [userId]
         );
         diaryEntries = diaryResult.rows;
-        console.log(`[EXPORT] Exporting ${diaryEntries.length} diary entries`);
+        console.log("[EXPORT] Exporting");
       } catch (error) {
-        console.warn('[EXPORT] Unable to fetch diary entries:', error.message);
+        console.warn("[EXPORT] Unable to fetch diary entries");
       }
 
       // Get diary templates
@@ -771,9 +771,9 @@ const settingsController = {
           [userId]
         );
         diaryTemplates = templatesResult.rows;
-        console.log(`[EXPORT] Exporting ${diaryTemplates.length} diary templates`);
+        console.log("[EXPORT] Exporting");
       } catch (error) {
-        console.warn('[EXPORT] Unable to fetch diary templates:', error.message);
+        console.warn("[EXPORT] Unable to fetch diary templates");
       }
 
       // Get broker fee settings
@@ -784,17 +784,17 @@ const settingsController = {
           [userId]
         );
         brokerFeeSettings = brokerFeesResult.rows;
-        console.log(`[EXPORT] Exporting ${brokerFeeSettings.length} broker fee settings`);
+        console.log("[EXPORT] Exporting");
       } catch (error) {
-        console.warn('[EXPORT] Unable to fetch broker fee settings:', error.message);
+        console.warn("[EXPORT] Unable to fetch broker fee settings");
       }
 
       let feeProfiles = [];
       try {
         feeProfiles = await FeeProfileService.getProfiles(userId);
-        console.log(`[EXPORT] Exporting ${feeProfiles.length} fee profiles`);
+        console.log("[EXPORT] Exporting");
       } catch (error) {
-        console.warn('[EXPORT] Unable to fetch fee profiles:', error.message);
+        console.warn("[EXPORT] Unable to fetch fee profiles");
       }
 
       // Get trade charts (TradingView links)
@@ -808,9 +808,9 @@ const settingsController = {
           [userId]
         );
         tradeCharts = chartsResult.rows;
-        console.log(`[EXPORT] Exporting ${tradeCharts.length} trade charts`);
+        console.log("[EXPORT] Exporting");
       } catch (error) {
-        console.warn('[EXPORT] Unable to fetch trade charts:', error.message);
+        console.warn("[EXPORT] Unable to fetch trade charts");
       }
 
       // Get admin settings (only for admin users)
@@ -825,9 +825,9 @@ const settingsController = {
           for (const row of adminSettingsResult.rows) {
             adminSettings[row.setting_key] = row.setting_value;
           }
-          console.log(`[EXPORT] Exporting ${Object.keys(adminSettings).length} admin settings`);
+          console.log("[EXPORT] Exporting");
         } catch (error) {
-          console.warn('[EXPORT] Unable to fetch admin settings:', error.message);
+          console.warn("[EXPORT] Unable to fetch admin settings");
         }
       }
 
@@ -857,7 +857,7 @@ const settingsController = {
           );
           return result.rows;
         } catch (error) {
-          console.warn(`[EXPORT] Unable to fetch ${tableName}:`, error.message);
+          console.warn("[EXPORT] Unable to fetch");
           return [];
         }
       };
@@ -879,7 +879,7 @@ const settingsController = {
             );
             return result.rows;
           } catch (error) {
-            console.warn('[EXPORT] Unable to fetch watchlist_items:', error.message);
+            console.warn("[EXPORT] Unable to fetch watchlist_items");
             return [];
           }
         })(),
@@ -903,7 +903,7 @@ const settingsController = {
             );
             return result.rows;
           } catch (error) {
-            console.warn('[EXPORT] Unable to fetch trade allocations:', error.message);
+            console.warn("[EXPORT] Unable to fetch trade allocations");
             return [];
           }
         })()
@@ -1014,27 +1014,20 @@ const settingsController = {
         adminSettings: adminSettings
       };
 
-      console.log('[EXPORT] Export complete. Total trades:', trades.length,
-                  'Diary entries:', diaryEntries.length,
-                  'Templates:', diaryTemplates.length,
-                  'Broker fees:', brokerFeeSettings.length,
-                  'Fee profiles:', feeProfiles.length,
-                  'Trade charts:', tradeCharts.length,
-                  'Watchlists:', watchlists.length,
-                  'Admin settings:', adminSettings ? Object.keys(adminSettings).length : 0);
+      console.log("[EXPORT] Export complete. Total trades");
 
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', `attachment; filename=tradetally-export-${new Date().toISOString().split('T')[0]}.json`);
       res.json(exportData);
     } catch (error) {
-      console.error('[EXPORT] Export failed:', error);
+      console.error("[EXPORT] Export failed");
       next(error);
     }
   },
 
   async importUserData(req, res, next) {
     try {
-      console.log('[IMPORT] Import request received:', req.file ? 'File present' : 'No file');
+      console.log("[IMPORT] Import request received");
       const userId = req.user.id;
       const file = req.file;
 
@@ -1043,39 +1036,35 @@ const settingsController = {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
-      console.log('[IMPORT] File details:', { name: file.originalname, size: file.size, mimetype: file.mimetype });
-      console.log('[IMPORT] User ID:', userId);
+      console.log("[IMPORT] File details");
+      console.log("[settings] Request diagnostic");
 
       let importData;
       try {
         importData = JSON.parse(file.buffer.toString());
-        console.log('[IMPORT] JSON parsed successfully, keys:', Object.keys(importData));
-        console.log('[IMPORT] Export version:', importData.exportVersion);
-        console.log('[IMPORT] Number of trades in file:', importData.trades?.length || 0);
-        console.log('[IMPORT] Number of tags in file:', importData.tags?.length || 0);
-        console.log('[IMPORT] Number of diary entries in file:', importData.diaryEntries?.length || 0);
-        console.log('[IMPORT] Number of templates in file:', importData.diaryTemplates?.length || 0);
-        console.log('[IMPORT] Number of broker fees in file:', importData.brokerFeeSettings?.length || 0);
-        console.log('[IMPORT] Number of fee profiles in file:', importData.feeProfiles?.length || 0);
+        console.log("[IMPORT] JSON parsed successfully, keys");
+        console.log("[IMPORT] Export version");
+        console.log("[IMPORT] Number of trades in file");
+        console.log("[IMPORT] Number of tags in file");
+        console.log("[IMPORT] Number of diary entries in file");
+        console.log("[IMPORT] Number of templates in file");
+        console.log("[IMPORT] Number of broker fees in file");
+        console.log("[IMPORT] Number of fee profiles in file");
       } catch (error) {
-        console.error('[IMPORT] JSON parse error:', error);
+        console.error("[IMPORT] JSON parse error");
         return res.status(400).json({ error: 'Invalid JSON file' });
       }
 
       // Validate import data structure
       if (!importData.exportVersion || !importData.trades) {
-        console.log('[IMPORT] Invalid export structure:', {
-          hasVersion: !!importData.exportVersion,
-          hasTrades: !!importData.trades,
-          keys: Object.keys(importData)
-        });
+        console.log("[IMPORT] Invalid export structure");
         return res.status(400).json({ error: 'Invalid TradeTally export file' });
       }
 
       // NOTE: No tier limit check for TradeTally export imports
       // This is for data portability - users should be able to restore their own exported data
       // The tier limit (100 trades per import for free tier) only applies to CSV broker imports
-      console.log(`[IMPORT] Processing TradeTally export with ${importData.trades?.length || 0} trades (no tier limit for exports)`);
+      console.log("[IMPORT] Processing TradeTally export");
 
       // Ensure database schema is ready before import
       try {
@@ -1088,14 +1077,14 @@ const settingsController = {
         const tableCheck = await db.query(tableCheckQuery);
 
         if (!tableCheck.rows[0].has_trades || !tableCheck.rows[0].has_tags || !tableCheck.rows[0].has_users) {
-          console.error('[IMPORT] Database schema not ready:', tableCheck.rows[0]);
+          console.error("[IMPORT] Database schema not ready");
           return res.status(500).json({
             error: 'Database schema not initialized. Please restart the application to run migrations first.',
             details: 'The database tables required for import do not exist yet.'
           });
         }
       } catch (schemaError) {
-        console.error('[IMPORT] Schema check failed:', schemaError);
+        console.error("[IMPORT] Schema check failed");
         return res.status(500).json({
           error: 'Unable to verify database schema',
           details: schemaError.message
@@ -1142,7 +1131,7 @@ const settingsController = {
       const dynamicInsert = async (dbClient, tableName, record, overrides = {}) => {
         const tableColumns = await getTableColumns(dbClient, tableName);
         if (Object.keys(tableColumns).length === 0) {
-          console.warn(`[IMPORT] Table ${tableName} not found in schema, skipping`);
+          console.warn("[IMPORT] Table");
           return null;
         }
 
@@ -1197,7 +1186,7 @@ const settingsController = {
         // 1. Import tags first (needed for trades)
         // ============================================
         if (importData.tags && importData.tags.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.tags.length} tags...`);
+          console.log("[IMPORT] Processing");
           for (const tag of importData.tags) {
             try {
               const existingTag = await client.query(
@@ -1213,18 +1202,18 @@ const settingsController = {
                 tagsAdded++;
               }
             } catch (tagError) {
-              console.error('[IMPORT] Error processing tag:', tag, tagError);
+              console.error("[IMPORT] Error processing tag");
               throw tagError;
             }
           }
-          console.log(`[IMPORT] Tags: ${tagsAdded} added`);
+          console.log("[IMPORT] Tags");
         }
 
         // ============================================
         // 2. Import trades
         // ============================================
         if (importData.trades && importData.trades.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.trades.length} trades (v3: ${isV3})...`);
+          console.log("[IMPORT] Processing");
 
           const importTimezone = await getUserTimezone(userId);
 
@@ -1354,12 +1343,12 @@ const settingsController = {
                 tradesSkipped++;
               }
             } catch (tradeError) {
-              console.error('[IMPORT] Error processing trade:', trade.symbol || trade.originalId, tradeError.message);
+              console.error("[IMPORT] Error processing trade");
               throw tradeError;
             }
           }
-          console.log(`[IMPORT] Trades: ${tradesAdded} added, ${tradesSkipped} skipped`);
-          console.log(`[IMPORT] Trade ID mappings created: ${tradeIdMap.size}`);
+          console.log("[IMPORT] Trades");
+          console.log("[IMPORT] Trade ID mappings created");
         }
 
         // ============================================
@@ -1411,7 +1400,7 @@ const settingsController = {
               uniqueGroupIds.size !== resolvedAllocations.length ||
               Math.abs(ratioTotal - 1) > 0.000001
             ) {
-              console.warn(`[IMPORT] Skipping invalid allocation split for trade ${tradeId}`);
+              console.warn("[IMPORT] Skipping invalid allocation split for trade");
               continue;
             }
 
@@ -1530,7 +1519,7 @@ const settingsController = {
                   `UPDATE user_settings SET ${updates.join(', ')} WHERE user_id = $${paramCount}`,
                   values
                 );
-                console.log(`[IMPORT] Updated ${updates.length} user settings fields (dynamic)`);
+                console.log("[IMPORT] Updated");
               }
             }
           } else {
@@ -1625,7 +1614,7 @@ const settingsController = {
                   `UPDATE user_settings SET ${updates.join(', ')} WHERE user_id = $${paramCount}`,
                   values
                 );
-                console.log(`[IMPORT] Updated ${updates.length} user settings fields`);
+                console.log("[IMPORT] Updated");
               }
             }
           }
@@ -1641,7 +1630,7 @@ const settingsController = {
         // 4. Import broker fee settings
         // ============================================
         if (importData.brokerFeeSettings && importData.brokerFeeSettings.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.brokerFeeSettings.length} broker fee settings...`);
+          console.log("[IMPORT] Processing");
           for (const setting of importData.brokerFeeSettings) {
             try {
               const broker = setting.broker ?? setting[toSnakeCase('broker')];
@@ -1708,17 +1697,17 @@ const settingsController = {
                 if (result.rows[0].inserted) { brokerFeesAdded++; } else { brokerFeesSkipped++; }
               }
             } catch (feeError) {
-              console.error('[IMPORT] Error processing broker fee:', feeError.message);
+              console.error("[IMPORT] Error processing broker fee");
             }
           }
-          console.log(`[IMPORT] Broker fees: ${brokerFeesAdded} added, ${brokerFeesSkipped} updated`);
+          console.log("[IMPORT] Broker fees");
         }
 
         // ============================================
         // 5. Import named fee profiles and portable account assignments
         // ============================================
         if (Array.isArray(importData.feeProfiles) && importData.feeProfiles.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.feeProfiles.length} fee profiles...`);
+          console.log("[IMPORT] Processing");
           for (const profile of importData.feeProfiles) {
             await client.query('SAVEPOINT restore_fee_profile');
             try {
@@ -1767,17 +1756,17 @@ const settingsController = {
               await client.query('ROLLBACK TO SAVEPOINT restore_fee_profile');
               await client.query('RELEASE SAVEPOINT restore_fee_profile');
               feeProfilesSkipped++;
-              console.error('[IMPORT] Error processing fee profile:', profileError.message);
+              console.error("[IMPORT] Error processing fee profile");
             }
           }
-          console.log(`[IMPORT] Fee profiles: ${feeProfilesAdded} imported, ${feeProfilesSkipped} skipped`);
+          console.log("[IMPORT] Fee profiles");
         }
 
         // ============================================
         // 6. Import diary templates
         // ============================================
         if (importData.diaryTemplates && importData.diaryTemplates.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.diaryTemplates.length} diary templates...`);
+          console.log("[IMPORT] Processing");
           for (const template of importData.diaryTemplates) {
             try {
               const templateName = template.name ?? template[toSnakeCase('name')];
@@ -1810,17 +1799,17 @@ const settingsController = {
                 templatesSkipped++;
               }
             } catch (templateError) {
-              console.error('[IMPORT] Error processing diary template:', templateError.message);
+              console.error("[IMPORT] Error processing diary template");
             }
           }
-          console.log(`[IMPORT] Templates: ${templatesAdded} added, ${templatesSkipped} skipped`);
+          console.log("[IMPORT] Templates");
         }
 
         // ============================================
         // 6. Import equity history
         // ============================================
         if (importData.equityHistory && importData.equityHistory.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.equityHistory.length} equity records...`);
+          console.log("[IMPORT] Processing");
           for (const equity of importData.equityHistory) {
             try {
               await client.query(
@@ -1844,14 +1833,14 @@ const settingsController = {
               }
             }
           }
-          console.log(`[IMPORT] Equity records: ${equityAdded} added`);
+          console.log("[IMPORT] Equity records");
         }
 
         // ============================================
         // 7. Import diary entries with trade ID remapping
         // ============================================
         if (importData.diaryEntries && importData.diaryEntries.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.diaryEntries.length} diary entries...`);
+          console.log("[IMPORT] Processing");
           for (const entry of importData.diaryEntries) {
             try {
               const entryDate = entry.entryDate ?? entry.entry_date;
@@ -1901,17 +1890,17 @@ const settingsController = {
                 diarySkipped++;
               }
             } catch (diaryError) {
-              console.error('[IMPORT] Error processing diary entry:', diaryError.message);
+              console.error("[IMPORT] Error processing diary entry");
             }
           }
-          console.log(`[IMPORT] Diary entries: ${diaryAdded} added, ${diarySkipped} skipped`);
+          console.log("[IMPORT] Diary entries");
         }
 
         // Import trade charts (TradingView links)
         let chartsAdded = 0;
         let chartsSkipped = 0;
         if (importData.tradeCharts && importData.tradeCharts.length > 0) {
-          console.log(`[IMPORT] Processing ${importData.tradeCharts.length} trade charts`);
+          console.log("[IMPORT] Processing");
           for (const chart of importData.tradeCharts) {
             try {
               const originalTradeId = chart.originalTradeId ?? chart.original_trade_id;
@@ -1939,11 +1928,11 @@ const settingsController = {
                 chartsSkipped++;
               }
             } catch (chartError) {
-              console.error('[IMPORT] Error processing trade chart:', chartError.message);
+              console.error("[IMPORT] Error processing trade chart");
               chartsSkipped++;
             }
           }
-          console.log(`[IMPORT] Trade charts: ${chartsAdded} added, ${chartsSkipped} skipped`);
+          console.log("[IMPORT] Trade charts");
         }
 
         // Import admin settings (only for admin users)
@@ -1966,10 +1955,10 @@ const settingsController = {
               );
               adminSettingsUpdated++;
             } catch (adminError) {
-              console.error('[IMPORT] Error processing admin setting:', key, adminError.message);
+              console.error("[IMPORT] Error processing admin setting");
             }
           }
-          console.log(`[IMPORT] Admin settings: ${adminSettingsUpdated} updated`);
+          console.log("[IMPORT] Admin settings");
         }
 
         // ============================================
@@ -1979,7 +1968,7 @@ const settingsController = {
           // Watchlists (need ID remapping for watchlist_items)
           if (importData.watchlists && importData.watchlists.length > 0) {
             let added = 0;
-            console.log(`[IMPORT] Processing ${importData.watchlists.length} watchlists...`);
+            console.log("[IMPORT] Processing");
             for (const watchlist of importData.watchlists) {
               try {
                 const name = watchlist.name ?? watchlist[toSnakeCase('name')];
@@ -1997,17 +1986,17 @@ const settingsController = {
                   watchlistIdMap.set(watchlist.originalId, existing.rows[0].id);
                 }
               } catch (error) {
-                console.error('[IMPORT] Error processing watchlist:', error.message);
+                console.error("[IMPORT] Error processing watchlist");
               }
             }
             additionalTablesImported.watchlists = added;
-            console.log(`[IMPORT] Watchlists: ${added} added`);
+            console.log("[IMPORT] Watchlists");
           }
 
           // Watchlist items (need watchlist_id remapping)
           if (importData.watchlistItems && importData.watchlistItems.length > 0) {
             let added = 0;
-            console.log(`[IMPORT] Processing ${importData.watchlistItems.length} watchlist items...`);
+            console.log("[IMPORT] Processing");
             for (const item of importData.watchlistItems) {
               try {
                 const oldWatchlistId = item.watchlistId ?? item.watchlist_id;
@@ -2020,7 +2009,7 @@ const settingsController = {
               }
             }
             additionalTablesImported.watchlistItems = added;
-            console.log(`[IMPORT] Watchlist items: ${added} added`);
+            console.log("[IMPORT] Watchlist items");
           }
 
           // Simple user-owned tables (no FK remapping needed beyond user_id)
@@ -2036,7 +2025,7 @@ const settingsController = {
           for (const { key, table } of simpleTables) {
             if (importData[key] && importData[key].length > 0) {
               let added = 0;
-              console.log(`[IMPORT] Processing ${importData[key].length} ${table} records...`);
+              console.log("[IMPORT] Processing");
               for (const record of importData[key]) {
                 try {
                   await dynamicInsert(client, table, record, { user_id: userId });
@@ -2046,7 +2035,7 @@ const settingsController = {
                 }
               }
               additionalTablesImported[key] = added;
-              console.log(`[IMPORT] ${table}: ${added} added`);
+              console.log("[IMPORT]");
             }
           }
         }
@@ -2060,7 +2049,7 @@ const settingsController = {
             await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'TradeTally backup import');
             await AnalyticsCache.invalidate(userId);
           } catch (cacheErr) {
-            console.warn(`[IMPORT] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+            console.warn("[IMPORT] AnalyticsCache invalidation failed");
           }
         }
 
@@ -2097,8 +2086,8 @@ const settingsController = {
         client.release();
       }
     } catch (error) {
-      console.error('[IMPORT] Import error:', error);
-      console.error('[IMPORT] Stack trace:', error.stack);
+      console.error("[IMPORT] Import error");
+      console.error("[IMPORT] Stack trace");
       res.status(error.status || 500).json({ error: 'Import failed', message: error.message });
     }
   },
@@ -2609,11 +2598,7 @@ const settingsController = {
         return res.status(400).json({ error: 'Broker name is required' });
       }
 
-      console.log('[BROKER FEES] Saving broker fee settings:', {
-        broker,
-        instrument,
-        userId: req.user?.id
-      });
+      console.log("[BROKER FEES] Saving broker fee settings");
 
       const query = `
         INSERT INTO broker_fee_settings (
@@ -2665,8 +2650,8 @@ const settingsController = {
 
       res.json({ success: true, data: setting });
     } catch (error) {
-      console.error('[BROKER FEES] Error saving broker fee settings:', error.message);
-      console.error('[BROKER FEES] Stack:', error.stack);
+      console.error("[BROKER FEES] Error saving broker fee settings");
+      console.error("[BROKER FEES] Stack");
       next(error);
     }
   },

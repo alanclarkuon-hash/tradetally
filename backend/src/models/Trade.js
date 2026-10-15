@@ -48,10 +48,10 @@ async function timedDbQuery(label, query, values = []) {
 
   try {
     const result = await db.query(query, values);
-    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms (${result.rowCount ?? result.rows?.length ?? 0} rows)`);
+    console.log("[PERF]");
     return result;
   } catch (error) {
-    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    console.warn("[PERF]");
     throw error;
   }
 }
@@ -99,10 +99,10 @@ class Trade {
       );
 
       for (const tagName of newTags) {
-        console.log(`[TAGS] Auto-created tag "${tagName}" for user ${userId}`);
+        console.log("[TAGS] Auto-created tag \"");
       }
     } catch (error) {
-      console.warn(`[TAGS] Failed to ensure tags exist:`, error.message);
+      console.warn("[TAGS] Failed to ensure tags exist");
     }
   }
 
@@ -154,7 +154,7 @@ class Trade {
       if (expMatch) {
         // 2-digit year detected (e.g., "26-02-20"), expand to 4-digit
         cleanExpirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
-        console.log(`[WARNING] Fixed 2-digit year in expirationDate: "${expirationDate}" -> "${cleanExpirationDate}"`);
+        console.log("[WARNING] Fixed 2-digit year in expirationDate: \"");
       }
     }
 
@@ -178,14 +178,14 @@ class Trade {
       // If point value is not provided, look it up based on underlying asset
       if (!finalPointValue && finalUnderlyingAsset) {
         finalPointValue = getFuturesPointValue(finalUnderlyingAsset);
-        console.log(`[TRADE] Auto-set point value for ${symbol}: ${finalUnderlyingAsset} = $${finalPointValue} per point`);
+        console.log("[TRADE] Auto-set point value");
       } else if (!finalPointValue && symbol) {
         // Fallback: try to extract underlying from symbol and look up point value
         const extractedUnderlying = extractUnderlyingFromFuturesSymbol(symbol);
         if (extractedUnderlying) {
           finalUnderlyingAsset = extractedUnderlying;
           finalPointValue = getFuturesPointValue(extractedUnderlying);
-          console.log(`[TRADE] Auto-set point value for ${symbol}: ${extractedUnderlying} = $${finalPointValue} per point`);
+          console.log("[TRADE] Auto-set point value");
         }
       }
 
@@ -193,7 +193,7 @@ class Trade {
       if (!finalTickSize && finalUnderlyingAsset) {
         finalTickSize = getFuturesTickSize(finalUnderlyingAsset);
         if (finalTickSize) {
-          console.log(`[TRADE] Auto-set tick size for ${symbol}: ${finalUnderlyingAsset} = ${finalTickSize}`);
+          console.log("[TRADE] Auto-set tick size");
         }
       }
     }
@@ -345,7 +345,7 @@ class Trade {
             };
           }
         } catch (error) {
-          console.warn('Error in automatic strategy classification:', error.message);
+          console.warn("Error in automatic strategy classification");
           finalStrategy = 'day_trading'; // Default fallback
           strategyConfidence = 50;
           classificationMethod = 'fallback';
@@ -377,7 +377,7 @@ class Trade {
           entry_time: finalEntryTime
         }, userId);
       } catch (error) {
-        console.warn(`Error checking news for trade: ${error.message}`);
+        console.warn("Error checking news for trade");
       }
     }
 
@@ -392,7 +392,7 @@ class Trade {
     let userSettings = null;
 
     // Debug logging for default stop loss/take profit application
-    console.log(`[DEFAULTS] Checking defaults for ${symbol}: stopLoss=${stopLoss}, takeProfit=${takeProfit}, entryPrice=${entryPrice}`);
+    console.log("[DEFAULTS] Checking defaults");
 
     if ((!finalStopLoss || !finalTakeProfit) && entryPrice) {
       try {
@@ -400,15 +400,15 @@ class Trade {
         userSettings = await User.getSettings(userId);
 
         if (!userSettings) {
-          console.log(`[DEFAULTS] No user settings found for user ${userId}`);
+          console.log("[DEFAULTS] No user settings found");
         } else {
-          console.log(`[DEFAULTS] User settings: stopLossType=${userSettings.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings.default_take_profit_percent || 'not set'}`);
+          console.log("[DEFAULTS] User settings: stopLossType");
         }
 
         // Apply default stop loss if not provided
         if (!finalStopLoss) {
           const stopLossType = userSettings?.default_stop_loss_type || 'percent';
-          console.log(`[DEFAULTS] Applying default stop loss, type=${stopLossType}`);
+          console.log("[DEFAULTS] Applying default stop loss, type");
           
           if (stopLossType === 'lod') {
             // Use Low of Day for long positions, High of Day for short positions
@@ -418,17 +418,17 @@ class Trade {
                 if (lod !== null && lod !== undefined) {
                   finalStopLoss = lod;
                   if (finalStopLoss >= entryPrice) {
-                    console.warn(`[STOP LOSS] LoD (${finalStopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01 as fallback`);
+                    console.warn("[STOP LOSS] LoD");
                     finalStopLoss = entryPrice - 0.01;
                   }
-                  console.log(`[STOP LOSS] Applied Low of Day (LoD) stop loss for ${side} position: $${finalStopLoss}`);
+                  console.log("[STOP LOSS] Applied Low of Day (LoD) stop loss");
                 } else {
-                  console.warn(`[STOP LOSS] Failed to fetch LoD, falling back to percentage`);
+                  console.warn("[STOP LOSS] Failed to fetch LoD, falling back to percentage");
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     finalStopLoss = entryPrice * (1 - stopLossPercent / 100);
                     finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                    console.log("[STOP LOSS] Applied default");
                   }
                 }
               } else {
@@ -436,22 +436,22 @@ class Trade {
                 if (hod !== null && hod !== undefined) {
                   finalStopLoss = hod;
                   if (finalStopLoss <= entryPrice) {
-                    console.warn(`[STOP LOSS] HoD (${finalStopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01 as fallback`);
+                    console.warn("[STOP LOSS] HoD");
                     finalStopLoss = entryPrice + 0.01;
                   }
-                  console.log(`[STOP LOSS] Applied High of Day (HoD) stop loss for ${side} position: $${finalStopLoss}`);
+                  console.log("[STOP LOSS] Applied High of Day (HoD) stop loss");
                 } else {
-                  console.warn(`[STOP LOSS] Failed to fetch HoD, falling back to percentage`);
+                  console.warn("[STOP LOSS] Failed to fetch HoD, falling back to percentage");
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
                     finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-                    console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                    console.log("[STOP LOSS] Applied default");
                   }
                 }
               }
             } catch (lodError) {
-              console.warn(`[STOP LOSS] Error fetching LoD/HoD: ${lodError.message}, falling back to percentage`);
+              console.warn("[STOP LOSS] Error fetching LoD/HoD");
               if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                 const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                 if (side === 'long' || side === 'buy') {
@@ -460,7 +460,7 @@ class Trade {
                   finalStopLoss = entryPrice * (1 + stopLossPercent / 100);
                 }
                 finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-                console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+                console.log("[STOP LOSS] Applied default");
               }
             }
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantity > 0) {
@@ -476,7 +476,7 @@ class Trade {
                 finalStopLoss = entryPrice + priceMove;
               }
               finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
-              console.log(`[STOP LOSS] Applied default $${stopLossDollars} stop loss for ${side} ${instrumentType} (qty ${quantity}): $${finalStopLoss}`);
+              console.log("[STOP LOSS] Applied default");
             }
           } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
             // Default percentage-based stop loss
@@ -494,14 +494,14 @@ class Trade {
             // Round to 2 decimal places for stocks, 4 for precise pricing
             finalStopLoss = Math.round(finalStopLoss * 10000) / 10000;
 
-            console.log(`[STOP LOSS] Applied default ${stopLossPercent}% stop loss for ${side} position: $${finalStopLoss}`);
+            console.log("[STOP LOSS] Applied default");
           } else {
-            console.log(`[DEFAULTS] No default stop loss applied: stopLossType=${stopLossType}, default_stop_loss_percent=${userSettings?.default_stop_loss_percent}`);
+            console.log("[DEFAULTS] No default stop loss applied: stopLossType");
           }
         }
 
         if (!stopLoss && finalStopLoss != null && !this.isValidStopForEntry(finalStopLoss, entryPrice, side)) {
-          console.warn(`[STOP LOSS] Default stop for ${symbol} does not define a valid price and was omitted`);
+          console.warn("[STOP LOSS] Default stop");
           finalStopLoss = null;
         }
 
@@ -522,18 +522,18 @@ class Trade {
 
           if (finalTakeProfit != null) {
             const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
-            console.log(`[TAKE PROFIT] Applied ${takeProfitType} default for ${side} position: $${finalTakeProfit}`);
+            console.log("[TAKE PROFIT] Applied");
           }
         }
       } catch (error) {
-        console.warn('[DEFAULTS] Failed to apply default stop loss/take profit:', error.message);
+        console.warn("[DEFAULTS] Failed to apply default stop loss/take profit");
         // Continue without defaults if there's an error
       }
     } else {
-      console.log(`[DEFAULTS] Skipping defaults: stopLoss=${finalStopLoss ? 'provided' : 'missing'}, takeProfit=${finalTakeProfit ? 'provided' : 'missing'}, entryPrice=${entryPrice ? 'provided' : 'missing'}`);
+      console.log("[DEFAULTS] Skipping defaults: stopLoss");
     }
 
-    console.log(`[DEFAULTS] Final values for ${symbol}: stopLoss=${finalStopLoss}, takeProfit=${finalTakeProfit}`);
+    console.log("[DEFAULTS] Final values");
 
     // Calculate R-Multiple if stop loss and exit price are provided
     // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
@@ -557,40 +557,30 @@ class Trade {
     let hasExecutionTargets = false;
 
     logger.debug('[TP-AGGREGATION] ========== TP Target Aggregation ==========');
-    logger.debug('[TP-AGGREGATION] Input data:', {
-      symbol: symbol,
-      hasExecutionList: !!(executionList && executionList.length > 0),
-      executionCount: executionList?.length || 0,
-      hasTradeLevelTargets: !!(takeProfitTargets && takeProfitTargets.length > 0),
-      tradeLevelTargetCount: takeProfitTargets?.length || 0
-    });
+    logger.debug("[TP-AGGREGATION] Input data");
 
     if (executionList && executionList.length > 0) {
       executionList.forEach((exec, index) => {
         if (exec.takeProfitTargets && Array.isArray(exec.takeProfitTargets) && exec.takeProfitTargets.length > 0) {
           hasExecutionTargets = true;
-          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has ${exec.takeProfitTargets.length} targets:`, JSON.stringify(exec.takeProfitTargets));
+          logger.debug("[TP-AGGREGATION] Execution");
           aggregatedTakeProfitTargets.push(...exec.takeProfitTargets);
         } else {
-          logger.debug(`[TP-AGGREGATION] Execution ${index + 1} has no TP targets`);
+          logger.debug("[TP-AGGREGATION] Execution");
         }
       });
     }
 
     // Only use trade-level targets if NO execution-level targets exist
     if (!hasExecutionTargets && takeProfitTargets && takeProfitTargets.length > 0) {
-      logger.debug('[TP-AGGREGATION] Using trade-level targets (no execution targets):', JSON.stringify(takeProfitTargets));
+      logger.debug("[TP-AGGREGATION] Using trade-level targets (no execution targets)");
       aggregatedTakeProfitTargets = [...takeProfitTargets];
     }
 
-    logger.debug('[TP-AGGREGATION] Final aggregated targets:', {
-      count: aggregatedTakeProfitTargets.length,
-      source: hasExecutionTargets ? 'executions' : (aggregatedTakeProfitTargets.length > 0 ? 'trade level' : 'none'),
-      targets: aggregatedTakeProfitTargets.length > 0 ? JSON.stringify(aggregatedTakeProfitTargets) : '[]'
-    });
+    logger.debug("[TP-AGGREGATION] Final aggregated targets");
 
     if (aggregatedTakeProfitTargets.length > 0) {
-      logger.info(`[TP TARGETS] Using ${aggregatedTakeProfitTargets.length} take profit targets (from ${hasExecutionTargets ? 'executions' : 'trade level'})`);
+      logger.info("[TP TARGETS] Using");
     }
 
     const query = `
@@ -676,11 +666,11 @@ class Trade {
     }
 
     // Log the strategy and setup assignment for debugging
-    console.log(`[TRADE CREATE] Trade ${createdTrade.id}: strategy="${finalStrategy || 'null'}", setup="${setup || 'null'}", confidence=${strategyConfidence}%, method=${classificationMethod}`);
+    console.log("[TRADE CREATE] Trade");
 
     // Log conid for IBKR options tracking
     if (conid) {
-      console.log(`[TRADE CREATE] Trade ${createdTrade.id}: conid=${conid} (saved for IBKR position matching)`);
+      console.log("[TRADE CREATE] Trade");
     }
     
     // Check enrichment cache for existing data
@@ -696,10 +686,10 @@ class Trade {
         );
         
         if (appliedCachedData) {
-          console.log(`Applied cached enrichment data to trade ${createdTrade.id}`);
+          console.log("Applied cached enrichment data to trade");
         }
       } catch (cacheError) {
-        console.warn(`Failed to check enrichment cache for trade ${createdTrade.id}:`, cacheError.message);
+        console.warn("Failed to check enrichment cache for trade");
       }
     }
     
@@ -729,9 +719,9 @@ class Trade {
           3, // Medium priority
           userId
         );
-        console.log(`Queued strategy classification job for trade ${createdTrade.id}`);
+        console.log("Queued strategy classification job for trade");
       } catch (error) {
-        console.warn(`Failed to queue strategy classification for trade ${createdTrade.id}:`, error.message);
+        console.warn("Failed to queue strategy classification for trade");
       }
     }
     
@@ -744,21 +734,21 @@ class Trade {
               enrichment_completed_at = CURRENT_TIMESTAMP
           WHERE id = $1
         `, [createdTrade.id]);
-        console.log(`Trade ${createdTrade.id} marked as enrichment completed (no enrichment needed)`);
+        console.log("Trade");
       } catch (error) {
-        console.warn(`Failed to update enrichment status for trade ${createdTrade.id}:`, error.message);
+        console.warn("Failed to update enrichment status for trade");
       }
     }
     
     // Check for new achievements (async, don't wait for completion)
     if (!options.skipAchievements) {
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
-        console.warn(`Failed to check achievements for user ${userId} after trade creation:`, error.message);
+        console.warn("Failed to check achievements");
       });
       
       // Update trading streak (async, don't wait for completion)
       AchievementService.updateTradingStreak(userId).catch(error => {
-        console.warn(`Failed to update trading streak for user ${userId} after trade creation:`, error.message);
+        console.warn("Failed to update trading streak");
       });
     }
 
@@ -856,7 +846,7 @@ class Trade {
     const result = await db.query(query, values);
     const createdTrade = result.rows[0];
 
-    console.log(`[TRADE] Shell trade created: ${createdTrade.id} (${symbol.toUpperCase()} ${side})`);
+    console.log("[TRADE] Shell trade created");
 
     return createdTrade;
   }
@@ -1005,7 +995,7 @@ class Trade {
     const result = await db.query(updateQuery, updateValues);
     const updatedTrade = result.rows[0];
 
-    console.log(`[TRADE] Fill added to ${tradeId}: ${action} ${quantity} @ ${price} (${new Date(datetime).toISOString()})`);
+    console.log("[TRADE] Fill added");
 
     if (updatedTrade?.instrument_type === 'option') {
       await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade fill');
@@ -1082,7 +1072,7 @@ class Trade {
           ? JSON.parse(trade.executions)
           : trade.executions;
       } catch (error) {
-        console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
+        console.warn("Failed to parse executions for trade");
         trade.executions = [];
       }
     } else if (trade) {
@@ -1111,7 +1101,7 @@ class Trade {
           });
           trade.executions = engineResult.annotatedExecutions;
         } catch (err) {
-          console.warn(`[findById] Engine annotation failed for trade ${trade.id}: ${err.message}`);
+          console.warn("[findById] Engine annotation failed for trade");
         }
       }
     }
@@ -1190,7 +1180,7 @@ class Trade {
     }
 
     if (filters.accounts && filters.accounts.length > 0) {
-      console.log('[OPEN_POSITIONS] Applying account filter:', filters.accounts);
+      console.log("[OPEN_POSITIONS] Applying account filter");
       if (filters.accounts.includes('__unsorted__') || filters.accounts.includes('__none__')) {
         whereClause += ' AND '+accountPredicate(filters.accounts,values,'t.account_identifier',paramCount);
         paramCount=values.length+1;
@@ -1241,7 +1231,7 @@ class Trade {
     }
 
     const result = await timedDbQuery('findOpenPositionsByUser query', query, values);
-    console.log('[PERF] findOpenPositionsByUser total time:', Date.now() - startTime, 'ms');
+    console.log("[PERF] findOpenPositionsByUser total time");
     return result.rows;
   }
 
@@ -1264,7 +1254,7 @@ class Trade {
 
     // Log stopLoss updates for debugging
     if (updates.stopLoss !== undefined) {
-      console.log(`[STOP LOSS UPDATE] Trade ${id}: stopLoss=${updates.stopLoss}`);
+      console.log("[STOP LOSS UPDATE] Trade");
     }
 
     // First get the current trade data for calculations
@@ -1299,7 +1289,7 @@ class Trade {
           if (!updates.underlyingAsset && !currentTrade.underlying_asset) {
             updates.underlyingAsset = finalUnderlying;
           }
-          console.log(`[TRADE UPDATE] Auto-set point value for ${symbol}: ${finalUnderlying} = $${autoPointValue} per point`);
+          console.log("[TRADE UPDATE] Auto-set point value");
         }
       }
 
@@ -1315,7 +1305,7 @@ class Trade {
           const autoTickSize = getFuturesTickSize(finalUnderlying);
           if (autoTickSize) {
             updates.tickSize = autoTickSize;
-            console.log(`[TRADE UPDATE] Auto-set tick size for ${symbol}: ${finalUnderlying} = ${autoTickSize}`);
+            console.log("[TRADE UPDATE] Auto-set tick size");
           }
         }
       }
@@ -1342,7 +1332,7 @@ class Trade {
       const expMatch = updates.expirationDate.match(/^(\d{2})-(\d{2})-(\d{2})$/);
       if (expMatch) {
         updates.expirationDate = `20${expMatch[1]}-${expMatch[2]}-${expMatch[3]}`;
-        console.log(`[WARNING] Fixed 2-digit year in expirationDate update: "${updates.expirationDate}"`);
+        console.log("[WARNING] Fixed 2-digit year in expirationDate update: \"");
       }
     }
 
@@ -1363,13 +1353,13 @@ class Trade {
         const User = require('./User');
         const userSettings = await User.getSettings(userId);
 
-        console.log(`[DEFAULTS UPDATE] Checking defaults for ${symbol}: needsStopLoss=${needsStopLossDefault}, needsTakeProfit=${needsTakeProfitDefault}`);
-        console.log(`[DEFAULTS UPDATE] User settings: stopLossType=${userSettings?.default_stop_loss_type || 'not set'}, stopLossPercent=${userSettings?.default_stop_loss_percent || 'not set'}, takeProfitPercent=${userSettings?.default_take_profit_percent || 'not set'}`);
+        console.log("[DEFAULTS UPDATE] Checking defaults");
+        console.log("[DEFAULTS UPDATE] User settings: stopLossType");
 
         // Apply default stop loss if not provided
         if (needsStopLossDefault) {
           const stopLossType = userSettings?.default_stop_loss_type || 'percent';
-          console.log(`[DEFAULTS UPDATE] Applying default stop loss, type=${stopLossType}`);
+          console.log("[DEFAULTS UPDATE] Applying default stop loss, type");
 
           if (stopLossType === 'lod') {
             // Use Low of Day for long positions, High of Day for short positions
@@ -1379,17 +1369,17 @@ class Trade {
                 if (lod !== null && lod !== undefined) {
                   updates.stopLoss = lod;
                   if (updates.stopLoss >= entryPrice) {
-                    console.warn(`[STOP LOSS UPDATE] LoD (${updates.stopLoss}) is not below entry price (${entryPrice}), using entry price - 0.01`);
+                    console.warn("[STOP LOSS UPDATE] LoD");
                     updates.stopLoss = entryPrice - 0.01;
                   }
-                  console.log(`[STOP LOSS UPDATE] Applied Low of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                  console.log("[STOP LOSS UPDATE] Applied Low of Day stop loss");
                 } else {
-                  console.warn(`[STOP LOSS UPDATE] LoD unavailable, falling back to percentage`);
+                  console.warn("[STOP LOSS UPDATE] LoD unavailable, falling back to percentage");
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     updates.stopLoss = entryPrice * (1 - stopLossPercent / 100);
                     updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                    console.log("[STOP LOSS UPDATE] Applied");
                   }
                 }
               } else {
@@ -1397,22 +1387,22 @@ class Trade {
                 if (hod !== null && hod !== undefined) {
                   updates.stopLoss = hod;
                   if (updates.stopLoss <= entryPrice) {
-                    console.warn(`[STOP LOSS UPDATE] HoD (${updates.stopLoss}) is not above entry price (${entryPrice}), using entry price + 0.01`);
+                    console.warn("[STOP LOSS UPDATE] HoD");
                     updates.stopLoss = entryPrice + 0.01;
                   }
-                  console.log(`[STOP LOSS UPDATE] Applied High of Day stop loss for ${side} position: $${updates.stopLoss}`);
+                  console.log("[STOP LOSS UPDATE] Applied High of Day stop loss");
                 } else {
-                  console.warn(`[STOP LOSS UPDATE] HoD unavailable, falling back to percentage`);
+                  console.warn("[STOP LOSS UPDATE] HoD unavailable, falling back to percentage");
                   if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                     const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                     updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
                     updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-                    console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+                    console.log("[STOP LOSS UPDATE] Applied");
                   }
                 }
               }
             } catch (lodError) {
-              console.warn(`[STOP LOSS UPDATE] Error fetching LoD/HoD: ${lodError.message}`);
+              console.warn("[STOP LOSS UPDATE] Error fetching LoD/HoD");
               if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
                 const stopLossPercent = parseFloat(userSettings.default_stop_loss_percent);
                 if (side === 'long' || side === 'buy') {
@@ -1421,7 +1411,7 @@ class Trade {
                   updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
                 }
                 updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-                console.log(`[STOP LOSS UPDATE] Applied fallback ${stopLossPercent}% stop loss: $${updates.stopLoss}`);
+                console.log("[STOP LOSS UPDATE] Applied fallback");
               }
             }
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
@@ -1438,7 +1428,7 @@ class Trade {
                 updates.stopLoss = entryPrice + priceMove;
               }
               updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-              console.log(`[STOP LOSS UPDATE] Applied $${stopLossDollars} stop loss for ${side} ${instrumentTypeUpdate}: $${updates.stopLoss}`);
+              console.log("[STOP LOSS UPDATE] Applied");
             }
           } else if (userSettings?.default_stop_loss_percent && userSettings.default_stop_loss_percent > 0) {
             // Percentage-based stop loss
@@ -1449,15 +1439,15 @@ class Trade {
               updates.stopLoss = entryPrice * (1 + stopLossPercent / 100);
             }
             updates.stopLoss = Math.round(updates.stopLoss * 10000) / 10000;
-            console.log(`[STOP LOSS UPDATE] Applied ${stopLossPercent}% stop loss for ${side} position: $${updates.stopLoss}`);
+            console.log("[STOP LOSS UPDATE] Applied");
           } else {
-            console.log(`[DEFAULTS UPDATE] No default stop loss configured`);
+            console.log("[DEFAULTS UPDATE] No default stop loss configured");
           }
         }
 
         if (needsStopLossDefault && updates.stopLoss != null &&
             !this.isValidStopForEntry(updates.stopLoss, entryPrice, side)) {
-          console.warn(`[STOP LOSS UPDATE] Default stop for ${symbol} does not define a valid price and was omitted`);
+          console.warn("[STOP LOSS UPDATE] Default stop");
           delete updates.stopLoss;
         }
 
@@ -1477,13 +1467,13 @@ class Trade {
 
           if (updates.takeProfit != null) {
             const takeProfitType = this.getSettingValue(userSettings, 'default_take_profit_type', 'defaultTakeProfitType') || 'percent';
-            console.log(`[TAKE PROFIT UPDATE] Applied ${takeProfitType} default for ${side} position: $${updates.takeProfit}`);
+            console.log("[TAKE PROFIT UPDATE] Applied");
           } else {
             delete updates.takeProfit;
           }
         }
       } catch (error) {
-        console.warn('[DEFAULTS UPDATE] Failed to apply defaults:', error.message);
+        console.warn("[DEFAULTS UPDATE] Failed to apply defaults");
       }
     }
 
@@ -1577,9 +1567,9 @@ class Trade {
           };
         }
 
-        console.log(`Re-classified trade ${id} as "${updates.strategy}" with ${updates.strategyConfidence}% confidence`);
+        console.log("Re-classified trade");
       } catch (error) {
-        console.warn('Error in trade re-classification:', error.message);
+        console.warn("Error in trade re-classification");
         // Don't fail the update, just keep existing strategy
       }
     }
@@ -1630,21 +1620,21 @@ class Trade {
             }
             return newExec;
           });
-          console.log(`[EXECUTION UPDATE] Merging execution updates for trade ${id} (user date changes will be saved)`);
+          console.log("[EXECUTION UPDATE] Merging execution updates for trade");
         } else {
           // Full replacement for imports or when execution count changes
           executionsToSet = updates.executions;
         }
 
-        console.log(`\n=== EXECUTION UPDATE for Trade ${id} ===`);
-        console.log(`Replacing ${(currentTrade.executions || []).length} existing executions with ${executionsToSet.length} new executions`);
+        console.log("=== EXECUTION UPDATE for Trade");
+        console.log("Replacing");
         if (executionsToSet.length > 0) {
-          console.log(`First execution: ${executionsToSet[0].datetime || executionsToSet[0].entryTime} @ $${executionsToSet[0].price || executionsToSet[0].entryPrice}`);
-          console.log(`Last execution: ${executionsToSet[executionsToSet.length-1].datetime || executionsToSet[executionsToSet.length-1].entryTime} @ $${executionsToSet[executionsToSet.length-1].price || executionsToSet[executionsToSet.length-1].entryPrice}`);
+          console.log("First execution");
+          console.log("Last execution");
         }
-        console.log(`=== END EXECUTION UPDATE ===\n`);
+        console.log("=== END EXECUTION UPDATE ==");
       } else {
-        console.log(`[EXECUTION UPDATE] Executions unchanged for trade ${id}, skipping update`);
+        console.log("[EXECUTION UPDATE] Executions unchanged for trade");
       }
     }
 
@@ -1767,18 +1757,18 @@ class Trade {
         // Prefer payload's trade-level targets when it has more (user may have edited form; execution aggregation may have missed some)
         if (Array.isArray(payloadTakeProfitTargets) && payloadTakeProfitTargets.length >= deduplicatedTargets.length) {
           updates.takeProfitTargets = payloadTakeProfitTargets;
-          console.log(`[TP TARGETS UPDATE] Using payload takeProfitTargets (${payloadTakeProfitTargets.length}) over aggregation (${deduplicatedTargets.length})`);
+          console.log("[TP TARGETS UPDATE] Using payload takeProfitTargets");
         } else {
           updates.takeProfitTargets = deduplicatedTargets;
-          console.log(`[TP TARGETS UPDATE] Aggregated ${aggregatedTargets.length} take profit targets from executions, deduplicated to ${deduplicatedTargets.length}`);
+          console.log("[TP TARGETS UPDATE] Aggregated");
         }
       }
     }
 
     // Log all updates for debugging
-    console.log(`[TRADE UPDATE] Processing updates for trade ${id}:`, Object.keys(updates));
+    console.log("[TRADE UPDATE] Processing updates for trade");
     if (updates.takeProfitTargets) {
-      console.log(`[TRADE UPDATE] takeProfitTargets in updates:`, JSON.stringify(updates.takeProfitTargets));
+      console.log("[TRADE UPDATE] takeProfitTargets in updates");
     }
 
     // Process all other fields
@@ -1790,7 +1780,7 @@ class Trade {
 
         // Handle JSON/JSONB fields that need serialization
         if (key === 'classificationMetadata' || key === 'newsEvents' || key === 'takeProfitTargets') {
-          console.log(`[TRADE UPDATE] Saving ${key} as ${dbKey}:`, JSON.stringify(value));
+          console.log("[TRADE UPDATE] Saving");
           values.push(JSON.stringify(value));
         } else {
           values.push(value);
@@ -1798,7 +1788,7 @@ class Trade {
 
         // Log strategy and setup updates
         if (key === 'strategy' || key === 'setup') {
-          console.log(`[TRADE UPDATE] Setting ${key}="${value}" for trade ${id}`);
+          console.log("[TRADE UPDATE] Setting");
         }
 
         paramCount++;
@@ -1858,12 +1848,12 @@ class Trade {
             stopLoss = weightedStopLoss;
             exitPrice = weightedExit || exitPrice;
 
-            console.log('[R-MULTIPLE] Using weighted averages from executions:', { entryPrice, stopLoss, exitPrice });
+            console.log("[R-MULTIPLE] Using weighted averages from executions");
           }
         }
       }
 
-      console.log('[R-MULTIPLE CALC] Inputs:', { entryPrice, stopLoss, exitPrice, side });
+      console.log("[R-MULTIPLE CALC] Inputs");
 
       // Calculate R-Multiple if stop loss and exit price are provided
       // R-Multiple = Profit / Risk (where Risk = distance from entry to stop loss)
@@ -1880,7 +1870,7 @@ class Trade {
         })
         : null;
 
-      console.log('[R-MULTIPLE CALC] Result:', rValue);
+      console.log("[R-MULTIPLE CALC] Result");
 
       fields.push(`r_value = $${paramCount}`);
       values.push(rValue);
@@ -1905,9 +1895,9 @@ class Trade {
     // Log stopLoss in final query
     if (updates.stopLoss !== undefined) {
       const stopLossIndex = fields.findIndex(f => f.includes('stop_loss'));
-      console.log(`[STOP LOSS UPDATE] Final query includes stop_loss: ${stopLossIndex >= 0}`);
+      console.log("[STOP LOSS UPDATE] Final query includes stop_loss");
       if (stopLossIndex >= 0) {
-        console.log(`[STOP LOSS UPDATE] Final value: ${values[stopLossIndex]}`);
+        console.log("[STOP LOSS UPDATE] Final value");
       }
     }
 
@@ -1933,12 +1923,12 @@ class Trade {
     // Check for new achievements after trade update (async, don't wait for completion)
     if (!options.skipAchievements) {
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
-        console.warn(`Failed to check achievements for user ${userId} after trade update:`, error.message);
+        console.warn("Failed to check achievements");
       });
       
       // Update trading streak (async, don't wait for completion)  
       AchievementService.updateTradingStreak(userId).catch(error => {
-        console.warn(`Failed to update trading streak for user ${userId} after trade update:`, error.message);
+        console.warn("Failed to update trading streak");
       });
     }
     
@@ -1965,7 +1955,7 @@ class Trade {
         const deletedJobs = await client.query(jobDeleteQuery, [id]);
 
         if (deletedJobs.rows.length > 0) {
-          console.log(`Deleted ${deletedJobs.rows.length} jobs for trade ${id}`);
+          console.log("Deleted");
         }
 
         // Then delete the trade
@@ -1987,7 +1977,7 @@ class Trade {
         return result.rows[0];
       });
 
-      console.log(`Successfully deleted trade ${id} and its associated jobs`);
+      console.log("Successfully deleted trade");
       if (!options.skipOptionGrouping) {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'trade deletion');
       }
@@ -1998,7 +1988,7 @@ class Trade {
       if (error.sentinel === TRADE_NOT_FOUND) {
         return null; // Trade not found or doesn't belong to user
       }
-      console.error(`Failed to delete trade ${id}:`, error.message);
+      console.error("Failed to delete trade");
       throw error;
     }
   }
@@ -2295,13 +2285,13 @@ class Trade {
   static calculateRValue(entryPrice, stopLoss, exitPrice, side, options = {}) {
     // Validate inputs - all required for calculation
     if (!entryPrice || !stopLoss || !exitPrice || !side) {
-      console.warn('[R-MULTIPLE] Missing required inputs:', { entryPrice, stopLoss, exitPrice, side });
+      console.warn("[R-MULTIPLE] Missing required inputs");
       return null;
     }
 
     // Ensure all values are positive
     if (entryPrice <= 0 || stopLoss <= 0 || exitPrice <= 0) {
-      console.warn('[R-MULTIPLE] All values must be positive:', { entryPrice, stopLoss, exitPrice });
+      console.warn("[R-MULTIPLE] All values must be positive");
       return null;
     }
 
@@ -2333,13 +2323,13 @@ class Trade {
         return null;
       }
     } else {
-      console.warn('[R-MULTIPLE] Invalid side value:', side);
+      console.warn("[R-MULTIPLE] Invalid side value");
       return null;
     }
 
     // Calculate R-Multiple as actual profit divided by risk amount
     if (riskAmount <= 0) {
-      console.warn('[R-MULTIPLE] Risk amount must be positive, got:', riskAmount);
+      console.warn("[R-MULTIPLE] Risk amount must be positive, got");
       return null;
     }
 
@@ -2372,7 +2362,7 @@ class Trade {
       );
 
       if (!totalRiskAmount || totalRiskAmount <= 0) {
-        console.warn('[R-MULTIPLE] Total risk amount must be positive, got:', totalRiskAmount);
+        console.warn("[R-MULTIPLE] Total risk amount must be positive, got");
         return null;
       }
 
@@ -2386,7 +2376,7 @@ class Trade {
 
     // Guard against NaN or Infinity (negative values are allowed)
     if (!isFinite(rMultiple)) {
-      console.warn('[R-MULTIPLE] Invalid calculated R-Multiple:', rMultiple);
+      console.warn("[R-MULTIPLE] Invalid calculated R-Multiple");
       return null;
     }
 
@@ -2646,12 +2636,12 @@ class Trade {
 
       await client.query('COMMIT');
       if (updatedCount > 0) {
-        console.log(`[STOP LOSS] Synced ${updatedCount} default-derived stop losses for user ${userId}`);
+        console.log("[STOP LOSS] Synced");
       }
       return updatedCount;
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('[STOP LOSS] Error syncing default stop losses:', error);
+      console.error("[STOP LOSS] Error syncing default stop losses");
       throw error;
     } finally {
       client.release();
@@ -2695,13 +2685,13 @@ class Trade {
         try {
           await AnalyticsCache.invalidate(settings.user_id);
         } catch (error) {
-          console.warn(`[STOP LOSS] Failed to invalidate analytics cache for user ${settings.user_id}: ${error.message}`);
+          console.warn("[STOP LOSS] Failed to invalidate analytics cache");
         }
       }
     }
 
     if (usersProcessed > 0) {
-      console.log(`[STOP LOSS] Dollar default repair checked ${usersProcessed} users and updated ${tradesUpdated} trades.`);
+      console.log("[STOP LOSS] Dollar default repair checked");
     }
 
     return { usersProcessed, tradesUpdated };
@@ -2725,7 +2715,7 @@ class Trade {
       return 0;
     }
 
-    console.log(`[TAKE PROFIT] Applying ${takeProfitType} default to existing trades without take profit for user ${userId}`);
+    console.log("[TAKE PROFIT] Applying");
 
     // Use a transaction to update all trades at once
     const client = await db.pool.connect();
@@ -2745,7 +2735,7 @@ class Trade {
       const tradesResult = await client.query(tradesQuery, [userId]);
       const trades = tradesResult.rows;
 
-      console.log(`[TAKE PROFIT] Found ${trades.length} trades without take profit`);
+      console.log("[TAKE PROFIT] Found");
 
       if (trades.length === 0) {
         await client.query('COMMIT');
@@ -2770,12 +2760,12 @@ class Trade {
       }
 
       await client.query('COMMIT');
-      console.log(`[TAKE PROFIT] Successfully updated ${updatedCount} trades with default take profit`);
+      console.log("[TAKE PROFIT] Successfully updated");
       return updatedCount;
 
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('[TAKE PROFIT] Error applying default take profit to existing trades:', error);
+      console.error("[TAKE PROFIT] Error applying default take profit to existing trades");
       throw error;
     } finally {
       client.release();
@@ -2797,7 +2787,7 @@ class Trade {
   }
 
   static async getPartialExitAnalytics(userId, filters = {}) {
-    console.log('[PARTIAL-EXIT] Getting partial exit analytics for user:', userId);
+    console.log("[PARTIAL-EXIT] Getting partial exit analytics");
 
     // Build WHERE clause. The date-range predicate is shared with the canonical
     // TradeQueries._buildWhereClause via buildTradeDateRangeClause so the two
@@ -2912,13 +2902,13 @@ class Trade {
       AND jsonb_array_length(t.executions) > 0
     `;
 
-    console.log('[PARTIAL-EXIT] Query:', query);
-    console.log('[PARTIAL-EXIT] Values:', values);
+    console.log("[PARTIAL-EXIT] Query");
+    console.log("[PARTIAL-EXIT] Values");
 
     const result = await db.query(query, values);
     const trades = result.rows;
 
-    console.log('[PARTIAL-EXIT] Found', trades.length, 'trades with executions');
+    console.log("[PARTIAL-EXIT] Found");
 
     // Process each trade to extract partial exit data
     const tradePartials = [];
@@ -3097,7 +3087,7 @@ class Trade {
   }
 
   static async getMonthlyPerformance(userId, year, accounts = null, filters = {}) {
-    console.log(`[MONTHLY] Getting monthly performance for user ${userId}, year ${year}, accounts:`, accounts, 'filters:', filters);
+    console.log("[MONTHLY] Getting monthly performance");
 
     const { getBreakevenToleranceConfig, breakevenPredicate, groupedBreakevenPredicate } = require('../utils/breakeven');
     const { POSITION_GROUP_KEY, isPositionGroupingEnabled } = require('../utils/positionGrouping');
@@ -3319,8 +3309,8 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
           : 0
       };
 
-      console.log(`[MONTHLY] Found data for ${monthlyData.length} months in year ${year}`);
-      console.log(`[MONTHLY] Total R-Value sum: ${yearTotals.totalRValue.toFixed(2)}R`);
+      console.log("[MONTHLY] Found data");
+      console.log("[MONTHLY] Total R-Value sum");
 
       return {
         monthly: monthlyData,
@@ -3336,7 +3326,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         }
       };
     } catch (error) {
-      console.error('[ERROR] Failed to get monthly performance:', error);
+      console.error("[ERROR] Failed to get monthly performance");
       throw error;
     }
   }
@@ -3553,7 +3543,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         AND instrument_type IS DISTINCT FROM 'option'
     `;
     const result = await db.query(query, [userId, cusip, ticker]);
-    console.log(`Updated ${result.rowCount} trades: changed symbol from ${cusip} to ${ticker}`);
+    console.log("Updated");
     return { affectedRows: result.rowCount };
   }
 
@@ -3837,7 +3827,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
     try {
       const circuitBreakerData = await cache.get(circuitBreakerKey);
       if (circuitBreakerData && circuitBreakerData.failures >= 10) {
-        console.log(`Circuit breaker OPEN: Skipping Finnhub API calls due to ${circuitBreakerData.failures} recent failures`);
+        console.log("Circuit breaker OPEN: Skipping Finnhub API calls due");
         return {
           strategy: this.classifyTradeStrategy(trade),
           confidence: 0.6,
@@ -3861,7 +3851,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const isSignificantTrade = value > 1000 || pnl > 50 || holdTimeMinutes > 1440; // $1000+ value, $50+ P&L, or 1+ day hold
       
       if (!isSignificantTrade) {
-        console.log(`Fast classification for small trade ${trade.id}: $${value.toFixed(2)} value, ${holdTimeMinutes}min hold`);
+        console.log("Fast classification for small trade");
         return {
           strategy: this.classifyTradeStrategy(trade),
           confidence: 0.7,
@@ -3887,7 +3877,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const analysisEnd = exitTimestamp + (6 * 60 * 60); // 6 hours after (was 24)
 
       // Only fetch candles (skip expensive technical indicators for performance)
-      console.log(`Full classification for significant trade ${trade.id}: $${value.toFixed(2)} value`);
+      console.log("Full classification for significant trade");
       
       const candles = await finnhub.getCandles(symbol, '60', analysisStart, analysisEnd, userId).catch(() => null);
 
@@ -3913,7 +3903,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       return analysis.strategy;
 
     } catch (error) {
-      console.error(`Error analyzing trade ${trade.id} for strategy classification:`, error);
+      console.error("Error analyzing trade");
       
       // Record failure for circuit breaker
       try {
@@ -3923,7 +3913,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         await cache.set(circuitBreakerKey, circuitBreakerData, 3600 * 1000); // Store for 1 hour
         
         if (circuitBreakerData.failures >= 10) {
-          console.log(`[ERROR] Circuit breaker OPENED: ${circuitBreakerData.failures} Finnhub failures`);
+          console.log("[ERROR] Circuit breaker OPENED");
         }
       } catch (cacheError) {
         // Ignore cache errors
@@ -3967,7 +3957,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
     }
 
     try {
-      console.log(`Fetching technical indicators for ${symbol}: ${new Date(analysisStart * 1000).toISOString()} to ${new Date(analysisEnd * 1000).toISOString()} (${resolution}min resolution)`);
+      console.log("Fetching technical indicators");
       
       // Fetch indicators with adaptive parameters
       const indicators = {};
@@ -3976,24 +3966,24 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // Skip RSI for known problematic symbols that consistently fail
       const problematicSymbols = ['AAPL', 'ORIS']; // Add symbols that consistently fail
       if (problematicSymbols.includes(symbol)) {
-        console.warn(`Skipping RSI for known problematic symbol: ${symbol}`);
+        console.warn("Skipping RSI for known problematic symbol");
         indicators.rsi = null;
       } else {
         try {
           indicators.rsi = await finnhub.getTechnicalIndicator(symbol, resolution, analysisStart, analysisEnd, 'rsi', { timeperiod: 14 }, userId);
         } catch (error) {
-          console.warn(`RSI failed for ${symbol}: ${error.message}`);
+          console.warn("RSI failed");
 
           // Try one simple fallback: daily data with minimal range
           if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
             try {
               // Minimal approach: 30 days of daily data only
-              console.warn(`Retrying RSI for ${symbol} with minimal daily data`);
+              console.warn("Retrying RSI");
               const minimalStart = tradeStart - (30 * 24 * 60 * 60); // 30 days only
               const minimalEnd = tradeEnd; // No extra days after
               indicators.rsi = await finnhub.getTechnicalIndicator(symbol, 'D', minimalStart, minimalEnd, 'rsi', { timeperiod: 14 }, userId);
             } catch (minimalError) {
-              console.warn(`RSI minimal fallback failed for ${symbol}, adding to problematic symbols list: ${minimalError.message}`);
+              console.warn("RSI minimal fallback failed");
               indicators.rsi = null;
             }
           } else {
@@ -4008,10 +3998,10 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
           fastperiod: 12, slowperiod: 26, signalperiod: 9
         }, userId);
       } catch (error) {
-        console.warn(`MACD failed for ${symbol}: ${error.message}`);
+        console.warn("MACD failed");
 
         // Skip MACD on this error since it requires even more data than RSI
-        console.warn(`Skipping MACD for ${symbol} due to data range limitations`);
+        console.warn("Skipping MACD");
         indicators.macd = null;
       }
 
@@ -4021,20 +4011,20 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
           timeperiod: 20, nbdevup: 2, nbdevdn: 2
         }, userId);
       } catch (error) {
-        console.warn(`BBands failed for ${symbol}: ${error.message}`);
+        console.warn("BBands failed");
 
         // Try fallback with shorter BBands period
         if (error.message.includes('Timeperiod is too long') || error.message.includes('422')) {
           try {
             // Fallback: Use shorter BBands period (10 instead of 20) with daily resolution
-            console.warn(`Retrying BBands for ${symbol} with shorter period (10) and daily resolution`);
+            console.warn("Retrying BBands");
             const dailyStart = Math.floor((tradeStart - (30 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 30 days for BBands-10
             const dailyEnd = Math.floor((tradeEnd + (3 * 24 * 60 * 60)) / (24 * 60 * 60)) * 24 * 60 * 60; // 3 days after
             indicators.bbands = await finnhub.getTechnicalIndicator(symbol, 'D', dailyStart, dailyEnd, 'bbands', {
               timeperiod: 10, nbdevup: 2, nbdevdn: 2
             }, userId);
           } catch (fallbackError) {
-            console.warn(`BBands fallback failed for ${symbol}: ${fallbackError.message}`);
+            console.warn("BBands fallback failed");
             indicators.bbands = null;
           }
         } else {
@@ -4051,7 +4041,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         stoch: null 
       };
     } catch (error) {
-      console.error('Error fetching technical indicators:', error);
+      console.error("Error fetching technical indicators");
       return null;
     }
   }
@@ -4446,7 +4436,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const tradeDate = new Date(tradeData.tradeDate || tradeData.entry_time);
       const symbol = tradeData.symbol;
       
-      console.log(`Checking news for ${symbol} on ${tradeDate.toISOString().split('T')[0]}`);
+      console.log("Checking news");
       
       const newsData = await newsEnrichmentService.getNewsForSymbolAndDate(symbol, tradeDate, userId);
       
@@ -4458,7 +4448,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       };
 
     } catch (error) {
-      console.warn(`Error checking news for trade: ${error.message}`);
+      console.warn("Error checking news for trade");
       return {
         hasNews: false,
         newsEvents: [],
@@ -4487,7 +4477,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
 
       // Ensure entry time is valid
       if (isNaN(entryDate.getTime())) {
-        console.warn(`[LoD] Invalid entry time: ${entryTime}`);
+        console.warn("[LoD] Invalid entry time");
         return null;
       }
 
@@ -4518,12 +4508,12 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // Calculate time available before entry (in minutes)
       const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
 
-      console.log(`[LoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
-      console.log(`[LoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+      console.log("[LoD] Entry time");
+      console.log("[LoD] Minutes of trading before entry");
 
       // If entry is within 1 minute of day start, we can't determine LoD "to the left"
       if (minutesBeforeEntry < 1) {
-        console.warn(`[LoD] Entry time is less than 1 minute after day start, cannot determine LoD to the left`);
+        console.warn("[LoD] Entry time is less than 1 minute after day start, cannot determine LoD to the left");
         return null;
       }
 
@@ -4542,21 +4532,21 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         );
 
         if (data && data.length > 0) {
-          console.log(`[LoD] Got ${data.length} candles for ${symbol} from ${source}`);
+          console.log("[LoD] Got");
         }
         return data;
       };
 
       // Ensure entry time is after day start
       if (entryTimestamp <= dayStartTimestamp) {
-        console.warn(`[LoD] Entry time is before market open, cannot determine LoD to the left`);
+        console.warn("[LoD] Entry time is before market open, cannot determine LoD to the left");
         return null;
       }
 
       // Choose resolution based on time available before entry
       // Use 1-minute candles if we have less than 30 minutes, otherwise 5-minute is sufficient
       let resolution = minutesBeforeEntry < 30 ? '1' : '5';
-      console.log(`[LoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+      console.log("[LoD] Using");
 
       // Fetch candles from start of day to entry time
       let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
@@ -4564,13 +4554,13 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // If chosen resolution data is not available, try the other resolution
       if (!candles || candles.length === 0) {
         const fallbackResolution = resolution === '1' ? '5' : '1';
-        console.log(`[LoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        console.log("[LoD] No");
         candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
       }
 
       // If still no data, cannot determine LoD to the left
       if (!candles || candles.length === 0) {
-        console.warn(`[LoD] No intraday candle data available for ${symbol}`);
+        console.warn("[LoD] No intraday candle data available");
         return null;
       }
 
@@ -4578,10 +4568,10 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // This gives us "LoD to the left" - the lowest price before we entered the trade
       const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
 
-      console.log(`[LoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+      console.log("[LoD] Filtering candles");
 
       if (candlesBeforeEntry.length === 0) {
-        console.warn(`[LoD] No candles found before entry time for ${symbol}`);
+        console.warn("[LoD] No candles found before entry time");
         return null;
       }
 
@@ -4589,7 +4579,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const lows = candlesBeforeEntry.map(c => parseFloat(c.low)).filter(l => !isNaN(l));
 
       if (lows.length === 0) {
-        console.warn(`[LoD] No valid low prices found for ${symbol}`);
+        console.warn("[LoD] No valid low prices found");
         return null;
       }
 
@@ -4598,12 +4588,12 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // Log detailed info for debugging
       const firstCandle = candlesBeforeEntry[0];
       const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
-      console.log(`[LoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
-      console.log(`[LoD] Low of Day "to the left" for ${symbol}: $${lod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+      console.log("[LoD] Candle range");
+      console.log("[LoD] Low of Day \"to the left\"");
 
       return roundToDbPrecision(lod, 4);
     } catch (error) {
-      console.warn(`[LoD] Error fetching Low of Day for ${symbol}: ${error.message}`);
+      console.warn("[LoD] Error fetching Low of Day");
       return null;
     }
   }
@@ -4625,7 +4615,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const entryDate = new Date(entryTime);
 
       if (isNaN(entryDate.getTime())) {
-        console.warn(`[HoD] Invalid entry time: ${entryTime}`);
+        console.warn("[HoD] Invalid entry time");
         return null;
       }
 
@@ -4654,11 +4644,11 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
 
       const minutesBeforeEntry = (entryTimestamp - dayStartTimestamp) / 60;
 
-      console.log(`[HoD] Entry time: ${entryDate.toISOString()}, Day start: ${dayStart.toISOString()}`);
-      console.log(`[HoD] Minutes of trading before entry: ${minutesBeforeEntry.toFixed(1)}`);
+      console.log("[HoD] Entry time");
+      console.log("[HoD] Minutes of trading before entry");
 
       if (minutesBeforeEntry < 1) {
-        console.warn(`[HoD] Entry time is less than 1 minute after day start, cannot determine HoD to the left`);
+        console.warn("[HoD] Entry time is less than 1 minute after day start, cannot determine HoD to the left");
         return null;
       }
 
@@ -4675,29 +4665,29 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
         );
 
         if (data && data.length > 0) {
-          console.log(`[HoD] Got ${data.length} candles for ${symbol} from ${source}`);
+          console.log("[HoD] Got");
         }
         return data;
       };
 
       if (entryTimestamp <= dayStartTimestamp) {
-        console.warn(`[HoD] Entry time is before market open, cannot determine HoD to the left`);
+        console.warn("[HoD] Entry time is before market open, cannot determine HoD to the left");
         return null;
       }
 
       let resolution = minutesBeforeEntry < 30 ? '1' : '5';
-      console.log(`[HoD] Using ${resolution}-minute resolution based on ${minutesBeforeEntry.toFixed(1)} minutes before entry`);
+      console.log("[HoD] Using");
 
       let candles = await fetchCandlesWithFallback(resolution, dayStartTimestamp, entryTimestamp);
 
       if (!candles || candles.length === 0) {
         const fallbackResolution = resolution === '1' ? '5' : '1';
-        console.log(`[HoD] No ${resolution}-minute data available, trying ${fallbackResolution}-minute candles`);
+        console.log("[HoD] No");
         candles = await fetchCandlesWithFallback(fallbackResolution, dayStartTimestamp, entryTimestamp);
       }
 
       if (!candles || candles.length === 0) {
-        console.warn(`[HoD] No intraday candle data available for ${symbol}`);
+        console.warn("[HoD] No intraday candle data available");
         return null;
       }
 
@@ -4705,10 +4695,10 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       // This gives us "HoD to the left" - the highest price before we entered the trade
       const candlesBeforeEntry = candles.filter(c => c.time < entryTimestamp);
 
-      console.log(`[HoD] Filtering candles: ${candles.length} total, ${candlesBeforeEntry.length} strictly before entry`);
+      console.log("[HoD] Filtering candles");
 
       if (candlesBeforeEntry.length === 0) {
-        console.warn(`[HoD] No candles found before entry time for ${symbol}`);
+        console.warn("[HoD] No candles found before entry time");
         return null;
       }
 
@@ -4716,7 +4706,7 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
       const highs = candlesBeforeEntry.map(c => parseFloat(c.high)).filter(h => !isNaN(h));
 
       if (highs.length === 0) {
-        console.warn(`[HoD] No valid high prices found for ${symbol}`);
+        console.warn("[HoD] No valid high prices found");
         return null;
       }
 
@@ -4724,12 +4714,12 @@ const { fxUsd: fxUsdTrade } = require('../utils/tradeFx');
 
       const firstCandle = candlesBeforeEntry[0];
       const lastCandle = candlesBeforeEntry[candlesBeforeEntry.length - 1];
-      console.log(`[HoD] Candle range: ${new Date(firstCandle.time * 1000).toISOString()} to ${new Date(lastCandle.time * 1000).toISOString()}`);
-      console.log(`[HoD] High of Day "to the left" for ${symbol}: $${hod.toFixed(2)} (from ${candlesBeforeEntry.length} candles before entry)`);
+      console.log("[HoD] Candle range");
+      console.log("[HoD] High of Day \"to the left\"");
 
       return roundToDbPrecision(hod, 4);
     } catch (error) {
-      console.warn(`[HoD] Error fetching High of Day for ${symbol}: ${error.message}`);
+      console.warn("[HoD] Error fetching High of Day");
       return null;
     }
   }

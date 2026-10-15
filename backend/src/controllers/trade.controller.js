@@ -104,10 +104,10 @@ async function autoCalculateMAEMFE(userId, trade) {
     const jobQueue = require('../utils/jobQueue');
     const jobId = await jobQueue.enqueueMAERecalc(userId);
     if (jobId) {
-      console.log(`[MAE/MFE] Queued mae_recalc job ${jobId} for trade ${trade.id} (${trade.symbol})`);
+      console.log("[MAE/MFE] Queued mae_recalc job");
     }
   } catch (error) {
-    console.warn(`[MAE/MFE] Failed to queue recalculation for trade ${trade.id}: ${error.message}`);
+    console.warn("[MAE/MFE] Failed to queue recalculation for trade");
   }
 }
 
@@ -118,12 +118,12 @@ async function ensureSymbolMetadata(symbol) {
   try {
     const category = await symbolCategories.getSymbolCategory(normalizedSymbol);
     if (category) {
-      console.log(`[SYMBOLS] Enriched metadata for ${normalizedSymbol}`);
+      console.log("[SYMBOLS] Enriched metadata");
     } else {
-      console.log(`[SYMBOLS] No metadata available for ${normalizedSymbol}`);
+      console.log("[SYMBOLS] No metadata available");
     }
   } catch (error) {
-    console.warn(`[SYMBOLS] Failed to enrich metadata for ${normalizedSymbol}: ${error.message}`);
+    console.warn("[SYMBOLS] Failed to enrich metadata");
   }
 }
 
@@ -248,7 +248,7 @@ async function autoCalculatePostExitMAEMFE(userId, trade) {
     const window = await resolvePostExitWindow(userId, tradeData);
     if (!window) return;
 
-    console.log(`[MAE/MFE] Auto-calculating post-exit window for trade ${trade.id} (${trade.symbol})`);
+    console.log("[MAE/MFE] Auto-calculating post-exit window for trade");
     const { post_exit_mae, post_exit_mfe } = await MAEEstimator.calculatePostExitFromCandleData(tradeData, window.end);
 
     await Trade.update(trade.id, userId, {
@@ -260,9 +260,9 @@ async function autoCalculatePostExitMAEMFE(userId, trade) {
       postExitCalculatedAt: new Date().toISOString()
     });
     await AnalyticsCache.invalidate(userId);
-    console.log(`[MAE/MFE] Updated post-exit trade ${trade.id}: MAE=$${post_exit_mae.toFixed(2)}, MFE=$${post_exit_mfe.toFixed(2)}, window=${window.minutes}m`);
+    console.log("[MAE/MFE] Updated post-exit trade");
   } catch (error) {
-    console.warn(`[MAE/MFE] Post-exit auto-calculation failed for trade ${trade.id}: ${error.message}`);
+    console.warn("[MAE/MFE] Post-exit auto-calculation failed for trade");
   }
 }
 
@@ -271,10 +271,10 @@ async function timeAsyncOperation(label, operation) {
 
   try {
     const result = await operation();
-    console.log(`[PERF] ${label} took ${Date.now() - startedAt}ms`);
+    console.log("[PERF]");
     return result;
   } catch (error) {
-    console.warn(`[PERF] ${label} failed after ${Date.now() - startedAt}ms: ${error.message}`);
+    console.warn("[PERF]");
     throw error;
   }
 }
@@ -393,7 +393,7 @@ async function persistTradeListQuote(symbol, quote, instrumentType='stock') {
   try {
     await require('../services/marketQuoteCache').save(symbol,instrumentType,quote,instrumentType==='crypto' ? 'coingecko' : finnhub.providerName || 'market_data');
   } catch (error) {
-    console.warn('[TRADE-LIST] Failed to persist quote for',symbol,'-',error.message);
+    console.warn("[TRADE-LIST] Failed to persist quote");
   }
 }
 
@@ -456,7 +456,7 @@ async function hydrateOpenTradePrices(trades, userId) {
 
     await Promise.allSettled(persistJobs);
   } catch (error) {
-    console.warn('[TRADE-LIST] Quote hydration failed:', error.message);
+    console.warn("[TRADE-LIST] Quote hydration failed");
   }
 }
 
@@ -503,7 +503,7 @@ async function fetchCurrentPriceForSymbol(symbol, userId, targetCurrency = 'USD'
     const price = converted && Number.isFinite(Number(converted.c)) ? Number(converted.c) : null;
     return Number.isFinite(price) && price > 0 ? price : null;
   } catch (error) {
-    console.warn('[TRADE-DETAIL] current price lookup failed for', symbol, '-', error.message);
+    console.warn("[TRADE-DETAIL] current price lookup failed");
     return null;
   }
 }
@@ -548,11 +548,11 @@ const tradeController = {
       };
 
       if (filters.tags && filters.tags.length > 0) {
-        console.log('[TAGS] Filtering by tags:', filters.tags);
+        console.log("[TAGS] Filtering by tags");
       }
 
       if (filters.qualityGrades && filters.qualityGrades.length > 0) {
-        console.log('[QUALITY] Filtering by quality grades:', filters.qualityGrades);
+        console.log("[QUALITY] Filtering by quality grades");
       }
 
       // Check if count should be skipped for faster initial load
@@ -572,9 +572,9 @@ const tradeController = {
       }
 
       // Get trades with pagination
-      console.log('[PERF] About to call TradeQueries.findByUser, elapsed:', Date.now() - requestStartTime, 'ms');
+      console.log("[PERF] About to call TradeQueries.findByUser, elapsed");
       const trades = await TradeQueries.findByUser(req.user.id, filters);
-      console.log('[PERF] TradeQueries.findByUser completed, elapsed:', Date.now() - requestStartTime, 'ms');
+      console.log("[PERF] TradeQueries.findByUser completed, elapsed");
 
       const hydrationPromise = hydrateOpenTradePrices(trades, req.user.id);
       await withTimeout(
@@ -585,7 +585,7 @@ const tradeController = {
         // The provider promise continues warming the shared cache after the
         // response budget expires; only unexpected errors need logging here.
         if (error.code !== 'ETIMEOUT') {
-          console.warn('[TRADE-LIST] Quote hydration wait failed:', error.message);
+          console.warn("[TRADE-LIST] Quote hydration wait failed");
         }
       });
 
@@ -635,7 +635,7 @@ const tradeController = {
       // Get total count without pagination (can be skipped for faster initial load)
       if (totalCountPromise) {
         const total = await totalCountPromise;
-        console.log('[PERF] Trade.getCountWithFilters completed, total:', total, ', elapsed:', Date.now() - requestStartTime, 'ms');
+        console.log("[PERF] Trade.getCountWithFilters completed, total");
 
         response.total = total;
         response.totalPages = Math.ceil(total / filters.limit);
@@ -646,7 +646,7 @@ const tradeController = {
         console.log('[PERF] Skipped count query for faster response');
       }
 
-      console.log('[PERF] getUserTrades total time:', Date.now() - requestStartTime, 'ms');
+      console.log("[PERF] getUserTrades total time");
       res.json(await convertForDisplay(req, response, { clone: false, rowCurrency: true }));
     } catch (error) {
       next(error);
@@ -754,7 +754,7 @@ const tradeController = {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(csv);
 
-      logger.info(`Exported ${trades.length} trades to CSV for user [detail omitted]`);
+      logger.info("Exported");
     } catch (error) {
       logger.logError('Error exporting trades to CSV:');
       next(error);
@@ -849,7 +849,7 @@ const tradeController = {
 
       // Log incoming trade data for debugging
       if (normalizedBody.strategy || normalizedBody.setup) {
-        console.log(`[TRADE CONTROLLER] Creating trade with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+        console.log("[TRADE CONTROLLER] Creating trade with strategy=\"");
       }
       const { trade, duplicate } = await Trade.create(req.user.id, normalizedBody, { prevent_duplicates: true });
       if (duplicate) {
@@ -965,7 +965,7 @@ const tradeController = {
         try {
           trade.executions = JSON.parse(trade.executions);
         } catch (e) {
-          console.warn('Failed to parse executions JSON:', e);
+          console.warn("Failed to parse executions JSON");
           trade.executions = [];
         }
       }
@@ -975,7 +975,7 @@ const tradeController = {
         try {
           trade.quality_metrics = JSON.parse(trade.quality_metrics);
         } catch (e) {
-          console.warn('Failed to parse quality_metrics JSON:', e);
+          console.warn("Failed to parse quality_metrics JSON");
           trade.quality_metrics = null;
         }
       }
@@ -1131,7 +1131,7 @@ const tradeController = {
       }
       // Log incoming update data for debugging
       if (normalizedBody.strategy !== undefined || normalizedBody.setup !== undefined) {
-        console.log(`[TRADE CONTROLLER] Updating trade ${req.params.id} with strategy="${normalizedBody.strategy || 'null'}", setup="${normalizedBody.setup || 'null'}"`);
+        console.log("[TRADE CONTROLLER] Updating trade");
       }
       const trade = await Trade.update(req.params.id, req.user.id, normalizedBody);
       
@@ -1395,7 +1395,7 @@ const tradeController = {
       if (newTradeIds.length > 0) {
         const AchievementService = require('../services/achievementService');
         AchievementService.checkAndAwardAchievements(req.user.id).catch(error => {
-          console.warn(`Failed to check achievements after trade split for user ${req.user.id}:`, error.message);
+          console.warn("Failed to check achievements after trade split");
         });
       }
 
@@ -1417,8 +1417,8 @@ const tradeController = {
         trades_created: newTradeIds.length
       });
     } catch (error) {
-      console.error('[SPLIT] Error splitting trade:', error.message);
-      console.error('[SPLIT] Stack:', error.stack);
+      console.error("[SPLIT] Error splitting trade");
+      console.error("[SPLIT] Stack");
       next(error);
     }
   },
@@ -1478,7 +1478,7 @@ const tradeController = {
             );
 
             if (deletedJobs.rows.length > 0) {
-              console.log(`Deleted ${deletedJobs.rows.length} jobs for ${idsToDelete.length} trades`);
+              console.log("Deleted");
             }
 
             const result = await client.query(
@@ -1504,7 +1504,7 @@ const tradeController = {
             }
           }
         } catch (error) {
-          console.error('Failed to bulk delete trades:', error.message);
+          console.error("Failed to bulk delete trades");
           for (const tradeId of idsToDelete) {
             errors.push({ tradeId, error: error.message });
           }
@@ -1596,10 +1596,10 @@ const tradeController = {
         // whole batch instead of once per trade (async, don't wait)
         const AchievementService = require('../services/achievementService');
         AchievementService.checkAndAwardAchievements(req.user.id).catch(error => {
-          console.warn(`Failed to check achievements for user ${req.user.id} after bulk tag update:`, error.message);
+          console.warn("Failed to check achievements");
         });
         AchievementService.updateTradingStreak(req.user.id).catch(error => {
-          console.warn(`Failed to update trading streak for user ${req.user.id} after bulk tag update:`, error.message);
+          console.warn("Failed to update trading streak");
         });
 
         // Invalidate analytics cache once for this trade mutation
@@ -2113,7 +2113,7 @@ const tradeController = {
       process.nextTick(async () => {
         // Set up a timeout to prevent stuck imports
         const importTimeout = setTimeout(async () => {
-          logger.logError(`Import [detail omitted] timed out after 10 minutes`);
+          logger.logError("Import [detail omitted] timed out after 10 minutes");
           await db.query(`
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
@@ -2122,18 +2122,18 @@ const tradeController = {
         }, 10 * 60 * 1000); // 10 minutes
         
         try {
-          logger.logImport(`Starting import for user [detail omitted], broker: [detail omitted], file: [detail omitted]`);
+          logger.logImport("Starting import");
 
           // Resolve selected account identifier early so we can scope duplicate detection per account
           const selectedAccountId = selectedImportAccountIdentifier;
           if (selectedAccountId) {
-            logger.logImport(`Using selected account identifier: [detail omitted]`);
+            logger.logImport("Using selected account identifier: [detail omitted]");
           }
 
           // Fetch existing open positions for context-aware parsing
           // Include option fields to properly distinguish different option contracts
           // Scope to selected account when importing into a specific account
-          logger.logImport(`Fetching existing open positions for context-aware import...`);
+          logger.logImport("Fetching existing open positions for context-aware import...");
           const openPositionsParams = [fileUserId];
           let openPositionsQuery = `
             SELECT id, symbol, side, quantity, entry_price, entry_time, trade_date, commission, broker, executions,
@@ -2148,11 +2148,11 @@ const tradeController = {
           openPositionsParams.push(...openPositionsAccountScope.params);
           openPositionsQuery += ` ORDER BY symbol, entry_time`;
           const openPositionsResult = await db.query(openPositionsQuery, openPositionsParams);
-          logger.logImport(`Found [detail omitted] existing open positions[detail omitted]`);
+          logger.logImport("Found [detail omitted] existing open positions[detail omitted]");
 
           // Also fetch completed trades to check for duplicate executions
           // Scope to selected account to allow same trades in different accounts
-          logger.logImport(`Fetching completed trades for duplicate detection...`);
+          logger.logImport("Fetching completed trades for duplicate detection...");
           const completedTradesParams = [fileUserId];
           let completedTradesQuery = `
             SELECT id, symbol, executions, instrument_type, strike_price, expiration_date, option_type, conid
@@ -2166,7 +2166,7 @@ const tradeController = {
           completedTradesParams.push(...completedTradesAccountScope.params);
           completedTradesQuery += ` ORDER BY symbol, entry_time`;
           const completedTradesResult = await db.query(completedTradesQuery, completedTradesParams);
-          logger.logImport(`Found [detail omitted] completed trades for duplicate checking[detail omitted]`);
+          logger.logImport("Found [detail omitted] completed trades for duplicate checking[detail omitted]");
 
           // Helper function to build composite key for options
           // For options: symbol_strike_expiration_type (e.g., "DG_7.5_2024-02-16_put")
@@ -2196,7 +2196,7 @@ const tradeController = {
                   ? JSON.parse(row.executions)
                   : row.executions;
               } catch (e) {
-                console.warn(`Failed to parse executions for trade [detail omitted]:`);
+                console.warn("Failed to parse executions for trade [detail omitted]");
                 parsedExecutions = [];
               }
             }
@@ -2229,18 +2229,18 @@ const tradeController = {
             // Also store by conid key if available (for IBKR reliable matching)
             if (row.conid) {
               existingPositions[`conid_${row.conid}`] = positionData;
-              logger.logImport(`  [CONID] Added position with key conid_[detail omitted] ([detail omitted], [detail omitted] @ $[detail omitted])`);
+              logger.logImport("[CONID] Added position with key conid_[detail omitted] ([detail omitted], [detail omitted] @ $[detail omitted])");
             } else if (row.instrument_type === 'option') {
-              logger.logImport(`  [WARNING] Option position [detail omitted] has NO conid stored`);
+              logger.logImport("[WARNING] Option position [detail omitted] has NO conid stored");
             }
           });
 
-          logger.logImport(`Found [detail omitted] existing open positions`);
+          logger.logImport("Found [detail omitted] existing open positions");
           Object.entries(existingPositions).forEach(([key, pos]) => {
             const typeInfo = pos.instrumentType === 'option'
               ? ` (${pos.optionType} $${pos.strikePrice} exp:${pos.expirationDate})`
               : '';
-            logger.logImport(`  [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted][detail omitted]`);
+            logger.logImport("[detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted][detail omitted]");
           });
 
           // Build a map of all existing executions for duplicate detection
@@ -2254,7 +2254,7 @@ const tradeController = {
                   ? JSON.parse(row.executions)
                   : row.executions;
               } catch (e) {
-                console.warn(`Failed to parse executions for completed trade [detail omitted]:`);
+                console.warn("Failed to parse executions for completed trade [detail omitted]");
                 parsedExecutions = [];
               }
             }
@@ -2284,7 +2284,7 @@ const tradeController = {
             existingExecutions[key].push(...pos.executions);
           });
 
-          logger.logImport(`Built execution index for [detail omitted] symbols/contracts`);
+          logger.logImport("Built execution index for [detail omitted] symbols/contracts");
 
           // Fetch user settings for trade grouping configuration
           let userSettings = await User.getSettings(req.user.id);
@@ -2295,7 +2295,7 @@ const tradeController = {
           // Fetch custom mapping if provided
           let customMapping = null;
           if (mappingId) {
-            logger.logImport(`Fetching custom CSV mapping: [detail omitted]`);
+            logger.logImport("Fetching custom CSV mapping: [detail omitted]");
             const mappingQuery = `
               SELECT * FROM custom_csv_mappings
               WHERE id = $1 AND user_id = $2
@@ -2303,15 +2303,15 @@ const tradeController = {
             const mappingResult = await db.query(mappingQuery, [mappingId, fileUserId]);
             if (mappingResult.rows.length > 0) {
               customMapping = mappingResult.rows[0];
-              logger.logImport(`Using custom mapping: [detail omitted]`);
+              logger.logImport("Using custom mapping: [detail omitted]");
             } else {
-              logger.logWarn(`Custom mapping ${mappingId} not found for user ${fileUserId}`);
+              logger.logWarn("Custom mapping");
             }
           }
 
           // Fetch user's timezone for converting CSV times to UTC
           const userTimezone = await getUserTimezone(fileUserId);
-          logger.logImport(`User timezone: [detail omitted]`);
+          logger.logImport("User timezone: [detail omitted]");
 
           const context = {
             existingPositions,
@@ -2366,9 +2366,9 @@ const tradeController = {
                   JSON.stringify(parseDiagnostics),
                   sampleData?.substring(0, 10000) || null
                 ]);
-                logger.logWarn(`[CSV] Recorded zero_trades scenario: ${parseDiagnostics.totalRows} rows but 0 trades parsed`);
+                logger.logWarn("[CSV] Recorded zero_trades scenario");
               } catch (recordErr) {
-                logger.logWarn(`[CSV] Failed to record zero_trades: ${recordErr.message}`);
+                logger.logWarn("[CSV] Failed to record zero_trades");
               }
             }
 
@@ -2400,16 +2400,16 @@ const tradeController = {
                   JSON.stringify(parseDiagnostics),
                   sampleData?.substring(0, 10000) || null
                 ]);
-                logger.logWarn(`[CSV] Recorded high_skip_rate scenario: ${skipRate.toFixed(1)}% of rows skipped`);
+                logger.logWarn("[CSV] Recorded high_skip_rate scenario");
               } catch (recordErr) {
-                logger.logWarn(`[CSV] Failed to record high_skip_rate: ${recordErr.message}`);
+                logger.logWarn("[CSV] Failed to record high_skip_rate");
               }
             }
           }
 
-          logger.logImport(`Parsed ${trades.length} trades from CSV`);
+          logger.logImport("Parsed");
           if (parseDiagnostics) {
-            logger.logImport(`[DIAGNOSTICS] Total rows: [detail omitted], Skipped: [detail omitted], Invalid: [detail omitted]`);
+            logger.logImport("[DIAGNOSTICS] Total rows: [detail omitted], Skipped: [detail omitted], Invalid: [detail omitted]");
           }
 
           // Auto-create accounts for new account identifiers found in the import.
@@ -2417,10 +2417,10 @@ const tradeController = {
           if (accountMode !== 'none') try {
             // Collect unique account identifiers from parsed trades
             const accountIdentifiers = new Set();
-            logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
+            logger.logImport("[ACCOUNTS] Checking");
             trades.forEach((trade, index) => {
               if (index < 3) {
-                logger.logImport(`[ACCOUNTS] Trade [detail omitted] accountIdentifier: [detail omitted]`);
+                logger.logImport("[ACCOUNTS] Trade [detail omitted] accountIdentifier: [detail omitted]");
               }
               if (trade.accountIdentifier) {
                 accountIdentifiers.add(trade.accountIdentifier);
@@ -2428,7 +2428,7 @@ const tradeController = {
             });
 
             if (accountIdentifiers.size > 0) {
-              logger.logImport(`[ACCOUNTS] Found [detail omitted] unique account identifier(s) in import`);
+              logger.logImport("[ACCOUNTS] Found [detail omitted] unique account identifier(s) in import");
 
               // Get existing accounts for this user
               const existingAccounts = await Account.findByUser(req.user.id);
@@ -2467,9 +2467,9 @@ const tradeController = {
                       initialBalanceDate: new Date().toISOString().split('T')[0],
                       isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1
                     });
-                    logger.logImport(`[ACCOUNTS] Auto-created account for identifier: [detail omitted]`);
+                    logger.logImport("[ACCOUNTS] Auto-created account for identifier: [detail omitted]");
                   } catch (createError) {
-                    logger.logImport(`[ACCOUNTS] Failed to auto-create account for [detail omitted]: [detail omitted]`);
+                    logger.logImport("[ACCOUNTS] Failed to auto-create account for [detail omitted]: [detail omitted]");
                   }
                 }
               }
@@ -2477,11 +2477,11 @@ const tradeController = {
               // Log warning when no accounts found in any trades
               const tradesWithoutAccount = trades.filter(t => !t.accountIdentifier).length;
               if (tradesWithoutAccount > 0) {
-                logger.logImport(`[ACCOUNTS WARNING] [detail omitted]/${trades.length} trades have no account identifier. Consider selecting an account during import or ensure your CSV includes account information.`);
+                logger.logImport("[ACCOUNTS WARNING] [detail omitted]/");
               }
             }
           } catch (accountError) {
-            logger.logImport(`[ACCOUNTS] Error during account auto-creation: [detail omitted]`);
+            logger.logImport("[ACCOUNTS] Error during account auto-creation: [detail omitted]");
             // Don't fail the import if account creation fails
           }
 
@@ -2490,7 +2490,7 @@ const tradeController = {
           const importCheck = await TierService.canImportTrades(fileUserId, trades.length);
 
           if (!importCheck.allowed) {
-            logger.logImport(`Import blocked by tier limit: [detail omitted]`);
+            logger.logImport("Import blocked by tier limit: [detail omitted]");
             await db.query(`
               UPDATE import_logs
               SET status = 'failed',
@@ -2502,7 +2502,7 @@ const tradeController = {
             throw new Error(importCheck.message);
           }
 
-          logger.logImport(`Tier check passed: [detail omitted] tier, importing ${trades.length} trades (max per import: [detail omitted])`);
+          logger.logImport("Tier check passed: [detail omitted] tier, importing");
 
           // A CSV currency column is one source of currency information. Some
           // execution formats, notably TradingView forex order history, encode
@@ -2553,9 +2553,9 @@ const tradeController = {
                     : (trade.tradeDate || trade.entryTime?.split('T')[0]);
                   const convertedTrade = await currencyConverter.convertTradeToUSD(trade, currency, conversionDate);
                   convertedTrades.push(convertedTrade);
-                  logger.logImport(`[CURRENCY] Converted trade [detail omitted]: [detail omitted] to USD (rate: [detail omitted])`);
+                  logger.logImport("[CURRENCY] Converted trade [detail omitted]: [detail omitted] to USD (rate: [detail omitted])");
                 } catch (error) {
-                  logger.logImport(`[CURRENCY] Failed to convert trade [detail omitted]: [detail omitted]`);
+                  logger.logImport("[CURRENCY] Failed to convert trade [detail omitted]: [detail omitted]");
                   // Keep original trade if conversion fails
                   convertedTrades.push(trade);
                 }
@@ -2565,7 +2565,7 @@ const tradeController = {
             }
 
             trades = convertedTrades;
-            logger.logImport(`[CURRENCY] Completed currency conversion for ${trades.length} trades`);
+            logger.logImport("[CURRENCY] Completed currency conversion");
           }
 
           // Apply named account fee profiles first, with the legacy broker fee
@@ -2585,7 +2585,7 @@ const tradeController = {
             try {
               feeProfileConfig = await FeeProfileService.getImportFeeConfiguration(fileUserId, accountIdentifiersForFees);
             } catch (profileError) {
-              logger.logWarn(`[BROKER FEES] Fee profiles unavailable; using legacy broker settings: ${profileError.message}`);
+              logger.logWarn("[BROKER FEES] Fee profiles unavailable; using legacy broker settings");
             }
 
             const feeSummary = {
@@ -2593,7 +2593,7 @@ const tradeController = {
               knownZeroAccounts: new Set()
             };
 
-            logger.logImport(`[BROKER FEES] Looking up fees for brokers: [detail omitted]`);
+            logger.logImport("[BROKER FEES] Looking up fees for brokers: [detail omitted]");
 
             // Fetch fee settings for all relevant brokers (case-insensitive match)
             // Use expandedBrokersToLookup to also find settings saved under old/misspelled names
@@ -2617,9 +2617,9 @@ const tradeController = {
                 logger
               });
 
-              logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
+              logger.logImport("[BROKER FEES] Completed fee application");
             } else {
-              logger.logImport(`[BROKER FEES] No fee settings found for broker(s): [detail omitted]`);
+              logger.logImport("[BROKER FEES] No fee settings found for broker(s): [detail omitted]");
             }
 
             const unknownFeeAccounts = [...feeSummary.unknownAccounts.values()];
@@ -2645,10 +2645,10 @@ const tradeController = {
                 unknown_accounts: unknownFeeAccounts,
                 known_zero_accounts: [...feeSummary.knownZeroAccounts]
               };
-              logger.logWarn(`[BROKER FEES] ${feeWarning}`);
+              logger.logWarn("[BROKER FEES]");
             }
           } catch (feeError) {
-            logger.logWarn(`[BROKER FEES] Error applying broker fees: ${feeError.message}`);
+            logger.logWarn("[BROKER FEES] Error applying broker fees");
             // Continue without applying fees
           }
 
@@ -2686,14 +2686,14 @@ const tradeController = {
 
           const existingTrades = await db.query(existingTradesQuery, existingTradesParams);
 
-          logger.logImport(`Found [detail omitted] existing trades in date range[detail omitted]`);
+          logger.logImport("Found [detail omitted] existing trades in date range[detail omitted]");
 
           // Pre-process existing trades ONCE into a lookup index (executions
           // parsed a single time per row) so duplicate detection is
           // O(new + existing) instead of O(new x existing).
           const existingTradeIndex = buildExistingTradeIndex(existingTrades.rows);
 
-          logger.logImport(`Processing ${trades.length} trades for import...`);
+          logger.logImport("Processing");
 
           // Progress updates are throttled (every 25 rows or 2s) and run on the
           // normal pool: the frontend polls import status, so progress must
@@ -2714,7 +2714,7 @@ const tradeController = {
                 WHERE id = $2
               `, [imported, importId]);
             } catch (progressError) {
-              logger.logWarn(`Failed to update import progress: ${progressError.message}`);
+              logger.logWarn("Failed to update import progress");
             }
           };
 
@@ -2728,7 +2728,7 @@ const tradeController = {
               // Skip duplicate detection for trades that are updates to existing
               // positions (isUpdate/existingTradeId set by the parser).
               if (tradeData.isUpdate && tradeData.existingTradeId) {
-                logger.logImport(`Processing update for existing trade [detail omitted]: [detail omitted]`);
+                logger.logImport("Processing update for existing trade [detail omitted]: [detail omitted]");
               } else {
                 // Duplicate detection via the pre-built index. Matching semantics
                 // live in utils/importDuplicateDetection.js (unit tested for
@@ -2737,7 +2737,7 @@ const tradeController = {
 
                 if (dupResult.is_duplicate) {
                   const instrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
-                  logger.logImport(`Skipping duplicate trade: [detail omitted] [detail omitted] [detail omitted] [detail omitted] at $[detail omitted] ([detail omitted])`);
+                  logger.logImport("Skipping duplicate trade: [detail omitted] [detail omitted] [detail omitted] [detail omitted] at $[detail omitted] ([detail omitted])");
                   duplicates++;
                   await maybeUpdateImportProgress();
                   continue;
@@ -2753,12 +2753,12 @@ const tradeController = {
               }
 
               if (imported % 50 === 0) {
-                logger.logImport(`Importing trade [detail omitted]: [detail omitted] [detail omitted] [detail omitted] at [detail omitted]`);
+                logger.logImport("Importing trade [detail omitted]: [detail omitted] [detail omitted] [detail omitted] at [detail omitted]");
               }
 
               // Handle updates to existing positions vs creating new trades
               if (tradeData.isUpdate && tradeData.existingTradeId) {
-                logger.logImport(`Updating existing trade [detail omitted]: [detail omitted] closed with P/L: $[detail omitted]`);
+                logger.logImport("Updating existing trade [detail omitted]: [detail omitted] closed with P/L: $[detail omitted]");
 
                 // Filter out non-database fields and calculated fields before updating
                 // The Trade.update method will recalculate pnl and pnlPercent automatically
@@ -2805,8 +2805,8 @@ const tradeController = {
               }
               imported++;
             } catch (error) {
-              logger.logError(`Failed to import trade (symbol=[detail omitted], date=[detail omitted], qty=[detail omitted]): [detail omitted]`);
-              logger.logError(`Error stack: [detail omitted]`);
+              logger.logError("Failed to import trade (symbol=[detail omitted], date=[detail omitted], qty=[detail omitted]): [detail omitted]");
+              logger.logError("Error stack: [detail omitted]");
               failed++;
               failedTrades.push({
                 trade: tradeData,
@@ -2816,11 +2816,11 @@ const tradeController = {
             await maybeUpdateImportProgress();
           }
 
-          logger.logImport(`Import completed: [detail omitted] imported, [detail omitted] failed, [detail omitted] duplicates skipped`);
+          logger.logImport("Import completed: [detail omitted] imported, [detail omitted] failed, [detail omitted] duplicates skipped");
 
           // Schedule background CUSIP resolution if there are unresolved CUSIPs
           if (unresolvedCusips.length > 0) {
-            logger.logImport(`Scheduling background CUSIP resolution for [detail omitted] CUSIPs`);
+            logger.logImport("Scheduling background CUSIP resolution for [detail omitted] CUSIPs");
             const cusipResolver = require('../utils/cusipResolver');
             cusipResolver.scheduleResolution(fileUserId, unresolvedCusips);
           }
@@ -2887,9 +2887,9 @@ const tradeController = {
                 }),
                 sampleData?.substring(0, 10000) || null
               ]);
-              logger.logWarn(`[CSV] Recorded zero_imported scenario: ${trades.length} trades parsed, 0 imported (${duplicates} duplicates, ${failed} failed)`);
+              logger.logWarn("[CSV] Recorded zero_imported scenario");
             } catch (recordErr) {
-              logger.logWarn(`[CSV] Failed to record zero_imported: ${recordErr.message}`);
+              logger.logWarn("[CSV] Failed to record zero_imported");
             }
           }
 
@@ -2927,7 +2927,7 @@ const tradeController = {
             console.log('[ACHIEVEMENT] Checking achievements after import for user');
             const AchievementService = require('../services/achievementService');
             const newAchievements = await AchievementService.checkAndAwardAchievements(fileUserId);
-            console.log(`[ACHIEVEMENT] Post-import achievements awarded: [detail omitted]`);
+            console.log("[ACHIEVEMENT] Post-import achievements awarded: [detail omitted]");
           } catch (achievementError) {
             console.warn('[WARNING] Failed to check/award achievements after import:');
           }
@@ -2937,7 +2937,7 @@ const tradeController = {
             console.log('[PROCESS] Starting background symbol categorization after import...');
             // Run categorization in background without blocking the response
             symbolCategories.categorizeNewSymbols(fileUserId).then(result => {
-              console.log(`[SUCCESS] Background categorization complete: [detail omitted] of [detail omitted] symbols categorized`);
+              console.log("[SUCCESS] Background categorization complete: [detail omitted] of [detail omitted] symbols categorized");
             }).catch(error => {
               console.warn('[WARNING] Background symbol categorization failed:');
             });
@@ -2956,7 +2956,7 @@ const tradeController = {
               if (tier === 'pro') {
                 const jobQueue = require('../utils/jobQueue');
                 const jobId = await jobQueue.enqueueMAERecalc(fileUserId, { importId, includePostExit: true });
-                console.log(`[MAE/MFE] Queued mae_recalc job [detail omitted] for import [detail omitted] ([detail omitted] trades)`);
+                console.log("[MAE/MFE] Queued mae_recalc job [detail omitted] for import [detail omitted] ([detail omitted] trades)");
               }
             }
           } catch (maeError) {
@@ -2966,7 +2966,7 @@ const tradeController = {
           // Background news enrichment for imported trades
           try {
             if (imported > 0) {
-              console.log(`[PROCESS] Scheduling background news enrichment for [detail omitted] imported trades...`);
+              console.log("[PROCESS] Scheduling background news enrichment for [detail omitted] imported trades...");
               const jobQueue = require('../utils/jobQueue');
               await jobQueue.addJob('news_enrichment', {
                 userId: fileUserId,
@@ -3002,11 +3002,11 @@ const tradeController = {
                 sampleData?.substring(0, 10000) || null
               ]);
             } catch (recordErr) {
-              logger.logWarn(`[CSV] Failed to record unknown headers on parse error: ${recordErr.message}`);
+              logger.logWarn("[CSV] Failed to record unknown headers on parse error");
             }
           }
 
-          logger.logError(`Import process failed: [detail omitted]`);
+          logger.logError("Import process failed: [detail omitted]");
           await db.query(`
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
@@ -3098,7 +3098,7 @@ const tradeController = {
   async getOpenPositionsWithQuotes(req, res, next) {
     const requestStartedAt = Date.now();
     try {
-      console.log('getOpenPositionsWithQuotes called for user:', req.user.id);
+      console.log("getOpenPositionsWithQuotes called");
       const alpacaMarketData = require('../utils/alpacaMarketData');
       const { accounts, skipQuotes } = req.query;
       const accountFilters = accounts ? ensureString(accounts).split(',') : undefined;
@@ -3115,12 +3115,12 @@ const tradeController = {
         accounts: accountFilters
       }));
 
-      console.log(`Found ${openTrades.length} open trades`);
+      console.log("Found");
 
       const brokerSnapshots = (await db.query(`SELECT * FROM broker_portfolio_snapshots
         WHERE user_id=$1 AND broker_type IN ('trading212','etoro','okx','kraken','ig')`, [req.user.id])).rows;
       if (openTrades.length === 0 && brokerSnapshots.length === 0) {
-        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+        console.log("[PERF] getOpenPositionsWithQuotes total time");
         return res.json({
           positions: [],
           quotesAvailable: 0,
@@ -3138,7 +3138,7 @@ const tradeController = {
               ? JSON.parse(trade.executions)
               : trade.executions;
           } catch (error) {
-            console.warn(`Failed to parse executions for trade ${trade.id}:`, error.message);
+            console.warn("Failed to parse executions for trade");
             trade.executions = [];
           }
         }
@@ -3167,7 +3167,7 @@ const tradeController = {
           }
           return { ...position, currentPrice: null, currentValue: null, unrealizedPnL: null, unrealizedPnLPercent: null, quotePending: true };
         });
-        console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+        console.log("[PERF] getOpenPositionsWithQuotes total time");
         return res.json({
           positions,
           quotesAvailable: positions.filter(p => p.currentPrice != null).length,
@@ -3180,7 +3180,7 @@ const tradeController = {
       // Get unique stock/futures symbols for Finnhub quotes (options use Alpaca instead)
       const stockPositions = Object.values(positionMap).filter(usesEquityQuotes);
       const symbols = [...new Set(stockPositions.map(p => p.symbol))];
-      console.log('Symbols to get quotes for:', symbols);
+      console.log("Symbols to get quotes for");
 
       // Fetch Alpaca quotes for option positions (independent of Finnhub)
       let alpacaQuotes = {};
@@ -3195,18 +3195,18 @@ const tradeController = {
         }));
 
         try {
-          console.log(`[ALPACA] Fetching quotes for ${optionPositions.length} option positions`);
+          console.log("[ALPACA] Fetching quotes");
           alpacaQuotes = await timeAsyncOperation('openPositions.alpacaQuoteFetch', () => withTimeout(
             alpacaMarketData.getOptionSnapshots(positionsWithKeys),
             OPEN_POSITIONS_ALPACA_TIMEOUT_MS,
             'Open positions Alpaca quote fetch'
           ));
-          console.log(`[ALPACA] Received quotes for ${Object.keys(alpacaQuotes).length} options`);
+          console.log("[ALPACA] Received quotes");
         } catch (alpacaError) {
           if (alpacaError.code === 'ETIMEOUT') {
             pendingOptionPositionKeys = new Set(positionsWithKeys.map(position => position._positionKey));
           }
-          console.error('[ALPACA] Failed to fetch option quotes:', alpacaError.message);
+          console.error("[ALPACA] Failed to fetch option quotes");
         }
       } else if (optionPositions.length > 0) {
         console.log('[ALPACA] Alpaca not configured, skipping option quotes');
@@ -3243,11 +3243,11 @@ const tradeController = {
 
           const cachedCount = Object.keys(quotes).length;
           const uncachedSymbols = symbols.filter(s => !quotes[s]);
-          console.log(`Price cache: ${cachedCount} cached, ${uncachedSymbols.length} uncached`);
+          console.log("Price cache");
 
           // Fallback to Finnhub for any uncached symbols
           if (uncachedSymbols.length > 0) {
-            console.log('Fetching uncached symbols from Finnhub:', uncachedSymbols);
+            console.log("Fetching uncached symbols from Finnhub");
             try {
               const freshQuotes = await timeAsyncOperation('openPositions.finnhubQuoteFetch', () => withTimeout(
                 finnhub.getBatchQuotes(uncachedSymbols, {
@@ -3271,13 +3271,13 @@ const tradeController = {
               if (quoteError.code === 'ETIMEOUT') {
                 pendingStockSymbols = new Set(uncachedSymbols);
               } else {
-                console.error('Failed to get stock quotes:', quoteError.message);
+                console.error("Failed to get stock quotes");
               }
             }
           }
-          console.log('Received quotes:', quotes);
+          console.log("Received quotes");
         } catch (quoteError) {
-          console.error('Failed to get stock quotes:', quoteError.message);
+          console.error("Failed to get stock quotes");
         }
       } else if (symbols.length > 0) {
         console.log('Finnhub not configured, skipping stock quotes');
@@ -3291,7 +3291,7 @@ const tradeController = {
         const settings = await User.getSettings(req.user.id);
         accountCurrency = (settings?.display_currency || 'USD').toUpperCase();
       } catch (settingsError) {
-        console.warn(`[CURRENCY] Could not read display currency, assuming USD: ${settingsError.message}`);
+        console.warn("[CURRENCY] Could not read display currency, assuming USD");
       }
 
       const positionCurrencies = [...new Set(
@@ -3307,7 +3307,7 @@ const tradeController = {
             fxRates[currency] = await currencyConverter.getForexRate(currency, accountCurrency);
           } catch (rateError) {
             // No rate means the UI must not fabricate a converted total.
-            console.warn(`[CURRENCY] No ${currency}/${accountCurrency} rate: ${rateError.message}`);
+            console.warn("[CURRENCY] No");
             fxRates[currency] = null;
           }
         }));
@@ -3361,7 +3361,7 @@ const tradeController = {
               convertedQuotesByPosition[posKey] = await convertQuoteCurrency(quote, target);
             } catch (conversionError) {
               // Never show a number we cannot state the currency of.
-              console.warn(`[QUOTES] Dropping ${position.symbol} quote: cannot convert ${quote.currency} to ${target}: ${conversionError.message}`);
+              console.warn("[QUOTES] Dropping");
             }
           })
         );
@@ -3471,7 +3471,7 @@ const tradeController = {
 
       const quotePending = pendingStockSymbols.size > 0 || pendingOptionPositionKeys.size > 0;
 
-      console.log('[PERF] getOpenPositionsWithQuotes total time:', Date.now() - requestStartedAt, 'ms');
+      console.log("[PERF] getOpenPositionsWithQuotes total time");
 
       // fx_rate converts this position's own currency into the account's. null
       // means no usable rate, which the UI must surface rather than quietly
@@ -3503,8 +3503,8 @@ const tradeController = {
       });
 
     } catch (error) {
-      console.log('[PERF] getOpenPositionsWithQuotes total time before error:', Date.now() - requestStartedAt, 'ms');
-      console.error('Failed to get open positions:', error);
+      console.log("[PERF] getOpenPositionsWithQuotes total time before error");
+      console.error("Failed to get open positions");
       next(error);
     }
   },
@@ -3550,7 +3550,7 @@ const tradeController = {
             ? { week_52_high, week_52_low }
             : null;
         } catch (rangeError) {
-          console.warn(`[RANGES] No 52-week range for ${symbol}: ${rangeError.message}`);
+          console.warn("[RANGES] No 52-week range");
           ranges[symbol] = null;
         }
       }));
@@ -3582,7 +3582,7 @@ const tradeController = {
       const importLog = importResult.rows[0];
       const importDate = importLog.created_at;
 
-      logger.logImport(`Deleting import [detail omitted] for user [detail omitted]`);
+      logger.logImport("Deleting import [detail omitted]");
 
       // Delete trades using the import_id foreign key (CASCADE will handle this automatically)
       // But we'll explicitly delete to count the trades removed
@@ -3608,14 +3608,14 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
 
-      logger.logImport(`Deleted [detail omitted] trades from import [detail omitted]`);
+      logger.logImport("Deleted [detail omitted] trades from import [detail omitted]");
 
       res.json({ 
         message: 'Import and associated trades deleted successfully',
         deletedTrades: deletedTrades.rows.length
       });
     } catch (error) {
-      logger.logError(`Failed to delete import: [detail omitted]`);
+      logger.logError("Failed to delete import: [detail omitted]");
       next(error);
     }
   },
@@ -3653,7 +3653,7 @@ const tradeController = {
         return res.status(404).json({ error: 'No valid imports found' });
       }
 
-      logger.logImport(`Bulk deleting [detail omitted] imports for user [detail omitted]`);
+      logger.logImport("Bulk deleting [detail omitted] imports");
 
       // Delete trades for all valid imports
       const tradePlaceholders = validIds.map((_, i) => `$${i + 2}`).join(',');
@@ -3675,7 +3675,7 @@ const tradeController = {
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
 
-      logger.logImport(`Bulk deleted [detail omitted] trades from [detail omitted] imports`);
+      logger.logImport("Bulk deleted [detail omitted] trades from [detail omitted] imports");
 
       res.json({
         message: `${validIds.length} imports and associated trades deleted successfully`,
@@ -3683,7 +3683,7 @@ const tradeController = {
         deletedTrades: deletedTrades.rows.length
       });
     } catch (error) {
-      logger.logError(`Failed to bulk delete imports: [detail omitted]`);
+      logger.logError("Failed to bulk delete imports: [detail omitted]");
       next(error);
     }
   },
@@ -3740,9 +3740,9 @@ const tradeController = {
   async getAnalytics(req, res, next) {
     try {
       console.log('=== ANALYTICS ENDPOINT CALLED ===');
-      console.log('Query params:', req.query);
-      console.log('User ID:', req.user.id);
-      console.log('Side filter specifically:', req.query.side);
+      console.log("[trade] Request diagnostic");
+      console.log("[trade] Request diagnostic");
+      console.log("[trade] Request diagnostic");
 
       const { minHoldTime, maxHoldTime } = req.query;
 
@@ -3751,8 +3751,8 @@ const tradeController = {
         includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
       };
 
-      console.log('[ANALYTICS] Raw query:', req.query);
-      console.log('[ANALYTICS] Parsed filters:', JSON.stringify(filters, null, 2));
+      console.log("[trade] Request diagnostic");
+      console.log("[trade] Request diagnostic");
 
       // Convert minHoldTime/maxHoldTime to holdTime range if provided
       if (minHoldTime || maxHoldTime) {
@@ -3769,11 +3769,11 @@ const tradeController = {
 
       const cached = cache.get(cacheKey);
       if (cached) {
-        console.log('[CACHE] Analytics cache hit for user:', req.user.id);
+        console.log("[CACHE] Analytics cache hit");
         return res.json(await convertForDisplay(req, cached));
       }
 
-      console.log('[CACHE] Analytics cache miss for user:', req.user.id);
+      console.log("[CACHE] Analytics cache miss");
       // Analytics fans out to eight database queries. The dashboard, trade
       // list, calendar, and iOS client can all ask for the same aggregate at
       // once after an invalidation, so share one computation per process.
@@ -3783,7 +3783,7 @@ const tradeController = {
 
         const persistedInFlight = await AnalyticsCache.get(req.user.id, cacheKey);
         if (persistedInFlight) {
-          console.log('[CACHE] Persistent analytics cache hit for user:', req.user.id);
+          console.log("[CACHE] Persistent analytics cache hit");
           cache.set(cacheKey, persistedInFlight, 86400000);
           return persistedInFlight;
         }
@@ -3797,14 +3797,14 @@ const tradeController = {
 
       res.json(await convertForDisplay(req, analytics));
     } catch (error) {
-      console.error('Analytics error:', error);
+      console.error("Analytics error");
       next(error);
     }
   },
 
   async getPartialExitAnalytics(req, res, next) {
     try {
-      console.log('[PARTIAL-EXIT] Endpoint called, query:', req.query);
+      console.log("[PARTIAL-EXIT] Endpoint called, query");
 
       const filters = {
         ...parseTradeFilters(req.query, tradeFilterProfiles.partialExit),
@@ -3823,7 +3823,7 @@ const tradeController = {
 
       res.json(await convertForDisplay(req, analytics));
     } catch (error) {
-      console.error('[ERROR] Partial exit analytics error:', error);
+      console.error("[ERROR] Partial exit analytics error");
       next(error);
     }
   },
@@ -3838,7 +3838,7 @@ const tradeController = {
       const tagsArray = tags ? ensureString(tags).split(',').filter(Boolean) : null;
       const strategiesArray = strategies ? ensureString(strategies).split(',').filter(Boolean) : null;
 
-      console.log('[MONTHLY] Getting monthly performance for user:', req.user.id, 'year:', year, 'accounts:', accountsArray, 'tags:', tagsArray, 'strategies:', strategiesArray);
+      console.log("[MONTHLY] Getting monthly performance");
 
       const data = await Trade.getMonthlyPerformance(req.user.id, year, accountsArray, {
         tags: tagsArray,
@@ -3851,7 +3851,7 @@ const tradeController = {
         ...data
       }, { clone: false }));
     } catch (error) {
-      console.error('[ERROR] Monthly performance error:', error);
+      console.error("[ERROR] Monthly performance error");
       next(error);
     }
   },
@@ -4059,7 +4059,7 @@ const tradeController = {
         });
       }
 
-      console.log(`Found ${unresolvedCusips.length} unresolved CUSIPs, attempting to resolve...`);
+      console.log("Found");
       
       // Send immediate response and continue in background
       res.json({
@@ -4074,7 +4074,7 @@ const tradeController = {
       // Continue processing in background
       process.nextTick(async () => {
         try {
-          console.log(`[BACKGROUND] Starting CUSIP resolution for ${unresolvedCusips.length} CUSIPs...`);
+          console.log("[BACKGROUND] Starting CUSIP resolution");
           
           let totalMappingsCreated = 0;
           let totalTradesUpdated = 0;
@@ -4088,7 +4088,7 @@ const tradeController = {
               totalTradesUpdated += tradesUpdated;
               
               // Create mapping entry in cusip_mappings table
-              console.log(`[MAPPING] Creating immediate mapping: ${cusip} → ${ticker} for user ${userId}`);
+              console.log("[MAPPING] Creating immediate mapping");
               
               const mappingResult = await db.query(
                 `INSERT INTO cusip_mappings (cusip, ticker, user_id, verified, resolution_source, created_by) 
@@ -4100,13 +4100,13 @@ const tradeController = {
               
               if (mappingResult.rows.length > 0) {
                 totalMappingsCreated++;
-                console.log(`[MAPPING] [SUCCESS] Immediately created mapping: ${cusip} → ${ticker} (ID: ${mappingResult.rows[0].id}) - ${tradesUpdated} trades updated`);
+                console.log("[MAPPING] [SUCCESS] Immediately created mapping");
               } else {
-                console.log(`[MAPPING] [WARNING] Mapping already exists: ${cusip} → ${ticker} - ${tradesUpdated} trades updated`);
+                console.log("[MAPPING] [WARNING] Mapping already exists");
               }
             } catch (mappingError) {
-              console.error(`[MAPPING] [ERROR] Failed to create immediate mapping for ${cusip} → ${ticker}:`, mappingError.message);
-              console.error(`[MAPPING] Error details:`, mappingError);
+              console.error("[MAPPING] [ERROR] Failed to create immediate mapping");
+              console.error("[MAPPING] Error details");
             }
           };
           
@@ -4114,10 +4114,10 @@ const tradeController = {
           const resolvedMappings = await finnhub.batchLookupCusips(unresolvedCusips, userId, onResolveCallback);
           const resolvedCount = Object.keys(resolvedMappings).length;
           
-          console.log(`[BACKGROUND] [SUCCESS] CUSIP resolution complete: ${resolvedCount} of ${unresolvedCusips.length} resolved, ${totalTradesUpdated} trades updated, ${totalMappingsCreated} mappings created immediately`);
+          console.log("[BACKGROUND] [SUCCESS] CUSIP resolution complete");
         } catch (error) {
-          console.error('[BACKGROUND] [ERROR] Error in background CUSIP resolution:', error.message);
-          console.error('[BACKGROUND] Full error:', error);
+          console.error("[BACKGROUND] [ERROR] Error in background CUSIP resolution");
+          console.error("[BACKGROUND] Full error");
         }
       });
     } catch (error) {
@@ -4450,16 +4450,8 @@ const tradeController = {
 
       // Debug: Log what fields we actually get from the database
       console.log('=== TRADE RECORD DEBUG ===');
-      console.log('Available trade fields:', Object.keys(trade));
-      console.log('Time-related fields:', {
-        trade_date: trade.trade_date,
-        entry_time: trade.entry_time,
-        exit_time: trade.exit_time,
-        entry_date: trade.entry_date,
-        exit_date: trade.exit_date,
-        created_at: trade.created_at,
-        updated_at: trade.updated_at
-      });
+      console.log("Available trade fields");
+      console.log("Time-related fields");
 
       // Extract symbol and dates from the trade
       await require('../services/brokerInstrumentSymbols').applyTradeMarketSymbols(db,userId,[trade]);
@@ -4535,12 +4527,7 @@ const tradeController = {
         executions: trade.executions ? (typeof trade.executions === 'string' ? JSON.parse(trade.executions) : trade.executions) : null
       };
 
-      console.log('Sending trade data to frontend:', {
-        entryDate: chartData.trade.entryDate,
-        exitDate: chartData.trade.exitDate,
-        entryTime: chartData.trade.entryTime,
-        exitTime: chartData.trade.exitTime
-      });
+      console.log("Sending trade data to frontend");
 
       // Get usage statistics for the response
       const usageStats = await ChartService.getUsageStats(userId, req.headers.host);
@@ -4566,7 +4553,7 @@ const tradeController = {
       const convertedChart = await ChartService.convertTradeChartForDisplay(req, chartData, candlesSource);
       res.json(convertedChart);
     } catch (error) {
-      console.error('Error fetching trade chart data:', error);
+      console.error("Error fetching trade chart data");
       
       // Handle specific errors
       if (error.statusCode === 403) {
@@ -4722,7 +4709,7 @@ const tradeController = {
           });
 
         } catch (error) {
-          console.error('Failed to process image %s:', file.originalname, error);
+          console.error("Failed to process image %s");
           processedImages.push({
             filename: file.originalname,
             error: error.message
@@ -4890,7 +4877,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      console.error('Add chart error:', error);
+      console.error("Add chart error");
       next(error);
     }
   },
@@ -4915,7 +4902,7 @@ const tradeController = {
       res.json({ message: 'Chart deleted successfully' });
 
     } catch (error) {
-      console.error('Delete chart error:', error);
+      console.error("Delete chart error");
       next(error);
     }
   },
@@ -4983,7 +4970,7 @@ const tradeController = {
       res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=86400');
 
       response.data.on('error', (streamError) => {
-        console.error('[TradingView] Snapshot stream error:', streamError);
+        console.error("[TradingView] Snapshot stream error");
         if (!res.headersSent) {
           res.status(502).json({ error: 'Failed to fetch snapshot' });
         } else {
@@ -4994,10 +4981,7 @@ const tradeController = {
       response.data.pipe(res);
     } catch (error) {
       const status = error.response?.status || 502;
-      console.warn('[TradingView] Snapshot proxy failed:', {
-        status,
-        message: error.message
-      });
+      console.warn("[TradingView] Snapshot proxy failed");
       res.status(status).json({ error: 'Failed to fetch snapshot' });
     }
   },
@@ -5092,7 +5076,7 @@ const tradeController = {
     try {
       const userId = req.user.id;
 
-      console.log(`[ENRICHMENT] Force completing all enrichment jobs for user ${userId}`);
+      console.log("[ENRICHMENT] Force completing all enrichment jobs");
 
       // Update all trades with pending or failed enrichment status to completed
       const updateQuery = `
@@ -5119,7 +5103,7 @@ const tradeController = {
 
       const jobsResult = await db.query(clearJobsQuery, [userId]);
 
-      console.log(`[ENRICHMENT] Force completed ${result.rows.length} trades and cleared ${jobsResult.rows.length} jobs for user ${userId}`);
+      console.log("[ENRICHMENT] Force completed");
 
       // Get updated statistics
       const statsQuery = `
@@ -5155,7 +5139,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      console.error('[ENRICHMENT ERROR] Force complete enrichment failed:', error);
+      console.error("[ENRICHMENT ERROR] Force complete enrichment failed");
       next(error);
     }
   },
@@ -5195,7 +5179,7 @@ const tradeController = {
         req.user.id
       ]);
 
-      logger.info(`Updated health data for trade ${tradeId} for user ${req.user.id}`);
+      logger.info("Updated health data for trade");
 
       res.json({
         success: true,
@@ -5203,7 +5187,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error updating trade health data:', error);
+      logger.logError("Error updating trade health data");
       next(error);
     }
   },
@@ -5292,7 +5276,7 @@ const tradeController = {
         await AnalyticsCache.invalidate(req.user.id);
       }
 
-      logger.info(`Bulk updated ${updatedCount} trades with health data for user ${req.user.id}`);
+      logger.info("Bulk updated");
 
       res.json({
         success: true,
@@ -5302,7 +5286,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error bulk updating trade health data:', error);
+      logger.logError("Error bulk updating trade health data");
       next(error);
     }
   },
@@ -5327,7 +5311,7 @@ const tradeController = {
 
       const result = await db.query(query, [req.user.id, today]);
 
-      logger.info(`Found ${result.rows.length} expired options for user ${req.user.id}`);
+      logger.info("Found");
 
       res.json({
         success: true,
@@ -5336,7 +5320,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error fetching expired options:', error);
+      logger.logError("Error fetching expired options");
       next(error);
     }
   },
@@ -5392,7 +5376,7 @@ const tradeController = {
         });
       }
 
-      logger.info(`Found ${expiredOptions.rows.length} expired options for user ${req.user.id}. Dry run: ${dryRun}`);
+      logger.info("Found");
 
       if (dryRun) {
         return res.json({
@@ -5439,7 +5423,7 @@ const tradeController = {
 
       const result = await db.query(updateQuery, [closedAt, req.user.id, today]);
 
-      logger.info(`Auto-closed ${result.rows.length} expired options for user ${req.user.id}`, 'app');
+      logger.info("Auto-closed", "app");
 
       res.json({
         success: true,
@@ -5449,7 +5433,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error auto-closing expired options:', error);
+      logger.logError("Error auto-closing expired options");
       next(error);
     }
   },
@@ -5533,7 +5517,7 @@ const tradeController = {
         req.user.id
       ]);
 
-      logger.info(`Calculated quality for trade ${id}: ${quality.grade} (${quality.score}/5.0) for ${trade.symbol}`);
+      logger.info("Calculated quality for trade");
 
       res.json({
         success: true,
@@ -5542,7 +5526,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error calculating trade quality:', error);
+      logger.logError("Error calculating trade quality");
       next(error);
     }
   },
@@ -5601,7 +5585,7 @@ const tradeController = {
 
       await Promise.all(updates);
 
-      logger.info(`Calculated quality for ${updates.length} trades for user ${req.user.id}`, 'app');
+      logger.info("Calculated quality", "app");
 
       res.json({
         success: true,
@@ -5618,7 +5602,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error calculating batch quality:', error);
+      logger.logError("Error calculating batch quality");
       next(error);
     }
   },
@@ -5648,7 +5632,7 @@ const tradeController = {
         });
       }
 
-      logger.info(`Starting quality calculation for ${tradesResult.rows.length} trades for user ${req.user.id}`, 'app');
+      logger.info("Starting quality calculation", "app");
 
       // Start async processing (don't await)
       setImmediate(async () => {
@@ -5679,9 +5663,9 @@ const tradeController = {
 
           await Promise.all(updates);
 
-          logger.info(`Completed quality calculation for ${updates.length} trades for user ${req.user.id}`, 'app');
+          logger.info("Completed quality calculation", "app");
         } catch (error) {
-          logger.logError('Error in async quality calculation:', error);
+          logger.logError("Error in async quality calculation");
         }
       });
 
@@ -5693,7 +5677,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error starting quality calculation:', error);
+      logger.logError("Error starting quality calculation");
       next(error);
     }
   },
@@ -5708,7 +5692,7 @@ const tradeController = {
       const { dryRun = true, tradeId } = req.query;
       const isDryRun = dryRun === 'true' || dryRun === true;
 
-      logger.info(`[REPAIR] Starting trade repair for user ${req.user.id}. Dry run: ${isDryRun}`, 'app');
+      logger.info("[REPAIR] Starting trade repair", "app");
 
       // Find trades that may have inconsistent data
       // These are trades where:
@@ -5745,7 +5729,7 @@ const tradeController = {
       const result = await db.query(query, params);
       const tradesToCheck = result.rows;
 
-      logger.info(`[REPAIR] Found ${tradesToCheck.length} trades to check for user ${req.user.id}`, 'app');
+      logger.info("[REPAIR] Found", "app");
 
       const inconsistentTrades = [];
 
@@ -5787,7 +5771,7 @@ const tradeController = {
         }
       }
 
-      logger.info(`[REPAIR] Found ${inconsistentTrades.length} inconsistent trades for user ${req.user.id}`, 'app');
+      logger.info("[REPAIR] Found", "app");
 
       if (!isDryRun && inconsistentTrades.length > 0) {
         // Fix the inconsistent trades by clearing exit_price, exit_time, and pnl
@@ -5808,7 +5792,7 @@ const tradeController = {
         const tradeIds = inconsistentTrades.map(t => t.id);
         const updateResult = await db.query(updateQuery, [tradeIds, req.user.id]);
 
-        logger.info(`[REPAIR] Repaired ${updateResult.rows.length} trades for user ${req.user.id}`, 'app');
+        logger.info("[REPAIR] Repaired", "app");
 
         await AnalyticsCache.invalidate(req.user.id);
 
@@ -5832,7 +5816,7 @@ const tradeController = {
       });
 
     } catch (error) {
-      logger.logError('Error repairing inconsistent trades:', error);
+      logger.logError("Error repairing inconsistent trades");
       next(error);
     }
   }
@@ -5848,7 +5832,7 @@ const tradeController = {
         ...result
       });
     } catch (error) {
-      logger.logError('Error deleting sample data:', error);
+      logger.logError("Error deleting sample data");
       next(error);
     }
   },
@@ -5869,7 +5853,7 @@ const tradeController = {
         ...result
       });
     } catch (error) {
-      logger.logError('Error creating sample data:', error);
+      logger.logError("Error creating sample data");
       next(error);
     }
   },
@@ -5881,7 +5865,7 @@ const tradeController = {
       const hasSample = await SampleDataService.hasSampleData(userId);
       res.json({ has_sample_data: hasSample });
     } catch (error) {
-      logger.logError('Error checking sample data:', error);
+      logger.logError("Error checking sample data");
       next(error);
     }
   }
