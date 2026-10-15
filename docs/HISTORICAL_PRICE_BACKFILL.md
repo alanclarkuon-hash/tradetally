@@ -150,3 +150,10 @@ Closed-lot portfolio price requirements end at the last held valuation day; same
 
 
 Verified exchange transfers retain predecessor history without treating a new venue's first-trade date as the original security's IPO. ET common units moved NYSE to TXSE on 2026-10-05 under the same ticker (https://www.sec.gov/Archives/edgar/data/1276187/000127618726000044/et-20260903.htm). The TXSE fallback keeps exact ticker, venue, issuer and USD checks. Bypassing stale listing-lifetime metadata additionally requires the matching statistics-page last-split proof, at least three independent native close anchors with no contradictory overlap, and no unverified later splits. Existing native and finalized prices are never replaced. Empty Yahoo rows permit the separately verified fallback; unknown transfers remain blocked by listing-lifetime checks. Historical pre-transfer ET ranges retain their verified NYSE calendar. New venue calendar rules are not inferred from a ticker or substituted for predecessor sessions.
+
+
+### Missing recent daily closes
+
+When the daily providers omit an open exchange session, the existing Stock Analysis fallback can use attributed Twelve Data history as well as Tiingo and S&P Global. Listing, venue, native currency and independent split/unit-basis checks still apply before a close is accepted.
+
+For supported foreign S&P Global listings, a dated published closing mark can differ from the intraday trade range or have explicitly zero volume. Completed-session marks are retained as close-only observations, represented by a flat close bar rather than invented intraday extrema. Live marks, invalid dates, negative/missing volume, volume-one delisting sentinels, unverified sources and unmatched unit/split evidence remain excluded. Existing finalized rows are immutable. Halted listings without a verified close remain unavailable.
