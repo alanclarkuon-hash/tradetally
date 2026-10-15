@@ -55,9 +55,6 @@ function parseCustomMappingDateTime(record, mapping, context) {
  */
 async function parseGenericTransactions(records, existingPositions = {}, customMapping = null, context = {}) {
   console.log(`Processing ${records.length} generic CSV records with position tracking`);
-  if (customMapping) {
-    console.log(`[CUSTOM MAPPING] Using custom mapping in position tracking mode: ${customMapping.mapping_name}`);
-  }
 
   const transactions = [];
   const completedTrades = [];
@@ -197,7 +194,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         accountIdentifier
       });
     } catch (error) {
-      console.error('Error parsing generic transaction:', error, record);
+      console.warn('[CSV] Unable to parse an import row');
       if (diagnostics) {
         diagnostics.invalidRows++;
         diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });
@@ -223,7 +220,6 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
 
   // Process each symbol's transactions
   for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {
-    console.log(`\nProcessing ${symbol}: ${symbolTransactions.length} transactions`);
 
     // Apply contract values to gross P&L while prices stay quoted per unit.
     // Futures use their point value and options normally represent 100 shares.
@@ -262,17 +258,11 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       newExecutionsAdded: 0
     } : null;
 
-    if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}`);
-    }
 
     // Process each transaction chronologically
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
-      const prevPosition = currentPosition;
 
-      console.log(`\n  ${transaction.side.toUpperCase()} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -290,7 +280,6 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           broker: transaction.broker,
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
       }
 
       // Add execution to current trade
@@ -322,9 +311,6 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
           return false;
         });
 
-        if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
-        }
 
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
@@ -332,7 +318,6 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  [SKIP] Duplicate execution: ${newExecution.orderId || 'matching fill data'}`);
           continue;
         }
 
@@ -370,7 +355,6 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
                 lastExec.exitPrice = transaction.price;
                 lastExec.entryPrice = avgEntryPrice;
                 lastExec.pnl = netPartialPnl;
-                console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
               }
             }
           }
@@ -404,14 +388,12 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
                 lastExec.exitPrice = transaction.price;
                 lastExec.entryPrice = avgEntryPrice;
                 lastExec.pnl = netPartialPnl;
-                console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
               }
             }
           }
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -446,10 +428,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed position via generic import: ${currentTrade.executions.length} executions`;
-          console.log(`  [CHECK] CLOSED existing ${currentTrade.side} position: P/L: $${currentTrade.pnl.toFixed(2)}`);
         } else {
           currentTrade.notes = `Round trip trade: ${currentTrade.executions.length} executions`;
-          console.log(`  [CHECK] Completed ${currentTrade.side} trade: P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
 
         if (instrumentTradeFields) {
@@ -488,10 +468,8 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
       if (currentTrade.isExistingPosition) {
         currentTrade.isUpdate = true;
         currentTrade.notes = `Updated position via generic import: ${currentTrade.executions.length} executions`;
-        console.log(`  [CHECK] UPDATED ${currentTrade.side} position: ${netQuantity} shares`);
       } else {
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
-        console.log(`  [CHECK] Created open ${currentTrade.side} position: ${netQuantity} shares`);
       }
 
       if (instrumentTradeFields) {

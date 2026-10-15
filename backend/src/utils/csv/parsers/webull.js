@@ -14,25 +14,8 @@ const { parseDate, parseDateTime, getExecutionTimeBounds, cleanString, parseInst
  * @returns {Array} - Array of completed and open trades
  */
 async function parseWebullTransactions(records, existingPositions = {}, context = {}) {
-  console.log(`\n=== WEBULL TRANSACTION PARSER ===`);
-  console.log(`Processing ${records.length} Webull transaction records`);
-  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
-
-  if (Object.keys(existingPositions).length > 0) {
-    console.log(`Existing positions:`);
-    Object.entries(existingPositions).forEach(([symbol, position]) => {
-      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
-    });
-  }
-
   const transactions = [];
   const completedTrades = [];
-
-  // Debug: Log first few records to see structure
-  console.log('\nSample Webull records:');
-  records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
-  });
 
   // First, parse all transactions
   let rowIndex = 0;
@@ -72,7 +55,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
       // Only process filled orders (skip status check for alternate format which has no Status column)
       if (!isAlternateFormat && (status.toLowerCase() !== 'filled' || filled === 0)) {
-        console.log(`Skipping Webull record - not filled or zero quantity:`, { symbol, status, filled });
         if (diag) {
           diag.skippedRows = (diag.skippedRows || 0) + 1;
           if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
@@ -84,7 +66,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
       // For alternate format, skip if zero quantity
       if (isAlternateFormat && filled === 0) {
-        console.log(`Skipping Webull record - zero quantity:`, { symbol, filled });
         if (diag) {
           diag.skippedRows = (diag.skippedRows || 0) + 1;
         }
@@ -93,7 +74,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
 
       // Skip if missing essential data
       if (!symbol || !side || price === 0 || !filledTime) {
-        console.log(`Skipping Webull record missing data:`, { symbol, side, filled, price, filledTime });
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
           if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
@@ -111,7 +91,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       }
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping Webull record with invalid date: ${filledTime}`);
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
           if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
@@ -127,7 +106,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       const entryTimeDate = new Date(entryTime);
 
       if (isNaN(entryTimeDate.getTime()) || entryTimeDate > maxFutureDate) {
-        console.log(`Skipping Webull record with invalid/future date: ${filledTime}`);
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
           if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
@@ -137,7 +115,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       }
 
       if (entryTimeDate < minPastDate) {
-        console.log(`Skipping Webull record with date too far in past: ${filledTime}`);
         if (diag) {
           diag.invalidRows = (diag.invalidRows || 0) + 1;
           if (!Array.isArray(diag.skippedReasons)) diag.skippedReasons = [];
@@ -177,9 +154,8 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         accountIdentifier
       });
 
-      console.log(`Parsed Webull transaction: ${action} ${filled} ${symbol} @ $${price.toFixed(2)}`);
     } catch (error) {
-      console.error('Error parsing Webull transaction:', error, record);
+      console.warn('[WEBULL] Unable to parse an import row', { row: rowIndex });
     }
   }
 
@@ -189,7 +165,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
     return new Date(a.datetime) - new Date(b.datetime);
   });
 
-  console.log(`Parsed ${transactions.length} valid Webull trade transactions`);
 
   // Group transactions by symbol
   const transactionsBySymbol = {};
@@ -200,32 +175,13 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
     transactionsBySymbol[transaction.symbol].push(transaction);
   }
 
-  // Log all available existing positions for debugging
-  console.log(`\n[WEBULL] Available existing positions:`);
-  if (Object.keys(existingPositions).length === 0) {
-    console.log(`  → No existing positions found`);
-  } else {
-    Object.entries(existingPositions).forEach(([sym, pos]) => {
-      console.log(`  → ${sym}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice} (ID: ${pos.id})`);
-    });
-  }
-
   // Process transactions using round-trip trade grouping
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} Webull transactions for ${symbol} ===`);
 
     // Parse instrument data from symbol (options format: SPY251114C00672000)
     const instrumentData = parseInstrumentData(symbol);
-
-    console.log(`Instrument type: ${instrumentData.instrumentType}`);
-    if (instrumentData.instrumentType === 'option') {
-      console.log(`  Underlying: ${instrumentData.underlyingSymbol}`);
-      console.log(`  Strike: $${instrumentData.strikePrice}`);
-      console.log(`  Expiration: ${instrumentData.expirationDate}`);
-      console.log(`  Type: ${instrumentData.optionType}`);
-    }
 
     // For options, quantity is in contracts but prices are per-share
     // We need to apply a multiplier when calculating dollar values (entryValue/exitValue)
@@ -238,16 +194,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
     let existingPosition = existingPositions[symbol];
     if (!existingPosition && instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
       existingPosition = existingPositions[instrumentData.underlyingSymbol];
-      if (existingPosition) {
-        console.log(`  → Found existing position using underlying symbol: ${instrumentData.underlyingSymbol}`);
-      }
-    }
-
-    if (!existingPosition) {
-      console.log(`  → No existing position found for symbol: ${symbol}`);
-      if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol) {
-        console.log(`  → Also checked underlying symbol: ${instrumentData.underlyingSymbol}`);
-      }
     }
 
     let currentPosition = existingPosition ?
@@ -273,16 +219,9 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       newExecutionsAdded: 0
     } : null;
 
-    if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}, entryValue: $${currentTrade.entryValue.toFixed(2)}`);
-    }
-
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
-      const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -299,7 +238,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           broker: 'webull',
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
       }
 
       // Add execution to current trade (check for duplicates first)
@@ -327,10 +265,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
           return false;
         });
 
-        if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
-        }
-
         if (!executionExists) {
           currentTrade.executions.push(newExecution);
           currentTrade.totalFees += transaction.fees;
@@ -338,9 +272,7 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
           // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
           continue;
         }
       }
@@ -366,7 +298,6 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -406,26 +337,20 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} contracts, P/L: $${currentTrade.pnl.toFixed(2)}`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} contracts, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
         }
 
         // Only add trade if it has executions (skip if all were duplicates)
         if (currentTrade.executions.length > 0) {
           currentTrade.executionData = currentTrade.executions;
           completedTrades.push(currentTrade);
-        } else {
-          console.log(`  [SKIP] Trade has no executions (all were duplicates), not creating trade`);
         }
         currentTrade = null;
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions`);
 
       // Add open position as incomplete trade
       currentTrade.entryPrice = currentTrade.entryValue / (currentTrade.totalQuantity * valueMultiplier);
@@ -450,21 +375,19 @@ async function parseWebullTransactions(records, existingPositions = {}, context 
       // Mark as update if this was an existing position
       if (currentTrade.isExistingPosition) {
         currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
-        console.log(`  → Updated existing position with ${currentTrade.newExecutionsAdded} new executions`);
-      } else {
-        console.log(`  → Creating new open position`);
       }
 
       // Only add if it has executions (skip if all were duplicates)
       if (currentTrade.executions.length > 0) {
         completedTrades.push(currentTrade);
-      } else {
-        console.log(`  [SKIP] Open position has no executions (all were duplicates), not creating trade`);
       }
     }
   }
 
-  console.log(`\nCreated ${completedTrades.length} Webull trades (including open positions) from ${transactions.length} transactions`);
+  // Aggregate counts only; imported rows and position values remain private.
+  console.log('[WEBULL] Import parsing complete', {
+    rows: records.length, transactions: transactions.length, trades: completedTrades.length
+  });
   return completedTrades;
 }
 

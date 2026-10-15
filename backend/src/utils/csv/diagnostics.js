@@ -230,7 +230,7 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
   // Log diagnostics summary
   console.log(`[DIAGNOSTICS] Total: ${diagnostics.totalRows}, Parsed: ${diagnostics.parsedRows}, Skipped: ${diagnostics.skippedRows}, Invalid: ${diagnostics.invalidRows}`);
   if (diagnostics.skippedReasons.length > 0) {
-    console.log(`[DIAGNOSTICS] Skip reasons (first 5): ${JSON.stringify(diagnostics.skippedReasons.slice(0, 5))}`);
+    console.log('[DIAGNOSTICS] Skipped-row details available in import response');
   }
 
   return {

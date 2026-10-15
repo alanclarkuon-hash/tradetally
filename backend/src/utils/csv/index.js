@@ -113,7 +113,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
   diagnostics.headerAnalysis.recognizedAs = null;
 
   try {
-    console.log(`[CURRENCY DEBUG] parseCSV called with broker: ${broker}, userId: ${context.userId}`);
+
 
     // Handle auto-detection
     const originalBroker = broker;
@@ -174,16 +174,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     const userTimezone = context.userTimezone || null;
     const importDateFromFileName = extractDateFromFilename(context.fileName);
     diagnostics.importDate = context.importDate || importDateFromFileName || null;
-    console.log(`\n=== IMPORT CONTEXT ===`);
-    console.log(`Broker format: ${broker}`);
-    console.log(`User ID: ${context.userId || 'NOT PROVIDED'}`);
-    console.log(`User timezone: ${userTimezone || 'NOT PROVIDED (will store as-is)'}`);
-    console.log(`Import date from filename: ${importDateFromFileName || 'NOT PROVIDED'}`);
-    console.log(`Existing open positions: ${Object.keys(existingPositions).length}`);
-    Object.entries(existingPositions).forEach(([symbol, position]) => {
-      console.log(`  ${symbol}: ${position.side} ${position.quantity} shares @ $${position.entryPrice}`);
-    });
-    console.log(`=====================\n`);
+    console.log('[CSV] Import context prepared');
     context.importDate = context.importDate || importDateFromFileName;
 
     let csvString = fileBuffer.toString('utf-8');
@@ -727,7 +718,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     try {
       records = parse(csvString, parseOptions);
     } catch (parseError) {
-      console.error('CSV parsing error:', parseError.message);
+      console.error('CSV parsing failed');
 
       // If IBKR parsing fails, try alternative approach
       if (broker === 'ibkr' || broker === 'ibkr_trade_confirmation' || broker === 'captrader') {
@@ -870,7 +861,7 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
         const hasProAccess = userId ? await currencyConverter.userHasProAccess(userId) : false;
 
         if (hasProAccess) {
-          console.log(`[CURRENCY] User ${userId} has Pro access, currency conversion enabled`);
+          console.log('[CURRENCY] Currency conversion enabled');
           // Store currency column info in context for broker parsers to use
           context.hasCurrencyColumn = true;
           context.currencyRecords = records; // Store original records with currency data
@@ -895,12 +886,12 @@ async function parseCSVForBroker(fileBuffer, broker = 'generic', context = {}) {
     // Check if CSV contains an account column for automatic account detection
     const accountColumnName = detectAccountColumn(records);
     if (accountColumnName) {
-      console.log(`[ACCOUNT] Account column "${accountColumnName}" detected - will extract account IDs from CSV`);
+      console.log('[ACCOUNT] Account column detected');
       context.accountColumnName = accountColumnName;
       context.hasAccountColumn = true;
     } else if (context.selectedAccountId) {
       // User manually selected an account during import
-      console.log(`[ACCOUNT] Using manually selected account: ${context.selectedAccountId}`);
+      console.log('[ACCOUNT] Using selected account');
     }
 
     if (broker === 'generic' && !context.customMapping && hasEditedOptionTransactionHeaders(Object.keys(records[0] || {}))) {
