@@ -1,3 +1,5 @@
+jest.mock('../../src/services/userRegistrationService', () => ({ registerUser: jest.fn() }));
+const { registerUser } = require('../../src/services/userRegistrationService');
 jest.mock('../../src/models/User', () => ({
   findByEmail: jest.fn(),
   findByUsername: jest.fn(),
@@ -310,8 +312,7 @@ describe('auth controller 2FA flow', () => {
   test('register queues verification email for non-first users', async () => {
     User.findByEmail.mockResolvedValue(null);
     User.findByUsername.mockResolvedValue(null);
-    User.getUserCount.mockResolvedValue(1);
-    User.create.mockResolvedValue({
+    registerUser.mockResolvedValue({ user: {
       id: 'user-2',
       email: 'new@example.com',
       username: 'newuser',
@@ -321,7 +322,7 @@ describe('auth controller 2FA flow', () => {
       is_verified: false,
       admin_approved: true,
       created_at: new Date().toISOString()
-    });
+    }, isFirstUser: false, isVerified: false, adminApproved: true, needsVerificationEmail: true, verificationToken: 'synthetic-verification-token' });
     User.createSettings.mockResolvedValue({});
     User.getSettings.mockResolvedValue({ onboarding_step: 0, pro_onboarding_step: 0 });
 
@@ -344,6 +345,8 @@ describe('auth controller 2FA flow', () => {
 
     expect(next).not.toHaveBeenCalled();
     expect(res.statusCode).toBe(201);
+    expect(registerUser).toHaveBeenCalledWith(expect.objectContaining({ email: 'new@example.com' }), expect.objectContaining({ emailConfigured: true }));
+    expect(User.getUserCount).not.toHaveBeenCalled();
     expect(jobQueue.addJob).toHaveBeenCalledWith(
       'verification_email',
       expect.objectContaining({

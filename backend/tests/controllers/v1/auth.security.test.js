@@ -1,3 +1,5 @@
+jest.mock('../../../src/services/userRegistrationService', () => ({ registerUser: jest.fn() }));
+const { registerUser } = require('../../../src/services/userRegistrationService');
 jest.mock('../../../src/models/User', () => ({
   findByEmail: jest.fn(),
   verifyPassword: jest.fn(),
@@ -112,11 +114,10 @@ describe('v1 auth security policy', () => {
     process.env.EMAIL_USER = 'mailer';
     process.env.EMAIL_PASS = 'secret';
     User.findByEmail.mockResolvedValue(null);
-    User.getUserCount.mockResolvedValue(1);
-    User.create.mockResolvedValue({
+    registerUser.mockResolvedValue({ user: {
       id: 'user-2', email: 'new@example.com', username: 'new', role: 'user',
       full_name: null, avatar_url: null, is_verified: false
-    });
+    }, isFirstUser: false, isVerified: false, adminApproved: true, needsVerificationEmail: true, verificationToken: 'synthetic-verification-token' });
     refreshTokenService.generateAccessToken.mockReturnValue('access-token');
     refreshTokenService.generateRefreshToken.mockResolvedValue({ token: 'refresh-token' });
     const res = response();
@@ -127,6 +128,8 @@ describe('v1 auth security policy', () => {
     }, res, jest.fn());
 
     expect(res.statusCode).toBe(201);
+    expect(registerUser).toHaveBeenCalledWith(expect.objectContaining({ email: 'new@example.com' }), expect.objectContaining({ emailConfigured: true }));
+    expect(User.getUserCount).not.toHaveBeenCalled();
     expect(res.payload.requiresVerification).toBe(true);
     expect(res.payload.tokens).toEqual(expect.objectContaining({ accessToken: 'access-token' }));
     // Parity with the web registration flow.

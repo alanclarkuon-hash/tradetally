@@ -1,3 +1,4 @@
+const { registerUser } = require('../services/userRegistrationService');
 const User = require('../models/User');
 const { generateToken, TOKEN_PURPOSES, verifyJwtToken, clearAuthUserCache } = require('../middleware/auth');
 const crypto = require('crypto');
@@ -130,42 +131,10 @@ const authController = {
         username = await generateUsername(email);
       }
 
-      // Check if this is the first user (make them admin)
-      const userCount = await User.getUserCount();
-      const isFirstUser = userCount === 0;
-
-      // Check if email verification is configured
       const emailConfigured = isEmailConfigured();
-      
-      let verificationToken = null;
-      let verificationExpires = null;
-      let isVerified = !emailConfigured || isFirstUser; // Auto-verify if email not configured OR if first user
-      let adminApproved = true; // Default to approved
-
-      // Set admin approval based on registration mode
-      if (registrationMode === 'approval' && !isFirstUser) {
-        adminApproved = false; // Require admin approval for non-first users
-      }
-
-      if (emailConfigured && !isFirstUser) {
-        // Generate verification token only if email is configured AND not first user
-        verificationToken = crypto.randomBytes(32).toString('hex');
-        verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-      }
-
-      const user = await User.create({
-        email,
-        username,
-        password,
-        fullName,
-        verificationToken,
-        verificationExpires,
-        role: isFirstUser ? 'admin' : 'user',
-        isVerified,
-        adminApproved,
-        marketingConsent: marketing_consent || false
-      });
-      await User.createSettings(user.id);
+      const { user, isFirstUser, adminApproved, verificationToken, needsVerificationEmail } = await registerUser({
+        email, username, password, fullName, marketingConsent: marketing_consent || false
+      }, { emailConfigured, registrationMode });
 
       // Record acquisition data (UTM params, referral source, IP, user agent)
       try {
@@ -288,7 +257,7 @@ const authController = {
         });
       }
 
-      if (emailConfigured && !isFirstUser) {
+      if (needsVerificationEmail) {
         sendVerificationEmailInBackground(email, verificationToken);
       } else {
         console.log(`[INFO] Email verification skipped - no email configuration found for user: ${user.username}`);
