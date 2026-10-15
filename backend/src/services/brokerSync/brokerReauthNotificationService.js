@@ -24,7 +24,7 @@ class BrokerReauthNotificationService {
 
     const failures = results.filter(result => result.status === 'rejected');
     failures.forEach(result => {
-      console.error('[BROKER-SYNC] Failed to send pre-expiration reminder:', result.reason?.message || result.reason);
+      console.error('[BROKER-SYNC] Failed to send pre-expiration reminder:');
     });
 
     return {
@@ -126,7 +126,7 @@ class BrokerReauthNotificationService {
         });
       }
     } catch (error) {
-      console.error('[BROKER-SYNC] Failed to send reconnect email:', error.message);
+      console.error('[BROKER-SYNC] Failed to send reconnect email:');
     }
 
   }

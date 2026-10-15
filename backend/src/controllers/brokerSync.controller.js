@@ -235,7 +235,7 @@ const brokerSyncController = {
       // Fetch updated connection
       const updatedConnection = await BrokerConnection.findById(connection.id, false);
 
-      console.log(`[BROKER-SYNC] IBKR connection created for user ${userId}`);
+      console.log(`[BROKER-SYNC] IBKR connection created for user [detail omitted]`);
 
       res.status(201).json({
         success: true,
@@ -349,7 +349,7 @@ const brokerSyncController = {
       }
 
       const updatedConnection = await BrokerConnection.findById(connection.id, false);
-      console.log(`[BROKER-SYNC] Trading 212 ${brokerEnvironment} connection created for user ${userId}`);
+      console.log(`[BROKER-SYNC] Trading 212 [detail omitted] connection created for user [detail omitted]`);
       return res.status(201).json({
         success: true,
         data: updatedConnection,
@@ -404,7 +404,7 @@ const brokerSyncController = {
       authUrl.searchParams.set('scope', 'api');
       authUrl.searchParams.set('state', stateToken);
 
-      console.log(`[BROKER-SYNC] Initiating Schwab OAuth for user ${userId}`);
+      console.log(`[BROKER-SYNC] Initiating Schwab OAuth for user [detail omitted]`);
 
       res.json({
         success: true,
@@ -425,7 +425,7 @@ const brokerSyncController = {
 
       // Handle OAuth errors
       if (oauthError) {
-        console.error('[BROKER-SYNC] Schwab OAuth error:', oauthError);
+        console.error('[BROKER-SYNC] Schwab OAuth error:');
         return redirectBrokerSync(res, 'schwab', state, { error: oauthError });
       }
 
@@ -465,7 +465,7 @@ const brokerSyncController = {
 
       // Exchange code for tokens
       console.log('[SCHWAB-OAUTH] Exchanging authorization code for tokens...');
-      console.log('[SCHWAB-OAUTH] Redirect URI:', process.env.SCHWAB_REDIRECT_URI);
+      console.log('[SCHWAB-OAUTH] Redirect URI:');
 
       const axios = require('axios');
       const tokenResponse = await axios.post(
@@ -492,7 +492,7 @@ const brokerSyncController = {
       // Calculate token expiration
       const expiresAt = new Date(Date.now() + expires_in * 1000);
       const refreshTokenExpiresAt = new Date(Date.now() + SCHWAB_REFRESH_TOKEN_TTL_MS);
-      console.log('[SCHWAB-OAUTH] Token expires at:', expiresAt);
+      console.log('[SCHWAB-OAUTH] Token expires at:');
 
       // Get account info
       console.log('[SCHWAB-OAUTH] Fetching account info...');
@@ -506,11 +506,11 @@ const brokerSyncController = {
       );
 
       const accountNumber = accountsResponse.data?.[0]?.securitiesAccount?.accountNumber;
-      console.log(`[SCHWAB-OAUTH] Accounts response count: ${accountsResponse.data?.length || 0}`);
-      console.log('[SCHWAB-OAUTH] Primary account (redacted):', redactAccountNumber(accountNumber) || 'unknown');
+      console.log(`[SCHWAB-OAUTH] Accounts response count: [detail omitted]`);
+      console.log('[SCHWAB-OAUTH] Primary account (redacted):');
 
       // Create or update connection
-      console.log('[SCHWAB-OAUTH] Creating broker connection for user:', userId);
+      console.log('[SCHWAB-OAUTH] Creating broker connection for user:');
       const connection = await BrokerConnection.create(userId, {
         brokerType: 'schwab',
         schwabAccessToken: access_token,
@@ -527,7 +527,7 @@ const brokerSyncController = {
         autoSyncEnabled: false,
         syncFrequency: 'daily'
       });
-      console.log('[SCHWAB-OAUTH] Connection created:', connection.id);
+      console.log('[SCHWAB-OAUTH] Connection created:');
 
       await BrokerConnection.updateStatus(connection.id, 'active', 'OAuth connection successful', true);
       await db.query(
@@ -541,15 +541,15 @@ const brokerSyncController = {
       );
       console.log('[SCHWAB-OAUTH] Connection status updated to active');
 
-      console.log(`[BROKER-SYNC] Schwab connection created for user ${userId}`);
+      console.log(`[BROKER-SYNC] Schwab connection created for user [detail omitted]`);
 
       // Redirect back to frontend
       res.redirect(buildBrokerSyncRedirect({ success: 'schwab' }, redirectContext));
     } catch (error) {
-      console.error('[SCHWAB-OAUTH] ERROR MESSAGE:', error.message);
-      console.error('[SCHWAB-OAUTH] ERROR STATUS:', error.response?.status);
+      console.error('[SCHWAB-OAUTH] ERROR MESSAGE:');
+      console.error('[SCHWAB-OAUTH] ERROR STATUS:');
       if (error.response?.data?.error) {
-        console.error('[SCHWAB-OAUTH] ERROR CODE:', error.response.data.error);
+        console.error('[SCHWAB-OAUTH] ERROR CODE:');
       }
       logger.logError('Error handling Schwab OAuth callback:', error);
 
@@ -864,7 +864,7 @@ const brokerSyncController = {
 
       await BrokerConnection.delete(id);
 
-      console.log(`[BROKER-SYNC] Connection ${id} deleted for user ${userId}`);
+      console.log(`[BROKER-SYNC] Connection [detail omitted] deleted for user [detail omitted]`);
 
       res.json({
         success: true,
@@ -910,7 +910,7 @@ const brokerSyncController = {
         });
       }
 
-      console.log(`[BROKER-SYNC] Starting manual sync for connection ${id}`);
+      console.log(`[BROKER-SYNC] Starting manual sync for connection [detail omitted]`);
 
       // Use the broker sync service orchestrator which handles both IBKR and Schwab
       // Start sync in background
@@ -922,9 +922,9 @@ const brokerSyncController = {
             endDate
           });
 
-          console.log(`[BROKER-SYNC] Sync completed for connection ${id}: ${result.imported || 0} imported`);
+          console.log(`[BROKER-SYNC] Sync completed for connection [detail omitted]: [detail omitted] imported`);
         } catch (error) {
-          console.error('[BROKER-SYNC] Sync failed for connection %s:', id, error.message);
+          console.error('[BROKER-SYNC] Sync failed for connection %s:');
           // Error handling is done in the service layer
         }
       });
@@ -1143,11 +1143,11 @@ const brokerSyncController = {
         }
         return { deletedCount: result.rowCount + legacyCount, legacyDeletedCount: legacyCount };
       });
-      console.log(`[BROKER-SYNC] Deleted ${deletedCount} synced trades for connection ${id} (user ${userId}); legacy=${legacyDeletedCount}`);
+      console.log(`[BROKER-SYNC] Deleted [detail omitted] synced trades for connection [detail omitted] (user [detail omitted]); legacy=[detail omitted]`);
 
       if (deletedCount > 0) {
         await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'broker trade deletion');
-        console.log(`[BROKER-SYNC] Invalidating analytics cache for user ${userId}`);
+        console.log(`[BROKER-SYNC] Invalidating analytics cache for user [detail omitted]`);
         await AnalyticsCache.invalidate(userId);
       }
 

@@ -342,7 +342,7 @@ class OAuthBrokerBase {
           account_identifier: tradeData.accountIdentifier || null
         });
       } catch (error) {
-        console.error(`[${this.config.logPrefix}] Failed to import trade:`, error.message);
+        console.error(`[[detail omitted]] Failed to import trade:`);
         failed++;
       }
     }
@@ -355,7 +355,7 @@ class OAuthBrokerBase {
     if (imported > 0) {
       const AchievementService = require('../achievementService');
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
-        console.warn(`[${this.config.logPrefix}] Failed to check achievements after sync for user ${userId}:`, error.message);
+        console.warn(`[[detail omitted]] Failed to check achievements after sync for user [detail omitted]:`);
       });
     }
 

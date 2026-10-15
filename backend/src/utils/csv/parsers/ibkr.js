@@ -136,14 +136,14 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   // completed trades. Defaults to `ibkr` for backwards compatibility.
   const brokerTag = context.brokerTag || 'ibkr';
   console.log(`\n=== IBKR TRANSACTION PARSER ===`);
-  console.log(`Processing ${records.length} IBKR transaction records (broker tag: ${brokerTag})`);
-  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
-  console.log(`Trade grouping: ${tradeGroupingSettings.enabled ? `enabled (${tradeGroupingSettings.timeGapMinutes} minute time gap)` : 'disabled'}`);
+  console.log(`Processing ${records.length} IBKR transaction records (broker tag: [detail omitted])`);
+  console.log(`Existing open positions passed to parser: [detail omitted]`);
+  console.log(`Trade grouping: [detail omitted]`);
 
   if (Object.keys(existingPositions).length > 0) {
     console.log(`Existing positions:`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
-      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+      console.log(`  [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted] (Trade ID: [detail omitted])`);
     });
   }
 
@@ -169,7 +169,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       let code = null;
       if (rawCode) {
         code = cleanString(rawCode).toUpperCase();
-        console.log(`[IBKR] Transaction code: ${code}`);
+        console.log(`[IBKR] Transaction code: [detail omitted]`);
       }
 
       // Parse every row independently. IBKR uses several equivalent header styles
@@ -244,7 +244,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const invalidQuantity = !isFinite(absQuantity) || absQuantity <= 0;
       const invalidPrice = !isFinite(price) || (price === 0 && !isExpiration);
       if (!symbol || invalidQuantity || invalidPrice || !dateTime) {
-        console.log(`[IBKR] Skipping row ${rowIndex} because required execution data was missing`);
+        console.log(`[IBKR] Skipping row [detail omitted] because required execution data was missing`);
         noteSkippedRow(rowIndex, 'Missing required symbol, quantity, price, or date/time');
         continue;
       }
@@ -254,7 +254,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const entryTime = parseDateTime(dateTime);
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping IBKR record with invalid date: ${dateTime}`);
+        console.log(`Skipping IBKR record with invalid date: [detail omitted]`);
         noteSkippedRow(rowIndex, `Invalid execution date/time: ${dateTime}`);
         continue;
       }
@@ -272,11 +272,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // IBKR reports options quantity in contracts already (not shares)
         // So we don't need to divide by 100
         processedQuantity = Math.round(absQuantity); // Ensure whole number
-        console.log(`[IBKR] Options contract quantity: ${processedQuantity} contracts`);
+        console.log(`[IBKR] Options contract quantity: [detail omitted] contracts`);
       } else {
         // For stocks, use the quantity as-is
         processedQuantity = absQuantity;
-        console.log(`[IBKR] Stock quantity: ${processedQuantity} shares`);
+        console.log(`[IBKR] Stock quantity: [detail omitted] shares`);
       }
 
       // Detect if this is an expiration transaction
@@ -294,7 +294,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       // options trades for the same contract regardless of symbol parsing issues
       const conid = cleanString(read('Conid', 'ConId', 'ConID'));
       if (conid) {
-        console.log(`[IBKR] Contract ID (Conid): ${conid} for symbol ${symbol}`);
+        console.log(`[IBKR] Contract ID (Conid): [detail omitted] for symbol [detail omitted]`);
       }
 
       const orderId = cleanString(read('Order ID', 'OrderID', 'OrderId', 'IBOrderID', 'IB Order ID', 'Trade ID', 'TradeID'));
@@ -327,12 +327,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       });
 
       if (isExpirationTx) {
-        console.log(`[IBKR] Parsed EXPIRATION/ASSIGNMENT: ${action} ${processedQuantity} ${symbol} @ $${price} [${code || 'no code'}] (options expired/assigned)`);
+        console.log(`[IBKR] Parsed EXPIRATION/ASSIGNMENT: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] [[detail omitted]] (options expired/assigned)`);
       } else {
-        console.log(`Parsed IBKR transaction: ${action} ${processedQuantity} ${symbol} @ $${price}${code ? ` [${code}]` : ''}${commission < 0 ? ` (rebate: $${Math.abs(commission).toFixed(2)})` : ''}`);
+        console.log(`Parsed IBKR transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted][detail omitted][detail omitted]`);
       }
     } catch (error) {
-      console.error(`[IBKR] Error parsing transaction row ${rowIndex}:`, error.message);
+      console.error(`[IBKR] Error parsing transaction row [detail omitted]:`);
       noteSkippedRow(rowIndex, `Parse error: ${error.message}`);
     }
   }
@@ -387,7 +387,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
   // Log grouping info
   const conidGroupCount = Object.keys(transactionsByGroupKey).filter(k => /^\d+$/.test(k)).length;
   const symbolGroupCount = Object.keys(transactionsByGroupKey).length - conidGroupCount;
-  console.log(`[IBKR] Grouped into ${Object.keys(transactionsByGroupKey).length} groups (${conidGroupCount} by Conid, ${symbolGroupCount} by symbol)`);
+  console.log(`[IBKR] Grouped into [detail omitted] groups ([detail omitted] by Conid, [detail omitted] by symbol)`);
 
   // For backwards compatibility, create transactionsBySymbol as an alias
   const transactionsBySymbol = transactionsByGroupKey;
@@ -398,7 +398,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     console.log(`  → No existing positions found`);
   } else {
     Object.entries(existingPositions).forEach(([sym, pos]) => {
-      console.log(`  → ${sym}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice} (ID: ${pos.id})`);
+      console.log(`  → [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted] (ID: [detail omitted])`);
     });
   }
 
@@ -411,9 +411,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     const conid = symbolTransactions[0].conid;
 
     if (conid) {
-      console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for Conid ${conid} (${symbol}) ===`);
+      console.log(`\n=== Processing [detail omitted] IBKR transactions for Conid [detail omitted] ([detail omitted]) ===`);
     } else {
-      console.log(`\n=== Processing ${symbolTransactions.length} IBKR transactions for ${symbol} ===`);
+      console.log(`\n=== Processing [detail omitted] IBKR transactions for [detail omitted] ===`);
     }
 
     // Parse instrument data to check if this is an option/future
@@ -436,7 +436,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     // We read the Multiplier column from CSV if available to handle all cases correctly
     const contractMultiplier = 1; // Quantity is already in contracts
 
-    console.log(`Instrument type: ${instrumentData.instrumentType}, contract multiplier: ${contractMultiplier}`);
+    console.log(`Instrument type: [detail omitted], contract multiplier: [detail omitted]`);
 
     // For dollar value calculations (entryValue/exitValue), we need to apply appropriate multipliers
     // Priority: CSV Multiplier > Trade Confirmation contractSize > default (100)
@@ -446,9 +446,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
                             instrumentData.instrumentType === 'future' ? (instrumentData.pointValue || 1) : 1;
 
     if (csvMultiplier && instrumentData.instrumentType === 'option') {
-      console.log(`[IBKR] Using multiplier from CSV: ${csvMultiplier} (option price is per-${csvMultiplier === 1 ? 'contract' : csvMultiplier === 10 ? 'share (mini)' : 'share'})`);
+      console.log(`[IBKR] Using multiplier from CSV: [detail omitted] (option price is per-[detail omitted])`);
     } else if (instrumentData.instrumentType === 'option') {
-      console.log(`[IBKR] Using default multiplier: ${valueMultiplier} (standard options pricing)`);
+      console.log(`[IBKR] Using default multiplier: [detail omitted] (standard options pricing)`);
     }
 
     // Track position and round-trip trades
@@ -461,30 +461,30 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     // Debug: Log all available conid keys for this lookup
     const availableConidKeys = Object.keys(existingPositions).filter(k => k.startsWith('conid_'));
     if (conid) {
-      console.log(`  → [DEBUG] Looking for conid_${conid}`);
-      console.log(`  → [DEBUG] Available conid keys: ${availableConidKeys.length > 0 ? availableConidKeys.join(', ') : 'NONE'}`);
+      console.log(`  → [DEBUG] Looking for conid_[detail omitted]`);
+      console.log(`  → [DEBUG] Available conid keys: [detail omitted]`);
     }
 
     // First try Conid lookup if available (most reliable)
     if (conid && existingPositions[`conid_${conid}`]) {
       positionLookupKey = `conid_${conid}`;
-      console.log(`  → Looking up position by Conid: ${conid}`);
+      console.log(`  → Looking up position by Conid: [detail omitted]`);
       existingPosition = existingPositions[positionLookupKey];
     } else if (conid) {
       // Conid provided but not found - log detailed info
-      console.log(`  → [WARNING] Conid ${conid} not found in existing positions`);
+      console.log(`  → [WARNING] Conid [detail omitted] not found in existing positions`);
       // Fallback to composite key for options
       if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
           instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
         positionLookupKey = `${instrumentData.underlyingSymbol}_${instrumentData.strikePrice}_${instrumentData.expirationDate}_${instrumentData.optionType}`;
-        console.log(`  → Trying composite key fallback: ${positionLookupKey}`);
+        console.log(`  → Trying composite key fallback: [detail omitted]`);
         existingPosition = existingPositions[positionLookupKey];
       }
     } else if (instrumentData.instrumentType === 'option' && instrumentData.underlyingSymbol &&
         instrumentData.strikePrice && instrumentData.expirationDate && instrumentData.optionType) {
       // Build composite key for options: underlying_strike_expiration_type
       positionLookupKey = `${instrumentData.underlyingSymbol}_${instrumentData.strikePrice}_${instrumentData.expirationDate}_${instrumentData.optionType}`;
-      console.log(`  → Looking up option position with key: ${positionLookupKey}`);
+      console.log(`  → Looking up option position with key: [detail omitted]`);
       existingPosition = existingPositions[positionLookupKey];
     } else {
       // For stocks/futures or options without full metadata, use symbol directly
@@ -492,11 +492,11 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     }
 
     if (!existingPosition) {
-      console.log(`  → No existing position found for key: ${positionLookupKey}`);
+      console.log(`  → No existing position found for key: [detail omitted]`);
       // Log all existing position keys for debugging
       const allKeys = Object.keys(existingPositions);
       if (allKeys.length > 0) {
-        console.log(`  → [DEBUG] All existing position keys: ${allKeys.slice(0, 20).join(', ')}${allKeys.length > 20 ? '...' : ''}`);
+        console.log(`  → [DEBUG] All existing position keys: [detail omitted][detail omitted]`);
       }
     }
 
@@ -548,10 +548,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         }
       }
 
-      console.log(`  → [PARTIAL CLOSE FIX] Recalculated from ${existingExecutions.length} executions:`);
-      console.log(`    Entry: ${recalcEntryQty} @ $${(recalcEntryValue / recalcEntryQty / valueMultiplier).toFixed(4)} = $${recalcEntryValue.toFixed(2)}`);
-      console.log(`    Exit so far: ${recalcExitQty} @ $${recalcExitQty > 0 ? (recalcExitValue / recalcExitQty / valueMultiplier).toFixed(4) : '0'} = $${recalcExitValue.toFixed(2)}`);
-      console.log(`    Remaining position: ${existingPosition.quantity} (stored), fees so far: $${recalcFees.toFixed(2)}`);
+      console.log(`  → [PARTIAL CLOSE FIX] Recalculated from [detail omitted] executions:`);
+      console.log(`    Entry: [detail omitted] @ $[detail omitted] = $[detail omitted]`);
+      console.log(`    Exit so far: [detail omitted] @ $[detail omitted] = $[detail omitted]`);
+      console.log(`    Remaining position: [detail omitted] (stored), fees so far: $[detail omitted]`);
 
       currentTrade = {
         symbol: symbol,
@@ -575,8 +575,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
     }
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'} remaining`);
-      console.log(`  → Total entry: ${currentTrade.totalQuantity}, entryValue: $${currentTrade.entryValue.toFixed(2)}, exitValue so far: $${currentTrade.exitValue.toFixed(2)}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] [detail omitted] remaining`);
+      console.log(`  → Total entry: [detail omitted], entryValue: $[detail omitted], exitValue so far: $[detail omitted]`);
     }
 
     for (const transaction of symbolTransactions) {
@@ -584,7 +584,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       const prevPosition = currentPosition;
       const transactionCode = transaction.code;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}${transactionCode ? ` | Code: ${transactionCode}` : ''}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted][detail omitted]`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0 && !currentTrade) {
@@ -611,7 +611,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             context
           });
           context.manualReviewItems.push(reviewItem);
-          console.log(`  → [MANUAL REVIEW] Sell-only stock execution for ${symbol} requires user confirmation before import`);
+          console.log(`  → [MANUAL REVIEW] Sell-only stock execution for [detail omitted] requires user confirmation before import`);
           continue;
         }
 
@@ -622,8 +622,8 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           // Instead of creating an incorrect open position, create a completed "close-only" trade
           // This represents a position that was opened outside this import and is now being closed
           const closeOnlyReason = `Code='${transactionCode}' is a closing transaction without existing position`;
-          console.log(`  → [CLOSE-ONLY] ${closeOnlyReason}`);
-          console.log(`  → Creating completed close-only trade for: ${transaction.action} ${qty} ${symbol} @ $${transaction.price}`);
+          console.log(`  → [CLOSE-ONLY] [detail omitted]`);
+          console.log(`  → Creating completed close-only trade for: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted]`);
 
           // For close-only transactions, determine the original trade direction:
           // - If we're BUYING to close (action='buy'), the original was a SHORT position
@@ -690,7 +690,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           }
 
           completedTrades.push(closeOnlyTrade);
-          console.log(`  → [SUCCESS] Created close-only ${originalSide} trade: ${qty} ${symbol} @ $${transaction.price}`);
+          console.log(`  → [SUCCESS] Created close-only [detail omitted] trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
           continue; // Skip the normal trade creation flow
         }
 
@@ -704,9 +704,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           if (timeSinceLastTrade <= tradeGroupingSettings.timeGapMinutes) {
             // Within time gap - continue previous trade
             shouldStartNewTrade = false;
-            console.log(`  → [GROUPING] Within ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - continuing previous trade`);
+            console.log(`  → [GROUPING] Within [detail omitted]min gap ([detail omitted]min) - continuing previous trade`);
           } else {
-            console.log(`  → [GROUPING] Beyond ${tradeGroupingSettings.timeGapMinutes}min gap (${timeSinceLastTrade.toFixed(1)}min) - starting new trade`);
+            console.log(`  → [GROUPING] Beyond [detail omitted]min gap ([detail omitted]min) - starting new trade`);
           }
         }
 
@@ -738,9 +738,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
           // Log with extra detail for short option positions
           if (tradeSide === 'short' && instrumentData.instrumentType === 'option') {
-            console.log(`  → Started new SHORT OPTION trade (sell-to-open)${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+            console.log(`  → Started new SHORT OPTION trade (sell-to-open)[detail omitted]`);
           } else {
-            console.log(`  → Started new ${currentTrade.side} trade${transactionCode ? ` [Code: ${transactionCode}]` : ''}`);
+            console.log(`  → Started new [detail omitted] trade[detail omitted]`);
           }
         }
       }
@@ -778,7 +778,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           currentTrade.executions.some(exec => executionIdentityMatches(exec, newExecution)));
 
         if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
         }
 
         if (!executionExists) {
@@ -789,9 +789,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           }
         } else {
           if (diagnostics) diagnostics.matchedExecutionRows = (diagnostics.matchedExecutionRows || 0) + 1;
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
           // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          console.log(`  Position: [detail omitted] (unchanged - duplicate)`);
           continue;
         }
       }
@@ -815,7 +815,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
             const netPartialPnl = partialPnl - partialCommission;
 
-            console.log(`  → [PARTIAL COVER] Covered ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${Math.abs(currentPosition)} shares short`);
+            console.log(`  → [PARTIAL COVER] Covered [detail omitted] @ $[detail omitted], Entry avg: $[detail omitted], P&L: $[detail omitted], Remaining: [detail omitted] shares short`);
           }
         }
       } else if (transaction.action === 'sell') {
@@ -831,10 +831,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           if (instrumentData.instrumentType === 'option') {
             // Commission rebates show as negative fees, so net proceeds = sale - fees (adds rebate)
             const netProceeds = saleProceeds - transaction.fees;
-            console.log(`  [SHORT OPTION ENTRY] Sold ${qty} contracts @ $${transaction.price}/share`);
-            console.log(`    Sale proceeds: $${saleProceeds.toFixed(2)} (${qty} × $${transaction.price} × ${valueMultiplier})`);
-            console.log(`    Commission/rebate: $${transaction.fees.toFixed(2)} ${transaction.fees < 0 ? '(REBATE - credit)' : '(fee - debit)'}`);
-            console.log(`    Net proceeds: $${netProceeds.toFixed(2)}`);
+            console.log(`  [SHORT OPTION ENTRY] Sold [detail omitted] contracts @ $[detail omitted]/share`);
+            console.log(`    Sale proceeds: $[detail omitted] ([detail omitted] × $[detail omitted] × [detail omitted])`);
+            console.log(`    Commission/rebate: $[detail omitted] [detail omitted]`);
+            console.log(`    Net proceeds: $[detail omitted]`);
           }
         } else if (currentTrade && currentTrade.side === 'long') {
           currentTrade.exitValue += qty * transaction.price * valueMultiplier;
@@ -848,12 +848,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
             const partialCommission = (currentTrade.totalFees / currentTrade.totalQuantity) * qty;
             const netPartialPnl = partialPnl - partialCommission;
 
-            console.log(`  → [PARTIAL CLOSE] Sold ${qty} @ $${transaction.price.toFixed(2)}, Entry avg: $${avgEntryPrice.toFixed(2)}, P&L: $${netPartialPnl.toFixed(2)}, Remaining: ${currentPosition} shares`);
+            console.log(`  → [PARTIAL CLOSE] Sold [detail omitted] @ $[detail omitted], Entry avg: $[detail omitted], P&L: $[detail omitted], Remaining: [detail omitted] shares`);
           }
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  Position: [detail omitted] → [detail omitted]`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -873,7 +873,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
 
           // Log P&L calculation for short options to help debugging
           if (instrumentData.instrumentType === 'option') {
-            console.log(`  [SHORT OPTION P&L] Entry: $${currentTrade.entryValue.toFixed(2)}, Exit: $${currentTrade.exitValue.toFixed(2)}, Fees: $${currentTrade.totalFees.toFixed(2)}, P&L: $${currentTrade.pnl.toFixed(2)}`);
+            console.log(`  [SHORT OPTION P&L] Entry: $[detail omitted], Exit: $[detail omitted], Fees: $[detail omitted], P&L: $[detail omitted]`);
           }
         }
 
@@ -917,10 +917,10 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] shares, P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] shares, [detail omitted] executions, P/L: $[detail omitted]`);
         }
 
         completedTrades.push(currentTrade);
@@ -932,9 +932,9 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] shares`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      console.log(`Active trade: [detail omitted] [detail omitted] shares, [detail omitted] executions`);
 
       // Skip if no executions (all were duplicates)
       if (currentTrade.executions.length === 0) {
@@ -956,7 +956,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
       currentTrade.fees = 0;
       currentTrade.exitTime = null;
 
-      console.log(`  [OPEN POSITION] Storing remaining quantity: ${remainingQuantity} (currentPosition: ${currentPosition}, totalEntry: ${currentTrade.totalQuantity})`);
+      console.log(`  [OPEN POSITION] Storing remaining quantity: [detail omitted] (currentPosition: [detail omitted], totalEntry: [detail omitted])`);
 
       // Calculate entry commission for open positions (all fees are entry fees since no exit yet)
       let entryCommission = 0;
@@ -979,7 +979,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
         // For short options, calculate and show the net proceeds received
         const netProceeds = currentTrade.entryValue - currentTrade.totalFees;
         currentTrade.notes = `Open SHORT option position: ${remainingQuantity} contracts remaining (sold ${currentTrade.totalQuantity} @ $${currentTrade.entryPrice.toFixed(2)}/share), net proceeds: $${netProceeds.toFixed(2)} (${currentTrade.totalFees < 0 ? 'includes rebate' : 'after commission'})`;
-        console.log(`  [OPEN SHORT OPTION] Entry price: $${currentTrade.entryPrice.toFixed(2)}/share, Net proceeds: $${netProceeds.toFixed(2)}, Remaining: ${remainingQuantity} contracts`);
+        console.log(`  [OPEN SHORT OPTION] Entry price: $[detail omitted]/share, Net proceeds: $[detail omitted], Remaining: [detail omitted] contracts`);
       } else {
         currentTrade.notes = `Open position: ${currentTrade.executions.length} executions`;
       }
@@ -1006,7 +1006,7 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
         }
 
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} ${instrumentData.instrumentType === 'option' ? 'contracts' : 'shares'}, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open [detail omitted] position: [detail omitted] [detail omitted], [detail omitted] new executions`);
       }
 
       completedTrades.push(currentTrade);

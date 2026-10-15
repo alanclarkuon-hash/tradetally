@@ -754,9 +754,9 @@ const tradeController = {
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send(csv);
 
-      logger.info(`Exported ${trades.length} trades to CSV for user ${req.user.id}`);
+      logger.info(`Exported ${trades.length} trades to CSV for user [detail omitted]`);
     } catch (error) {
-      logger.logError('Error exporting trades to CSV:', error);
+      logger.logError('Error exporting trades to CSV:');
       next(error);
     }
   },
@@ -1945,7 +1945,7 @@ const tradeController = {
       const result = detectImportAccounts(req.file.buffer, req.file.originalname);
       res.json(result);
     } catch (error) {
-      console.error('Import account analysis error:', error);
+      console.error('Import account analysis error:');
       next(error);
     }
   },
@@ -1965,13 +1965,13 @@ const tradeController = {
       const { broker = 'auto' } = req.body;
       const fileBuffer = normalizeCsvBuffer(req.file.buffer);
 
-      console.log('Selected broker:', broker);
-      console.log('File name:', req.file.originalname);
-      console.log('File size:', req.file.size);
+      console.log('Selected broker:');
+      console.log('File name:');
+      console.log('File size:');
 
       // Detect broker format
       const detectedBroker = detectBrokerFormat(fileBuffer);
-      console.log('Detected broker:', detectedBroker);
+      console.log('Detected broker:');
 
       // Extract headers from CSV
       const headerLine = getCsvHeaderLine(fileBuffer);
@@ -2004,11 +2004,11 @@ const tradeController = {
         fileSize: req.file.size
       };
 
-      console.log('Validation result:', result);
+      console.log('Validation result:');
 
       res.json(result);
     } catch (error) {
-      console.error('Validation error:', error);
+      console.error('Validation error:');
       next(error);
     }
   },
@@ -2016,16 +2016,11 @@ const tradeController = {
   async importTrades(req, res, next) {
     try {
       console.log('=== IMPORT TRADES STARTED ===');
-      console.log('User ID:', req.user.id);
-      console.log('Content-Type:', req.headers['content-type']);
-      console.log('Request body keys:', Object.keys(req.body || {}));
-      console.log('Request file:', req.file ? req.file.originalname : 'none');
-      console.log('File info:', req.file ? {
-        originalname: req.file.originalname,
-        mimetype: req.file.mimetype,
-        size: req.file.size,
-        buffer: req.file.buffer ? `Buffer length: ${req.file.buffer.length}` : 'No buffer'
-      } : 'No file');
+      console.log('User ID:');
+      console.log('Content-Type:');
+      console.log('Request body keys:');
+      console.log('Request file:');
+      console.log('File info:');
 
       if (!req.file) {
         console.log('ERROR: No file found in request');
@@ -2088,11 +2083,11 @@ const tradeController = {
         }
       }
 
-      console.log('Selected broker:', broker);
-      console.log('Mapping ID:', mappingId);
-      console.log('Account ID:', accountId);
-      console.log('Account mode:', accountMode);
-      console.log('Import ID:', importId);
+      console.log('Selected broker:');
+      console.log('Mapping ID:');
+      console.log('Account ID:');
+      console.log('Account mode:');
+      console.log('Import ID:');
 
       const insertQuery = `
         INSERT INTO import_logs (id, user_id, broker, file_name, status)
@@ -2118,7 +2113,7 @@ const tradeController = {
       process.nextTick(async () => {
         // Set up a timeout to prevent stuck imports
         const importTimeout = setTimeout(async () => {
-          logger.logError(`Import ${importId} timed out after 10 minutes`);
+          logger.logError(`Import [detail omitted] timed out after 10 minutes`);
           await db.query(`
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
@@ -2127,12 +2122,12 @@ const tradeController = {
         }, 10 * 60 * 1000); // 10 minutes
         
         try {
-          logger.logImport(`Starting import for user ${fileUserId}, broker: ${broker}, file: ${fileName}`);
+          logger.logImport(`Starting import for user [detail omitted], broker: [detail omitted], file: [detail omitted]`);
 
           // Resolve selected account identifier early so we can scope duplicate detection per account
           const selectedAccountId = selectedImportAccountIdentifier;
           if (selectedAccountId) {
-            logger.logImport(`Using selected account identifier: ${selectedAccountId}`);
+            logger.logImport(`Using selected account identifier: [detail omitted]`);
           }
 
           // Fetch existing open positions for context-aware parsing
@@ -2153,7 +2148,7 @@ const tradeController = {
           openPositionsParams.push(...openPositionsAccountScope.params);
           openPositionsQuery += ` ORDER BY symbol, entry_time`;
           const openPositionsResult = await db.query(openPositionsQuery, openPositionsParams);
-          logger.logImport(`Found ${openPositionsResult.rows.length} existing open positions${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
+          logger.logImport(`Found [detail omitted] existing open positions[detail omitted]`);
 
           // Also fetch completed trades to check for duplicate executions
           // Scope to selected account to allow same trades in different accounts
@@ -2171,7 +2166,7 @@ const tradeController = {
           completedTradesParams.push(...completedTradesAccountScope.params);
           completedTradesQuery += ` ORDER BY symbol, entry_time`;
           const completedTradesResult = await db.query(completedTradesQuery, completedTradesParams);
-          logger.logImport(`Found ${completedTradesResult.rows.length} completed trades for duplicate checking${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
+          logger.logImport(`Found [detail omitted] completed trades for duplicate checking[detail omitted]`);
 
           // Helper function to build composite key for options
           // For options: symbol_strike_expiration_type (e.g., "DG_7.5_2024-02-16_put")
@@ -2201,7 +2196,7 @@ const tradeController = {
                   ? JSON.parse(row.executions)
                   : row.executions;
               } catch (e) {
-                console.warn(`Failed to parse executions for trade ${row.id}:`, e);
+                console.warn(`Failed to parse executions for trade [detail omitted]:`);
                 parsedExecutions = [];
               }
             }
@@ -2234,18 +2229,18 @@ const tradeController = {
             // Also store by conid key if available (for IBKR reliable matching)
             if (row.conid) {
               existingPositions[`conid_${row.conid}`] = positionData;
-              logger.logImport(`  [CONID] Added position with key conid_${row.conid} (${row.symbol}, ${row.quantity} @ $${row.entry_price})`);
+              logger.logImport(`  [CONID] Added position with key conid_[detail omitted] ([detail omitted], [detail omitted] @ $[detail omitted])`);
             } else if (row.instrument_type === 'option') {
-              logger.logImport(`  [WARNING] Option position ${positionKey} has NO conid stored`);
+              logger.logImport(`  [WARNING] Option position [detail omitted] has NO conid stored`);
             }
           });
 
-          logger.logImport(`Found ${Object.keys(existingPositions).length} existing open positions`);
+          logger.logImport(`Found [detail omitted] existing open positions`);
           Object.entries(existingPositions).forEach(([key, pos]) => {
             const typeInfo = pos.instrumentType === 'option'
               ? ` (${pos.optionType} $${pos.strikePrice} exp:${pos.expirationDate})`
               : '';
-            logger.logImport(`  ${key}: ${pos.side} ${pos.quantity} @ $${pos.entryPrice}${typeInfo}`);
+            logger.logImport(`  [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted][detail omitted]`);
           });
 
           // Build a map of all existing executions for duplicate detection
@@ -2259,7 +2254,7 @@ const tradeController = {
                   ? JSON.parse(row.executions)
                   : row.executions;
               } catch (e) {
-                console.warn(`Failed to parse executions for completed trade ${row.id}:`, e);
+                console.warn(`Failed to parse executions for completed trade [detail omitted]:`);
                 parsedExecutions = [];
               }
             }
@@ -2289,7 +2284,7 @@ const tradeController = {
             existingExecutions[key].push(...pos.executions);
           });
 
-          logger.logImport(`Built execution index for ${Object.keys(existingExecutions).length} symbols/contracts`);
+          logger.logImport(`Built execution index for [detail omitted] symbols/contracts`);
 
           // Fetch user settings for trade grouping configuration
           let userSettings = await User.getSettings(req.user.id);
@@ -2300,7 +2295,7 @@ const tradeController = {
           // Fetch custom mapping if provided
           let customMapping = null;
           if (mappingId) {
-            logger.logImport(`Fetching custom CSV mapping: ${mappingId}`);
+            logger.logImport(`Fetching custom CSV mapping: [detail omitted]`);
             const mappingQuery = `
               SELECT * FROM custom_csv_mappings
               WHERE id = $1 AND user_id = $2
@@ -2308,7 +2303,7 @@ const tradeController = {
             const mappingResult = await db.query(mappingQuery, [mappingId, fileUserId]);
             if (mappingResult.rows.length > 0) {
               customMapping = mappingResult.rows[0];
-              logger.logImport(`Using custom mapping: ${customMapping.mapping_name}`);
+              logger.logImport(`Using custom mapping: [detail omitted]`);
             } else {
               logger.logWarn(`Custom mapping ${mappingId} not found for user ${fileUserId}`);
             }
@@ -2316,7 +2311,7 @@ const tradeController = {
 
           // Fetch user's timezone for converting CSV times to UTC
           const userTimezone = await getUserTimezone(fileUserId);
-          logger.logImport(`User timezone: ${userTimezone}`);
+          logger.logImport(`User timezone: [detail omitted]`);
 
           const context = {
             existingPositions,
@@ -2414,7 +2409,7 @@ const tradeController = {
 
           logger.logImport(`Parsed ${trades.length} trades from CSV`);
           if (parseDiagnostics) {
-            logger.logImport(`[DIAGNOSTICS] Total rows: ${parseDiagnostics.totalRows}, Skipped: ${parseDiagnostics.skippedRows}, Invalid: ${parseDiagnostics.invalidRows}`);
+            logger.logImport(`[DIAGNOSTICS] Total rows: [detail omitted], Skipped: [detail omitted], Invalid: [detail omitted]`);
           }
 
           // Auto-create accounts for new account identifiers found in the import.
@@ -2425,7 +2420,7 @@ const tradeController = {
             logger.logImport(`[ACCOUNTS] Checking ${trades.length} trades for account identifiers`);
             trades.forEach((trade, index) => {
               if (index < 3) {
-                logger.logImport(`[ACCOUNTS] Trade ${index} accountIdentifier: ${trade.accountIdentifier || 'NOT SET'}`);
+                logger.logImport(`[ACCOUNTS] Trade [detail omitted] accountIdentifier: [detail omitted]`);
               }
               if (trade.accountIdentifier) {
                 accountIdentifiers.add(trade.accountIdentifier);
@@ -2433,7 +2428,7 @@ const tradeController = {
             });
 
             if (accountIdentifiers.size > 0) {
-              logger.logImport(`[ACCOUNTS] Found ${accountIdentifiers.size} unique account identifier(s) in import`);
+              logger.logImport(`[ACCOUNTS] Found [detail omitted] unique account identifier(s) in import`);
 
               // Get existing accounts for this user
               const existingAccounts = await Account.findByUser(req.user.id);
@@ -2472,9 +2467,9 @@ const tradeController = {
                       initialBalanceDate: new Date().toISOString().split('T')[0],
                       isPrimary: existingAccounts.length === 0 && accountIdentifiers.size === 1
                     });
-                    logger.logImport(`[ACCOUNTS] Auto-created account for identifier: ${identifier}`);
+                    logger.logImport(`[ACCOUNTS] Auto-created account for identifier: [detail omitted]`);
                   } catch (createError) {
-                    logger.logImport(`[ACCOUNTS] Failed to auto-create account for ${identifier}: ${createError.message}`);
+                    logger.logImport(`[ACCOUNTS] Failed to auto-create account for [detail omitted]: [detail omitted]`);
                   }
                 }
               }
@@ -2482,11 +2477,11 @@ const tradeController = {
               // Log warning when no accounts found in any trades
               const tradesWithoutAccount = trades.filter(t => !t.accountIdentifier).length;
               if (tradesWithoutAccount > 0) {
-                logger.logImport(`[ACCOUNTS WARNING] ${tradesWithoutAccount}/${trades.length} trades have no account identifier. Consider selecting an account during import or ensure your CSV includes account information.`);
+                logger.logImport(`[ACCOUNTS WARNING] [detail omitted]/${trades.length} trades have no account identifier. Consider selecting an account during import or ensure your CSV includes account information.`);
               }
             }
           } catch (accountError) {
-            logger.logImport(`[ACCOUNTS] Error during account auto-creation: ${accountError.message}`);
+            logger.logImport(`[ACCOUNTS] Error during account auto-creation: [detail omitted]`);
             // Don't fail the import if account creation fails
           }
 
@@ -2495,7 +2490,7 @@ const tradeController = {
           const importCheck = await TierService.canImportTrades(fileUserId, trades.length);
 
           if (!importCheck.allowed) {
-            logger.logImport(`Import blocked by tier limit: ${importCheck.message}`);
+            logger.logImport(`Import blocked by tier limit: [detail omitted]`);
             await db.query(`
               UPDATE import_logs
               SET status = 'failed',
@@ -2507,7 +2502,7 @@ const tradeController = {
             throw new Error(importCheck.message);
           }
 
-          logger.logImport(`Tier check passed: ${importCheck.tier} tier, importing ${trades.length} trades (max per import: ${importCheck.max || 'unlimited'})`);
+          logger.logImport(`Tier check passed: [detail omitted] tier, importing ${trades.length} trades (max per import: [detail omitted])`);
 
           // A CSV currency column is one source of currency information. Some
           // execution formats, notably TradingView forex order history, encode
@@ -2558,9 +2553,9 @@ const tradeController = {
                     : (trade.tradeDate || trade.entryTime?.split('T')[0]);
                   const convertedTrade = await currencyConverter.convertTradeToUSD(trade, currency, conversionDate);
                   convertedTrades.push(convertedTrade);
-                  logger.logImport(`[CURRENCY] Converted trade ${i + 1}: ${currency} to USD (rate: ${convertedTrade.exchangeRate})`);
+                  logger.logImport(`[CURRENCY] Converted trade [detail omitted]: [detail omitted] to USD (rate: [detail omitted])`);
                 } catch (error) {
-                  logger.logImport(`[CURRENCY] Failed to convert trade ${i + 1}: ${error.message}`);
+                  logger.logImport(`[CURRENCY] Failed to convert trade [detail omitted]: [detail omitted]`);
                   // Keep original trade if conversion fails
                   convertedTrades.push(trade);
                 }
@@ -2598,7 +2593,7 @@ const tradeController = {
               knownZeroAccounts: new Set()
             };
 
-            logger.logImport(`[BROKER FEES] Looking up fees for brokers: ${expandedBrokersToLookup.join(', ')}`);
+            logger.logImport(`[BROKER FEES] Looking up fees for brokers: [detail omitted]`);
 
             // Fetch fee settings for all relevant brokers (case-insensitive match)
             // Use expandedBrokersToLookup to also find settings saved under old/misspelled names
@@ -2624,7 +2619,7 @@ const tradeController = {
 
               logger.logImport(`[BROKER FEES] Completed fee application for ${trades.length} trades`);
             } else {
-              logger.logImport(`[BROKER FEES] No fee settings found for broker(s): ${brokersToLookup.join(', ')}`);
+              logger.logImport(`[BROKER FEES] No fee settings found for broker(s): [detail omitted]`);
             }
 
             const unknownFeeAccounts = [...feeSummary.unknownAccounts.values()];
@@ -2691,7 +2686,7 @@ const tradeController = {
 
           const existingTrades = await db.query(existingTradesQuery, existingTradesParams);
 
-          logger.logImport(`Found ${existingTrades.rows.length} existing trades in date range${selectedAccountId ? ` for account ${selectedAccountId}` : ''}`);
+          logger.logImport(`Found [detail omitted] existing trades in date range[detail omitted]`);
 
           // Pre-process existing trades ONCE into a lookup index (executions
           // parsed a single time per row) so duplicate detection is
@@ -2733,7 +2728,7 @@ const tradeController = {
               // Skip duplicate detection for trades that are updates to existing
               // positions (isUpdate/existingTradeId set by the parser).
               if (tradeData.isUpdate && tradeData.existingTradeId) {
-                logger.logImport(`Processing update for existing trade ${tradeData.existingTradeId}: ${tradeData.symbol}`);
+                logger.logImport(`Processing update for existing trade [detail omitted]: [detail omitted]`);
               } else {
                 // Duplicate detection via the pre-built index. Matching semantics
                 // live in utils/importDuplicateDetection.js (unit tested for
@@ -2742,7 +2737,7 @@ const tradeController = {
 
                 if (dupResult.is_duplicate) {
                   const instrumentType = tradeData.instrumentType || tradeData.instrument_type || 'stock';
-                  logger.logImport(`Skipping duplicate trade: ${tradeData.symbol} ${instrumentType} ${tradeData.side} ${tradeData.quantity} at $${tradeData.entryPrice} (${new Date(tradeData.entryTime).toISOString()})`);
+                  logger.logImport(`Skipping duplicate trade: [detail omitted] [detail omitted] [detail omitted] [detail omitted] at $[detail omitted] ([detail omitted])`);
                   duplicates++;
                   await maybeUpdateImportProgress();
                   continue;
@@ -2758,12 +2753,12 @@ const tradeController = {
               }
 
               if (imported % 50 === 0) {
-                logger.logImport(`Importing trade ${imported + 1}: ${tradeData.symbol} ${tradeData.side} ${tradeData.quantity} at ${tradeData.entryPrice}`);
+                logger.logImport(`Importing trade [detail omitted]: [detail omitted] [detail omitted] [detail omitted] at [detail omitted]`);
               }
 
               // Handle updates to existing positions vs creating new trades
               if (tradeData.isUpdate && tradeData.existingTradeId) {
-                logger.logImport(`Updating existing trade ${tradeData.existingTradeId}: ${tradeData.symbol} closed with P/L: $${tradeData.pnl}`);
+                logger.logImport(`Updating existing trade [detail omitted]: [detail omitted] closed with P/L: $[detail omitted]`);
 
                 // Filter out non-database fields and calculated fields before updating
                 // The Trade.update method will recalculate pnl and pnlPercent automatically
@@ -2810,10 +2805,8 @@ const tradeController = {
               }
               imported++;
             } catch (error) {
-              logger.logError(
-                `Failed to import trade (symbol=${tradeData?.symbol || 'unknown'}, date=${tradeData?.tradeDate || 'unknown'}, qty=${tradeData?.quantity || 'unknown'}): ${error.message}`
-              );
-              logger.logError(`Error stack: ${error.stack}`);
+              logger.logError(`Failed to import trade (symbol=[detail omitted], date=[detail omitted], qty=[detail omitted]): [detail omitted]`);
+              logger.logError(`Error stack: [detail omitted]`);
               failed++;
               failedTrades.push({
                 trade: tradeData,
@@ -2823,11 +2816,11 @@ const tradeController = {
             await maybeUpdateImportProgress();
           }
 
-          logger.logImport(`Import completed: ${imported} imported, ${failed} failed, ${duplicates} duplicates skipped`);
+          logger.logImport(`Import completed: [detail omitted] imported, [detail omitted] failed, [detail omitted] duplicates skipped`);
 
           // Schedule background CUSIP resolution if there are unresolved CUSIPs
           if (unresolvedCusips.length > 0) {
-            logger.logImport(`Scheduling background CUSIP resolution for ${unresolvedCusips.length} CUSIPs`);
+            logger.logImport(`Scheduling background CUSIP resolution for [detail omitted] CUSIPs`);
             const cusipResolver = require('../utils/cusipResolver');
             cusipResolver.scheduleResolution(fileUserId, unresolvedCusips);
           }
@@ -2925,18 +2918,18 @@ const tradeController = {
             await AnalyticsCache.invalidate(fileUserId);
             console.log('[SUCCESS] Analytics cache invalidated after import completion');
           } catch (cacheError) {
-            console.warn('[WARNING] Failed to invalidate analytics cache:', cacheError.message);
+            console.warn('[WARNING] Failed to invalidate analytics cache:');
           }
           
 
           // Check achievements and trigger leaderboard updates after import
           try {
-            console.log('[ACHIEVEMENT] Checking achievements after import for user', fileUserId);
+            console.log('[ACHIEVEMENT] Checking achievements after import for user');
             const AchievementService = require('../services/achievementService');
             const newAchievements = await AchievementService.checkAndAwardAchievements(fileUserId);
-            console.log(`[ACHIEVEMENT] Post-import achievements awarded: ${newAchievements.length}`);
+            console.log(`[ACHIEVEMENT] Post-import achievements awarded: [detail omitted]`);
           } catch (achievementError) {
-            console.warn('[WARNING] Failed to check/award achievements after import:', achievementError.message);
+            console.warn('[WARNING] Failed to check/award achievements after import:');
           }
 
           // Background categorization of new symbols
@@ -2944,12 +2937,12 @@ const tradeController = {
             console.log('[PROCESS] Starting background symbol categorization after import...');
             // Run categorization in background without blocking the response
             symbolCategories.categorizeNewSymbols(fileUserId).then(result => {
-              console.log(`[SUCCESS] Background categorization complete: ${result.processed} of ${result.total} symbols categorized`);
+              console.log(`[SUCCESS] Background categorization complete: [detail omitted] of [detail omitted] symbols categorized`);
             }).catch(error => {
-              console.warn('[WARNING] Background symbol categorization failed:', error.message);
+              console.warn('[WARNING] Background symbol categorization failed:');
             });
           } catch (error) {
-            console.warn('[WARNING] Failed to start background symbol categorization:', error.message);
+            console.warn('[WARNING] Failed to start background symbol categorization:');
           }
 
           // Queue MAE/MFE + post-exit calculation for imported trades (Pro
@@ -2963,17 +2956,17 @@ const tradeController = {
               if (tier === 'pro') {
                 const jobQueue = require('../utils/jobQueue');
                 const jobId = await jobQueue.enqueueMAERecalc(fileUserId, { importId, includePostExit: true });
-                console.log(`[MAE/MFE] Queued mae_recalc job ${jobId} for import ${importId} (${imported} trades)`);
+                console.log(`[MAE/MFE] Queued mae_recalc job [detail omitted] for import [detail omitted] ([detail omitted] trades)`);
               }
             }
           } catch (maeError) {
-            console.warn('[WARNING] Failed to queue MAE/MFE calculation:', maeError.message);
+            console.warn('[WARNING] Failed to queue MAE/MFE calculation:');
           }
 
           // Background news enrichment for imported trades
           try {
             if (imported > 0) {
-              console.log(`[PROCESS] Scheduling background news enrichment for ${imported} imported trades...`);
+              console.log(`[PROCESS] Scheduling background news enrichment for [detail omitted] imported trades...`);
               const jobQueue = require('../utils/jobQueue');
               await jobQueue.addJob('news_enrichment', {
                 userId: fileUserId,
@@ -2983,7 +2976,7 @@ const tradeController = {
               console.log('[SUCCESS] News enrichment job queued');
             }
           } catch (error) {
-            console.warn('[WARNING] Failed to queue news enrichment job:', error.message);
+            console.warn('[WARNING] Failed to queue news enrichment job:');
           }
         } catch (error) {
           // Clear timeout on error
@@ -3013,7 +3006,7 @@ const tradeController = {
             }
           }
 
-          logger.logError(`Import process failed: ${error.message}`);
+          logger.logError(`Import process failed: [detail omitted]`);
           await db.query(`
             UPDATE import_logs
             SET status = 'failed', error_details = $1, completed_at = CURRENT_TIMESTAMP
@@ -3589,7 +3582,7 @@ const tradeController = {
       const importLog = importResult.rows[0];
       const importDate = importLog.created_at;
 
-      logger.logImport(`Deleting import ${importId} for user ${req.user.id}`);
+      logger.logImport(`Deleting import [detail omitted] for user [detail omitted]`);
 
       // Delete trades using the import_id foreign key (CASCADE will handle this automatically)
       // But we'll explicitly delete to count the trades removed
@@ -3615,14 +3608,14 @@ const tradeController = {
       await AnalyticsCache.invalidate(req.user.id);
 
 
-      logger.logImport(`Deleted ${deletedTrades.rows.length} trades from import ${importId}`);
+      logger.logImport(`Deleted [detail omitted] trades from import [detail omitted]`);
 
       res.json({ 
         message: 'Import and associated trades deleted successfully',
         deletedTrades: deletedTrades.rows.length
       });
     } catch (error) {
-      logger.logError(`Failed to delete import: ${error.message}`);
+      logger.logError(`Failed to delete import: [detail omitted]`);
       next(error);
     }
   },
@@ -3660,7 +3653,7 @@ const tradeController = {
         return res.status(404).json({ error: 'No valid imports found' });
       }
 
-      logger.logImport(`Bulk deleting ${validIds.length} imports for user ${req.user.id}`);
+      logger.logImport(`Bulk deleting [detail omitted] imports for user [detail omitted]`);
 
       // Delete trades for all valid imports
       const tradePlaceholders = validIds.map((_, i) => `$${i + 2}`).join(',');
@@ -3682,7 +3675,7 @@ const tradeController = {
       // Invalidate caches
       await AnalyticsCache.invalidate(req.user.id);
 
-      logger.logImport(`Bulk deleted ${deletedTrades.rows.length} trades from ${validIds.length} imports`);
+      logger.logImport(`Bulk deleted [detail omitted] trades from [detail omitted] imports`);
 
       res.json({
         message: `${validIds.length} imports and associated trades deleted successfully`,
@@ -3690,7 +3683,7 @@ const tradeController = {
         deletedTrades: deletedTrades.rows.length
       });
     } catch (error) {
-      logger.logError(`Failed to bulk delete imports: ${error.message}`);
+      logger.logError(`Failed to bulk delete imports: [detail omitted]`);
       next(error);
     }
   },

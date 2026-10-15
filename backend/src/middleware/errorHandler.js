@@ -18,7 +18,11 @@ const errorHandler = (err, req, res, next) => {
   }
 
   if (!isClientDisconnect) {
-    console.error(err.stack);
+    const requestPath = (req.originalUrl || req.url || '').split('?')[0];
+    const isBrokerImport = /^\/api\/(?:v1\/)?(?:broker-sync(?:\/|$)|trades\/(?:import|validate-import|analyze-import))/.test(requestPath);
+    // Provider and CSV errors can embed source rows or account/credential data.
+    // Keep the authenticated response unchanged, but omit their stack from logs.
+    console.error(isBrokerImport ? 'Broker/import request failed; inspect the import or sync result' : err.stack);
   }
 
   // If client disconnected, no point sending response

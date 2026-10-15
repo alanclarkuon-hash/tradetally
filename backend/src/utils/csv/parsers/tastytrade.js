@@ -11,12 +11,12 @@ const { cleanString, parseDateTime, parseNumeric, parseInteger } = require('../s
 async function parseTastytradeTransactions(records, existingPositions = {}, context = {}) {
   console.log(`\n=== TASTYTRADE TRANSACTION PARSER ===`);
   console.log(`Processing ${records.length} Tastytrade transaction records`);
-  console.log(`Existing open positions passed to parser: ${Object.keys(existingPositions).length}`);
+  console.log(`Existing open positions passed to parser: [detail omitted]`);
 
   if (Object.keys(existingPositions).length > 0) {
     console.log(`Existing positions:`);
     Object.entries(existingPositions).forEach(([symbol, position]) => {
-      console.log(`  ${symbol}: ${position.side} ${position.quantity} @ $${position.entryPrice} (Trade ID: ${position.id})`);
+      console.log(`  [detail omitted]: [detail omitted] [detail omitted] @ $[detail omitted] (Trade ID: [detail omitted])`);
     });
   }
 
@@ -26,7 +26,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
   // Debug: Log first few records
   console.log('\nSample Tastytrade records:');
   records.slice(0, 3).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // Helper to parse OCC option symbol: "IBM   260220C00265000"
@@ -82,7 +82,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
 
       // Skip if missing essential data
       if (!rawSymbol || quantity === 0 || !dateStr) {
-        console.log(`Skipping Tastytrade record missing data:`, { rawSymbol, quantity, dateStr });
+        console.log(`Skipping Tastytrade record missing data:`);
         continue;
       }
 
@@ -91,7 +91,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
       const parsedExecDateTime = parseDateTime(dateStr);
       const execDateTime = parsedExecDateTime ? new Date(parsedExecDateTime) : null;
       if (!execDateTime || isNaN(execDateTime.getTime())) {
-        console.log(`Skipping Tastytrade record with invalid date: ${dateStr}`);
+        console.log(`Skipping Tastytrade record with invalid date: [detail omitted]`);
         continue;
       }
 
@@ -114,7 +114,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
           // We'll handle this in position tracking - default to sell for now
           tradeAction = 'sell';
         } else {
-          console.log(`Skipping Tastytrade record with unknown action: ${actionCode} / ${subType}`);
+          console.log(`Skipping Tastytrade record with unknown action: [detail omitted] / [detail omitted]`);
           continue;
         }
       }
@@ -205,9 +205,9 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         subType
       });
 
-      console.log(`Parsed Tastytrade transaction: ${tradeAction.toUpperCase()} ${quantity} ${symbol} @ $${avgPrice.toFixed(2)} (${instrumentType})`);
+      console.log(`Parsed Tastytrade transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] ([detail omitted])`);
     } catch (error) {
-      console.error('Error parsing Tastytrade transaction:', error, record);
+      console.error('Error parsing Tastytrade transaction:');
     }
   }
 
@@ -238,8 +238,8 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
     const firstTx = symbolTransactions[0];
     const instrumentData = firstTx.instrumentData;
 
-    console.log(`\n=== Processing ${symbolTransactions.length} Tastytrade transactions for ${symbolKey} ===`);
-    console.log(`Instrument type: ${instrumentData.instrumentType}`);
+    console.log(`\n=== Processing [detail omitted] Tastytrade transactions for [detail omitted] ===`);
+    console.log(`Instrument type: [detail omitted]`);
 
     // Value multiplier for options/futures
     const valueMultiplier = instrumentData.contractSize || (instrumentData.instrumentType === 'option' ? 100 : 1);
@@ -252,7 +252,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
     const existingPosition = existingPositions[firstTx.symbol] || existingPositions[symbolKey];
     if (existingPosition) {
       currentPosition = existingPosition.side === 'long' ? existingPosition.quantity : -existingPosition.quantity;
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} @ $${existingPosition.entryPrice}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] @ $[detail omitted]`);
 
       currentTrade = {
         id: existingPosition.id,
@@ -270,7 +270,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         executions: existingPosition.executions || [],
         ...instrumentData
       };
-      console.log(`  → Initialized trade from existing position with ${currentTrade.executions.length} executions`);
+      console.log(`  → Initialized trade from existing position with [detail omitted] executions`);
     }
 
     for (const transaction of symbolTransactions) {
@@ -282,9 +282,9 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
         action: transaction.action
       };
       const isDuplicate = isExecutionDuplicate(executionToCheck, symbolKey, context);
-      console.log(`  [DUPLICATE CHECK] ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} at ${transaction.datetime} → ${isDuplicate ? 'DUPLICATE' : 'NEW'}`);
+      console.log(`  [DUPLICATE CHECK] [detail omitted] [detail omitted] @ $[detail omitted] at [detail omitted] → [detail omitted]`);
       if (isDuplicate) {
-        console.log(`  [SKIP] Duplicate execution: ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)}`);
+        console.log(`  [SKIP] Duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
         continue;
       }
 
@@ -292,7 +292,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
       const prevPosition = currentPosition;
       currentPosition += signedQty;
 
-      console.log(`  ${transaction.action.toUpperCase()} ${transaction.quantity} @ $${transaction.price.toFixed(2)} → Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  [detail omitted] [detail omitted] @ $[detail omitted] → Position: [detail omitted] → [detail omitted]`);
 
       // Opening or adding to position
       if ((prevPosition >= 0 && signedQty > 0) || (prevPosition <= 0 && signedQty < 0)) {
@@ -321,7 +321,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
             }],
             ...instrumentData
           };
-          console.log(`  [NEW] Started ${side} position: ${Math.abs(signedQty)} @ $${transaction.price.toFixed(2)}`);
+          console.log(`  [NEW] Started [detail omitted] position: [detail omitted] @ $[detail omitted]`);
         } else {
           // Adding to existing position - calculate weighted average entry
           const prevValue = currentTrade.entryPrice * currentTrade.quantity;
@@ -339,7 +339,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
             commission: transaction.commission,
             fees: transaction.fees
           });
-          console.log(`  [ADD] Added to position: now ${totalQty} @ avg $${currentTrade.entryPrice.toFixed(2)}`);
+          console.log(`  [ADD] Added to position: now [detail omitted] @ avg $[detail omitted]`);
         }
       }
       // Closing position (fully or partially)
@@ -381,7 +381,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
             currentTrade.fees += transaction.fees;
             currentTrade.realizedPnl = (currentTrade.realizedPnl || 0) + pnl;
 
-            console.log(`  [PARTIAL CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, realized P&L: $${pnl.toFixed(2)}, remaining: ${remainingQty}`);
+            console.log(`  [PARTIAL CLOSE] Closed [detail omitted] @ $[detail omitted], realized P&L: $[detail omitted], remaining: [detail omitted]`);
           } else {
             // Full close
             currentTrade.executions.push({
@@ -402,7 +402,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
             currentTrade.fees += transaction.fees;
             currentTrade.executionData = currentTrade.executions;
 
-            console.log(`  [CLOSE] Closed ${closeQty} @ $${transaction.price.toFixed(2)}, P&L: $${pnl.toFixed(2)}`);
+            console.log(`  [CLOSE] Closed [detail omitted] @ $[detail omitted], P&L: $[detail omitted]`);
             completedTrades.push(currentTrade);
 
             // Handle reversal
@@ -431,7 +431,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
                 }],
                 ...instrumentData
               };
-              console.log(`  [REVERSAL] Started new ${newSide} position: ${reversalQty} @ $${transaction.price.toFixed(2)}`);
+              console.log(`  [REVERSAL] Started new [detail omitted] position: [detail omitted] @ $[detail omitted]`);
             } else {
               currentTrade = null;
             }
@@ -450,7 +450,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
           currentTrade.isUpdate = true;
           currentTrade.existingTradeId = currentTrade.id;
         }
-        console.log(`  [OPEN] Remaining open ${currentTrade.side} position: ${Math.abs(currentPosition)} @ $${currentTrade.entryPrice.toFixed(2)}${currentTrade.id ? ' (updating existing)' : ''}`);
+        console.log(`  [OPEN] Remaining open [detail omitted] position: [detail omitted] @ $[detail omitted][detail omitted]`);
         completedTrades.push(currentTrade);
       }
     }
@@ -458,7 +458,7 @@ async function parseTastytradeTransactions(records, existingPositions = {}, cont
 
   console.log(`\n[SUCCESS] Created ${completedTrades.length} trades from ${transactions.length} Tastytrade transactions`);
   completedTrades.forEach((trade, i) => {
-    console.log(`  Trade ${i + 1}: ${trade.symbol} ${trade.side} ${trade.quantity}, entry $${trade.entryPrice?.toFixed(2)}, exit $${trade.exitPrice?.toFixed(2) || 'OPEN'}, P&L: $${trade.pnl?.toFixed(2) || 'N/A'}, executions: ${trade.executions?.length || 0}${trade.isUpdate ? ' (UPDATE)' : ''}`);
+    console.log(`  Trade [detail omitted]: [detail omitted] [detail omitted] [detail omitted], entry $[detail omitted], exit $[detail omitted], P&L: $[detail omitted], executions: [detail omitted][detail omitted]`);
   });
   return completedTrades;
 }

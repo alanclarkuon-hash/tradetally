@@ -139,7 +139,7 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
         resolved = true;
       }
     } catch (error) {
-      console.warn(`[FIRSTRADE][CUSIP] Failed to check database for ${cusip}:`, error.message);
+      console.warn(`[FIRSTRADE][CUSIP] Failed to check database for [detail omitted]:`);
     }
 
     if (!resolved) {
@@ -150,7 +150,7 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
           resolved = true;
         }
       } catch (error) {
-        console.warn(`[FIRSTRADE][CUSIP] Failed to check cache for ${cusip}:`, error.message);
+        console.warn(`[FIRSTRADE][CUSIP] Failed to check cache for [detail omitted]:`);
       }
     }
 
@@ -254,7 +254,7 @@ async function parseFirstradeTransactions(records, existingPositions = {}, userI
         rowIndex
       });
     } catch (error) {
-      console.error('Error parsing Firstrade transaction:', error, record);
+      console.error('Error parsing Firstrade transaction:');
       if (diagnostics) {
         diagnostics.invalidRows++;
         diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });

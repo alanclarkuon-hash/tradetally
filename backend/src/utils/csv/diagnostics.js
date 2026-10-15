@@ -199,7 +199,7 @@ function buildDiagnosticSummary(diagnostics, context = {}) {
 function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], userTimezone = null) {
   // Convert naive datetimes to UTC using the user's timezone
   if (userTimezone && userTimezone !== 'UTC') {
-    console.log(`[TIMEZONE] Converting trade datetimes from ${userTimezone} to UTC`);
+    console.log(`[TIMEZONE] Converting trade datetimes from [detail omitted] to UTC`);
     convertTradeDatetimesToUTC(trades, userTimezone);
   }
 
@@ -228,7 +228,7 @@ function wrapResultWithDiagnostics(trades, diagnostics, unresolvedCusips = [], u
   });
 
   // Log diagnostics summary
-  console.log(`[DIAGNOSTICS] Total: ${diagnostics.totalRows}, Parsed: ${diagnostics.parsedRows}, Skipped: ${diagnostics.skippedRows}, Invalid: ${diagnostics.invalidRows}`);
+  console.log(`[DIAGNOSTICS] Total: [detail omitted], Parsed: [detail omitted], Skipped: [detail omitted], Invalid: [detail omitted]`);
   if (diagnostics.skippedReasons.length > 0) {
     console.log('[DIAGNOSTICS] Skipped-row details available in import response');
   }

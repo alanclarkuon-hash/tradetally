@@ -131,7 +131,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   // Debug: Log first few records to see structure
   console.log('Sample TradingView records:');
   records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // Get diagnostics from context if available
@@ -180,7 +180,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
       // Only require Filled status when the CSV actually includes a Status column.
       if (fileHasStatusColumn && status !== 'filled') {
-        console.log(`Skipping non-filled order: ${statusRaw}`);
+        console.log(`Skipping non-filled order: [detail omitted]`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           diagnostics.expected_skipped_rows = (diagnostics.expected_skipped_rows || 0) + 1;
@@ -204,7 +204,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
 
       // Skip if missing essential data
       if (!symbol || !side || quantity === 0 || fillPrice === 0 || !closingTime) {
-        console.log(`Skipping TradingView record missing data:`, { symbol, side, quantity, fillPrice, closingTime });
+        console.log(`Skipping TradingView record missing data:`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required fields (symbol, side, quantity, fill price, or closing time)' });
@@ -217,7 +217,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       const entryTime = parseDateTime(closingTime);
 
       if (!tradeDate || !entryTime) {
-        console.log(`Skipping TradingView record with invalid date: ${closingTime}`);
+        console.log(`Skipping TradingView record with invalid date: [detail omitted]`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Invalid date format: ${closingTime}` });
@@ -249,9 +249,9 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         accountIdentifier
       });
 
-      console.log(`Parsed TradingView transaction: ${side} ${quantity} ${symbol} @ $${fillPrice} (${orderType})`);
+      console.log(`Parsed TradingView transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] ([detail omitted])`);
     } catch (error) {
-      console.error('Error parsing TradingView transaction:', error, record);
+      console.error('Error parsing TradingView transaction:');
     }
   }
 
@@ -276,7 +276,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
   for (const symbol in transactionsBySymbol) {
     const symbolTransactions = transactionsBySymbol[symbol];
 
-    console.log(`\n=== Processing ${symbolTransactions.length} TradingView transactions for ${symbol} ===`);
+    console.log(`\n=== Processing [detail omitted] TradingView transactions for [detail omitted] ===`);
 
     // Detect futures from TradingView exchange prefix (e.g., CME_MINI:MNQH2026, CME:ESH2026, NYMEX:CLH2026)
     const exchangeMatch = symbol.match(/^([^:]+):(.+)$/);
@@ -315,7 +315,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         instrumentData.contractYear = year;
       }
 
-      console.log(`  Detected futures: product=${baseProduct}, pointValue=$${pointValue}, contract=${rawContract}`);
+      console.log(`  Detected futures: product=[detail omitted], pointValue=$[detail omitted], contract=[detail omitted]`);
     }
 
     // Use contract symbol without exchange prefix for storage
@@ -349,15 +349,15 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
     } : null;
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] shares @ $[detail omitted]`);
+      console.log(`  → Initial position: [detail omitted]`);
     }
 
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted]`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -374,7 +374,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
           broker: 'tradingview',
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
+        console.log(`  → Started new [detail omitted] trade`);
       }
 
       // Add execution to current trade (check for duplicates first)
@@ -404,7 +404,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         });
 
         if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
         }
 
         if (!executionExists) {
@@ -414,7 +414,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
           if (diagnostics) {
             diagnostics.duplicateExecutions = (diagnostics.duplicateExecutions || 0) + 1;
             diagnostics.skippedRows++;
@@ -422,7 +422,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
             diagnostics.skippedReasons.push({ row: transaction.sourceRow, reason: 'TradingView execution already imported' });
           }
           // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          console.log(`  Position: [detail omitted] (unchanged - duplicate)`);
           continue;
         }
       }
@@ -458,7 +458,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  Position: [detail omitted] → [detail omitted]`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -514,10 +514,10 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] shares, P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] shares, [detail omitted] executions, P/L: $[detail omitted]`);
         }
 
         completedTrades.push(currentTrade);
@@ -529,9 +529,9 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} shares`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] shares`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} shares, ${currentTrade.executions.length} executions`);
+      console.log(`Active trade: [detail omitted] [detail omitted] shares, [detail omitted] executions`);
 
       // Skip if no executions (all were duplicates)
       if (currentTrade.executions.length === 0) {
@@ -566,7 +566,7 @@ async function parseTradingViewTransactions(records, existingPositions = {}, con
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
         currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} shares, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open [detail omitted] position: [detail omitted] shares, [detail omitted] new executions`);
       }
 
       completedTrades.push(currentTrade);
@@ -593,7 +593,7 @@ async function parseTradingViewPaperTrades(records, context = {}) {
   // Debug: Log first few records
   console.log('Sample TradingView Paper records:');
   records.slice(0, 3).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // Helper for case-insensitive field access
@@ -623,7 +623,7 @@ async function parseTradingViewPaperTrades(records, context = {}) {
 
       // Only process filled orders
       if (status !== 'filled') {
-        console.log(`Skipping non-filled order: ${statusRaw}`);
+        console.log(`Skipping non-filled order: [detail omitted]`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           const reason = status === 'cancelled' || status === 'canceled'
@@ -635,7 +635,7 @@ async function parseTradingViewPaperTrades(records, context = {}) {
 
       // Validate essential data
       if (!rawSymbol || quantity === 0 || buyPrice === 0 || sellPrice === 0 || isNaN(boughtTs) || isNaN(soldTs)) {
-        console.log(`Skipping record missing data:`, { rawSymbol, quantity, buyPrice, sellPrice, boughtTs, soldTs });
+        console.log(`Skipping record missing data:`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: 'Missing required fields (symbol, qty, prices, or timestamps)' });
@@ -648,7 +648,7 @@ async function parseTradingViewPaperTrades(records, context = {}) {
       const soldTime = new Date(soldTs);
 
       if (isNaN(boughtTime.getTime()) || isNaN(soldTime.getTime())) {
-        console.log(`Skipping record with invalid timestamps:`, { boughtTs, soldTs });
+        console.log(`Skipping record with invalid timestamps:`);
         if (diagnostics) {
           diagnostics.invalidRows++;
           diagnostics.skippedReasons.push({ row: rowIndex, reason: `Invalid timestamp values` });
@@ -754,9 +754,9 @@ async function parseTradingViewPaperTrades(records, context = {}) {
       };
 
       completedTrades.push(trade);
-      console.log(`Parsed TradingView paper trade: ${side} ${quantity} ${symbol} @ $${entryPrice} -> $${exitPrice}, P&L: $${pnl.toFixed(2)}`);
+      console.log(`Parsed TradingView paper trade: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted] -> $[detail omitted], P&L: $[detail omitted]`);
     } catch (error) {
-      console.error('Error parsing TradingView paper trade:', error, record);
+      console.error('Error parsing TradingView paper trade:');
       if (diagnostics) {
         diagnostics.invalidRows++;
         diagnostics.skippedReasons.push({ row: rowIndex, reason: `Parse error: ${error.message}` });

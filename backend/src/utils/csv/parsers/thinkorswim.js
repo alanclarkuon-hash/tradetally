@@ -36,7 +36,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
   // Debug: Log first few records to see structure
   console.log('Sample records:');
   records.slice(0, 5).forEach((record, i) => {
-    console.log(`Record ${i}:`, JSON.stringify(record));
+    console.log(`Record [detail omitted]:`);
   });
 
   // Count record types
@@ -45,7 +45,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     const type = record.TYPE || record.Type || 'UNKNOWN';
     typeCounts[type] = (typeCounts[type] || 0) + 1;
   });
-  console.log('Record type counts:', typeCounts);
+  console.log('Record type counts:');
 
   // Get diagnostics from context if available
   const diagnostics = context.diagnostics;
@@ -91,7 +91,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       // Option format: "BOT +5 CRM 100 (Weeklys) 2 APR 26 175 PUT @1.44 CBOE"
       const tradeMatch = description.match(/(BOT|SOLD)\s+([\+\-]?[\d,]+)\s+(.+?)\s+@([\d.]+)/);
       if (!tradeMatch) {
-        console.log(`Skipping unparseable trade description: ${description}`);
+        console.log(`Skipping unparseable trade description: [detail omitted]`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           const truncatedDesc = description ? description.substring(0, 40) : '(empty)';
@@ -114,7 +114,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       const spreadMatch = symbolPart.match(/^(VERTICAL|DIAGONAL|CALENDAR|BUTTERFLY|CONDOR|IRON\s+CONDOR|IRON\s+BUTTERFLY|STRADDLE|STRANGLE|COVERED|COLLAR|RATIO|BACK\s+RATIO)\b/i);
       if (spreadMatch) {
         const spreadType = spreadMatch[1].toUpperCase();
-        console.log(`[TOS] Skipping multi-leg spread (${spreadType}): ${description}`);
+        console.log(`[TOS] Skipping multi-leg spread ([detail omitted]): [detail omitted]`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           diagnostics.skippedReasons.push({
@@ -147,7 +147,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           optionType: optType.toLowerCase(),
           contractSize: 100
         };
-        console.log(`[TOS] Detected option: ${underlying} ${strike} ${optType} exp ${instrumentData.expirationDate}`);
+        console.log(`[TOS] Detected option: [detail omitted] [detail omitted] [detail omitted] exp [detail omitted]`);
       } else {
         // Stock - symbolPart is just the ticker
         symbol = symbolPart.trim();
@@ -157,7 +157,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       // unexpected slips through (e.g. an unrecognized exotic instrument description),
       // skip it cleanly instead of letting the DB INSERT fail.
       if (!symbol || symbol.length > 30) {
-        console.log(`[TOS] Skipping row with invalid symbol length (${symbol?.length || 0}): ${description}`);
+        console.log(`[TOS] Skipping row with invalid symbol length ([detail omitted]): [detail omitted]`);
         if (diagnostics) {
           diagnostics.skippedRows++;
           diagnostics.skippedReasons.push({
@@ -195,9 +195,9 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         instrumentData
       });
 
-      console.log(`Parsed transaction: ${action} ${quantity} ${symbol} @ $${price}${instrumentData.instrumentType === 'option' ? ` (${instrumentData.optionType} ${instrumentData.strikePrice})` : ''}`);
+      console.log(`Parsed transaction: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted][detail omitted]`);
     } catch (error) {
-      console.error('Error parsing thinkorswim transaction:', error, record);
+      console.error('Error parsing thinkorswim transaction:');
     }
   }
 
@@ -231,7 +231,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
 
       if (refTransactions.length > 1) {
         // Multiple transactions with same REF # - merge them
-        console.log(`Merging ${refTransactions.length} transactions with REF # ${transaction.refNum}`);
+        console.log(`Merging [detail omitted] transactions with REF # [detail omitted]`);
 
         // Sum quantities and fees, weighted average for price
         let totalQuantity = 0;
@@ -254,7 +254,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           fees: totalFees
         };
 
-        console.log(`  → Merged into: ${mergedTransaction.action} ${totalQuantity} ${mergedTransaction.symbol} @ $${avgPrice.toFixed(4)}`);
+        console.log(`  → Merged into: [detail omitted] [detail omitted] [detail omitted] @ $[detail omitted]`);
         mergedTransactions.push(mergedTransaction);
       } else {
         // Single transaction with this REF #
@@ -269,7 +269,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     // Skip if already processed
   }
 
-  console.log(`After REF # grouping: ${mergedTransactions.length} transactions (from ${transactions.length})`);
+  console.log(`After REF # grouping: [detail omitted] transactions (from ${transactions.length})`);
 
   // Group transactions by symbol (and option contract details for options)
   const transactionsBySymbol = {};
@@ -296,7 +296,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     const isOption = instrumentData.instrumentType === 'option';
     const valueMultiplier = isOption ? 100 : 1;
 
-    console.log(`\n=== Processing ${symbolTransactions.length} transactions for ${groupKey} ===`);
+    console.log(`\n=== Processing [detail omitted] transactions for [detail omitted] ===`);
 
     // Track position and round-trip trades
     // Start with existing position if we have one for this symbol
@@ -324,15 +324,15 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
     } : null;
 
     if (existingPosition) {
-      console.log(`  → Starting with existing ${existingPosition.side} position: ${existingPosition.quantity} shares @ $${existingPosition.entryPrice}`);
-      console.log(`  → Initial position: ${currentPosition}`);
+      console.log(`  → Starting with existing [detail omitted] position: [detail omitted] shares @ $[detail omitted]`);
+      console.log(`  → Initial position: [detail omitted]`);
     }
 
     for (const transaction of symbolTransactions) {
       const qty = transaction.quantity;
       const prevPosition = currentPosition;
 
-      console.log(`\n${transaction.action} ${qty} @ $${transaction.price} | Position: ${currentPosition}`);
+      console.log(`\n[detail omitted] [detail omitted] @ $[detail omitted] | Position: [detail omitted]`);
 
       // Start new trade if going from flat to position
       if (currentPosition === 0) {
@@ -349,7 +349,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
           broker: 'thinkorswim',
           accountIdentifier: transaction.accountIdentifier
         };
-        console.log(`  → Started new ${currentTrade.side} trade`);
+        console.log(`  → Started new [detail omitted] trade`);
       }
 
       // Add execution to current trade (check for duplicates first)
@@ -378,7 +378,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         });
 
         if (existsGlobally) {
-          console.log(`  [SKIP] Execution already exists in a completed or open trade: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  [SKIP] Execution already exists in a completed or open trade: [detail omitted] [detail omitted] @ $[detail omitted]`);
         }
 
         if (!executionExists) {
@@ -388,9 +388,9 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
             currentTrade.newExecutionsAdded++;
           }
         } else {
-          console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
+          console.log(`  → Skipping duplicate execution: [detail omitted] [detail omitted] @ $[detail omitted]`);
           // Skip position and value updates for duplicate transactions
-          console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          console.log(`  Position: [detail omitted] (unchanged - duplicate)`);
           continue;
         }
       }
@@ -416,7 +416,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         }
       }
 
-      console.log(`  Position: ${prevPosition} → ${currentPosition}`);
+      console.log(`  Position: [detail omitted] → [detail omitted]`);
 
       // Close trade if position goes to zero
       if (currentPosition === 0 && currentTrade && currentTrade.totalQuantity > 0) {
@@ -454,10 +454,10 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
         if (currentTrade.isExistingPosition) {
           currentTrade.isUpdate = currentTrade.newExecutionsAdded > 0;
           currentTrade.notes = `Closed existing position: ${currentTrade.executions.length} closing executions`;
-          console.log(`  [SUCCESS] CLOSED existing ${currentTrade.side} position: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] CLOSED existing [detail omitted] position: [detail omitted] [detail omitted], P/L: $[detail omitted]`);
         } else {
           currentTrade.notes = `Round trip: ${currentTrade.executions.length} executions`;
-          console.log(`  [SUCCESS] Completed ${currentTrade.side} trade: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions, P/L: $${currentTrade.pnl.toFixed(2)}`);
+          console.log(`  [SUCCESS] Completed [detail omitted] trade: [detail omitted] [detail omitted], [detail omitted] executions, P/L: $[detail omitted]`);
         }
 
         // Only add trade if it has executions (skip if all were duplicates)
@@ -471,9 +471,9 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       }
     }
 
-    console.log(`\n${symbol} Final Position: ${currentPosition} ${isOption ? 'contracts' : 'shares'}`);
+    console.log(`\n[detail omitted] Final Position: [detail omitted] [detail omitted]`);
     if (currentTrade) {
-      console.log(`Active trade: ${currentTrade.side} ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.executions.length} executions`);
+      console.log(`Active trade: [detail omitted] [detail omitted] [detail omitted], [detail omitted] executions`);
 
       // Add open position as incomplete trade
       // Divide by multiplier to get per-contract/per-share price
@@ -495,7 +495,7 @@ async function parseThinkorswimTransactions(records, existingPositions = {}, con
       if (currentTrade.isExistingPosition && currentTrade.newExecutionsAdded > 0) {
         currentTrade.isUpdate = true;
         currentTrade.notes = `Updated open position: ${currentTrade.newExecutionsAdded} new executions added`;
-        console.log(`  [SUCCESS] UPDATED open ${currentTrade.side} position: ${currentTrade.totalQuantity} ${isOption ? 'contracts' : 'shares'}, ${currentTrade.newExecutionsAdded} new executions`);
+        console.log(`  [SUCCESS] UPDATED open [detail omitted] position: [detail omitted] [detail omitted], [detail omitted] new executions`);
       }
 
       currentTrade.executionData = currentTrade.executions;

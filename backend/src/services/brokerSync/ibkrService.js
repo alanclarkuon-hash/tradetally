@@ -114,7 +114,7 @@ function getDateStringInTimezone(date, timezone = 'UTC') {
     const value = type => parts.find(part => part.type === type)?.value;
     return `${value('year')}-${value('month')}-${value('day')}`;
   } catch (error) {
-    console.warn(`[IBKR] Invalid reporting timezone "${timezone}"; using UTC`);
+    console.warn(`[IBKR] Invalid reporting timezone "[detail omitted]"; using UTC`);
     return date.toISOString().slice(0, 10);
   }
 }
@@ -441,7 +441,7 @@ class IBKRService {
       console.log('[IBKR] Credentials and Flex Query schema validated successfully');
       return { ...schema, format: decoded.format };
     } catch (error) {
-      console.error('[IBKR] Credential validation failed:', error.message);
+      console.error('[IBKR] Credential validation failed:');
       return {
         valid: false,
         message: error.message,
@@ -480,7 +480,7 @@ class IBKRService {
         });
 
         const data = response.data;
-        console.log(`[IBKR] Request response received (${data.length} chars)`);
+        console.log(`[IBKR] Request response received ([detail omitted] chars)`);
 
         if (data.includes('<ErrorCode>')) {
           const errorCodeMatch = data.match(/<ErrorCode>(\d+)<\/ErrorCode>/);
@@ -516,7 +516,7 @@ class IBKRService {
         }
 
         const referenceCode = refCodeMatch[1];
-        console.log('[IBKR] Got reference code:', referenceCode);
+        console.log('[IBKR] Got reference code:');
         // The <Url> element in the response is legacy and IBKR's docs say to
         // ignore it; always retrieve statements from the documented endpoint.
         return {
@@ -525,7 +525,7 @@ class IBKRService {
         };
       } catch (error) {
         if (error.response) {
-          console.error('[IBKR] API error status:', error.response.status);
+          console.error('[IBKR] API error status:');
           throw buildIBKRError(`IBKR API error: ${error.response.status}`, {
             errorCode: `HTTP_${error.response.status}`,
             transient: error.response.status >= 500
@@ -553,7 +553,7 @@ class IBKRService {
    */
   async fetchFlexReport(referenceCode, flexToken, options = {}) {
     const maxWait = options.maxWait || REPORT_INITIAL_MAX_WAIT;
-    console.log(`[IBKR] Fetching Flex report (max wait ${Math.round(maxWait / 1000)}s)...`);
+    console.log(`[IBKR] Fetching Flex report (max wait [detail omitted]s)...`);
 
     const url = options.statementUrl || `${FLEX_BASE_URL}/GetStatement`;
     const params = {
@@ -585,7 +585,7 @@ class IBKRService {
           // transient. Polling will continue until maxWait is reached.
           const isTransient = RETRYABLE_IBKR_CODES.has(errorCode) || isRetryableErrorMessage(errorMsg);
           if (isTransient) {
-            console.log(`[IBKR] Transient error ${errorCode} ("${errorMsg}") on GetStatement, waiting to retry...`);
+            console.log(`[IBKR] Transient error [detail omitted] ("[detail omitted]") on GetStatement, waiting to retry...`);
             await this.sleep(REPORT_POLL_INTERVAL);
             continue;
           }
@@ -599,7 +599,7 @@ class IBKRService {
 
         // If we got CSV data, return it
         if (!data.includes('<?xml') && data.includes(',')) {
-          console.log('[IBKR] Got CSV report, length:', data.length);
+          console.log('[IBKR] Got CSV report, length:');
           const decoded = decodeIBKRFlexReport(data);
           return {
             content: data,
@@ -613,7 +613,7 @@ class IBKRService {
         // A completed XML report will not change format on a later poll, so
         // return it immediately for the shared Flex decoder.
         if (/<FlexQueryResponse\b/i.test(data)) {
-          console.log('[IBKR] Got XML report, length:', data.length);
+          console.log('[IBKR] Got XML report, length:');
           const decoded = decodeIBKRFlexReport(data);
           return {
             content: data,
@@ -629,7 +629,7 @@ class IBKRService {
         await this.sleep(REPORT_POLL_INTERVAL);
       } catch (error) {
         if (RETRYABLE_NETWORK_CODES.has(error.code)) {
-          console.warn(`[IBKR] Network error while fetching report (${error.code}), retrying...`);
+          console.warn(`[IBKR] Network error while fetching report ([detail omitted]), retrying...`);
           await this.sleep(REPORT_POLL_INTERVAL);
           continue;
         }
@@ -705,7 +705,7 @@ class IBKRService {
     } catch (error) {
       if (error.errorCode !== 'TIMEOUT') throw error;
       const remainingMs = REPORT_EXTENDED_MAX_WAIT - REPORT_INITIAL_MAX_WAIT;
-      console.warn(`[IBKR] Report not ready after 5 min, continuing to poll for up to ${Math.round(remainingMs / 60000)} more minutes...`);
+      console.warn(`[IBKR] Report not ready after 5 min, continuing to poll for up to [detail omitted] more minutes...`);
       return this.fetchFlexReport(referenceCode, flexToken, {
         maxWait: remainingMs,
         statementUrl,
@@ -730,7 +730,7 @@ class IBKRService {
   async syncTradesUnlocked(connection, options = {}) {
     const { startDate, endDate, syncLogId, syncType = 'manual', now, referenceCode } = options;
 
-    console.log(`[IBKR] Starting sync for connection ${connection.id}`);
+    console.log(`[IBKR] Starting sync for connection [detail omitted]`);
 
     // Update sync log status
     if (syncLogId) {
@@ -745,7 +745,7 @@ class IBKRService {
       timezone: userTimezone,
       now
     });
-    console.log(`[IBKR] Resolved date range: ${windows[windows.length - 1]?.start_date || 'none'} to ${windows[0]?.end_date || 'none'} (${endDate ? 'explicit end' : 'latest finalized Activity date'}; newest first)`);
+    console.log(`[IBKR] Resolved date range: [detail omitted] to [detail omitted] ([detail omitted]; newest first)`);
     const cashReports = [];
     const navReports = [];
     const cashSections = {statement_of_funds:[],cash_transactions:[],cash_report:[]};
@@ -801,7 +801,7 @@ class IBKRService {
             const rejectedEnd = window.end_date;
             window.end_date = shiftDateString(window.end_date, -1);
             fallbackDays++;
-            console.warn(`[IBKR] No finalized Activity statement through ${rejectedEnd}; retrying through ${window.end_date}`);
+            console.warn(`[IBKR] No finalized Activity statement through [detail omitted]; retrying through [detail omitted]`);
             continue;
           }
 
@@ -988,7 +988,7 @@ class IBKRService {
     const currencyConversionRows = parseResult?.diagnostics?.currencyConversionRows || 0;
     console.log(`[IBKR] Parsed ${trades.length} trades`);
     if (manualReviewItems.length > 0) {
-      console.warn(`[IBKR] ${manualReviewItems.length} sell-only stock execution(s) require manual review`);
+      console.warn(`[IBKR] [detail omitted] sell-only stock execution(s) require manual review`);
     }
 
     const openPositionResult = sawOpenPositionSection
@@ -998,11 +998,11 @@ class IBKRService {
         sectionPresent: true
       })
       : { trades: [], warnings: [] };
-    openPositionResult.warnings.forEach(warning => console.warn(`[IBKR] ${warning}`));
+    openPositionResult.warnings.forEach(warning => console.warn(`[IBKR] [detail omitted]`));
 
     if (openPositionResult.trades.length > 0) {
       trades = [...trades, ...openPositionResult.trades];
-      console.log(`[IBKR] Added ${openPositionResult.trades.length} synthetic stock open-position trades from IBKR Open Positions`);
+      console.log(`[IBKR] Added [detail omitted] synthetic stock open-position trades from IBKR Open Positions`);
     }
 
     // Filter by date range if specified
@@ -1077,9 +1077,9 @@ class IBKRService {
     result.outcome = result.warnings.length > 0 ? 'warning' : 'success';
 
     if (!latestWindowRetrieved) {
-      console.warn(`[IBKR] Sync finished without retrieving the latest requested Activity statement; imported ${result.imported}, duplicates ${result.duplicates}`);
+      console.warn(`[IBKR] Sync finished without retrieving the latest requested Activity statement; imported [detail omitted], duplicates [detail omitted]`);
     } else {
-      console.log(`[IBKR] Sync complete: ${result.imported} imported, ${result.updated || 0} updated, ${result.skipped} skipped, ${result.duplicates} duplicates, ${result.failed} failed`);
+      console.log(`[IBKR] Sync complete: [detail omitted] imported, [detail omitted] updated, [detail omitted] skipped, [detail omitted] duplicates, [detail omitted] failed`);
     }
 
     return result;
@@ -1118,7 +1118,7 @@ class IBKRService {
 
         // Handle updates vs new trades
         if (tradeData.isUpdate && tradeData.existingTradeId) {
-          console.log(`[IBKR] Updating existing trade ${tradeData.existingTradeId} with additional executions for ${tradeData.symbol}`);
+          console.log(`[IBKR] Updating existing trade [detail omitted] with additional executions for [detail omitted]`);
 
           const rawExecutions = preparedTrade.executions || preparedTrade.executionData || [];
           const ibkrTimezone = await getUserTimezone(userId);
@@ -1229,7 +1229,7 @@ class IBKRService {
           });
         }
       } catch (error) {
-        console.error(`[IBKR] Failed to import trade:`, error.message);
+        console.error(`[IBKR] Failed to import trade:`);
         failed++;
       }
     }
@@ -1238,14 +1238,14 @@ class IBKRService {
       await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'IBKR broker sync');
       await AnalyticsCache.invalidate(userId);
     } catch (cacheErr) {
-      console.warn(`[IBKR] AnalyticsCache invalidation failed: ${cacheErr.message}`);
+      console.warn(`[IBKR] AnalyticsCache invalidation failed: [detail omitted]`);
     }
 
     // Per-row creates skip achievements; run one end-of-batch check instead
     if (imported > 0 || updated > 0) {
       const AchievementService = require('../achievementService');
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
-        console.warn(`[IBKR] Failed to check achievements after sync for user ${userId}:`, error.message);
+        console.warn(`[IBKR] Failed to check achievements after sync for user [detail omitted]:`);
       });
     }
 
@@ -1339,13 +1339,13 @@ class IBKRService {
       );
 
       if (representedQuantity === 0 && this.openPositionAlreadyRepresented(candidate, parsedTrades, existingContext)) {
-        console.log(`[IBKR] Skipping Open Positions row for ${symbol}; matching position exists without a usable quantity`);
+        console.log(`[IBKR] Skipping Open Positions row for [detail omitted]; matching position exists without a usable quantity`);
         return;
       }
 
       if (Number.isFinite(summaryQuantity) && representedQuantity !== 0) {
         if (Math.abs(summaryQuantity - representedQuantity) < 0.0001) {
-          console.log(`[IBKR] Open Positions quantity for ${symbol} matches reconstructed executions`);
+          console.log(`[IBKR] Open Positions quantity for [detail omitted] matches reconstructed executions`);
           return;
         }
 
@@ -1932,11 +1932,11 @@ class IBKRService {
           const existingExecCount = existingExecs.length;
 
           if (newExecCount <= existingExecCount) {
-            console.log(`[IBKR] Duplicate detected: ${symbol} (${matchingCount} matching executions, new: ${newExecCount}, existing: ${existingExecCount})`);
+            console.log(`[IBKR] Duplicate detected: [detail omitted] ([detail omitted] matching executions, new: [detail omitted], existing: [detail omitted])`);
             return true;
           } else {
             // New trade has MORE executions - this might be an update with partial closes
-            console.log(`[IBKR] Trade ${symbol} has ${newExecCount} executions vs ${existingExecCount} existing - NOT duplicate (has additional data)`);
+            console.log(`[IBKR] Trade [detail omitted] has [detail omitted] executions vs [detail omitted] existing - NOT duplicate (has additional data)`);
             // Mark for update handling
             newTrade.isUpdate = true;
             newTrade.existingTradeId = newTrade.existingTradeId || existing.id;
@@ -1978,7 +1978,7 @@ class IBKRService {
         ) < 0.01;
 
         if (entryTimeMatch && entryPriceMatch && exitPriceMatch && pnlMatch) {
-          console.log(`[IBKR] Duplicate detected by closed-trade fields: ${symbol}`);
+          console.log(`[IBKR] Duplicate detected by closed-trade fields: [detail omitted]`);
           return true;
         }
       }

@@ -185,7 +185,7 @@ class SchwabService {
         );
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
-        console.error('[SCHWAB] Token refresh failed:', error.message);
+        console.error('[SCHWAB] Token refresh failed:');
         await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
@@ -207,7 +207,7 @@ class SchwabService {
         );
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
-        console.error('[SCHWAB] Token refresh failed:', error.message);
+        console.error('[SCHWAB] Token refresh failed:');
         await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
@@ -231,7 +231,7 @@ class SchwabService {
         return { accessToken: newTokens.accessToken, needsReauth: false };
       } catch (error) {
         // Refresh token likely expired (7 day limit)
-        console.error('[SCHWAB] Token refresh failed:', error.message);
+        console.error('[SCHWAB] Token refresh failed:');
         await BrokerReauthNotificationService.markRequired(connection, 'Charles Schwab');
         return { accessToken: null, needsReauth: true };
       }
@@ -294,7 +294,7 @@ class SchwabService {
       }
     );
 
-    console.log(`[SCHWAB] Found ${response.data?.length || 0} accounts`);
+    console.log(`[SCHWAB] Found [detail omitted] accounts`);
     return response.data || [];
   }
 
@@ -328,7 +328,7 @@ class SchwabService {
    * @returns {Promise<Array>}
    */
   async getTransactions(accessToken, accountHash, startDate, endDate) {
-    console.log(`[SCHWAB] Account hash: ${accountHash?.substring(0, 10)}...`);
+    console.log(`[SCHWAB] Account hash: [detail omitted]...`);
 
     // If specific date range provided, use that with chunking
     if (startDate) {
@@ -361,7 +361,7 @@ class SchwabService {
       const startStr = yearStart.toISOString().split('T')[0];
       const endStr = yearEnd.toISOString().split('T')[0];
 
-      console.log(`[SCHWAB] Fetching year ${yearOffset + 1}: ${startStr} to ${endStr}...`);
+      console.log(`[SCHWAB] Fetching year [detail omitted]: [detail omitted] to [detail omitted]...`);
 
       try {
         const response = await axios.get(
@@ -379,7 +379,7 @@ class SchwabService {
         );
 
         const count = response.data?.length || 0;
-        console.log(`[SCHWAB] Year ${yearOffset + 1}: ${count} transactions`);
+        console.log(`[SCHWAB] Year [detail omitted]: [detail omitted] transactions`);
 
         if (count === 0) {
           consecutiveEmptyYears++;
@@ -393,7 +393,7 @@ class SchwabService {
         }
       } catch (error) {
         // If we get an error (like "no data available"), treat as empty year
-        console.error(`[SCHWAB] Year ${yearOffset + 1} fetch error:`, error.response?.data?.message || error.message);
+        console.error(`[SCHWAB] Year [detail omitted] fetch error:`);
         consecutiveEmptyYears++;
         if (consecutiveEmptyYears >= 2) {
           console.log(`[SCHWAB] 2 consecutive empty/error years - stopping search`);
@@ -415,7 +415,7 @@ class SchwabService {
     let allTransactions = [];
 
     for (const chunk of chunks) {
-      console.log(`[SCHWAB] Fetching transactions from ${chunk.start} to ${chunk.end}...`);
+      console.log(`[SCHWAB] Fetching transactions from [detail omitted] to [detail omitted]...`);
 
       try {
         const response = await axios.get(
@@ -433,10 +433,10 @@ class SchwabService {
         );
 
         const count = response.data?.length || 0;
-        console.log(`[SCHWAB] Fetched ${count} transactions for this period`);
+        console.log(`[SCHWAB] Fetched [detail omitted] transactions for this period`);
         allTransactions = allTransactions.concat(response.data || []);
       } catch (error) {
-        console.error('[SCHWAB] Transaction fetch error:', error.response?.status || error.message);
+        console.error('[SCHWAB] Transaction fetch error:');
         throw error;
       }
     }
@@ -508,7 +508,7 @@ class SchwabService {
       }
     }
 
-    console.log(`[SCHWAB] Found ${validTransactions.length} valid trade transactions`);
+    console.log(`[SCHWAB] Found [detail omitted] valid trade transactions`);
 
     // Sort by time (oldest first for FIFO matching)
     validTransactions.sort((a, b) => this._compareTransactionsForMatching(a, b));
@@ -546,7 +546,7 @@ class SchwabService {
       const effect = tx.positionEffect || 'UNKNOWN';
       effectCounts[effect] = (effectCounts[effect] || 0) + 1;
     }
-    console.log('[SCHWAB] Position effects found:', effectCounts);
+    console.log('[SCHWAB] Position effects found:');
 
     for (const tx of sorted) {
       const symbol = tx.symbol;
@@ -558,7 +558,7 @@ class SchwabService {
         // For TOS trades that might not have positionEffect, try to infer it
         // If we have open positions for this symbol, assume it's closing
         // Otherwise, assume it's opening
-        console.log(`[SCHWAB] Transaction without positionEffect: ${symbol} qty=${tx.quantity} price=${tx.price} - attempting to infer`);
+        console.log(`[SCHWAB] Transaction without positionEffect: [detail omitted] qty=[detail omitted] price=[detail omitted] - attempting to infer`);
 
         if (openPositions[positionKey] && openPositions[positionKey].length > 0) {
           positionEffect = 'CLOSING';
@@ -710,7 +710,7 @@ class SchwabService {
     for (const [positionKey, positions] of Object.entries(openPositions)) {
       for (const pos of positions) {
         if (pos.qty > 0) {
-          console.log(`[SCHWAB] Remaining open position: ${positionKey} qty=${pos.qty} side=${pos.side} time=${pos.time}`);
+          console.log(`[SCHWAB] Remaining open position: [detail omitted] qty=[detail omitted] side=[detail omitted] time=[detail omitted]`);
           rawTrades.push({
             symbol: pos.symbol,
             side: pos.side,
@@ -755,7 +755,7 @@ class SchwabService {
     // Log summary
     const closedTrades = trades.filter(t => t.exitPrice !== null).length;
     const openTrades = trades.filter(t => t.exitPrice === null).length;
-    console.log(`[SCHWAB] After grouping: ${trades.length} trades (${closedTrades} closed, ${openTrades} open)`);
+    console.log(`[SCHWAB] After grouping: ${trades.length} trades ([detail omitted] closed, [detail omitted] open)`);
 
     return trades;
   }
@@ -942,7 +942,7 @@ class SchwabService {
     if (tx.type !== 'TRADE') {
       // Log non-TRADE transactions to help debug TOS issues
       if (tx.type && tx.transferItems?.[0]?.instrument?.symbol) {
-        console.log(`[SCHWAB] Skipping non-TRADE transaction: type=${tx.type}, symbol=${tx.transferItems[0].instrument.symbol}`);
+        console.log(`[SCHWAB] Skipping non-TRADE transaction: type=[detail omitted], symbol=[detail omitted]`);
       }
       return null;
     }
@@ -972,7 +972,7 @@ class SchwabService {
     const validAssetTypes = ['EQUITY', 'OPTION', 'MUTUAL_FUND', 'ETF', 'INDEX', 'FUTURE', 'COLLECTIVE_INVESTMENT'];
     if (!validAssetTypes.includes(assetType)) {
       // Log what we're skipping to help debug TOS import issues
-      console.log(`[SCHWAB] Skipping asset type: ${assetType} for symbol: ${instrument.symbol}`);
+      console.log(`[SCHWAB] Skipping asset type: [detail omitted] for symbol: [detail omitted]`);
       // Skip currencies, cash equivalents, fees, etc.
       return null;
     }
@@ -990,7 +990,7 @@ class SchwabService {
 
     // Log TOS futures symbols for debugging (they typically start with /)
     if (matchingSymbol.startsWith('/')) {
-      console.log(`[SCHWAB] Processing TOS futures symbol: ${matchingSymbol}`);
+      console.log(`[SCHWAB] Processing TOS futures symbol: [detail omitted]`);
     }
 
     // Get price and quantity
@@ -1092,7 +1092,7 @@ class SchwabService {
   async syncTrades(connection, options = {}) {
     const { startDate, endDate, syncLogId } = options;
 
-    console.log(`[SCHWAB] Starting sync for connection ${connection.id}`);
+    console.log(`[SCHWAB] Starting sync for connection [detail omitted]`);
 
     // Ensure we have a valid token
     const { accessToken, needsReauth } = await this.ensureValidToken(connection);
@@ -1128,13 +1128,13 @@ class SchwabService {
       !excludedAccountIdentifiers.has(this.redactAccountNumber(account.accountNumber))
     );
 
-    console.log(`[SCHWAB] Found ${accounts.length} accounts; syncing ${includedAccounts.length} and excluding ${accounts.length - includedAccounts.length}`);
+    console.log(`[SCHWAB] Found [detail omitted] accounts; syncing [detail omitted] and excluding [detail omitted]`);
 
     // Fetch transactions only from included accounts, tagging each with the account identifier
     let allTransactions = [];
     for (const account of includedAccounts) {
       const redactedAccount = this.redactAccountNumber(account.accountNumber);
-      console.log(`[SCHWAB] Fetching transactions for account ${redactedAccount}...`);
+      console.log(`[SCHWAB] Fetching transactions for account [detail omitted]...`);
       try {
         const transactions = await this.getTransactions(
           accessToken,
@@ -1147,10 +1147,10 @@ class SchwabService {
           ...tx,
           _accountIdentifier: redactedAccount
         }));
-        console.log(`[SCHWAB] Account ${redactedAccount}: ${transactions.length} transactions`);
+        console.log(`[SCHWAB] Account [detail omitted]: ${transactions.length} transactions`);
         allTransactions = allTransactions.concat(taggedTransactions);
       } catch (error) {
-        console.error(`[SCHWAB] Failed to fetch account ${redactedAccount}:`, error.message);
+        console.error(`[SCHWAB] Failed to fetch account [detail omitted]:`);
         // Continue with other accounts
       }
     }
@@ -1177,7 +1177,7 @@ class SchwabService {
       openTrades: trades.filter(t => !t.exitPrice).length,
       closedTrades: trades.filter(t => t.exitPrice).length
     };
-    console.log(`[SCHWAB] Trade breakdown:`, tradeBreakdown);
+    console.log(`[SCHWAB] Trade breakdown:`);
 
     // Update sync log status
     if (syncLogId) {
@@ -1187,7 +1187,7 @@ class SchwabService {
     // Import trades with connection ID for tracking
     const result = await this.importTrades(connection.userId, connection.id, trades);
 
-    console.log(`[SCHWAB] Sync complete: ${result.imported} imported, ${result.duplicates} duplicates`);
+    console.log(`[SCHWAB] Sync complete: [detail omitted] imported, [detail omitted] duplicates`);
 
     return result;
   }
@@ -1248,14 +1248,8 @@ class SchwabService {
           account_identifier: tradeData.accountIdentifier || null
         });
       } catch (error) {
-        console.error(`[SCHWAB] Failed to import trade:`, error.message);
-        console.error(`[SCHWAB] Trade details:`, {
-          symbol: tradeData.symbol,
-          quantity: tradeData.quantity,
-          entryPrice: tradeData.entryPrice,
-          exitPrice: tradeData.exitPrice,
-          tradeDate: tradeData.tradeDate
-        });
+        console.error(`[SCHWAB] Failed to import trade:`);
+        console.error(`[SCHWAB] Trade details:`);
         failed++;
       }
     }
@@ -1263,14 +1257,14 @@ class SchwabService {
     await this.removeFullyClosedOpenSnapshots(userId, connectionId, trades);
 
     await OptionStrategyGroupingService.rebuildUserGroupsSafe(userId, 'Schwab broker sync');
-    console.log(`[SCHWAB] Invalidating analytics cache for user ${userId}`);
+    console.log(`[SCHWAB] Invalidating analytics cache for user [detail omitted]`);
     await AnalyticsCache.invalidate(userId);
 
     // Per-row creates skip achievements; run one end-of-batch check instead
     if (imported > 0) {
       const AchievementService = require('../achievementService');
       AchievementService.checkAndAwardAchievements(userId).catch(error => {
-        console.warn(`[SCHWAB] Failed to check achievements after sync for user ${userId}:`, error.message);
+        console.warn(`[SCHWAB] Failed to check achievements after sync for user [detail omitted]:`);
       });
     }
 
@@ -1333,7 +1327,7 @@ class SchwabService {
         WHERE id = $1 AND user_id = $2 AND broker_connection_id = $3
           AND exit_time IS NULL AND exit_price IS NULL
       `, [row.id, userId, connectionId]);
-      console.log(`[SCHWAB] Removed fully closed open snapshot ${row.id} (${row.symbol})`);
+      console.log(`[SCHWAB] Removed fully closed open snapshot [detail omitted] ([detail omitted])`);
     }
   }
 
@@ -1447,7 +1441,7 @@ class SchwabService {
         );
 
         if (hasExitMatch) {
-          console.log(`[SCHWAB] Duplicate found by exit order ID + datetime: ${symbol}`);
+          console.log(`[SCHWAB] Duplicate found by exit order ID + datetime: [detail omitted]`);
           return true;
         }
 
@@ -1480,7 +1474,7 @@ class SchwabService {
             Math.abs(existingExitPrice - newExitPrice) / existingExitPrice < 0.01;
 
           if (entryPriceMatch && exitPriceMatch) {
-            console.log(`[SCHWAB] Duplicate found by date/qty/price: ${symbol} on ${newTradeDate}`);
+            console.log(`[SCHWAB] Duplicate found by date/qty/price: [detail omitted] on [detail omitted]`);
             return true;
           }
         }
@@ -1493,7 +1487,7 @@ class SchwabService {
 
         // Same date, same symbol, same P&L (within $0.01)
         if (existingDateForPnL === newTradeDate && Math.abs(existingPnL - newPnL) < 0.02) {
-          console.log(`[SCHWAB] Duplicate found by P&L: ${symbol} on ${newTradeDate} ($${newPnL})`);
+          console.log(`[SCHWAB] Duplicate found by P&L: [detail omitted] on [detail omitted] ($[detail omitted])`);
           return true;
         }
       }

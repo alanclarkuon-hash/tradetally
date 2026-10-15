@@ -111,7 +111,7 @@ class EncryptionService {
 
       return decrypted.toString('utf8');
     } catch (error) {
-      console.error('[ENCRYPTION] Decryption failed:', error.message);
+      console.error('[ENCRYPTION] Decryption failed:');
       throw new Error('Failed to decrypt data - invalid key or corrupted data');
     }
   }

@@ -216,7 +216,7 @@ async function parseGenericTransactions(records, existingPositions = {}, customM
     symbolGroups[transaction.symbol].push(transaction);
   }
 
-  console.log(`Processing ${Object.keys(symbolGroups).length} symbols`);
+  console.log(`Processing [detail omitted] symbols`);
 
   // Process each symbol's transactions
   for (const [symbol, symbolTransactions] of Object.entries(symbolGroups)) {

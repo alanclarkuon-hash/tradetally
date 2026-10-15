@@ -358,7 +358,7 @@ const brokerParsers = {
     if (instrumentData.instrumentType === 'option') {
       // Ensure quantity is an integer for options contracts
       finalQuantity = Math.round(absQuantity);
-      console.log(`[IBKR] Options contract quantity: ${finalQuantity}`);
+      console.log(`[IBKR] Options contract quantity: [detail omitted]`);
     }
 
     return {

@@ -14,7 +14,7 @@ function applyTradeGrouping(trades, settings) {
   if (!trades || trades.length === 0) return trades;
 
   console.log(`\n=== APPLYING TRADE GROUPING ===`);
-  console.log(`Grouping ${trades.length} trades with ${settings.timeGapMinutes} minute time gap`);
+  console.log(`Grouping ${trades.length} trades with [detail omitted] minute time gap`);
 
   // Group by grouping key - for options, include strike/expiry/type to keep different contracts separate
   const tradesByGroupKey = {};
@@ -251,7 +251,7 @@ function applyTradeGrouping(trades, settings) {
     }
   }
 
-  console.log(`[SUCCESS] Grouped ${trades.length} trades into ${groupedTrades.length} trades`);
+  console.log(`[SUCCESS] Grouped ${trades.length} trades into [detail omitted] trades`);
   return groupedTrades;
 }
 
