@@ -7,7 +7,7 @@ const {previousDay} = require('../utils/heatmapPeriod');
 const STABLE = new Set(['USDT','USDC','USDG','DAI','FDUSD','TUSD','USDP','PYUSD','EURC','EURT']);
 const FIAT = new Set(['USD','GBP','EUR','CAD','AUD','JPY','CHF']);
 
-function periodResult(position, range, rates, lots) {
+function periodResult(position, range, rates, lots, rateAt=null) {
   if (!range) return {pnl:position.unrealizedPnL, percent:position.unrealizedPnLPercent,basis:position.totalCostBasis};
   if (!['stock','crypto'].includes(position.instrumentType)) return {pnl:null,percent:null};
   // Period P&L is for the lots still held today, not a claim about closed trades.
@@ -28,26 +28,27 @@ function periodResult(position, range, rates, lots) {
   // Preserve sub-cent coin prices rounded away by the display quote.
   const endPrice = range.end_date===date ? (position.currentValue>0 && position.totalShares>0 ? position.currentValue/position.totalShares : position.currentPrice) : quote(range.end_date);
   if (!(endPrice>0)) return {pnl:null,percent:null};
-  let basis=0,value=0;
+  let basis=0,value=0;const basisParts=[];
   for (const lot of lots) {
     const acquired=new Date(lot.acquired).toISOString().slice(0,10);
     if(acquired>range.end_date)continue;
     const startPrice=acquired>=range.start_date ? Number(lot.price) : (rates?._baselineDate ? rates[rates._baselineDate] : quote(previousDay(range.start_date)));
     if(!(startPrice>0))return {pnl:null,percent:null};
     basis+=Number(lot.quantity)*startPrice;
+    basisParts.push({amount:Number(lot.quantity)*startPrice,date:acquired>=range.start_date?acquired:rates?._baselineDate||previousDay(range.start_date)});
     value+=Number(lot.quantity)*endPrice;
   }
-  return basis>0 ? {pnl:value-basis,percent:(value-basis)/basis*100,basis} : {pnl:null,percent:null};
+  return basis>0 ? {pnl:value-basis,percent:(value-basis)/basis*100,basis,...(rateAt?{displayBasis:require('../utils/heatmapCurrency').displayBasis(basisParts,rateAt)}:{})} : {pnl:null,percent:null};
 }
 
-function currentRangeResult(position,range,native,manualLots=[],rates) {
+function currentRangeResult(position,range,native,manualLots=[],rates,rateAt=null) {
  const manualQuantity=manualLots.reduce((n,l)=>n+Number(l.quantity),0);
  const quantity=(native?.totalShares||0)+manualQuantity;
  if(Math.abs(quantity-position.totalShares)>Math.max(1e-8,position.totalShares*1e-7))return {pnl:null,percent:null};
- let basis=0;
- if(native?.totalShares>0){if(!(native.periodResult?.basis>0))return {pnl:null,percent:null};basis+=native.periodResult.basis;}
- if(manualQuantity>0){const price=position.currentValue/position.totalShares;const manual=periodResult({...position,totalShares:manualQuantity,currentValue:manualQuantity*price},range,rates,manualLots);if(!(manual.basis>0))return {pnl:null,percent:null};basis+=manual.basis;}
- return basis>0&&position.currentValue!=null?{pnl:position.currentValue-basis,percent:(position.currentValue-basis)/basis*100,basis}:{pnl:null,percent:null};
+ let basis=0,displayBasis=0;
+ if(native?.totalShares>0){if(!(native.periodResult?.basis>0))return {pnl:null,percent:null};basis+=native.periodResult.basis;if(rateAt){if(!(native.periodResult.displayBasis>0))displayBasis=null;else displayBasis+=native.periodResult.displayBasis;}}
+ if(manualQuantity>0){const price=position.currentValue/position.totalShares;const manual=periodResult({...position,totalShares:manualQuantity,currentValue:manualQuantity*price},range,rates,manualLots,rateAt);if(!(manual.basis>0))return {pnl:null,percent:null};basis+=manual.basis;if(rateAt){if(!(manual.displayBasis>0))displayBasis=null;else if(displayBasis!=null)displayBasis+=manual.displayBasis;}}
+ return basis>0&&position.currentValue!=null?{pnl:position.currentValue-basis,percent:(position.currentValue-basis)/basis*100,basis,...(rateAt?{displayBasis}:{})}:{pnl:null,percent:null};
 }
 
 async function getDashboard(userId, query={}, historical=null) {
@@ -74,8 +75,10 @@ async function getDashboard(userId, query={}, historical=null) {
       WHERE l.user_id=$1 AND h.symbol=ANY($2) AND ($3::text[]='{}' OR l.account_identifier=ANY($3))`,[userId,symbols,selected]) : {rows:[]}
   ]);
   const managed=accounts.rows.filter(a=>!selected.length||selected.includes(a.account_identifier));
-  const nativeCurrent=range&&!historical&&managed.length?await require('./portfolioHistoricalHoldings').getHistoricalHoldings(userId,managed,range,'USD'):null;
+  const nativeCurrent=range&&!historical&&managed.length?await require('./portfolioHistoricalHoldings').getHistoricalHoldings(userId,managed,range,currency):null;
   const fx=historical?.displayRates || await getRatesToDisplay(['USD',...managed.map(a=>a.currency)],currency);
+  const datedFxRows=range&&currency!=='USD'?(await db.query("SELECT rate_date,rates FROM fx_daily_rates WHERE base_code='USD' ORDER BY rate_date")).rows:[];
+  const rateAt=range&&currency!=='USD'?require('../utils/heatmapCurrency').datedDisplayRate(datedFxRows,currency):null;
   if(!(fx.USD>0))throw Error('Display currency conversion is unavailable');
   const cashRows=await Promise.all(managed.map(async a=>{
     if(a.broker==='okx')return {name:a.account_name,amount:0,source:'Coins and stablecoins only'};
@@ -157,7 +160,9 @@ async function getDashboard(userId, query={}, historical=null) {
     if(p.instrumentType==='crypto' && FIAT.has(p.symbol))continue;
     const native=nativeCurrent?.positions.find(n=>n.symbol===p.symbol&&n.instrumentType===p.instrumentType);
     const hasManaged=nativeCurrent&&p.accountIdentifiers?.some(id=>managed.some(a=>a.account_identifier===id));
-    const result=historical ? p.periodResult : hasManaged?currentRangeResult(p,range,native,manualLots.rows.filter(l=>l.symbol===p.symbol),cryptoRates[p.symbol]):periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol));
+    const result=historical ? p.periodResult : hasManaged?currentRangeResult(p,range,native,manualLots.rows.filter(l=>l.symbol===p.symbol),cryptoRates[p.symbol],rateAt):periodResult(p,range,cryptoRates[p.symbol],lotMap.get(p.symbol),rateAt);
+    const selectedBasis=Object.hasOwn(result,'displayBasis')?result.displayBasis:result.basis==null?null:result.basis*fx.USD;
+    const selectedPnl=result.pnl==null||selectedBasis==null||p.currentValue==null?null:(result.pnl+result.basis)*fx.USD-selectedBasis;
     const categoryKind=p.instrumentType==='crypto'?'crypto':funds.has(p.symbol)?'fund':null;
     const providerMetadata=p.instrumentType==='crypto'?categoriesBySymbol.get(p.symbol):funds.get(p.symbol);
     const metadata=categoryKind?require('./categoryOverrides').applyCategoryOverride(p.symbol,categoryKind,providerMetadata):providerMetadata;
@@ -166,7 +171,7 @@ async function getDashboard(userId, query={}, historical=null) {
       categories:metadata?.categories||[],categorySource:metadata?.source||null,categoryAsOf:metadata?.asOf||null,categoryStale:metadata?.stale||false,
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
-      pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
+      pnl:range?selectedPnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:range?(selectedPnl!=null&&selectedBasis>0?selectedPnl/selectedBasis*100:null):result.percent,pnlBasis:selectedBasis,
       valuationKind:p.valuationKind||(['cfd','future','option','forex','perpetual','margin'].includes(p.instrumentType)?'broker_position':null),valuationStatus:p.valuationStatus||(['cfd','future','option','forex','perpetual','margin'].includes(p.instrumentType)?'unsupported':null),
       instrumentType:p.instrumentType,quantity:p.totalShares,quoteSource:p.quoteSource||null,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
       historicalWarnings:p.historicalWarnings || []};

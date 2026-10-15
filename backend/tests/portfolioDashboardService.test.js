@@ -159,3 +159,20 @@ test('current-range P&L uses remaining native lots after partial sales, reconcil
   const result=await getDashboard('owner',{currency});
   expect(result.holdings[0]).toMatchObject({value:110*rate,cost:100*rate,pnl:10*rate,pnlPercent:10,quoteSource:'Broker snapshot (etoro)'});
  });
+
+
+test.each([['USD',1,1,0],['GBP',.8,.7,-12.5],['EUR',.9,1,100/9]])('heatmap period money and percentage use dated %s basis',async(currency,opening,ending,percent)=>{
+ jest.useFakeTimers().setSystemTime(new Date('2026-10-15T12:00:00Z'));
+ try{
+  Portfolio.getPositions.mockResolvedValue([{...position,symbol:'DEMO',instrumentType:'stock',totalShares:10,currentValue:100}]);getRatesToDisplay.mockResolvedValue({USD:ending});
+  db.query.mockImplementation(sql=>Promise.resolve({rows:sql.includes('fx_daily_rates')?[{rate_date:'2026-10-14',rates:{GBP:.8,EUR:.9}},{rate_date:'2026-10-15',rates:{GBP:.7,EUR:1}}]:sql.includes('FROM trades')?[{symbol:'DEMO',quantity:10,price:8,acquired:'2025-01-01'}]:[]}));
+  Portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-10-14')/1000,close:10}]);
+  const out=await getDashboard('owner',{currency,start_date:'2026-10-15',end_date:'2026-10-15'});
+  expect(out.holdings[0].pnlPercent).toBeCloseTo(percent);expect(out.holdings[0].pnlBasis).toBeCloseTo(100*opening);expect(out.holdings[0].pnl).toBeCloseTo(100*(ending-opening));expect(out.totals.pnlPercent).toBeCloseTo(percent);
+ }finally{jest.useRealTimers();}
+});
+test('current broker CFD equity uses dated selected-currency basis rather than USD percentage',()=>{
+ const {currentRangeResult}=require('../src/services/portfolioDashboardService');
+ const result=currentRangeResult({totalShares:2,currentValue:110},{},{totalShares:2,periodResult:{basis:100,displayBasis:80}},[],null,()=>.7);
+ expect(result).toMatchObject({basis:100,displayBasis:80});expect((result.pnl+result.basis)*.7-result.displayBasis).toBe(-3);
+});

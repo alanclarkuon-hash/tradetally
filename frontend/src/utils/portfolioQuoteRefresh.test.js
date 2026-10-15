@@ -28,3 +28,14 @@ describe('automatic quote valuation',()=>{
  })
 
 })
+
+
+it.each([['GBP',.7,80,-12.5],['EUR',1,90,100/9],['USD',1,100,0]])('retains the dated %s opening basis during automatic market and CFD refresh', (currency,rate,basis,expected)=>{
+ const stock={...row,quantity:1,pnlBasis:basis,cost:100*rate};
+ const cfd={...stock,symbol:'CFD',instrumentType:'cfd',valuationKind:'broker_position',accounts:['one']};
+ const base={...data,currency,displayUsdRate:rate,holdings:[stock,cfd]};
+ const response={currency,usdRate:rate,quotes:[{symbol:'ABC',current_price:100,last_updated:date}],valuations:{positions:[{symbol:'CFD',instrumentType:'cfd',accounts:['one'],quantity:1,capital:100,value:100,asOf:date,source:'broker:etoro:position',status:'ready'}]}};
+ const out=applyQuotes(base,response);
+ for(const r of out.holdings){expect(r.pnlBasis).toBe(basis);expect(r.pnlPercent).toBeCloseTo(expected);expect(r.pnl).toBeCloseTo(100*rate-basis)}
+ expect(out.totals.pnlPercent).toBeCloseTo(expected);
+})

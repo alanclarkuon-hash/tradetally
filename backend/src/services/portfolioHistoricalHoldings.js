@@ -54,6 +54,9 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     const row=fxRows.rows.filter(r=>day(r.rate_date)<=date).at(-1);
     return row&&Date.parse(date)-Date.parse(day(row.rate_date))<=7*86400000&&Number(row.rates[currency])>0?1/Number(row.rates[currency]):null;
   };
+  const rateAt=require('../utils/heatmapCurrency').datedDisplayRate(fxRows.rows,currency);
+  const basisInDisplay=parts=>require('../utils/heatmapCurrency').displayBasis(parts,rateAt);
+  const quoteDate=(symbol,date)=>require('../utils/heatmapPeriod').sessionOnOrBefore(date,calendarMap.get(symbol)||require('./exchangeCalendar').identify(symbol),symbol.endsWith('-USD'));
   const quote=(symbol,date)=>{
     const crypto=symbol.endsWith('-USD');
     const expected=require('../utils/heatmapPeriod').sessionOnOrBefore(date,calendarMap.get(symbol)||require('./exchangeCalendar').identify(symbol),crypto);
@@ -70,14 +73,14 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
   };
   const publicRates=snapshots.rows.find(r=>r.broker_type==='kraken')?.payload?.valuation?.rates||{};
   const positions=[],warnings=[];
-  function add(symbol,type,account,quantity,value,basis,issues=[],name=null) {
+  function add(symbol,type,account,quantity,value,basis,issues=[],name=null,basisParts=[]) {
     if(!(quantity>1e-8)||FIAT.has(symbol))return;
     const missing=value==null;
     if(missing)issues.push('Missing historical price; value estimated at zero');
     positions.push({symbol,name,instrumentType:type,totalShares:quantity,currentValue:value??0,
       totalCostBasis:basis??0,currentPrice:value==null?null:value/quantity,
       priceAsOf:range.end_date,accountIdentifiers:[account.account_identifier],historicalWarnings:issues,
-      periodResult:{pnl:!missing&&basis>0?value-basis:null,percent:!missing&&basis>0?(value-basis)/basis*100:null,basis}});
+      periodResult:{...(currency!=='USD'?{displayBasis:basis>0&&basisParts.length?basisInDisplay(basisParts):null}:{}),pnl:!missing&&basis>0?value-basis:null,percent:!missing&&basis>0?(value-basis)/basis*100:null,basis}});
   }
   for(const account of accounts) {
     if(account.initial_balance_date&&day(account.initial_balance_date)>range.end_date)continue;
@@ -98,21 +101,21 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
       const lots=remainingLots([...net.values()],range.end_date);
       for(const [s,held] of lots) {
         const q=held.reduce((n,l)=>n+l.quantity,0),p=price(s,range.end_date);
-        let basis=0,known=true;
+        let basis=0,known=true;const basisParts=[];
         const tradeLots=accountTrades.filter(t=>t.symbol===s&&t.side==='long'&&day(t.entry_time||t.trade_date)<=range.end_date&&(!t.exit_time||day(t.exit_time)>range.end_date));
         const tradeQuantity=tradeLots.reduce((n,t)=>n+Number(t.quantity),0);
         if(Math.abs(tradeQuantity-q)<Math.max(1e-8,q*1e-7)) {
           for(const t of tradeLots) {
             const acquired=day(t.entry_time||t.trade_date),start=acquired>=range.start_date?Number(t.entry_price):price(s,baselineDate);
-            if(!(start>0)){known=false;break;}basis+=Number(t.quantity)*start;
+            if(!(start>0)){known=false;break;}basis+=Number(t.quantity)*start;basisParts.push({amount:Number(t.quantity)*start,date:acquired>=range.start_date?acquired:baselineDate});
           }
         }else {
         for(const l of held) {
           if(l.acquired>=range.start_date){known=false;break;} // Transfers/rewards are not purchases with an established cost.
-          const start=price(s,baselineDate);if(!(start>0)){known=false;break;}basis+=l.quantity*start;
+          const start=price(s,baselineDate);if(!(start>0)){known=false;break;}basis+=l.quantity*start;basisParts.push({amount:l.quantity*start,date:baselineDate});
         }
         }
-        add(s,'crypto',account,q,p>0?q*p:null,known?basis:null,known?[]:['Period basis unavailable for ledger acquisitions or transfers']);
+        add(s,'crypto',account,q,p>0?q*p:null,known?basis:null,known?[]:['Period basis unavailable for ledger acquisitions or transfers'],null,basisParts);
       }
     }else if(account.broker==='trading212') {
       const report=ownReports.at(-1);
@@ -132,13 +135,13 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
       if(!report)warnings.push(`${account.account_name}: no saved order history`);
       for(const [s,held] of lots) {
         const series=market.get(s),q=held.reduce((n,l)=>n+l.quantity,0),p=quote(s,range.end_date);
-        let basis=0,known=true;
+        let basis=0,known=true;const basisParts=[];
         for(const l of held) {
           const later=historySplits(s,series?.splits||[]).filter(x=>x.date>baselineDate&&x.date<=range.end_date).reduce((n,x)=>n*x.ratio,1);
           const start=l.acquired>=range.start_date?l.price:quote(s,baselineDate)/later;
-          if(!(start>0)){known=false;break;}basis+=l.quantity*start;
+          if(!(start>0)){known=false;break;}basis+=l.quantity*start;basisParts.push({amount:l.quantity*start,date:l.acquired>=range.start_date?l.acquired:quoteDate(s,baselineDate)});
         }
-        add(s,'stock',account,q,p>0?q*p:null,known?basis:null);
+        add(s,'stock',account,q,p>0?q*p:null,known?basis:null,[],null,basisParts);
       }
     }else {
       const records=ownReports.flatMap(r=>r.records||[]),metadata=account.broker==='etoro'?statementLotMetadata(accountTrades,records,statementSplits(records),{nativeFx:fx}):new Map();
@@ -166,7 +169,7 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
           basis=Number(t.entry_price)*Number(t.quantity); // TradeTally stores execution costs in USD.
         }
         const symbol=t.instrument_type==='crypto'?s.replace(/-USD$/,''):s;
-        add(symbol,t.instrument_type,account,q,value,basis,[],t.name||null);
+        add(symbol,t.instrument_type,account,q,value,basis,[],t.name||null,[{amount:basis,date:opened>=range.start_date?opened:quoteDate(s,startDate)}]);
       }
     }
   }
@@ -185,7 +188,8 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
     const completeBasis=existing.periodResult.basis>0&&p.periodResult.basis>0;
     const basis=completeBasis?existing.periodResult.basis+p.periodResult.basis:null;
     const known=completeBasis&&existing.periodResult.pnl!=null&&p.periodResult.pnl!=null;
-    existing.periodResult={pnl:known?existing.periodResult.pnl+p.periodResult.pnl:null,percent:known&&basis>0?(existing.currentValue-basis)/basis*100:null,basis};
+    const displayBasis=existing.periodResult.displayBasis>0&&p.periodResult.displayBasis>0?existing.periodResult.displayBasis+p.periodResult.displayBasis:null;
+    existing.periodResult={...(currency!=='USD'?{displayBasis}:{}),pnl:known?existing.periodResult.pnl+p.periodResult.pnl:null,percent:known&&basis>0?(existing.currentValue-basis)/basis*100:null,basis};
   }
   return {positions:[...combined.values()],warnings,displayRates:{USD:currency==='USD'?1:(fx(currency,range.end_date)>0?1/fx(currency,range.end_date):null)}};
 }

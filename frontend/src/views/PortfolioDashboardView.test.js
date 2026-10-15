@@ -347,3 +347,12 @@ it('keeps the independent sync card mounted with no accounts selected or portfol
  expect(view.find('template').exists()).toBe(false);
  expect(view.find('broker-sync-status-card-stub').exists()).toBe(true);view.unmount();
 });
+
+
+it('requests new period calculations when the heatmap card currency changes',async()=>{
+ const view=create();await flushPromises();
+ const card=view.findAllComponents({name:'CurrencyCard'}).find(c=>c.props('preferenceKey')==='portfoliodashboardview-5');
+ expect(card).toBeTruthy();await card.find('button.currency-toggle').trigger('click');await flushPromises();
+ expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/dashboard')).at(-1)[1].params.currency).toBe('USD');
+ view.unmount();
+});
