@@ -19,6 +19,7 @@
       </div>
     </header>
     <HistoryBackfillStatus />
+    <p class="updated" role="status" data-testid="quote-monitor-status">Quotes refresh every 30 seconds while this tab is visible. Price monitoring: {{ monitoringText }}<span v-if="quoteRefreshError"> Latest refresh failed; saved quotes are still shown.</span></p>
     <div v-if="period==='custom'" class="custom-dates"><label>From <input type="date" v-model="start" :max="end"></label><label>To <input type="date" v-model="end" :min="start" :max="today"></label></div>
     <p v-if="error" role="alert" class="coverage">{{ error }}</p>
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
@@ -68,6 +69,7 @@ import {cardCurrencies} from '@/utils/cardCurrency'
 import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
+import {applyQuotes,quoteKey} from '@/utils/portfolioQuoteRefresh'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { resolveDatePreset, dashboardDateRangeOptions, profileCalendarDate } from '@/utils/datePresets'
 import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
@@ -118,7 +120,7 @@ const incomplete=computed(()=>data.value&&(data.value.coverage.missingCash||data
 const allocation=computed(()=>{const t=data.value.totals;return [{name:'Invested',value:t.holdingsValue,color:'#73c6a1'},{name:'Cash',value:t.cashValue,color:'#9aaabd'},{name:'Stablecoins',value:t.stablecoinValue,color:'#c9b274'}].map(p=>({...p,percent:t.portfolioValue>0?p.value/t.portfolioValue*100:0}))})
 const heatmapCoverage=computed(()=>data.value?.heatmapCoverage??data.value?.coverage??{})
 const historicalWarnings=computed(()=>[...(heatmapCoverage.value.warnings||[]),...(data.value?.heatmapHoldings||[]).filter(h=>h.historicalWarnings?.length).map(h=>h.symbol+': '+h.historicalWarnings.join('; '))])
-const quoteSourceLabel=source=>({trading212:'Trading 212',etoro:'eToro',okx:'OKX',kraken:'Kraken',ig:'IG',schwab:'Schwab',yahoo:'Yahoo Finance',finnhub:'Finnhub',coingecko:'CoinGecko',alpaca:'Alpaca'})[source] || source || 'Unavailable'
+const quoteSourceLabel=source=>{const key=source?.replace(/^broker:/,'').replace(/:(stock|crypto)$/,'');return ({trading212:'Trading 212',etoro:'eToro',okx:'OKX',kraken:'Kraken',ig:'IG',schwab:'Schwab',yahoo:'Yahoo Finance',finnhub:'Finnhub',coingecko:'CoinGecko',alpaca:'Alpaca'})[key] || source || 'Unavailable'}
 const quoteDateTime=holding=>{
   const value=holding.priceAsOf
   if(!value)return 'Unavailable'
@@ -128,9 +130,34 @@ const quoteDateTime=holding=>{
   return new Intl.DateTimeFormat('en-GB',{timeZone:authStore.user?.timezone||'UTC',dateStyle:'short',timeStyle:'long'}).format(date)
 }
 const quoteClock=ref(Date.now())
-let quoteClockTimer,metadataTimer
-onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now()},30000)})
-onUnmounted(()=>{clearInterval(quoteClockTimer);clearTimeout(metadataTimer);request++})
+const monitoring=ref(null),quoteRefreshError=ref(false)
+const duration=seconds=>seconds<60?`${seconds}s`:`${Math.floor(seconds/60)}m ${seconds%60}s`
+const monitoringText=computed(()=>{
+  const status=monitoring.value
+  if(!status)return 'Waiting for monitoring status.'
+  const current=status.currentRotation
+  const last=status.lastRotation
+  return `${status.running?'Monitoring':'Monitor stopped'}${current?`  -  ${current.processed}/${current.total} assets checked  -  ${duration(current.elapsedSeconds)} elapsed`:''}${last?`  -  Last full cycle: ${duration(last.durationSeconds)} for ${last.total} assets`:'  -  First full cycle not yet completed.'}`
+})
+let quoteClockTimer,metadataTimer,quoteRequest=null
+async function refreshQuotes(){
+  if(document.visibilityState==='hidden'||loading.value||!data.value||!hasAccountSelection.value||quoteRequest)return
+  const id=request,controller=new AbortController();quoteRequest=controller
+  const snapshot=data.value
+  const symbols=[...new Set([...snapshot.holdings,...(snapshot.stablecoins||[])].map(quoteKey))].join(',')
+  try{
+    const response=await api.get('/investments/portfolio/quotes',{params:{symbols,currency:currency.value},timeout:15000,signal:controller.signal})
+    if(id!==request||controller.signal.aborted)return
+    monitoring.value=response.data.monitoring
+    data.value=applyQuotes(data.value,response.data)
+    if(focus.value&&!data.value.heatmapDate)focus.value=data.value.holdings.find(h=>quoteKey(h)===quoteKey(focus.value))||focus.value
+    quoteRefreshError.value=false
+  }catch{if(id===request&&!controller.signal.aborted)quoteRefreshError.value=true}
+  finally{if(quoteRequest===controller)quoteRequest=null}
+}
+function resumeQuotes(){if(document.visibilityState!=='hidden')refreshQuotes()}
+onMounted(()=>{quoteClockTimer=setInterval(()=>{quoteClock.value=Date.now();refreshQuotes()},30000);document.addEventListener('visibilitychange',resumeQuotes)})
+onUnmounted(()=>{clearInterval(quoteClockTimer);clearTimeout(metadataTimer);request++;quoteRequest?.abort();document.removeEventListener('visibilitychange',resumeQuotes)})
 const isDelayedQuote=holding=>{
   const asOf=holding.priceAsOf ? Date.parse(holding.priceAsOf) : NaN
   return Number.isFinite(asOf) && quoteClock.value-asOf>15*60000
@@ -149,6 +176,7 @@ function refreshMetadata(id,params,attempt=0){
   },5000)
 }
 async function load(){
+  quoteRequest?.abort();quoteRequest=null;quoteRefreshError.value=false
   clearTimeout(metadataTimer)
   if(period.value==='custom' && (!start.value || !end.value || start.value>end.value))return
   const id=++request;loading.value=true;error.value='';focus.value=null;history.value=null;historyLoading.value=true;historyError.value=''

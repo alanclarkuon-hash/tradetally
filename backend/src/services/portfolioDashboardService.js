@@ -167,7 +167,7 @@ async function getDashboard(userId, query={}, historical=null) {
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
-      quantity:p.totalShares,quoteSource:p.quoteSource||null,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
+      instrumentType:p.instrumentType,quantity:p.totalShares,quoteSource:p.quoteSource||null,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
       historicalWarnings:p.historicalWarnings || []};
     if(p.instrumentType==='stock' && !funds.has(p.symbol)) {
       const reference=stockClassifications.get(p.symbol);

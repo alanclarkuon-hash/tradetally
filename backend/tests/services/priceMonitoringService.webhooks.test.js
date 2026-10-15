@@ -41,6 +41,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
     finnhub.isCryptoSymbol = jest.fn(() => false);
     priceFallbackManager.getQuoteWithFallback = jest.fn();
     priceMonitoringService.failedSymbols.clear();
+    priceMonitoringService.rotation=null;priceMonitoringService.lastRotation=null;priceMonitoringService.symbolOffset=0;
     priceMonitoringService.emailTransporter = null;
   });
 
@@ -142,4 +143,18 @@ describe('priceMonitoringService price alert webhook publication', () => {
     expect(update).toHaveBeenCalledWith('WAGB.L','stock');
     expect(update).toHaveBeenCalledTimes(7);update.mockRestore();
   });
+  test('measures full coverage across batches, including scheduled waiting time and skipped ticks',async()=>{
+    const now=jest.spyOn(Date,'now');let clock=1000000;now.mockImplementation(()=>clock);
+    const symbols=Array.from({length:3},(_,i)=>({symbol:'PRIVATE'+i,instrument_type:'stock'}));
+    db.query.mockImplementation(async q=>({rows:q.includes('FROM (')?symbols:[]}));
+    const limit=priceMonitoringService.maxSymbolsPerCycle;priceMonitoringService.maxSymbolsPerCycle=2;
+    const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
+    await priceMonitoringService.monitorPrices();expect(priceMonitoringService.getStatus().currentRotation.processed).toBe(2);
+    priceMonitoringService.cycleRunning=true;await priceMonitoringService.monitorPrices();priceMonitoringService.cycleRunning=false;
+    clock+=90000;await priceMonitoringService.monitorPrices();
+    const status=priceMonitoringService.getStatus();expect(status.lastRotation).toMatchObject({total:3,durationSeconds:90});
+    expect(JSON.stringify(status)).not.toContain('PRIVATE');expect(status.skippedTicks).toBeGreaterThan(0);
+    update.mockRestore();now.mockRestore();priceMonitoringService.maxSymbolsPerCycle=limit;
+  });
+
 });

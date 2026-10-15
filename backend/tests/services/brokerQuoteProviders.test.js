@@ -51,3 +51,11 @@ test('new registered broker capability is tried without orchestrator edits; erro
  providers.adapters.set('test-broker',()=>{throw Error('private key');});
  expect(await providers.fetch('OTHER','stock')).toBeNull();providers.adapters.delete('test-broker');
 });
+
+test('a stale first broker does not hide a fresher connected broker',async()=>{
+ db.query.mockResolvedValue({rows:[{id:'stale',broker_type:'test-stale'},{id:'fresh',broker_type:'test-fresh'}]});BC.findById.mockResolvedValue({});
+ providers.adapters.set('test-stale',async()=>({c:1,currency:'USD',source:'broker:stale',asOf:new Date(Date.now()-3600000).toISOString()}));
+ providers.adapters.set('test-fresh',async()=>({c:2,currency:'USD',source:'broker:fresh',asOf:new Date().toISOString()}));
+ expect((await providers.fetch('TWO-BROKERS','stock')).source).toBe('broker:fresh');
+ providers.adapters.delete('test-stale');providers.adapters.delete('test-fresh');
+});
