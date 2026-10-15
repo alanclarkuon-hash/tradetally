@@ -167,7 +167,7 @@ async function getDashboard(userId, query={}, historical=null) {
       categoryOverride:metadata?.source==='Manual override'?metadata:null,categoryWarning:metadata?.override_warning||null,
       value:p.currentValue==null?null:p.currentValue*fx.USD,cost:p.totalCostBasis*fx.USD,
       pnl:result.pnl==null?null:result.pnl*fx.USD,pnlPercent:result.percent,pnlBasis:result.basis==null?null:result.basis*fx.USD,
-      quantity:p.totalShares,quoteSource:p.quoteSource||null,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
+      instrumentType:p.instrumentType,quantity:p.totalShares,quoteSource:p.quoteSource||null,priceAsOf:p.priceAsOf,priceStale:p.priceStale,quoteSession:p.quoteSession||null,quoteTimestampKind:p.quoteTimestampKind||'observed',accounts:p.accountIdentifiers,
       historicalWarnings:p.historicalWarnings || []};
     if(p.instrumentType==='stock' && !funds.has(p.symbol)) {
       const reference=stockClassifications.get(p.symbol);
@@ -186,7 +186,7 @@ async function getDashboard(userId, query={}, historical=null) {
   const cashValue=cashRows.reduce((s,a)=>s+(a.amount??0),0);
   const completePnl=holdings.every(p=>p.pnl!=null);
   const basis=holdings.reduce((s,p)=>s+(p.pnlBasis??0),0);
-  const dashboard={metadataUpdating:metadata.updating || stockClassifications.refreshing === true,currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
+  const dashboard={displayUsdRate:fx.USD,metadataUpdating:metadata.updating || stockClassifications.refreshing === true,currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
       knownPnl:holdings.some(p=>p.pnl!=null)?holdings.reduce((s,p)=>s+(p.pnl??0),0):null,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
