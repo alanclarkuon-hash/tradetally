@@ -53,9 +53,26 @@ async function download(symbol) {
   const type=stringField(info,'type')?.charAt(0);if(!['s','e','a'].includes(type))throw Error('Unsupported public listing type');
   const response=(await get(`https://api.stockanalysis.com/api/symbol/${type}/${encodeURIComponent(uid)}/history`,{params:{range:'5Y',period:'Daily'},timeout:20000,maxRedirects:0,maxContentLength:8*1024*1024})).data;
   if(!Array.isArray(response.data))throw Error('Public daily history unavailable');
-  const source=html.match(/data:\{data:\{[^{}]*source:"([^"]+)"/)?.[1];if(!['tiingo','spg','spg-api'].includes(source))throw Error('Unverified historical-price source');
-  const rows=response.data.filter(p=>/^\d{4}-\d{2}-\d{2}$/.test(p.t)&&[p.o,p.h,p.l,p.c].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>0)&&p.h>=Math.max(p.o,p.l,p.c)&&p.l<=Math.min(p.o,p.h,p.c)&&Number(p.v)>1);
-  return {symbol:key,ticker,exchange,currency,name:stringField(info,'nameFull'),path:r.path,source:'stockanalysis:'+source,basis:'split-adjusted-close',prices:rows.map(p=>({date:p.t,close:p.c/unit.divisor})),candles:rows.map(p=>({time:Date.parse(p.t)/1000,open:p.o/unit.divisor,high:p.h/unit.divisor,low:p.l/unit.divisor,close:p.c/unit.divisor,volume:p.v,currency}))};
+  const source=html.match(/data:\{data:\{[^{}]*source:"([^"]+)"/)?.[1];if(!['tiingo','spg','spg-api','twelve'].includes(source))throw Error('Unverified historical-price source');
+  const today=new Date(Date.now()).toISOString().slice(0,10);
+  const coherent=p=>p.h>=Math.max(p.o,p.l,p.c)&&p.l<=Math.min(p.o,p.h,p.c);
+  // Foreign SPG listings can publish a completed-session closing mark outside
+  // the intraday trade range, including a genuine zero-volume session. The
+  // dated Close is usable only with the existing independent native-basis
+  // proof below; it is not evidence of an intraday high/low or a live trade.
+  const closingMarks=Boolean(r.venue)&&['spg','spg-api'].includes(source);
+  const rows=response.data.filter(p=>{
+    if(parseCalendarDate(p.t)!==p.t||![p.o,p.h,p.l,p.c].every(n=>typeof n==='number'&&Number.isFinite(n)&&n>0)||p.h<p.l)return false;
+    const volume=Number(p.v),mark=closingMarks&&p.t<today;
+    // Volume-one rows remain excluded: older delisted histories use a sentinel.
+    return p.v!==null&&p.v!==undefined&&Number.isFinite(volume)&&volume>=0&&volume!==1&&(volume>1||mark)&&(coherent(p)||mark);
+  });
+  return {symbol:key,ticker,exchange,currency,name:stringField(info,'nameFull'),path:r.path,source:'stockanalysis:'+source,basis:'split-adjusted-close',prices:rows.map(p=>({date:p.t,close:p.c/unit.divisor})),candles:rows.map(p=>{
+    const close=p.c/unit.divisor,mark=!coherent(p)||Number(p.v)===0;
+    // A flat close-only bar matches reconstruction's dated-close representation;
+    // never pretend the rejected intraday range is a verified full OHLC candle.
+    return {time:Date.parse(p.t)/1000,open:mark?close:p.o/unit.divisor,high:mark?close:p.h/unit.divisor,low:mark?close:p.l/unit.divisor,close,volume:Number(p.v),currency,...(mark?{priceKind:'closing-mark'}:{})};
+  })};
  })();
  memo.set(key,{time:Date.now(),promise});promise.catch(error=>{if(error.response?.status===429||error.message==='Stock Analysis rate-limit cooldown')memo.delete(key);else if(error.response?.status>=500||error.code==='ECONNABORTED'){const entry=memo.get(key);if(entry)entry.time=Date.now()-55*60000;}});if(memo.size>256)memo.delete(memo.keys().next().value);return promise;
 }

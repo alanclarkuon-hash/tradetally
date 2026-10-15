@@ -104,3 +104,36 @@ describe('fallback split calendar dates',()=>{
   expect(provider.verifiedRows(data,'2024-06-09','2024-06-10',null)).toEqual(last==='Jun 10, 2024'?[data.prices[1]]:[]);
  });
 });
+
+
+describe('verified foreign completed-session closes',()=>{
+ const foreign=(ticker,source='spg',currency='GBp')=>`info:{type:"assets",ticker:"${ticker}",exchange_code:"LON",nameFull:"Synthetic fund",curr:{price:"${currency}"}} data:{data:{source:"${source}"}}`;
+ test('recognizes attributed Twelve Data with exact listing and independent native basis proof',async()=>{
+  axios.get.mockResolvedValueOnce({data:foreign('ZZTWELVE','twelve','GBP')}).mockResolvedValueOnce({data:{data:[row('2026-01-05',100),row('2026-01-06',101)]}});
+  const data=await provider.download('ZZTWELVE.L');expect(data.source).toBe('stockanalysis:twelve');
+  expect(provider.verifiedRows(data,'2026-01-06','2026-01-06',{currency:'GBP',prices:[{date:'2026-01-05',close:100}]})).toEqual([{date:'2026-01-06',close:101}]);
+  expect(provider.verifiedRows(data,'2026-01-06','2026-01-06',null)).toEqual([]);
+ });
+ test('retains published zero-volume and out-of-range closes without inventing intraday extremes',async()=>{
+  axios.get.mockResolvedValueOnce({data:foreign('ZZMARK')}).mockResolvedValueOnce({data:{data:[
+   {t:'2026-01-05',o:100,h:105,l:95,c:110,v:200,a:50},
+   {t:'2026-01-06',o:110,h:110,l:110,c:111,v:0,a:50},
+   {...row('2026-01-07'),v:1}, {...row('2026-01-09'),v:null}, {...row('2026-01-10'),v:-1}, {...row('2026-01-11'),v:undefined}, {...row('2026-01-08'),h:10,l:20}, {...row('2026-02-30'),v:0}
+  ]}});
+  const data=await provider.download('ZZMARK.L');expect(data.prices).toEqual([{date:'2026-01-05',close:1.1},{date:'2026-01-06',close:1.11}]);
+  expect(data.candles[1]).toEqual(expect.objectContaining({open:1.11,high:1.11,low:1.11,close:1.11,volume:0,currency:'GBP',priceKind:'closing-mark'}));
+  expect(provider.verifiedRows(data,'2026-01-06','2026-01-06',{currency:'GBP',prices:[{date:'2026-01-05',close:1.1}]})).toEqual([{date:'2026-01-06',close:1.11}]);
+  expect(provider.verifiedRows(data,'2026-01-06','2026-01-06',{currency:'USD',prices:[{date:'2026-01-05',close:1.1}]})).toEqual([]);
+ });
+ test('does not accept live zero-volume marks, unknown sources or unproved quote units',async()=>{
+  const today=new Date(clock).toISOString().slice(0,10);
+  axios.get.mockResolvedValueOnce({data:foreign('ZZLIVE')}).mockResolvedValueOnce({data:{data:[{...row(today),v:0}]}});
+  expect((await provider.download('ZZLIVE.L')).prices).toEqual([]);
+  axios.get.mockResolvedValueOnce({data:foreign('ZZUNKNOWN','unverified')}).mockResolvedValueOnce({data:{data:[row('2026-01-06')]}});
+  await expect(provider.download('ZZUNKNOWN.L')).rejects.toThrow('source');
+ });
+ test('keeps strict OHLC and zero-volume rejection outside supported foreign-mark sources',async()=>{
+  axios.get.mockResolvedValueOnce({data:html('ZZSTRICT')}).mockResolvedValueOnce({data:{data:[{...row('2026-01-05'),v:0},{...row('2026-01-06'),h:90}]}});
+  expect((await provider.download('ZZSTRICT')).prices).toEqual([]);
+ });
+});
