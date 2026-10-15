@@ -1,5 +1,6 @@
 const type=row=>row.instrumentType || (row.assetClass==='Crypto assets'?'crypto':'stock');
 export const quoteKey=row=>(type(row)==='crypto'?'crypto:':'')+row.symbol;
+export const quoteKeys=rows=>[...new Set(rows.filter(r=>['stock','crypto'].includes(type(r))).map(quoteKey).filter(k=>/^(crypto:)?[A-Za-z0-9.^=_!/-]{1,32}$/.test(k)))];
 export function applyQuotes(data,payload) {
   if(payload.currency!==data.currency || !(payload.usdRate>0))return data;
   const quotes=new Map((payload.quotes||[]).map(q=>[q.symbol,q]));
@@ -7,7 +8,8 @@ export function applyQuotes(data,payload) {
     if(!['stock','crypto'].includes(type(row)) || !(row.quantity>0))return row;
     const q=quotes.get(quoteKey(row)),time=Date.parse(q?.last_updated),old=Date.parse(row.priceAsOf);
     if(!(Number(q?.current_price)>0) || !Number.isFinite(time) || time>Date.now()+60000 || Number.isFinite(old)&&time<=old)return row;
-    const value=row.quantity*Number(q.current_price)*payload.usdRate;
+    // Keep the dashboard display-FX snapshot consistent with its cash and P&L bases.
+    const value=row.quantity*Number(q.current_price)*(data.displayUsdRate||payload.usdRate);
     const basis=row.pnlBasis;
     const pnl=basis!=null && Number.isFinite(basis) && basis>=0?value-basis:null;
     return {...row,value,pnl,pnlPercent:pnl!==null&&basis>0?pnl/basis*100:null,priceAsOf:q.last_updated,

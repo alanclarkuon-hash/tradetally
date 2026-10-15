@@ -69,7 +69,7 @@ import {cardCurrencies} from '@/utils/cardCurrency'
 import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import api from '@/services/api'
-import {applyQuotes,quoteKey} from '@/utils/portfolioQuoteRefresh'
+import {applyQuotes,quoteKey,quoteKeys} from '@/utils/portfolioQuoteRefresh'
 import { Cog6ToothIcon, CheckIcon } from '@heroicons/vue/24/outline'
 import { resolveDatePreset, dashboardDateRangeOptions, profileCalendarDate } from '@/utils/datePresets'
 import { useDashboardDateFilterStore } from '@/stores/dashboardDateFilter'
@@ -144,7 +144,7 @@ async function refreshQuotes(){
   if(document.visibilityState==='hidden'||loading.value||!data.value||!hasAccountSelection.value||quoteRequest)return
   const id=request,controller=new AbortController();quoteRequest=controller
   const snapshot=data.value
-  const symbols=[...new Set([...snapshot.holdings,...(snapshot.stablecoins||[])].map(quoteKey))].join(',')
+  const symbols=quoteKeys([...snapshot.holdings,...(snapshot.stablecoins||[])]).join(',')
   try{
     const response=await api.get('/investments/portfolio/quotes',{params:{symbols,currency:currency.value},timeout:15000,signal:controller.signal})
     if(id!==request||controller.signal.aborted)return

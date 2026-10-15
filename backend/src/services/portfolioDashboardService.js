@@ -186,7 +186,7 @@ async function getDashboard(userId, query={}, historical=null) {
   const cashValue=cashRows.reduce((s,a)=>s+(a.amount??0),0);
   const completePnl=holdings.every(p=>p.pnl!=null);
   const basis=holdings.reduce((s,p)=>s+(p.pnlBasis??0),0);
-  const dashboard={metadataUpdating:metadata.updating || stockClassifications.refreshing === true,currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
+  const dashboard={displayUsdRate:fx.USD,metadataUpdating:metadata.updating || stockClassifications.refreshing === true,currency,asOf:new Date().toISOString(),range,holdings,stablecoins,cashAccounts:cashRows,
     totals:{portfolioValue:holdingsValue+stablecoinValue+cashValue,holdingsValue,cashValue,stablecoinValue,
       knownPnl:holdings.some(p=>p.pnl!=null)?holdings.reduce((s,p)=>s+(p.pnl??0),0):null,
       pnl:completePnl?holdings.reduce((s,p)=>s+p.pnl,0):null,pnlPercent:completePnl&&basis>0?holdings.reduce((s,p)=>s+p.pnl,0)/basis*100:null},
