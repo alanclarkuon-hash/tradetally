@@ -3,7 +3,7 @@ const User = require('../models/User');
 const db = require('../config/database');
 const adminSettingsService = require('../services/adminSettings');
 const { validateAiProviderUrl } = require('../utils/urlSecurity');
-const encryptionService = require('../services/brokerSync/encryptionService');
+const { encryptAiCredential: encryptKeyIfPresent, AI_ADMIN_CREDENTIAL_FIELDS } = require('../utils/aiCredentialStorage');
 const { computeTradePnl } = require('../services/pnlEngine');
 const { getUserTimezone } = require('../utils/timezone');
 const { toCamelCase, toSnakeCase, keysToCamelCase, keysToSnakeCase } = require('../utils/caseConvert');
@@ -70,18 +70,6 @@ function recomputeImportedTradePnl(trade, timezone) {
     trade_date: result.aggregate.trade_date || trade.trade_date || trade.tradeDate,
     tradeDate: result.aggregate.trade_date || trade.trade_date || trade.tradeDate
   };
-}
-
-// Encrypt third-party AI provider keys on import paths that write to
-// user_settings directly. Safe with already-encrypted values.
-function encryptKeyIfPresent(value) {
-  if (!value) return value;
-  if (encryptionService.isEncrypted(value)) return value;
-  try {
-    return encryptionService.encrypt(String(value));
-  } catch (_) {
-    return value;
-  }
 }
 
 function hasAnyOwnProperty(obj, keys) {
@@ -1963,6 +1951,10 @@ const settingsController = {
         if (importData.adminSettings && req.user.role === 'admin') {
           console.log('[IMPORT] Processing admin settings');
           for (const [key, value] of Object.entries(importData.adminSettings)) {
+            // Encrypt before the best-effort SQL block so a crypto failure
+            // aborts and rolls back the complete import.
+            const storedValue = AI_ADMIN_CREDENTIAL_FIELDS.includes(key)
+              ? encryptKeyIfPresent(value) : value;
             try {
               await client.query(
                 `INSERT INTO admin_settings (setting_key, setting_value)
@@ -1970,7 +1962,7 @@ const settingsController = {
                  ON CONFLICT (setting_key) DO UPDATE SET
                  setting_value = EXCLUDED.setting_value,
                  updated_at = CURRENT_TIMESTAMP`,
-                [key, value]
+                [key, storedValue]
               );
               adminSettingsUpdated++;
             } catch (adminError) {

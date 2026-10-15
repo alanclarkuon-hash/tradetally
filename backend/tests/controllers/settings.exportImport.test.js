@@ -523,3 +523,34 @@ describe('settings controller v3.0 export/import', () => {
     expect(db.connect).not.toHaveBeenCalled();
   });
 });
+
+
+describe('AI credentials in settings imports', () => {
+  const encryptionService = require('../../src/services/brokerSync/encryptionService');
+  beforeEach(() => { jest.clearAllMocks(); jest.spyOn(console, 'error').mockImplementation(() => {}); });
+  afterEach(() => { jest.restoreAllMocks(); });
+
+  test.each(['1.0', '2.0', '3.0'])('rolls back version %s when user key encryption fails', async exportVersion => {
+    encryptionService.encrypt.mockImplementationOnce(() => { throw new Error('synthetic-private-error'); });
+    const { client, res } = await runImport({ exportVersion, trades: [], settings: { aiApiKey: 'synthetic-provider-key' } });
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(client.calls.some(c => c.sql.trim() === 'COMMIT')).toBe(false);
+    expect(findInsert(client, 'user_settings')).toBeUndefined();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ error: 'Import failed' }));
+    expect(JSON.stringify(res.json.mock.calls)).not.toContain('synthetic-private-error');
+  });
+
+  test('encrypts administrator credentials imported directly', async () => {
+    const { client } = await runImport({ exportVersion: '3.0', trades: [], adminSettings: { default_ai_api_key: 'synthetic-admin-key' } }, { role: 'admin' });
+    const call = findInsert(client, 'admin_settings');
+    expect(call.params).toEqual(['default_ai_api_key', 'enc:synthetic-admin-key']);
+  });
+
+  test('rolls back the import when administrator credential encryption fails', async () => {
+    encryptionService.encrypt.mockImplementationOnce(() => { throw new Error('synthetic-private-error'); });
+    const { client } = await runImport({ exportVersion: '3.0', trades: [], adminSettings: { default_ai_api_key: 'synthetic-admin-key' } }, { role: 'admin' });
+    expect(client.query).toHaveBeenCalledWith('ROLLBACK');
+    expect(client.calls.some(c => c.sql.trim() === 'COMMIT')).toBe(false);
+    expect(findInsert(client, 'admin_settings')).toBeUndefined();
+  });
+});

@@ -2,6 +2,7 @@ const db = require('../config/database');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const encryptionService = require('../services/brokerSync/encryptionService');
+const { encryptAiCredential: encryptSettingsField } = require('../utils/aiCredentialStorage');
 const tierCache = require('../services/tierCache');
 const settingsCache = require('../services/settingsCache');
 const { normalizeEmail } = require('../utils/normalizeEmail');
@@ -35,16 +36,6 @@ function decryptSettingsRow(row) {
     if (row[field]) row[field] = decryptSettingsField(row[field]);
   }
   return row;
-}
-
-function encryptSettingsField(value) {
-  if (value === null || value === undefined || value === '') return value;
-  if (encryptionService.isEncrypted(value)) return value;
-  try {
-    return encryptionService.encrypt(String(value));
-  } catch (_) {
-    return value;
-  }
 }
 
 class User {
