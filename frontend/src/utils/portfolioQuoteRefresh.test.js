@@ -18,4 +18,13 @@ describe('automatic quote valuation',()=>{
  expect(applyQuotes({...data,displayUsdRate:0.5},payload).holdings[0]).toMatchObject({value:10,pnl:2})
  })
 
+ it('refreshes broker equity only for the exact account set, quantity and capital; never uses underlying quotes',()=>{
+ const cfd={...row,instrumentType:'cfd',valuationKind:'broker_position',accounts:['one'],cost:80,pnlBasis:80,value:90};
+ const base={...data,displayUsdRate:0.8,holdings:[cfd]};
+ const valuations={positions:[{symbol:'ABC',instrumentType:'cfd',accounts:['one'],quantity:2,capital:100,value:110,asOf:date,source:'broker:etoro:position',status:'current'}]};
+ const out=applyQuotes(base,{...payload,valuations});expect(out.holdings[0]).toMatchObject({value:88,pnl:8,priceAsOf:date});expect(out.totals.portfolioValue).toBe(93)
+ expect(applyQuotes(base,{...payload,valuations:{positions:[{...valuations.positions[0],accounts:['other']}]}}).holdings[0]).toBe(cfd)
+ expect(applyQuotes(base,{...payload,valuations:{positions:[{...valuations.positions[0],quantity:1}]}}).holdings[0]).toMatchObject({value:90,valuationStatus:'sync_required'})
+ })
+
 })

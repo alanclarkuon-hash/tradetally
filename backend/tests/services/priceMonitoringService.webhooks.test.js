@@ -1,3 +1,4 @@
+jest.mock('../../src/services/brokerPositionValuations',()=>({start:jest.fn(),stop:jest.fn()}));
 jest.mock('../../src/config/database', () => ({
   query: jest.fn()
 }));

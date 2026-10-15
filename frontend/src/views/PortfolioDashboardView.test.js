@@ -98,6 +98,25 @@ describe('Portfolio summary cards', () => {
     view.unmount();hidden.mockRestore();vi.useRealTimers()
   })
 
+
+  it('labels current broker position values separately and updates them without a sync',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
+    const row={symbol:'CFD',instrumentType:'cfd',valuationKind:'broker_position',valuationStatus:'waiting',accounts:['one'],quantity:2,cost:100,value:100,pnlBasis:100,pnl:0,pnlPercent:0,priceAsOf:new Date(Date.now()-3600000).toISOString(),assetClass:'Funds & ETFs',industry:'Funds & ETFs'}
+    mock.get.mockImplementation(async(url,options)=>{
+      if(url.endsWith('/dashboard'))return {data:{...dashboard,currency:'GBP',holdings:[row]}}
+      if(url.endsWith('/quotes'))return {data:{currency:'GBP',usdRate:1,quotes:[],monitoring:{running:true},valuations:{positions:[{symbol:'CFD',instrumentType:'cfd',accounts:['one'],quantity:2,capital:100,value:110,asOf:new Date().toISOString(),source:'broker:etoro:position',timestampKind:'valuation',status:'ready'}]}}}
+      return {data:{rates:{GBP:1},change:25}}
+    })
+    mock.selection.value='one'
+    const view=create();await flushPromises();await view.find('.holding-tile').trigger('click')
+    expect(view.find('.saved-quote').text()).toContain('Broker position valuation')
+    const captures=mock.post.mock.calls.length
+    await vi.advanceTimersByTimeAsync(30000);await flushPromises()
+    expect(view.find('.holding-detail').text()).toContain('110.00');expect(view.find('.saved-quote').text()).toContain('Source eToro')
+    expect(mock.post.mock.calls.length).toBe(captures)
+    expect(mock.get.mock.calls.find(([url])=>url.endsWith('/quotes'))[1].params.accounts).toBe('one')
+    view.unmount();vi.useRealTimers()
+  })
   it('shows the selected price timestamp and source beneath the heatmap',async()=>{
     useAuthStore().user.timezone='Europe/London'
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[

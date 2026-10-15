@@ -185,7 +185,7 @@ router.get('/income', investmentsController.getInvestmentIncome);
 router.get('/portfolio/overview', investmentsController.getPortfolioOverview);
 router.get('/portfolio/dashboard', investmentsController.getPortfolioDashboard);
 router.get('/portfolio/quotes',async(req,res,next)=>{
-  try {res.set('Cache-Control','no-store');res.json(await require('../services/portfolioQuoteRefresh').read(req.query));}
+  try {res.set('Cache-Control','no-store');res.json(await require('../services/portfolioQuoteRefresh').read(req.query,req.user.id));}
   catch(error){next(error);}
 });
 router.get('/portfolio/value-history',async(req,res,next)=>{

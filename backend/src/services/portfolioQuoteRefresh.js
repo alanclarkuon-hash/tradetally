@@ -1,5 +1,5 @@
 const db=require('../config/database');
-async function read(query={}) {
+async function read(query={},userId=null) {
   const currency=String(query.currency||'USD').toUpperCase();
   const keys=[...new Set(String(query.symbols||'').split(',').filter(Boolean))];
   if(!/^[A-Z]{3}$/.test(currency)||keys.length>250||keys.some(k=>! /^(crypto:)?[A-Za-z0-9.^=_!/-]{1,32}$/.test(k))) {
@@ -10,7 +10,8 @@ async function read(query={}) {
     require('../utils/displayCurrency').getRatesToDisplay(['USD'],currency)
   ]);
   if(!(rates.USD>0))throw Error('Display currency conversion is unavailable');
-  return {asOf:new Date().toISOString(),currency,usdRate:rates.USD,quotes:quotes.rows,
+  const valuations=userId?await require('./brokerPositionValuations').read(userId,String(query.accounts||'').split(',').filter(Boolean)):null;
+  return {valuations,asOf:new Date().toISOString(),currency,usdRate:rates.USD,quotes:quotes.rows,
     monitoring:require('./priceMonitoringService').getStatus()};
 }
 module.exports={read};

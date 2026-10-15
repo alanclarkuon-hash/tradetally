@@ -26,7 +26,7 @@ async function snapshotPositions(rows, accounts = []) {
   const rates = new Map([['USD', 1]]);
   for (const row of rows) {
     if (accounts.length && !accounts.includes(row.account_identifier)) continue;
-    for (const p of row.positions) {
+    for (const p of require('../brokerPositionValuations').positionsFor(row)) {
       // Spread bets are derivatives. Their notional exposure is not an owned
       // stock/coin asset and must not be added to the investments valuation.
       if(row.broker_type==='ig'&&p.instrumentType==='spread_bet')continue;
@@ -37,7 +37,8 @@ async function snapshotPositions(rows, accounts = []) {
           totalDividendsReceived: 0, dividendYieldOnCost: null, lastDividendDate: null,
           accountIdentifiers: [row.account_identifier], lotCount: p.lotCount || 1, openedAt: p.openedAt,
           brokers: row.broker_type, instrumentType: p.instrumentType, contractSize: 1, pointValue: null,
-          brokerCurrentPrice: p.currentValue / p.quantity, brokerPriceAsOf: new Date(row.synced_at).toISOString() });
+          brokerCurrentPrice: p.currentValue / p.quantity, brokerPriceAsOf: p.valuationAsOf || new Date(row.synced_at).toISOString(),
+          valuationKind: require('../brokerPositionValuations').LEVERAGED.has(p.instrumentType)?'broker_position':null,valuationStatus:p.valuationStatus,valuationTimestampKind:p.valuationTimestampKind,valuationSource:p.valuationSource });
         continue;
       }
       const quantity = Number(p.quantity);
