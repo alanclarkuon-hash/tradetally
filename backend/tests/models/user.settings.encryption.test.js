@@ -57,6 +57,13 @@ describe('User.updateSettings — AI key encryption on write', () => {
     expect(params[0]).toBe('ENC[already-encrypted]');
   });
 
+  test.each(['ai_api_key', 'cusip_ai_api_key'])('does not write %s when encryption fails', async field => {
+    mockEncryptionService.encrypt.mockImplementationOnce(() => { throw new Error('synthetic-key-must-not-leak'); });
+    await expect(User.updateSettings('user-1', { [field]: 'synthetic-key' }))
+      .rejects.toMatchObject({ statusCode: 503, body: { code: 'AI_KEY_ENCRYPTION_FAILED' } });
+    expect(db.query).not.toHaveBeenCalled();
+  });
+
   test('does not encrypt non-sensitive fields', async () => {
     await User.updateSettings('user-1', { ai_provider: 'openai', ai_api_url: 'https://api.example' });
 

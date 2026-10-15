@@ -1,14 +1,11 @@
 const db = require('../config/database');
 const encryptionService = require('./brokerSync/encryptionService');
+const { encryptAiCredential, AI_ADMIN_CREDENTIAL_FIELDS } = require('../utils/aiCredentialStorage');
 
 // Admin-provided default keys for third-party AI providers. Encrypted at rest
 // using the same AES-256-GCM service as broker credentials. Legacy plaintext
 // rows continue to work and get re-encrypted on next update.
-const ENCRYPTED_ADMIN_KEYS = new Set([
-  'default_ai_api_key',
-  'default_ai_classifier_api_key',
-  'default_cusip_ai_api_key'
-]);
+const ENCRYPTED_ADMIN_KEYS = new Set(AI_ADMIN_CREDENTIAL_FIELDS);
 
 function decryptAdminValue(key, value) {
   if (!value || !ENCRYPTED_ADMIN_KEYS.has(key)) return value;
@@ -23,12 +20,7 @@ function decryptAdminValue(key, value) {
 function encryptAdminValue(key, value) {
   if (value === null || value === undefined || value === '') return value;
   if (!ENCRYPTED_ADMIN_KEYS.has(key)) return value;
-  if (encryptionService.isEncrypted(value)) return value;
-  try {
-    return encryptionService.encrypt(String(value));
-  } catch (_) {
-    return value;
-  }
+  return encryptAiCredential(value);
 }
 
 class AdminSettingsService {
