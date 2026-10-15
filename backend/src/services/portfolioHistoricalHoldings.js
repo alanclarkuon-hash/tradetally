@@ -49,12 +49,10 @@ async function getHistoricalHoldings(userId,accounts,range,currency='USD') {
   const calendarMap=new Map();
   const calendarSymbols=[...new Set(trades.rows.filter(t=>t.instrument_type!=='crypto'&&Number.isFinite(Date.parse(t.entry_time||t.trade_date))).map(t=>historicalMarketSymbol(t.symbol,t.instrument_type,day(t.entry_time||t.trade_date))))];
   for(const s of calendarSymbols)calendarMap.set(s,await require('./exchangeCalendar').resolve(s));
-  const fx=(currency,date)=>{
-    if(currency==='USD')return 1;
-    const row=fxRows.rows.filter(r=>day(r.rate_date)<=date).at(-1);
-    return row&&Date.parse(date)-Date.parse(day(row.rate_date))<=7*86400000&&Number(row.rates[currency])>0?1/Number(row.rates[currency]):null;
-  };
-  const rateAt=require('../utils/heatmapCurrency').datedDisplayRate(fxRows.rows,currency);
+  const datedRates=new Map();
+  const displayRate=code=>{if(!datedRates.has(code))datedRates.set(code,require('../utils/heatmapCurrency').datedDisplayRate(fxRows.rows,code));return datedRates.get(code);};
+  const fx=(currency,date)=>{const rate=displayRate(currency)(date);return rate>0?1/rate:null;};
+  const rateAt=displayRate(currency);
   const basisInDisplay=parts=>require('../utils/heatmapCurrency').displayBasis(parts,rateAt);
   const quoteDate=(symbol,date)=>require('../utils/heatmapPeriod').sessionOnOrBefore(date,calendarMap.get(symbol)||require('./exchangeCalendar').identify(symbol),symbol.endsWith('-USD'));
   const quote=(symbol,date)=>{
