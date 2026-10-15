@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate, optionalAuth } = require('../middleware/auth');
+const { authenticate } = require('../middleware/auth');
 const imageUpload = require('../middleware/upload');
 const {
   getEntries,
@@ -26,9 +26,8 @@ const {
   deleteGeneralNote
 } = require('../controllers/diary.controller');
 
-// Image serving route with optional auth (for direct URL access with token query param)
-// This must be declared BEFORE the global authenticate middleware
-router.get('/:id/images/:filename', optionalAuth, getDiaryImage);
+// Images require the same cookie/header authentication as other diary data.
+router.get('/:id/images/:filename', authenticate, getDiaryImage);
 
 // Apply authentication middleware to all other routes
 router.use(authenticate);

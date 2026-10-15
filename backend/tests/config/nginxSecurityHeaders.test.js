@@ -31,3 +31,12 @@ describe('bundled nginx security headers', () => {
     }
   });
 });
+
+
+test('nginx access logs exclude request queries and referrers', () => {
+  const config = require('fs').readFileSync(require('path').resolve(__dirname, '../../../docker/nginx.conf'), 'utf8');
+  const format = config.match(/log_format tradetally_safe ([\s\S]*?);/)[1];
+  expect(format).toContain('$uri');
+  expect(format).not.toMatch(/\$request(?:["'\s]|_uri)|\$args|\$query_string|\$http_referer/);
+  expect(config).toContain('access_log /var/log/nginx/access.log tradetally_safe;');
+});

@@ -33,7 +33,6 @@ const PlaybookAdherenceService = require('../services/playbookAdherence.service'
 const MAEEstimator = require('../utils/maeEstimator');
 const TierService = require('../services/tierService');
 const Account = require('../models/Account');
-const { verifyJwtToken, TOKEN_PURPOSES, isTokenSessionValid } = require('../middleware/auth');
 const { escapeCsv } = require('../utils/csvEscape');
 const { buildExistingTradeIndex, classifyImportTrade } = require('../utils/importDuplicateDetection');
 const { publishInBackground } = require('../events/domainEvents');
@@ -4760,29 +4759,8 @@ const tradeController = {
         return res.status(400).json({ error: 'Invalid filename' });
       }
 
-      console.log('getTradeImage called:', {
-        tradeId,
-        filename: sanitizedFilename,
-        hasAuthHeader: !!req.header('Authorization'),
-        hasQueryToken: !!req.query.token,
-        userFromMiddleware: req.user?.id
-      });
-
-      // Check if token is provided as query parameter. Require an access-purpose
-      // JWT so pre_2fa temp tokens cannot be used to pull private images.
-      let user = req.user;
-      if (!user && req.query.token) {
-        try {
-          const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-          const tokenUser = await User.findById(decoded.id);
-          if (tokenUser && tokenUser.is_active && isTokenSessionValid(decoded, tokenUser)) {
-            user = tokenUser;
-          }
-        } catch (error) {
-          console.log('JWT verification failed for query token:', error.message);
-          // Token is invalid, continue without user context
-        }
-      }
+      // Identity is supplied only by cookie/header authentication middleware.
+      const user = req.user;
 
       // Check if the attachment exists and belongs to the specified trade
       const attachmentQuery = `
@@ -4804,14 +4782,6 @@ const tradeController = {
       const hasAccess = attachment.is_public || (user && user.id === attachment.user_id);
 
       if (!hasAccess) {
-        console.log('Access denied for image:', {
-          filename: sanitizedFilename,
-          tradeId,
-          userId: user?.id,
-          tradeOwnerId: attachment.user_id,
-          isPublic: attachment.is_public,
-          hasUser: !!user
-        });
         return res.status(403).json({ error: 'Access denied' });
       }
 

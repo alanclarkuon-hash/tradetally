@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
-const morgan = require('morgan');
+const { createRequestLogger } = require('./middleware/requestLogger');
 const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
@@ -225,18 +225,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-morgan.token('request-id', (req) => req.requestId || '-');
-app.use(morgan(':method :url :status :response-time ms req_id=:request-id', {
-  skip: function (req, res) {
-    if (process.env.NODE_ENV === 'production') {
-      return false;
-    }
-
-    return req.path.includes('/import/history') ||
-           req.path.includes('/health') ||
-           (req.path.includes('/trades') && req.query && req.query.page);
-  }
-}));
+app.use(createRequestLogger());
 
 // Cookie parser middleware
 app.use(cookieParser());
