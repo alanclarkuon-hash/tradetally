@@ -52,6 +52,7 @@ class PriceMonitoringService {
 
     console.log('Starting price monitoring service...');
     this.isRunning = true;
+    require('./brokerPositionValuations').start();
 
     // Initial run
     await this.monitorPrices();
@@ -78,6 +79,7 @@ class PriceMonitoringService {
 
     console.log('Stopping price monitoring service...');
     this.isRunning = false;
+    require('./brokerPositionValuations').stop();
 
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);

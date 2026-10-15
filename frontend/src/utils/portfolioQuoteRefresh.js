@@ -5,6 +5,15 @@ export function applyQuotes(data,payload) {
   if(payload.currency!==data.currency || !(payload.usdRate>0))return data;
   const quotes=new Map((payload.quotes||[]).map(q=>[q.symbol,q]));
   const refresh=row=>{
+    if(row.valuationKind==='broker_position'){
+      const valuation=payload.valuations?.positions?.find(v=>v.symbol===row.symbol&&v.instrumentType===row.instrumentType&&JSON.stringify([...new Set(v.accounts)].sort())===JSON.stringify([...(row.accounts||[])].sort()));
+      if(!valuation)return row;
+      const rate=data.displayUsdRate||payload.usdRate;
+      if(!Number.isFinite(valuation.value)||Math.abs(valuation.quantity-row.quantity)>Math.max(1e-8,row.quantity*1e-8)||Math.abs(valuation.capital-row.cost/rate)>0.05)return {...row,valuationStatus:'sync_required'};
+      const value=valuation.value*rate,basis=row.pnlBasis;
+      const pnl=basis!=null&&Number.isFinite(basis)?value-basis:null;
+      return {...row,value,pnl,pnlPercent:pnl!==null&&basis>0?pnl/basis*100:null,priceAsOf:valuation.asOf,quoteSource:valuation.source,quoteTimestampKind:valuation.timestampKind,valuationStatus:valuation.status};
+    }
     if(!['stock','crypto'].includes(type(row)) || !(row.quantity>0))return row;
     const q=quotes.get(quoteKey(row)),time=Date.parse(q?.last_updated),old=Date.parse(row.priceAsOf);
     if(!(Number(q?.current_price)>0) || !Number.isFinite(time) || time>Date.now()+60000 || Number.isFinite(old)&&time<=old)return row;

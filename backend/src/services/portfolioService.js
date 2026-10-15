@@ -1696,7 +1696,7 @@ class PortfolioService {
       const cached = usablePriceRow(row, position.instrumentType) ? row : null;
       const brokerDate = position.brokerPriceAsOf ? new Date(position.brokerPriceAsOf) : null;
       // CFD snapshots represent invested equity per unit, not an underlying quote.
-      const brokerEquity = position.instrumentType === 'cfd';
+      const brokerEquity = position.instrumentType === 'cfd' || position.valuationKind==='broker_position';
       const useBroker = Number.isFinite(position.brokerCurrentPrice) &&
         Number.isFinite(brokerDate?.getTime()) &&
         (brokerEquity || !cached?.updatedAt || cached.updatedAt < brokerDate);
@@ -1732,8 +1732,8 @@ class PortfolioService {
         : position.dividendYieldOnCost;
       position.priceAsOf = priceDate ? priceDate.toISOString() : null;
       position.quoteSession = useBroker || brokerEquity ? null : cached?.quote_session || null;
-      position.quoteTimestampKind=useBroker?'observed':cached?.timestamp_kind||'observed';
-      position.quoteSource = useBroker ? `Broker snapshot (${position.brokers || 'unknown'})` : (brokerEquity ? null : cached?.data_source || null);
+      position.quoteTimestampKind=useBroker?(position.valuationTimestampKind||'observed'):cached?.timestamp_kind||'observed';
+      position.quoteSource = useBroker ? (position.valuationSource||`Broker snapshot (${position.brokers || 'unknown'})`) : (brokerEquity ? null : cached?.data_source || null);
       position.priceStale = priceStale;
     }
 
