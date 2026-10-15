@@ -1,5 +1,4 @@
 <template>
-  <div class="assets-scroll" role="region" aria-label="Asset details" tabindex="0">
   <div class="content-wrapper py-8 assets-page">
     <header class="mb-7"><p class="asset-eyebrow">ANALYSIS / ASSETS</p><h1 class="heading-page">Asset library</h1><p class="text-gray-500 dark:text-gray-400 mt-2">Explore the information TradeTally has saved about an asset.</p></header>
     <form @submit.prevent="search" class="asset-search">
@@ -73,7 +72,6 @@
     </template>
     <p v-else-if="!loading" class="asset-placeholder">Start with a symbol to open its saved profile, classifications, prices, financials, news and your activity.</p>
   </div>
-  </div>
 </template>
 <script setup>
 import {ref,computed} from 'vue'
@@ -110,11 +108,6 @@ async function page(section,delta){
 if(input.value)search()
 </script>
 <style>
-/* Own the scroll surface instead of depending on the document's scroll state. */
-.assets-scroll{--assets-banner-height:0px;--assets-mobile-header-height:0px;height:calc(100vh - var(--assets-banner-height) - var(--assets-mobile-header-height));height:calc(100dvh - var(--assets-banner-height) - var(--assets-mobile-header-height));overflow-y:auto;overflow-x:hidden;overscroll-behavior-y:contain;scrollbar-gutter:stable}
-.assets-scroll:focus-visible{outline:2px solid #75b49c;outline-offset:-2px}
-.app-test .assets-scroll{--assets-banner-height:40px}
-@media(max-width:1023px){.assets-scroll{--assets-mobile-header-height:56px}}
 .assets-page{max-width:1440px}.asset-eyebrow{font-size:10px;letter-spacing:.16em;color:#718d86;font-weight:700;margin-bottom:8px}.asset-search{display:flex;align-items:end;gap:16px;padding:24px;border:1px solid #718d8633;border-radius:10px;background:#718d8608}.asset-identity{display:flex;justify-content:space-between;align-items:center;padding:28px 0;border-top:2px solid #75b49c;margin-bottom:12px}.asset-identity h2{font-size:36px;letter-spacing:-.04em;font-weight:650}.asset-labels{padding:20px 0 28px}.assets-page h3{font-size:16px;font-weight:600;margin-bottom:8px}.asset-chip{padding:6px 10px;border:1px solid #718d8655;border-radius:5px;font-size:12px}.asset-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:28px;margin-top:24px}.asset-index{align-self:start;position:sticky;top:70px}.asset-index a{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid #718d8622;font-size:12px}.asset-index span{color:#718d86;font-variant-numeric:tabular-nums}.asset-section{border:1px solid #718d8633;border-radius:8px;padding:20px;scroll-margin-top:90px}.asset-record{padding:12px 0;border-top:1px solid #718d8622}.asset-record summary{display:flex;justify-content:space-between;gap:12px;cursor:pointer;font-size:12px}.asset-record summary:before{content:'▸';color:#718d86}.asset-record[open] summary:before{content:'▾'}.asset-fields{margin-top:16px;font-size:12px}.asset-fields>div{display:grid;grid-template-columns:minmax(100px,190px) minmax(0,1fr);gap:16px;padding:9px 0;border-top:1px solid #718d861a}.asset-fields dt{color:#718d86;overflow-wrap:anywhere}.asset-fields dd{min-width:0;overflow-wrap:anywhere}.asset-notice{padding:14px 18px;border-left:3px solid #718d86;background:#718d860d;margin:16px 0;font-size:13px}.asset-placeholder{padding:64px 20px;text-align:center;color:#718d86}.nested-data summary{cursor:pointer}.assets-page summary:focus-visible,.asset-index a:focus-visible{outline:2px solid #75b49c;outline-offset:3px}@media(max-width:800px){.asset-layout{grid-template-columns:1fr}.asset-index{position:static}.asset-search{flex-direction:column;align-items:stretch}.asset-fields>div{grid-template-columns:1fr;gap:4px}}
 .asset-close header{border-bottom:1px solid #718d8633;padding-bottom:12px}.asset-close-price{display:flex;align-items:baseline;gap:12px;padding-top:18px;flex-wrap:wrap}.asset-close-price strong{font-size:30px;letter-spacing:-.035em;font-weight:650;font-variant-numeric:tabular-nums}.asset-close-price span{font-size:12px;color:#718d86}
 </style>
