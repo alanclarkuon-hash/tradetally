@@ -84,6 +84,12 @@ RUN apk update && apk upgrade --no-cache && \
     chown -R nginx:nginx /run/nginx /var/lib/nginx /var/log/nginx
 WORKDIR /app
 
+# Private runtime files live on dedicated volumes, separate from source binds.
+ENV LOG_DIR=/app/backend/src/logs \
+    BACKUP_DIR=/app/backend/src/data/backups
+VOLUME ["/app/backend/src/logs", "/app/backend/src/data", "/app/backend/uploads"]
+
+
 # Copy built frontend
 COPY --from=frontend-builder /app/frontend/dist /usr/share/nginx/html
 

@@ -12,6 +12,7 @@ jest.mock('../../src/services/optionStrategyGroupingService', () => ({
 }));
 
 jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
   promises: {
     mkdir: jest.fn().mockResolvedValue(),
     unlink: jest.fn().mockResolvedValue(),

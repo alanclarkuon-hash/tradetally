@@ -242,6 +242,8 @@ pnpm run migrate || print_warning "Migrations may have already been applied"
 echo -e "\n${YELLOW}Step 12: Setting up PM2${NC}"
 
 cat > "$APP_DIR/ecosystem.config.js" <<'EOF'
+const path = require('path');
+const logRoot = require('./backend/src/utils/runtimeStorage').getRuntimeDirectory('logs');
 module.exports = {
   apps: [{
     name: 'tradetally-backend',
@@ -253,9 +255,9 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3000
     },
-    error_file: './src/logs/pm2-error.log',
-    out_file: './src/logs/pm2-out.log',
-    log_file: './src/logs/pm2-combined.log',
+    error_file: path.join(logRoot, 'pm2-error.log'),
+    out_file: path.join(logRoot, 'pm2-out.log'),
+    log_file: path.join(logRoot, 'pm2-combined.log'),
     time: true,
     watch: false,
     max_memory_restart: '1G'
@@ -374,7 +376,7 @@ print_status "Nginx configured"
 # Step 14: Set proper permissions
 echo -e "\n${YELLOW}Step 14: Setting permissions${NC}"
 sudo chown -R www-data:www-data "$APP_DIR/backend/src/data" 2>/dev/null || true
-sudo chown -R www-data:www-data "$APP_DIR/backend/src/logs" 2>/dev/null || true
+# Runtime logs use external per-user storage; do not create log files in source.
 print_status "Permissions set"
 
 # Step 15: Verification

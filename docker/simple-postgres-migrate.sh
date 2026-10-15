@@ -59,7 +59,10 @@ fi
 log "Auto-migration enabled. Performing migration check..."
 
 # Create backup directory
-BACKUP_DIR="./postgres-migration-backup"
+BACKUP_DIR="${BACKUP_DIR:-${TRADETALLY_PRIVATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tradetally}/postgres-migration-backup}"
+umask 077
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../scripts/private-storage.sh"
+BACKUP_DIR=$(tradetally_private_path "$BACKUP_DIR") || exit 1
 mkdir -p "$BACKUP_DIR"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
@@ -87,7 +90,7 @@ if [[ "$VERSION_CHECK" == "15" ]]; then
     
     docker run --rm \
         -v tradetally_postgres_data_dev:/var/lib/postgresql/data \
-        -v "$(pwd)/$BACKUP_DIR":/backup \
+        -v "$BACKUP_DIR":/backup \
         -e POSTGRES_USER="$DB_USER" \
         -e POSTGRES_PASSWORD="$DB_PASSWORD" \
         -e POSTGRES_DB="$DB_NAME" \
@@ -133,7 +136,7 @@ if [[ "$VERSION_CHECK" == "15" ]]; then
     
     docker run --rm \
         -v tradetally_postgres_data_dev:/var/lib/postgresql/data \
-        -v "$(pwd)/$BACKUP_DIR":/backup \
+        -v "$BACKUP_DIR":/backup \
         -e POSTGRES_USER="$DB_USER" \
         -e POSTGRES_PASSWORD="$DB_PASSWORD" \
         -e POSTGRES_DB="$DB_NAME" \

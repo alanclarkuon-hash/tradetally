@@ -16,6 +16,8 @@
 #
 
 set -e
+umask 077
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/private-storage.sh"
 
 # Colors for output
 RED='\033[0;31m'
@@ -25,10 +27,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default configuration
-BACKUP_DIR="${BACKUP_OUTPUT:-./backups}"
+BACKUP_DIR="${BACKUP_OUTPUT:-${TRADETALLY_PRIVATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tradetally}/backups}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_NAME="tradetally_backup_${TIMESTAMP}"
-TEMP_DIR="/tmp/${BACKUP_NAME}"
+TEMP_DIR=""
 MODE="auto"
 
 # Docker container names (will be auto-detected)
@@ -65,7 +67,7 @@ while [[ $# -gt 0 ]]; do
             echo "Options:"
             echo "  --docker       Force Docker mode"
             echo "  --local        Force local/native mode"
-            echo "  --output DIR   Custom output directory (default: ./backups)"
+            echo "  --output DIR   Custom absolute output directory outside checkouts"
             echo "  --help, -h     Show this help message"
             echo ""
             echo "Environment variables:"
@@ -157,7 +159,9 @@ load_env() {
 create_backup_dirs() {
     log_info "Creating backup directory structure..."
 
+    BACKUP_DIR=$(tradetally_private_path "$BACKUP_DIR") || exit 1
     mkdir -p "$BACKUP_DIR"
+    TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/tradetally-backup.XXXXXX")
     mkdir -p "$TEMP_DIR"
     mkdir -p "$TEMP_DIR/database"
     mkdir -p "$TEMP_DIR/uploads"

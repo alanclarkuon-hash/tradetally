@@ -28,6 +28,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      LOG_DIR: /app/backend/src/logs
       # Backend environment variables
       NODE_ENV: ${NODE_ENV:-production}
       PORT: ${PORT:-3000}
@@ -182,7 +183,7 @@ services:
       FEATURES_BEHAVIORAL_ANALYTICS_ENABLED: ${FEATURES_BEHAVIORAL_ANALYTICS_ENABLED:-true}
       # Background service tuning
       PRICE_MONITOR_MAX_SYMBOLS: ${PRICE_MONITOR_MAX_SYMBOLS:-}
-      BACKUP_DIR: ${BACKUP_DIR:-}
+      BACKUP_DIR: /app/backend/src/data/backups
       # Webhooks and idempotency
       WEBHOOK_FAILURE_THRESHOLD: ${WEBHOOK_FAILURE_THRESHOLD:-}
       WEBHOOK_TIMEOUT_MS: ${WEBHOOK_TIMEOUT_MS:-}
@@ -205,9 +206,9 @@ services:
     ports:
       - "8080:80"
     volumes:
-      - ./backend/src/logs:/app/backend/src/logs
-      - ./backend/src/data:/app/backend/src/data
-      - ./backend/uploads:/app/backend/uploads
+      - app_logs:/app/backend/src/logs
+      - app_data:/app/backend/src/data
+      - uploads:/app/backend/uploads
       - ${APNS_KEY_PATH:-/dev/null}:/run/secrets/tradetally-apns-key.p8:ro
     networks:
       - trader-network
@@ -218,5 +219,8 @@ networks:
     driver: bridge
 
 volumes:
+  app_logs:
+  app_data:
+  uploads:
   postgres_data:
     driver: local

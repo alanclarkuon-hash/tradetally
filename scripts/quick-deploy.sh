@@ -186,7 +186,7 @@ blank_placeholder "STRIPE_SECRET_KEY"
 blank_placeholder "STRIPE_PUBLISHABLE_KEY"
 blank_placeholder "STRIPE_WEBHOOK_SECRET"
 
-mkdir -p backend/src/logs backend/src/data backend/uploads
+# Compose provisions private named volumes; never create runtime data in source.
 
 echo ""
 echo "[DEPLOY] Pulling images..."

@@ -25,7 +25,10 @@ fi
 DOCKER_COMPOSE_FILE="${COMPOSE_FILE:-$DOCKER_COMPOSE_FILE}"
 
 echo -e "${BLUE}[INFO] Using compose file: $DOCKER_COMPOSE_FILE${NC}"
-BACKUP_DIR="./postgres-migration-backup"
+BACKUP_DIR="${BACKUP_DIR:-${TRADETALLY_PRIVATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tradetally}/postgres-migration-backup}"
+umask 077
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/private-storage.sh"
+BACKUP_DIR=$(tradetally_private_path "$BACKUP_DIR") || exit 1
 
 echo -e "${BLUE}=== TradeTally PostgreSQL 16 to 15 Rollback ===${NC}"
 echo -e "${YELLOW}[WARNING] This will roll back your database to PostgreSQL 15${NC}"
@@ -89,7 +92,7 @@ docker volume rm "$VOLUME_NAME" || true
 
 # Step 3: Restore PostgreSQL 15 volume backup
 echo -e "${BLUE}[STEP 3/5] Restoring PostgreSQL 15 volume...${NC}"
-docker run --rm -v "$VOLUME_NAME":/target -v "$(pwd)/$BACKUP_DIR":/backup alpine tar xzf "/backup/$(basename "$VOLUME_BACKUP")" -C /target
+docker run --rm -v "$VOLUME_NAME":/target -v "$BACKUP_DIR":/backup alpine tar xzf "/backup/$(basename "$VOLUME_BACKUP")" -C /target
 
 if [[ $? -eq 0 ]]; then
     echo -e "${GREEN}[SUCCESS] PostgreSQL 15 volume restored${NC}"

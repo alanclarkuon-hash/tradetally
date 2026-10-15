@@ -25,7 +25,10 @@ fi
 DOCKER_COMPOSE_FILE="${COMPOSE_FILE:-$DOCKER_COMPOSE_FILE}"
 
 echo -e "${BLUE}[INFO] Using compose file: $DOCKER_COMPOSE_FILE${NC}"
-BACKUP_DIR="./postgres-migration-backup"
+BACKUP_DIR="${BACKUP_DIR:-${TRADETALLY_PRIVATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/tradetally}/postgres-migration-backup}"
+umask 077
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/private-storage.sh"
+BACKUP_DIR=$(tradetally_private_path "$BACKUP_DIR") || exit 1
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKUP_FILE="tradetally_backup_${TIMESTAMP}.sql"
 
@@ -88,7 +91,7 @@ echo -e "${BLUE}[INFO] Using volume: $VOLUME_NAME${NC}"
 
 # Step 5: Backup the volume
 echo -e "${BLUE}[STEP 5/7] Backing up PostgreSQL data volume...${NC}"
-docker run --rm -v "$VOLUME_NAME":/source -v "$(pwd)/$BACKUP_DIR":/backup alpine tar czf /backup/postgres_volume_backup_${TIMESTAMP}.tar.gz -C /source .
+docker run --rm -v "$VOLUME_NAME":/source -v "$BACKUP_DIR":/backup alpine tar czf /backup/postgres_volume_backup_${TIMESTAMP}.tar.gz -C /source .
 
 # Step 6: Remove old data and restore PostgreSQL 16 config
 echo -e "${BLUE}[STEP 6/7] Removing old data and configuring PostgreSQL 16...${NC}"

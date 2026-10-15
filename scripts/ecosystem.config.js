@@ -1,3 +1,5 @@
+const { getRuntimeDirectory } = require('../backend/src/utils/runtimeStorage');
+const logRoot = getRuntimeDirectory('logs');
 const path = require('path');
 const backend_root = path.resolve(__dirname, '../backend');
 const env = {
@@ -27,9 +29,9 @@ module.exports = {
       watch: false,
       max_memory_restart: '1G',
       env,
-      error_file: path.join(backend_root, 'logs/pm2-error.log'),
-      out_file: path.join(backend_root, 'logs/pm2-out.log'),
-      log_file: path.join(backend_root, 'logs/pm2-combined.log'),
+      error_file: path.join(logRoot, 'pm2-error.log'),
+      out_file: path.join(logRoot, 'pm2-out.log'),
+      log_file: path.join(logRoot, 'pm2-combined.log'),
       time: true
     }
   ]

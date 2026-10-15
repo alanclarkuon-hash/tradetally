@@ -322,7 +322,9 @@ run_backend_migrations() {
 }
 
 ensure_backend_logs_dir() {
-  mkdir -p "$REPO_ROOT/backend/logs"
+  local runtime_log_dir
+  runtime_log_dir=$(node -e "process.stdout.write(require('./backend/src/utils/runtimeStorage').getRuntimeDirectory('logs'))")
+  mkdir -p "$runtime_log_dir"
 }
 
 restart_backend() {
