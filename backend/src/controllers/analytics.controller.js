@@ -242,7 +242,7 @@ async function calculateMAEMFEAsync(userId, filterConditions, params) {
       }
     }
   } catch (error) {
-    console.error('MAE/MFE calculation error:', error);
+    console.error("MAE/MFE calculation error");
     return { avgMAE: 'N/A', avgMFE: 'N/A', count: 0 };
   }
 }
@@ -529,7 +529,7 @@ const analyticsController = {
         groupByPosition = userSettings?.analytics_position_grouping === true;
         breakevenConfig = configFromSettings(userSettings);
       } catch (error) {
-        console.warn('Could not fetch user settings for analytics, using default (average):', error.message);
+        console.warn("Could not fetch user settings for analytics, using default (average)");
         useMedian = false;
       }
 
@@ -558,10 +558,10 @@ const analyticsController = {
       // Check cache first for faster response
       const cachedData = cache.get(cacheKey);
       if (cachedData) {
-        console.log(`[CACHE HIT] Analytics overview returned from cache for user ${req.user.id}`);
+        console.log("[CACHE HIT] Analytics overview returned from cache");
         return res.json(await convertForDisplay(req, cachedData));
       }
-      console.log(`[CACHE MISS] Computing analytics overview for user ${req.user.id}`);
+      console.log("[CACHE MISS] Computing analytics overview");
 
       const payload = await coalesceInFlight(cacheKey, async () => {
 
@@ -689,11 +689,11 @@ const analyticsController = {
 
         // --- BEGIN DEBUG LOGGING ---
         console.log('--- Analytics Overview Debug ---');
-        console.log('Query Parameters:', { filters: req.query, userId: req.user.id });
-        console.log('Raw Query Result:', result.rows);
+        console.log("Query Parameters");
+        console.log("[analytics] Request diagnostic");
         if (overview) {
-          console.log('Initial Overview Object:', JSON.parse(JSON.stringify(overview)));
-          console.log('Total trades found:', overview.total_trades);
+          console.log("Initial Overview Object");
+          console.log("Total trades found");
         } else {
           console.log('No overview data returned from query.');
           // Send a valid empty response if overview is missing
@@ -713,13 +713,7 @@ const analyticsController = {
         // --- END DEBUG LOGGING ---
 
         // Debug logging
-        console.log('Overview query result:', {
-          total_trades: overview.total_trades,
-          has_pnl_array: !!overview.pnl_array,
-          pnl_array_length: overview.pnl_array ? overview.pnl_array.length : 0,
-          total_gross_wins: overview.total_gross_wins,
-          total_gross_losses: overview.total_gross_losses
-        });
+        console.log("Overview query result");
 
         // Convert numeric values to proper format
         overview.total_trades = parseInt(overview.total_trades) || 0;
@@ -803,15 +797,7 @@ const analyticsController = {
           overview.kelly_percentage = (kellyDecimal * 100).toFixed(2);
 
           // Debug info
-          console.log('Kelly % calculation:', {
-            winRate: winRate.toFixed(4),
-            lossRate: lossRate.toFixed(4),
-            avgWin: avgWin.toFixed(2),
-            avgLoss: avgLoss.toFixed(2),
-            winLossRatio: winLossRatio.toFixed(4),
-            kellyDecimal: kellyDecimal.toFixed(4),
-            kellyPercentage: overview.kelly_percentage
-          });
+          console.log("Kelly % calculation");
         } else {
           overview.kelly_percentage = '0.00';
         }
@@ -835,8 +821,8 @@ const analyticsController = {
           const equityResult = await db.query(equityQuery, [req.user.id]);
           const equitySnapshots = equityResult.rows;
 
-          console.log('K-Ratio equity snapshots found:', equitySnapshots.length);
-          console.log('K-Ratio equity snapshots data:', equitySnapshots);
+          console.log("K-Ratio equity snapshots found");
+          console.log("K-Ratio equity snapshots data");
 
           if (equitySnapshots && equitySnapshots.length >= 3) {
             // Calculate daily returns from user-entered equity values
@@ -844,15 +830,15 @@ const analyticsController = {
             for (let i = 1; i < equitySnapshots.length; i++) {
               const prevEquity = parseFloat(equitySnapshots[i - 1].equity_amount);
               const currentEquity = parseFloat(equitySnapshots[i].equity_amount);
-              console.log(`K-Ratio: Processing ${equitySnapshots[i].snapshot_date}: ${prevEquity} -> ${currentEquity}`);
+              console.log("K-Ratio: Processing");
               if (prevEquity > 0) {
                 const dailyReturn = (currentEquity - prevEquity) / prevEquity;
                 returns.push(dailyReturn);
-                console.log(`K-Ratio: Daily return: ${dailyReturn.toFixed(6)}`);
+                console.log("K-Ratio: Daily return");
               }
             }
 
-            console.log('K-Ratio daily returns calculated:', returns.length);
+            console.log("K-Ratio daily returns calculated");
 
             if (returns.length > 0) {
               // Calculate average return and standard deviation
@@ -865,11 +851,11 @@ const analyticsController = {
               overview.k_ratio = kRatio.toFixed(2);
 
               console.log('K-Ratio calculation details:');
-              console.log('  equity snapshots:', equitySnapshots.length);
-              console.log('  returns count:', returns.length);
-              console.log('  avgReturn:', avgReturn.toFixed(6));
-              console.log('  stdDev:', stdDev.toFixed(6));
-              console.log('  kRatio:', kRatio.toFixed(6));
+              console.log("equity snapshots");
+              console.log("returns count");
+              console.log("avgReturn");
+              console.log("stdDev");
+              console.log("kRatio");
             } else {
               overview.k_ratio = '0.00';
               console.log('K-Ratio: No valid returns calculated');
@@ -879,7 +865,7 @@ const analyticsController = {
             console.log('K-Ratio: Insufficient equity snapshots (need at least 2)');
           }
         } catch (error) {
-          console.error('K-Ratio calculation error:', error);
+          console.error("K-Ratio calculation error");
           overview.k_ratio = '0.00';
         }
 
@@ -922,7 +908,7 @@ const analyticsController = {
           overview.avg_mae = estimates.avgMAE;
           overview.avg_mfe = estimates.avgMFE;
         } catch (error) {
-          console.error('MAE/MFE calculation error:', error);
+          console.error("MAE/MFE calculation error");
           overview.avg_mae = 'N/A';
           overview.avg_mfe = 'N/A';
         }
@@ -999,7 +985,7 @@ const analyticsController = {
           overview.best_win_streak = parseInt(streak.best_win_streak) || 0;
           overview.worst_loss_streak = parseInt(streak.worst_loss_streak) || 0;
         } catch (streakErr) {
-          console.error('[STREAK] calculation error:', streakErr);
+          console.error("[STREAK] calculation error");
           overview.trading_days = 0;
           overview.avg_daily_trades = 0;
           overview.today_trade_count = 0;
@@ -1025,15 +1011,8 @@ const analyticsController = {
         delete overview.total_gross_losses;
 
         // Debug logging before sending response
-        console.log('Final overview object keys:', Object.keys(overview));
-        console.log('Advanced metrics values:', {
-          sqn: overview.sqn,
-          k_ratio: overview.k_ratio,
-          kelly_percentage: overview.kelly_percentage,
-          probability_random: overview.probability_random,
-          avg_mae: overview.avg_mae,
-          avg_mfe: overview.avg_mfe
-        });
+        console.log("Final overview object keys");
+        console.log("Advanced metrics values");
 
         // Surface whether these numbers are grouped per position (issue #339) so
         // the UI can label the win rate as "whole trade".
@@ -1047,7 +1026,7 @@ const analyticsController = {
 
       res.json(await convertForDisplay(req, payload));
     } catch (error) {
-      console.error('Analytics overview error:', error);
+      console.error("Analytics overview error");
       next(error);
     }
   },
@@ -1076,7 +1055,7 @@ const analyticsController = {
         data: estimates
       }));
     } catch (error) {
-      console.error('Error getting MAE/MFE:', error);
+      console.error("Error getting MAE/MFE");
       res.status(500).json({
         success: false,
         error: 'Failed to calculate MAE/MFE'
@@ -1821,7 +1800,7 @@ const analyticsController = {
         return { calendar: calendarRows };
       });
     } catch (error) {
-      console.error('Calendar data error:', error);
+      console.error("Calendar data error");
       next(error);
     }
   },
@@ -1918,7 +1897,7 @@ const analyticsController = {
       const contributions = buildCalendarDayContributions(tradeResult.rows, dateStr, userTz);
       res.json(await convertForDisplay(req, { date: dateStr, contributions }));
     } catch (error) {
-      console.error('Calendar day detail error:', error);
+      console.error("Calendar day detail error");
       next(error);
     }
   },
@@ -2235,13 +2214,7 @@ const analyticsController = {
           chartQuery(performanceByHoldTimeQuery, params)
         ]);
 
-        console.log('Chart data query results:', {
-          tradeDistribution: tradeDistResult.rows,
-          performanceByPrice: perfByPriceResult.rows,
-          performanceByVolume: perfByVolumeResult.rows,
-          performanceByPositionSize: perfByPositionSizeResult.rows,
-          performanceByHoldTime: perfByHoldTimeResult.rows
-        });
+        console.log("Chart data query results");
 
         // Process data into arrays matching the chart labels
         const priceLabels = ['< $2', '$2-4.99', '$5-9.99', '$10-19.99', '$20-49.99', '$50-99.99', '$100-199.99', '$200+'];
@@ -2607,7 +2580,7 @@ const analyticsController = {
         return sendAIUnavailable(res);
       }
 
-      console.log(`[OK] AI provider configured: ${userSettings.provider}`);
+      console.log("[OK] AI provider configured");
 
       // Use buildFilterConditions for consistency
       const { filterConditions, params: filterParams } = await buildFilterConditions(req.query, req.user.id);
@@ -2660,7 +2633,7 @@ const analyticsController = {
 
       const overviewResult = await db.query(overviewQuery, params);
       const metrics = overviewResult.rows[0];
-      console.log(`[INFO] Found ${metrics.total_trades} trades for analysis`);
+      console.log("[INFO] Found");
 
       // Calculate derived metrics
       metrics.win_rate = metrics.total_trades > 0
@@ -2694,7 +2667,7 @@ const analyticsController = {
 
       try {
         userProfileSettings = await User.getSettings(req.user.id);
-        console.log('[CONFIG] User settings found:', !!userProfileSettings);
+        console.log("[CONFIG] User settings found");
 
         if (userProfileSettings) {
           // Check if trading profile columns exist before accessing them
@@ -2708,10 +2681,10 @@ const analyticsController = {
             tradingGoals: userProfileSettings.trading_goals || [],
             preferredSectors: userProfileSettings.preferred_sectors || []
           };
-          console.log('[PROFILE] Trading profile loaded with strategies:', tradingProfile.tradingStrategies.length);
+          console.log("[PROFILE] Trading profile loaded with strategies");
         }
       } catch (settingsError) {
-        console.warn('[WARNING] Failed to load user settings, continuing without trading profile:', settingsError.message);
+        console.warn("[WARNING] Failed to load user settings, continuing without trading profile");
         console.warn('This might be because trading profile columns do not exist in database yet');
         tradingProfile = null;
       }
@@ -2764,7 +2737,7 @@ const analyticsController = {
         const symbolData = symbolResult.rows;
 
         if (symbolData.length > 0) {
-          console.log(`[ANALYSIS] Analyzing ${symbolData.length} symbols for sector data...`);
+          console.log("[ANALYSIS] Analyzing");
 
           // Read industries from symbol_categories table (populated by SymbolCategoryScheduler)
           const symbolList = symbolData.map(s => s.symbol);
@@ -2803,12 +2776,12 @@ const analyticsController = {
             avg_pnl: sector.total_trades > 0 ? (sector.total_pnl / sector.total_trades).toFixed(2) : 0
           })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-          console.log(`[COMPLETE] Sector analysis complete: ${sectorData.length} sectors identified`);
+          console.log("[COMPLETE] Sector analysis complete");
         } else {
           console.log('[SKIP] Skipping sector analysis - insufficient data');
         }
       } catch (error) {
-        console.warn('[WARNING] Failed to fetch sector data for AI analysis:', error.message);
+        console.warn("[WARNING] Failed to fetch sector data for AI analysis");
         sectorData = null;
       }
 
@@ -2821,12 +2794,12 @@ const analyticsController = {
           throw new Error('AI service returned undefined recommendations');
         }
       } catch (aiError) {
-        console.error('[ERROR] AI service error:', aiError.message);
+        console.error("[ERROR] AI service error");
         return sendAIUnavailable(res);
       }
       console.log('[SUCCESS] AI recommendations generated successfully');
-      console.log('[DEBUG] Recommendations type:', typeof recommendations);
-      console.log('[DEBUG] Recommendations content preview:', recommendations ? recommendations.substring(0, 100) + '...' : 'undefined');
+      console.log("[DEBUG] Recommendations type");
+      console.log("[analytics] Request diagnostic");
 
       const response = {
         recommendations,
@@ -2838,11 +2811,11 @@ const analyticsController = {
         }
       };
 
-      console.log('[RESPONSE] Sending response with keys:', Object.keys(response));
+      console.log("[RESPONSE] Sending response with keys");
       res.json(response);
 
     } catch (error) {
-      console.error('Error generating recommendations:', error);
+      console.error("Error generating recommendations");
       return sendAIUnavailable(res);
     }
   },
@@ -2857,8 +2830,8 @@ const analyticsController = {
 
       const { startDate, endDate } = req.query;
 
-      console.log('Sector performance request - Filters:', req.query);
-      console.log('Sector performance - Query params:', params);
+      console.log("Sector performance request - Filters");
+      console.log("[analytics] Request diagnostic");
 
       // Get all symbols and their P&L from trades
       console.log('[QUERY] Fetching symbols and P&L from trades...');
@@ -2906,7 +2879,7 @@ const analyticsController = {
       const symbolResult = await db.query(symbolQuery, params);
       const symbolData = symbolResult.rows;
 
-      console.log(`[INFO] Found ${symbolData.length} unique symbols to analyze`);
+      console.log("[INFO] Found");
 
       if (symbolData.length === 0) {
         return res.json({
@@ -2932,7 +2905,7 @@ const analyticsController = {
         storedCategories.set(row.symbol, row);
       }
 
-      console.log(`[DATA] Found ${storedCategories.size} stored symbols in permanent storage`);
+      console.log("[DATA] Found");
 
       const sectorMap = new Map();
       let categorizedCount = 0;
@@ -2979,7 +2952,7 @@ const analyticsController = {
         }
       }
 
-      console.log(`[STATS] Immediate sector analysis: ${categorizedCount} categorized, ${uncategorizedSymbols.length} uncategorized`);
+      console.log("[STATS] Immediate sector analysis");
 
       // Convert map to array and calculate additional metrics
       const sectors = Array.from(sectorMap.values()).map(sector => ({
@@ -2989,7 +2962,7 @@ const analyticsController = {
         symbol_count: sector.symbols.length
       })).sort((a, b) => b.total_pnl - a.total_pnl);
 
-      console.log(`[RETURN] Returning ${sectors.length} sectors immediately`);
+      console.log("[RETURN] Returning");
 
       const resultData = {
         sectors,
@@ -3008,13 +2981,13 @@ const analyticsController = {
 
       // Uncategorized symbols will be picked up by the symbol category scheduler
       if (uncategorizedSymbols.length > 0) {
-        console.log(`[INFO] ${uncategorizedSymbols.length} uncategorized symbols will be processed by the category scheduler`);
+        console.log("[INFO]");
       }
 
       res.json(await convertForDisplay(req, resultData));
 
     } catch (error) {
-      console.error('Error generating sector performance:', error);
+      console.error("Error generating sector performance");
       next(error);
     }
   },
@@ -3043,7 +3016,7 @@ const analyticsController = {
       });
 
     } catch (error) {
-      console.error('Error categorizing symbols:', error);
+      console.error("Error categorizing symbols");
       next(error);
     }
   },
@@ -3056,7 +3029,7 @@ const analyticsController = {
         stats
       });
     } catch (error) {
-      console.error('Error getting symbol category stats:', error);
+      console.error("Error getting symbol category stats");
       next(error);
     }
   },
@@ -3077,7 +3050,7 @@ const analyticsController = {
 
       res.json({ sectors: [...sectors].sort() });
     } catch (error) {
-      console.error('Error getting available sectors:', error);
+      console.error("Error getting available sectors");
       next(error);
     }
   },
@@ -3098,7 +3071,7 @@ const analyticsController = {
 
       res.json({ brokers });
     } catch (error) {
-      console.error('Error getting available brokers:', error);
+      console.error("Error getting available brokers");
       next(error);
     }
   },
@@ -3251,7 +3224,7 @@ const analyticsController = {
       res.json(await convertForDisplay(req, resultData));
 
     } catch (error) {
-      console.error('Error refreshing sector performance:', error);
+      console.error("Error refreshing sector performance");
       next(error);
     }
   },
@@ -3444,7 +3417,7 @@ const analyticsController = {
         const contextInsights = await analyticsController
           .computeOpenPositionInsights(req.user.id)
           .catch(err => {
-            console.warn('[AI] open-position insights failed:', err.message);
+            console.warn("[AI] open-position insights failed");
             return [];
           });
 
@@ -3464,7 +3437,7 @@ const analyticsController = {
             summaries = await analyticsController.enrichInsightsWithAI(req.user.id, summaries, ai_analysis_instructions);
           }
         } catch (aiErr) {
-          console.warn('[AI] enrichment failed, returning deterministic insights:', aiErr.message);
+          console.warn("[AI] enrichment failed, returning deterministic insights");
         }
 
         const response = {
@@ -3487,7 +3460,7 @@ const analyticsController = {
 
       return res.json(response);
     } catch (err) {
-      console.error('[AI] summary error:', err);
+      console.error("[AI] summary error");
       return res.status(500).json({ error: 'Failed to compute insight summary' });
     }
   },
@@ -3522,7 +3495,7 @@ const analyticsController = {
       const result = await db.query(openQuery, [userId]);
       openRows = result.rows;
     } catch (err) {
-      console.warn('[AI] open-position lookup failed:', err.message);
+      console.warn("[AI] open-position lookup failed");
       return [];
     }
     if (openRows.length === 0) return [];
@@ -3564,7 +3537,7 @@ const analyticsController = {
         });
       }
     } catch (err) {
-      console.warn('[AI] history lookup failed:', err.message);
+      console.warn("[AI] history lookup failed");
       // Continue without per-symbol history; recommendations degrade gracefully.
     }
 
@@ -3696,7 +3669,7 @@ const analyticsController = {
         });
       }
     } catch (err) {
-      console.warn('[AI] earnings insight failed:', err.message);
+      console.warn("[AI] earnings insight failed");
     }
 
     // === Per-symbol news insights ===
@@ -3785,7 +3758,7 @@ const analyticsController = {
         });
       }
     } catch (err) {
-      console.warn('[AI] news insight failed:', err.message);
+      console.warn("[AI] news insight failed");
     }
 
     return insights;
@@ -3809,7 +3782,7 @@ const analyticsController = {
       const tier = await TierService.getUserTier(userId);
       return tier === 'pro';
     } catch (err) {
-      console.warn('[AI] shouldUseAIEnrichment check failed:', err.message);
+      console.warn("[AI] shouldUseAIEnrichment check failed");
       return false;
     }
   },
@@ -3857,7 +3830,7 @@ Respond with the JSON array now.`;
     try {
       raw = await aiService.generateResponse(userId, prompt + instructionsForPrompt(ai_analysis_instructions));
     } catch (err) {
-      console.warn('[AI] enrichment call failed:', err.message);
+      console.warn("[AI] enrichment call failed");
       return insights;
     }
     if (!raw || typeof raw !== 'string') return insights;
@@ -3870,7 +3843,7 @@ Respond with the JSON array now.`;
       if (!match) throw new Error('no JSON array in response');
       parsed = JSON.parse(match[0]);
     } catch (err) {
-      console.warn('[AI] enrichment JSON parse failed:', err.message);
+      console.warn("[AI] enrichment JSON parse failed");
       return insights;
     }
     if (!Array.isArray(parsed)) return insights;

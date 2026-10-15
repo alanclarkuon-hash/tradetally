@@ -1,5 +1,5 @@
 const handler = require('../../src/middleware/errorHandler');
-test.each(['/api/broker-sync/connections/test/sync','/api/trades/import','/api/v1/trades/import','/api/trades/import/validate'])('import error middleware omits private stack for %s', path => {
+test.each(['/api/broker-sync/connections/test/sync','/api/trades/import','/api/v1/trades/import','/api/trades/import/validate','/api/analytics/overview','/api/trades/analytics?symbol=PRIVATE-SOURCE-ROW','/api/v1/trades/analytics','/api/settings/import','/api/health/data','/oauth/authorize'])('import error middleware omits private stack for %s', path => {
  const spy=jest.spyOn(console,'error').mockImplementation(()=>{});
  try {
   const error=new Error('PRIVATE-SOURCE-ROW-123.45');

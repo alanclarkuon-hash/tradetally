@@ -34,14 +34,14 @@ class AnalyticsCache {
       const result = await db.query(query, [userId, cacheKey]);
       
       if (result.rows.length > 0) {
-        logger.logDebug(`Cache hit for ${cacheKey} (user: ${userId})`);
+        logger.logDebug("Cache hit");
         return result.rows[0].data;
       }
       
-      logger.logDebug(`Cache miss for ${cacheKey} (user: ${userId})`);
+      logger.logDebug("Cache miss");
       return null;
     } catch (error) {
-      logger.logError(`Error getting cached data for ${cacheKey}:`, error);
+      logger.logError("Error getting cached data");
       return null;
     }
   }
@@ -68,9 +68,9 @@ class AnalyticsCache {
       `;
       
       await db.query(query, [uuidv4(), userId, cacheKey, JSON.stringify(data), expiresAt]);
-      logger.logDebug(`Cached ${cacheKey} for user ${userId} (expires: ${expiresAt.toISOString()})`);
+      logger.logDebug("Cached");
     } catch (error) {
-      logger.logError(`Error caching data for ${cacheKey}:`, error);
+      logger.logError("Error caching data");
     }
   }
 
@@ -92,9 +92,9 @@ class AnalyticsCache {
       }
       
       const result = await db.query(query, params);
-      logger.logDebug(`Deleted ${result.rowCount} cache entries for user ${userId}${cacheKey ? ` (key: ${cacheKey})` : ''}`);
+      logger.logDebug("Deleted");
     } catch (error) {
-      logger.logError(`Error deleting cached data:`, error);
+      logger.logError("Error deleting cached data");
     }
   }
 
@@ -105,10 +105,10 @@ class AnalyticsCache {
     try {
       const query = 'DELETE FROM analytics_cache WHERE expires_at <= CURRENT_TIMESTAMP';
       const result = await db.query(query);
-      logger.info(`Cleaned up ${result.rowCount} expired cache entries`);
+      logger.info("Cleaned up");
       return result.rowCount;
     } catch (error) {
-      logger.logError('Error cleaning up expired cache entries:', error);
+      logger.logError("Error cleaning up expired cache entries");
       return 0;
     }
   }
@@ -149,7 +149,7 @@ class AnalyticsCache {
       const result = await db.query(query, params);
       return result.rows[0];
     } catch (error) {
-      logger.logError('Error getting cache stats:', error);
+      logger.logError("Error getting cache stats");
       return null;
     }
   }
@@ -182,7 +182,7 @@ class AnalyticsCache {
     try {
       await this.delete(userId);
     } catch (error) {
-      logger.logError(`Error clearing DB analytics cache for user ${userId}:`, error);
+      logger.logError("Error clearing DB analytics cache");
     }
 
     // In-memory layer — match by prefix since keys also encode filter shape
@@ -193,7 +193,7 @@ class AnalyticsCache {
         cleared++;
       }
     }
-    logger.logDebug(`Invalidated analytics cache for user ${userId} (in-memory: ${cleared} entries)`);
+    logger.logDebug("Invalidated analytics cache");
   }
 
   /**
@@ -221,7 +221,7 @@ class AnalyticsCache {
       // Refresh if cache expired or if there are newer trades than cache
       return Date.now() > cacheExpires.getTime() || lastTrade > cacheCreated;
     } catch (error) {
-      logger.logError(`Error checking cache refresh for ${analysisType}:`, error);
+      logger.logError("Error checking cache refresh");
       return true; // Default to refresh on error
     }
   }

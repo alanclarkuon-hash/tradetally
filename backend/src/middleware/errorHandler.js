@@ -20,9 +20,12 @@ const errorHandler = (err, req, res, next) => {
   if (!isClientDisconnect) {
     const requestPath = (req.originalUrl || req.url || '').split('?')[0];
     const isBrokerImport = /^\/api\/(?:v1\/)?(?:broker-sync(?:\/|$)|trades\/(?:import|validate-import|analyze-import))/.test(requestPath);
-    // Provider and CSV errors can embed source rows or account/credential data.
-    // Keep the authenticated response unchanged, but omit their stack from logs.
-    console.error(isBrokerImport ? 'Broker/import request failed; inspect the import or sync result' : err.stack);
+    const isPrivateRequest = /^\/api\/(?:v1\/)?(?:analytics|trades|settings|health)(?:\/|$)|^\/oauth(?:\/|$)/.test(requestPath);
+    // These errors can embed source rows, request filters or personal data.
+    // Keep responses unchanged and log only a fixed phase for private routes.
+    console.error(isBrokerImport
+      ? 'Broker/import request failed; inspect the import or sync result'
+      : isPrivateRequest ? 'Private request failed; inspect the request result' : err.stack);
   }
 
   // If client disconnected, no point sending response

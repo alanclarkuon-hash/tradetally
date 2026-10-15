@@ -57,8 +57,8 @@ function validatePkce(codeChallenge, codeChallengeMethod) {
 const authorize = async (req, res) => {
   try {
     console.log('[OAuth] ===== GET /oauth/authorize called =====');
-    console.log('[OAuth] User authenticated:', !!req.user);
-    console.log('[OAuth] Query params:', req.query);
+    console.log("[OAuth] User authenticated");
+    console.log("[oauth2] Request diagnostic");
 
     const {
       response_type,
@@ -72,7 +72,7 @@ const authorize = async (req, res) => {
 
     // Validate required parameters
     if (!response_type || response_type !== 'code') {
-      console.error('[OAuth] Invalid response_type:', response_type);
+      console.error("[OAuth] Invalid response_type");
       return res.status(400).json({ error: 'invalid_request', error_description: 'response_type must be "code"' });
     }
 
@@ -84,14 +84,14 @@ const authorize = async (req, res) => {
     // Get client
     const client = await oauth2Service.getClient(client_id);
     if (!client) {
-      console.error('[OAuth] Client not found:', client_id);
+      console.error("[OAuth] Client not found");
       return res.status(400).json({ error: 'invalid_client', error_description: 'Client not found' });
     }
-    console.log('[OAuth] Client found:', client.name, 'Trusted:', client.is_trusted);
+    console.log("[OAuth] Client found");
 
     // Validate redirect URI
-    console.log('[OAuth] Validating redirect_uri:', redirect_uri);
-    console.log('[OAuth] Allowed redirect_uris:', client.redirect_uris);
+    console.log("[oauth2] Request diagnostic");
+    console.log("[oauth2] Request diagnostic");
     if (!oauth2Service.validateRedirectUri(client, redirect_uri)) {
       console.error('[OAuth] Redirect URI validation failed!');
       return res.status(400).json({ error: 'invalid_request', error_description: 'Invalid redirect_uri' });
@@ -113,13 +113,13 @@ const authorize = async (req, res) => {
     // Check if user is authenticated
     if (!req.user) {
       console.log('[OAuth] User not authenticated, redirecting to login');
-      console.log('[OAuth] Original URL:', req.originalUrl);
+      console.log("[oauth2] Request diagnostic");
 
       // Redirect to login with return URL
       const returnUrl = encodeURIComponent(req.originalUrl);
       return res.redirect(`/login?return_url=${returnUrl}`);
     }
-    console.log('[OAuth] User authenticated as:', req.user.username);
+    console.log("[OAuth] User authenticated as");
 
     // Check if user has already consented (or if client is trusted)
     const existingConsent = await oauth2Service.getUserConsent(req.user.id, client_id);
@@ -159,7 +159,7 @@ const authorize = async (req, res) => {
       redirectUrl.searchParams.append('state', state);
     }
 
-    console.log('[OAuth] Auto-approving trusted client, redirecting to:', redirectUrl.toString());
+    console.log("[OAuth] Auto-approving trusted client, redirecting to");
 
     // Check if this is a browser request (from external OAuth client like Discourse)
     const acceptHeader = req.headers.accept || '';
@@ -174,7 +174,7 @@ const authorize = async (req, res) => {
       res.json({ redirect_url: redirectUrl.toString() });
     }
   } catch (error) {
-    console.error('Authorization error:', error);
+    console.error("Authorization error");
     res.status(500).json({ error: 'server_error', error_description: 'Authorization request failed' });
   }
 };
@@ -271,7 +271,7 @@ const authorizeApprove = async (req, res) => {
       res.json({ redirect_url: redirectUrl.toString() });
     }
   } catch (error) {
-    console.error('Authorization approval error:', error);
+    console.error("Authorization approval error");
     res.status(500).json({ error: 'server_error', error_description: 'Authorization request failed' });
   }
 };
@@ -282,7 +282,7 @@ const authorizeApprove = async (req, res) => {
  */
 const token = async (req, res) => {
   try {
-    console.log('[OAuth] Token endpoint called with grant_type:', req.body.grant_type);
+    console.log("[OAuth] Token endpoint called with grant_type");
 
     // Extract client credentials from either POST body or HTTP Basic Auth
     let client_id = req.body.client_id;
@@ -298,13 +298,7 @@ const token = async (req, res) => {
       client_secret = basicClientSecret || client_secret;
     }
 
-    console.log('[OAuth] Token request params:', {
-      grant_type: req.body.grant_type,
-      client_id: client_id,
-      auth_method: authHeader ? 'basic' : 'post',
-      has_code: !!req.body.code,
-      has_redirect_uri: !!req.body.redirect_uri
-    });
+    console.log("[oauth2] Request diagnostic");
 
     const {
       grant_type,
@@ -316,17 +310,17 @@ const token = async (req, res) => {
 
     // Validate grant_type
     if (!grant_type || !['authorization_code', 'refresh_token'].includes(grant_type)) {
-      console.error('[OAuth] Invalid grant_type:', grant_type);
+      console.error("[OAuth] Invalid grant_type");
       return res.status(400).json({ error: 'unsupported_grant_type' });
     }
 
     // Verify client credentials
     const client = await oauth2Service.verifyClientCredentials(client_id, client_secret);
     if (!client) {
-      console.error('[OAuth] Client verification failed for:', client_id);
+      console.error("[OAuth] Client verification failed for");
       return res.status(401).json({ error: 'invalid_client' });
     }
-    console.log('[OAuth] Client verified:', client.name);
+    console.log("[OAuth] Client verified");
 
     if (grant_type === 'authorization_code') {
       // Validate required parameters
@@ -343,7 +337,7 @@ const token = async (req, res) => {
         redirect_uri,
         code_verifier
       );
-      console.log('[OAuth] Authorization code verified for user:', authCode.user_id);
+      console.log("[OAuth] Authorization code verified");
 
       console.log('[OAuth] Creating access token...');
       // Create access token
@@ -409,11 +403,7 @@ const token = async (req, res) => {
         scope: accessToken.scope
       };
 
-      console.log('[OAuth] Sending token response to client:', {
-        has_access_token: !!tokenResponse.access_token,
-        has_id_token: !!tokenResponse.id_token,
-        has_refresh_token: !!tokenResponse.refresh_token
-      });
+      console.log("[OAuth] Sending token response to client");
 
       return res.json(tokenResponse);
     } else if (grant_type === 'refresh_token') {
@@ -433,7 +423,7 @@ const token = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Token error:', error.message);
+    console.error("Token error");
     return res.status(400).json({ error: 'invalid_grant' });
   }
 };
@@ -491,7 +481,7 @@ const userinfo = async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    console.error('Userinfo error:', error);
+    console.error("Userinfo error");
     res.status(500).json({ error: 'server_error' });
   }
 };
@@ -532,7 +522,7 @@ const revoke = async (req, res) => {
 
     res.status(200).json({ success: true });
   } catch (error) {
-    console.error('Revoke error:', error);
+    console.error("Revoke error");
     res.status(500).json({ error: 'server_error' });
   }
 };
@@ -565,7 +555,7 @@ const listClients = async (req, res) => {
 
     res.json({ clients: sanitizedClients });
   } catch (error) {
-    console.error('List clients error:', error);
+    console.error("List clients error");
     res.status(500).json({ error: 'Failed to list OAuth clients' });
   }
 };
@@ -611,7 +601,7 @@ const registerClient = async (req, res) => {
       message: 'OAuth2 client registered successfully. Save the client_secret - it will not be shown again.'
     });
   } catch (error) {
-    console.error('Register client error:', error);
+    console.error("Register client error");
     res.status(500).json({ error: 'Failed to register OAuth client' });
   }
 };
@@ -632,7 +622,7 @@ const deleteClient = async (req, res) => {
 
     res.json({ message: 'OAuth client deleted successfully' });
   } catch (error) {
-    console.error('Delete client error:', error);
+    console.error("Delete client error");
     res.status(500).json({ error: 'Failed to delete OAuth client' });
   }
 };
@@ -647,7 +637,7 @@ const getAuthorizedClients = async (req, res) => {
 
     res.json({ clients });
   } catch (error) {
-    console.error('Get authorized clients error:', error);
+    console.error("Get authorized clients error");
     res.status(500).json({ error: 'Failed to get authorized clients' });
   }
 };
@@ -668,7 +658,7 @@ const revokeAuthorization = async (req, res) => {
 
     res.json({ message: 'Authorization revoked successfully' });
   } catch (error) {
-    console.error('Revoke authorization error:', error);
+    console.error("Revoke authorization error");
     res.status(500).json({ error: 'Failed to revoke authorization' });
   }
 };
@@ -722,7 +712,7 @@ const openidConfiguration = async (req, res) => {
 
     res.json(config);
   } catch (error) {
-    console.error('OpenID configuration error:', error);
+    console.error("OpenID configuration error");
     res.status(500).json({ error: 'server_error' });
   }
 };
@@ -750,7 +740,7 @@ const jwks = async (req, res) => {
       keys: [jwk]
     });
   } catch (error) {
-    console.error('JWKS error:', error);
+    console.error("JWKS error");
     res.status(500).json({ error: 'server_error' });
   }
 };
