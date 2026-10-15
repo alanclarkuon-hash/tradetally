@@ -15,6 +15,7 @@ ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/ \
 RUN npm install -g pnpm@10.34.5
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY patches/ ./patches/
 COPY frontend/package.json ./frontend/package.json
 # Use lockfile-based installs for deterministic CI builds.
 RUN pnpm install --filter tradetally-frontend --frozen-lockfile
@@ -51,6 +52,7 @@ RUN apk add --no-cache --no-scripts \
     build-base
 
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY patches/ ./patches/
 COPY backend/package.json ./backend/package.json
 
 # Install pnpm and node-gyp globally for native module builds.

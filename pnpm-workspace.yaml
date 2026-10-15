@@ -4,14 +4,18 @@ packages:
 
 minimumReleaseAge: 20160
 
-# Security patches (Aikido, Sep 2026) exempted from the release-age gate.
+# Explicit security fixes are exempted from the release-age gate.
 # Pinned to exact versions so later releases are still gated.
 minimumReleaseAgeExclude:
   - proxy-addr@2.0.8
   - compression@1.8.2
   - nodemailer@10.0.10
+  - dompurify@3.4.17
 
 overrides:
+  source-map-js: ^1.2.2
+  postcss-selector-parser: ^7.1.6
+  'exceljs>uuid': ^11.1.1
   yaml: ^2.8.3
   form-data: ^4.0.6
   protobufjs: ^8.6.0
@@ -38,3 +42,8 @@ onlyBuiltDependencies:
   - protobufjs
   - sharp
   - vue-demi
+
+# Upstream-proposed RSA validation backport: digitalbazaar/forge#1152.
+# Keep the advisory visible until a fixed release replaces this patch.
+patchedDependencies:
+  node-forge@1.4.0: patches/node-forge@1.4.0.patch
