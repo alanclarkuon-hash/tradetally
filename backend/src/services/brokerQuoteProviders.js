@@ -3,6 +3,7 @@ const BrokerConnection = require('../models/BrokerConnection');
 const etoro = require('./brokerSync/etoroService');
 const { field } = require('./brokerSync/etoroService');
 const { read, directory } = require('./brokerMarketData');
+const {fresh,newer} = require('../utils/quoteFreshness');
 const positionCache = new Map();
 const positionRequests = new Map();
 async function trading212Quote({ symbol, instrumentType, connection }) {
@@ -121,6 +122,7 @@ async function fetch(symbol, instrumentType) {
   const work = (async () => {
     const rows = (await db.query(`SELECT id,broker_type FROM broker_connections
       WHERE connection_status='active' ORDER BY created_at`)).rows;
+    let best=null;
     for (const row of rows) {
       const adapter = adapters.get(row.broker_type);
       if (!adapter) continue;
@@ -128,13 +130,16 @@ async function fetch(symbol, instrumentType) {
         const connection = await BrokerConnection.findById(row.id, ['etoro','trading212'].includes(row.broker_type));
         const result = await adapter({ symbol, instrumentType, connection });
         if (result?.c > 0 && result.currency === 'USD') {
-          cached.set(key, { value: result, expires: Date.now() + 30000 });
-          return result;
+          best=newer(result,best);
+          if (fresh(best)) {
+            cached.set(key, { value: best, expires: Date.now() + 30000 });
+            return best;
+          }
         }
       } catch { /* Sanitized fallback; credentials never leave the adapter. */ }
     }
-    cached.set(key, { value: null, expires: Date.now() + 30000 });
-    return null;
+    cached.set(key, { value: best, expires: Date.now() + 30000 });
+    return best;
   })().finally(() => inFlight.delete(key));
   inFlight.set(key, work);
   return work;

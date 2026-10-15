@@ -58,6 +58,46 @@ describe('Portfolio summary cards', () => {
     view.unmount();vi.useRealTimers()
   })
 
+  it('automatically refreshes quotes and monitoring status without recapturing history',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
+    const old=new Date(Date.now()-3600000).toISOString()
+    const row={symbol:'AAA',instrumentType:'stock',quantity:2,value:80,cost:60,pnlBasis:60,pnl:20,pnlPercent:33,priceAsOf:old,assetClass:'Stocks',industry:'Software'}
+    mock.get.mockImplementation(async url=>{
+      if(url.endsWith('/dashboard'))return {data:{...dashboard,currency:'GBP',holdings:[row]}}
+      if(url.endsWith('/quotes'))return {data:{currency:'GBP',usdRate:1,quotes:[{symbol:'AAA',current_price:50,last_updated:new Date().toISOString(),data_source:'broker:etoro:stock'}],monitoring:{running:true,currentRotation:{processed:25,total:90,elapsedSeconds:45},lastRotation:{durationSeconds:180,total:90}}}}
+      return {data:{rates:{GBP:1},change:25}}
+    })
+    const view=create();await flushPromises();await view.find('.holding-tile').trigger('click')
+    const captures=mock.post.mock.calls.length
+    await vi.advanceTimersByTimeAsync(30000);await flushPromises()
+    expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/quotes'))).toHaveLength(1)
+    expect(mock.post.mock.calls.length).toBe(captures)
+    expect(view.find('.holding-detail').text()).toContain('\u00a3100.00');expect(view.find('.holding-detail').text()).toContain('Source eToro')
+    expect(view.find('[data-testid="quote-monitor-status"]').text()).toContain('Last full cycle: 3m 0s for 90 assets')
+    view.unmount();await vi.advanceTimersByTimeAsync(60000);expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/quotes'))).toHaveLength(1);vi.useRealTimers()
+  })
+  it('does not overlap automatic quote requests and ignores replies after filters change',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
+    let finish,signal
+    mock.get.mockImplementation(async(url,options)=>{
+      if(url.endsWith('/quotes')){signal=options.signal;return new Promise(resolve=>finish=resolve)}
+      return {data:url.endsWith('/dashboard')?{...dashboard,currency:'GBP'}:{change:25}}
+    })
+    const view=create();await flushPromises();await vi.advanceTimersByTimeAsync(60000)
+    expect(mock.get.mock.calls.filter(([url])=>url.endsWith('/quotes'))).toHaveLength(1)
+    mock.selection.value='one';await flushPromises();expect(signal.aborted).toBe(true)
+    finish({data:{currency:'GBP',usdRate:1,quotes:[],monitoring:{running:false}}});await flushPromises()
+    expect(view.find('[data-testid="quote-monitor-status"]').text()).not.toContain('Monitor stopped')
+    view.unmount();vi.useRealTimers()
+  })
+  it('pauses automatic quote reads when the tab is hidden',async()=>{
+    vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
+    const hidden=vi.spyOn(document,'visibilityState','get').mockReturnValue('hidden')
+    const view=create();await flushPromises();await vi.advanceTimersByTimeAsync(60000)
+    expect(mock.get.mock.calls.some(([url])=>url.endsWith('/quotes'))).toBe(false)
+    view.unmount();hidden.mockRestore();vi.useRealTimers()
+  })
+
   it('shows the selected price timestamp and source beneath the heatmap',async()=>{
     useAuthStore().user.timezone='Europe/London'
     mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,holdings:[

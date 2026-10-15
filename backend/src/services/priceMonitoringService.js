@@ -19,6 +19,10 @@ class PriceMonitoringService {
     this.intervalMs = 30000; // 30 seconds
     this.failedSymbols = new Map(); // Track failed symbols to reduce log spam
     this.skippedSymbols = new Set();
+    this.rotation = null;
+    this.lastRotation = null;
+    this.lastBatch = null;
+    this.skippedTicks = 0;
     this.symbolOffset = 0; // Round-robin offset for batching
     this.maxSymbolsPerCycle = parseInt(process.env.PRICE_MONITOR_MAX_SYMBOLS, 10) || 25;
   }
@@ -83,9 +87,19 @@ class PriceMonitoringService {
     console.log('Price monitoring service stopped');
   }
 
+  getStatus() {
+    const r=this.rotation;
+    return {isRunning:this.isRunning,intervalMs:this.intervalMs,emailConfigured:this.isEmailConfigured(),lastCheck:new Date().toISOString(),
+      running:this.isRunning,batchRunning:!!this.cycleRunning,intervalSeconds:this.intervalMs/1000,
+      batchLimit:this.maxSymbolsPerCycle,skippedTicks:this.skippedTicks,
+      currentRotation:r?{total:r.keys.length,processed:r.seen.size,startedAt:new Date(r.started).toISOString(),elapsedSeconds:Math.round((Date.now()-r.started)/1000)}:null,
+      lastRotation:this.lastRotation,lastBatch:this.lastBatch};
+  }
+
   async monitorPrices() {
-    if (this.cycleRunning) return;
+    if (this.cycleRunning) {this.skippedTicks++;return;}
     this.cycleRunning = true;
+    const batchStarted=Date.now();
     try {
       // Get all unique symbols from active alerts, watchlists, open positions, and holdings
       const symbolsQuery = `
@@ -113,9 +127,14 @@ class PriceMonitoringService {
         const type = row.instrument_type || (finnhub.isCryptoSymbol(row.symbol) ? 'crypto' : 'stock');
         return [priceCacheKey(row.symbol, type), {symbol:row.symbol, type}];
       }));
-      const allSymbols = [...identities.keys()];
+      const allSymbols = [...identities.keys()].sort();
+      const signature=JSON.stringify(allSymbols);
+      if (!this.rotation || this.rotation.signature!==signature) {
+        this.rotation={signature,keys:allSymbols,seen:new Set(),started:Date.now()};
+      }
 
       if (allSymbols.length === 0) {
+        this.rotation=null;
         logger.debug('No symbols to monitor');
         return;
       }
@@ -154,10 +173,12 @@ class PriceMonitoringService {
             logger.warn(`Skipping price monitoring for ${symbol}: ${skipReason}.`);
             this.skippedSymbols.add(symbol);
           }
+          this.rotation.seen.add(symbol);
           continue;
         }
 
         const updateResult = await this.updateSymbolPrice(identity.symbol, identity.type);
+        this.rotation.seen.add(symbol);
         
         if (updateResult === true) {
           successCount++;
@@ -178,6 +199,12 @@ class PriceMonitoringService {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
+      this.lastBatch={durationSeconds:Math.round((Date.now()-batchStarted)/1000),attempted:symbols.length,updated:successCount,capacitySkipped:capacitySkipCount};
+      if(this.rotation.seen.size===this.rotation.keys.length) {
+        this.lastRotation={completedAt:new Date().toISOString(),durationSeconds:Math.round((Date.now()-this.rotation.started)/1000),total:this.rotation.keys.length};
+        logger.info(`Price monitoring rotation complete: ${this.lastRotation.total} identities in ${this.lastRotation.durationSeconds}s`);
+        this.rotation=null;
+      }
       logger.debug(`Price monitoring cycle complete: ${successCount}/${symbols.length} symbols updated successfully, ${capacitySkipCount} skipped for provider capacity`);
 
       // Check alerts when prices were updated, or when this cycle intentionally
@@ -582,15 +609,6 @@ class PriceMonitoringService {
     await this.checkAlerts();
   }
 
-  // Get service status
-  getStatus() {
-    return {
-      isRunning: this.isRunning,
-      intervalMs: this.intervalMs,
-      emailConfigured: this.isEmailConfigured(),
-      lastCheck: new Date().toISOString()
-    };
-  }
 }
 
 // Export singleton instance
