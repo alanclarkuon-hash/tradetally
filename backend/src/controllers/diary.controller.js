@@ -9,9 +9,6 @@ const db = require('../config/database');
 const imageProcessor = require('../utils/imageProcessor');
 const path = require('path');
 const fs = require('fs').promises;
-const { verifyJwtToken, TOKEN_PURPOSES } = require('../middleware/auth');
-const User = require('../models/User');
-const { isTokenSessionValid } = require('../middleware/auth');
 
 
 // Get diary entries for user with filtering and pagination
@@ -345,20 +342,7 @@ const getDiaryImage = async (req, res) => {
       return res.status(400).json({ error: 'Invalid filename' });
     }
 
-    // Check if token is provided as query parameter (for direct image access).
-    // Require an access-purpose JWT so pre_2fa temp tokens cannot unlock diary images.
-    let user = req.user;
-    if (!user && req.query.token) {
-      try {
-        const decoded = verifyJwtToken(req.query.token, { requiredPurpose: TOKEN_PURPOSES.ACCESS });
-        const tokenUser = await User.findById(decoded.id);
-        if (tokenUser && tokenUser.is_active && isTokenSessionValid(decoded, tokenUser)) {
-          user = tokenUser;
-        }
-      } catch (error) {
-        return res.status(401).json({ error: 'Invalid token' });
-      }
-    }
+    const user = req.user;
 
     if (!user) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -405,7 +389,7 @@ const getDiaryImage = async (req, res) => {
 
     // Set appropriate headers
     res.setHeader('Content-Type', attachment.file_type || 'image/webp');
-    res.setHeader('Cache-Control', 'private, max-age=31536000'); // Cache for 1 year
+    res.setHeader('Cache-Control', 'private, no-store, max-age=0');
 
     // Send file
     res.sendFile(resolvedPath);
