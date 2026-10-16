@@ -65,6 +65,7 @@
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
 import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
+import {useCardCurrencyPreference} from '@/composables/useCardCurrencyPreference'
 import {cardCurrencies} from '@/utils/cardCurrency'
 import HistoryBackfillStatus from '@/components/HistoryBackfillStatus.vue'
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
@@ -90,10 +91,8 @@ const isCustomizing=ref(false),cardLayout=ref(null)
 const {accounts,selectedAccount,fetchAccounts}=useGlobalAccountFilter()
 const portfolioSelection=value=>accountSelection(value)?.filter(account=>account!=='__unsorted__')??null
 const dateFilter=useDashboardDateFilterStore(),authStore=useAuthStore()
-const requestCurrency=ref(null)
 const currencyChoices=computed(()=>cardCurrencies(authStore.user?.settings?.display_currency,accounts.value,selectedAccount.value))
-watch(()=>authStore.user?.settings?.display_currency,()=>requestCurrency.value=null)
-const selected=computed(()=>portfolioSelection(selectedAccount.value)),currency=computed({get:()=>requestCurrency.value||authStore.user?.settings?.display_currency||'USD',set:value=>requestCurrency.value=value}),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
+const selected=computed(()=>portfolioSelection(selectedAccount.value)),currency=useCardCurrencyPreference(authStore,'portfoliodashboardview-5',currencyChoices),data=ref(null),loading=ref(false),error=ref(''),focus=ref(null)
 const dateField=field=>computed({get:()=>dateFilter.selection[field],set:value=>dateFilter.selection[field]=value})
 const period=dateField('timeRange'),start=dateField('startDate'),end=dateField('endDate')
 const today=formatLocalDate(profileCalendarDate(new Date(),authStore.user?.timezone||'UTC'))

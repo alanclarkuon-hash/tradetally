@@ -103,3 +103,50 @@ test('combined complete bases remain usable with a current quote when historical
 test('historical holdings reject both legacy native and canonical Skycoin caches',async()=>{const r={start_date:'2025-01-01',end_date:'2025-01-03'};fixture({trades:[{symbol:'SKY',entry_time:'2024-12-01',quantity:10,entry_price:.05,instrument_type:'crypto',side:'long',broker:'ibkr',account_identifier:'one'}],prices:[{symbol:'SKY-USD',payload:{currency:'USD',prices:[{date:r.end_date,close:.2}]}}]});const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('FROM historical_prices')?Promise.resolve({rows:[{symbol:'crypto:SKY',price_date:r.end_date,close:.2}]}):old(sql));const result=await getHistoricalHoldings('u',[account],r);expect(result.positions[0]).toMatchObject({currentValue:0,periodResult:{pnl:null}})});
 test('historical holdings read the bound protocol price and prefer its canonical close',async()=>{const r={start_date:'2025-01-01',end_date:'2025-01-03'};fixture({trades:[{symbol:'SKY',entry_time:'2024-12-01',quantity:10,entry_price:.05,instrument_type:'crypto',side:'long',broker:'ibkr',account_identifier:'one'}],prices:[{symbol:'SKY-USD',payload:{currency:'USD',prices:[{date:r.end_date,close:100}]}},{symbol:'SKY@sky-USD',payload:{currency:'USD',cryptoIdentity:require('../src/services/cryptoHistoryIdentity').evidence('SKY'),prices:[{date:'2024-12-31',close:.06},{date:r.end_date,close:.08}]}}]});const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('FROM historical_prices')?Promise.resolve({rows:[{symbol:'crypto:SKY',price_date:r.end_date,close:100},{symbol:'crypto:SKY:sky',price_date:r.end_date,close:.09}]}):old(sql));const result=await getHistoricalHoldings('u',[account],r);expect(result.positions[0].currentValue).toBeCloseTo(.9);expect(result.positions[0].periodResult.pnl).toBeCloseTo(.3)});
 test('pre-SKY closed eToro Maker lot is displayed in original MKR units',async()=>{const r={start_date:'2023-01-01',end_date:'2023-01-03'};fixture({trades:[{symbol:'SKY',entry_time:'2022-01-01',exit_time:'2024-02-01',quantity:2,entry_price:2000,instrument_type:'crypto',side:'long',broker:'etoro',account_identifier:'one',executions:[{type:'entry',etoro_source_type:'Crypto',etoro_statement_symbol:'SKY',etoro_native_price:2000}]}],prices:[{symbol:'MKR-USD',payload:{currency:'USD',prices:[{date:'2022-12-31',close:2000},{date:r.end_date,close:2100}]}},{symbol:'SKY-USD',payload:{currency:'USD',prices:[{date:r.end_date,close:.2}]}}]});const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],r);expect(result.positions[0]).toMatchObject({symbol:'MKR',totalShares:2,currentValue:4200});});
+
+
+test.each(['ibkr','etoro','ig'])('dated display basis for %s stock lots preserves acquisitions and partial sales',async broker=>{
+ const r={start_date:'2026-10-14',end_date:'2026-10-15'};
+ fixture({trades:[{symbol:'DEMO',entry_time:'2025-01-01',quantity:2,entry_price:5,instrument_type:'stock',side:'long',broker,account_identifier:'one'},
+ {symbol:'DEMO',entry_time:'2026-10-15',quantity:1,entry_price:11,instrument_type:'stock',side:'long',broker,account_identifier:'one'}],
+ prices:[{symbol:'DEMO',payload:{currency:'USD',prices:[{date:'2026-10-13',close:10},{date:r.end_date,close:12}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:'2026-10-13',rates:{GBP:.8,EUR:.9}},{rate_date:r.end_date,rates:{GBP:.7,EUR:1}}]}):old(sql));
+ const gbp=await getHistoricalHoldings('u',[{...account,broker}],r,'GBP');
+ expect(gbp.positions[0].periodResult.displayBasis).toBeCloseTo(23.7);
+ const eur=await getHistoricalHoldings('u',[{...account,broker}],r,'EUR');expect(eur.positions[0].periodResult.displayBasis).toBe(29);
+});
+test('Trading 212 GBP acquisition uses actual account amount once and each basis date has its own FX',async()=>{
+ const r={start_date:'2026-10-14',end_date:'2026-10-15'};
+ fixture({reports:[{account_id:'a',broker_type:'trading212',records:[{symbol:'DEMO_US_EQ',side:'BUY',date:'2026-10-01',quantity:10,amount:-50},{symbol:'DEMO_US_EQ',side:'SELL',date:'2026-10-14',quantity:4,amount:40},{symbol:'DEMO_US_EQ',side:'BUY',date:r.end_date,quantity:2,amount:-20}]}],prices:[{symbol:'DEMO',payload:{currency:'USD',prices:[{date:'2026-10-13',close:10},{date:r.end_date,close:12}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:'2026-10-01',rates:{GBP:.75}},{rate_date:'2026-10-13',rates:{GBP:.8}},{rate_date:r.end_date,rates:{GBP:.7}}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[{...account,broker:'trading212',currency:'GBP'}],r,'GBP');
+ expect(result.positions[0]).toMatchObject({totalShares:8,periodResult:{displayBasis:68}});
+});
+test.each(['kraken','okx'])('%s crypto opening basis uses calendar days including Sunday',async broker=>{
+ const r={start_date:'2026-10-05',end_date:'2026-10-06'},time=Date.parse('2026-09-01');
+ const payload=broker==='kraken'?{ledger:{deposit:{asset:'XBT',amount:'2',fee:'0',time:time/1000}}}:{bills:[{ccy:'BTC',balChg:'2',ts:String(time)}]};
+ fixture({snapshots:[{broker_type:broker,account_identifier:'one',payload}],prices:[{symbol:'BTC-USD',payload:{currency:'USD',prices:[{date:'2026-10-04',close:100},{date:r.end_date,close:110}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:'2026-10-04',rates:{GBP:.8}},{rate_date:r.end_date,rates:{GBP:.7}}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[{...account,broker}],r,'GBP');expect(result.positions[0].periodResult.displayBasis).toBe(160);
+});
+test('missing opening FX never silently uses current FX for a foreign-currency return',async()=>{
+ fixture({trades:[{symbol:'HELD',entry_time:'2023-01-01',quantity:10,entry_price:5,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:'one'}],prices:[{symbol:'HELD',payload:{currency:'USD',prices:[{date:'2023-12-29',close:10},{date:range.end_date,close:12}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:range.end_date,rates:{GBP:.8}}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[account],range,'GBP');expect(result.positions[0].periodResult).toMatchObject({basis:100,displayBasis:null});
+});
+
+
+test('leveraged eToro CFD return converts collateral equity, never underlying notional',async()=>{
+ const r={start_date:'2026-10-15',end_date:'2026-10-15'};
+ fixture({trades:[{symbol:'DEMO',entry_time:'2026-10-01',quantity:2,entry_price:100,instrument_type:'cfd',side:'long',broker:'etoro',account_identifier:'one',executions:[{type:'entry',etoro_leverage:2,etoro_native_price:100}]}],prices:[{symbol:'DEMO',payload:{currency:'USD',prices:[{date:'2026-10-14',close:100},{date:r.end_date,close:110}]}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[{rate_date:'2026-10-14',rates:{GBP:.8}},{rate_date:r.end_date,rates:{GBP:.7}}]}):old(sql));
+ const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],r,'GBP');
+ expect(result.positions[0]).toMatchObject({currentValue:120,periodResult:{basis:100,displayBasis:80}});
+});
+test('same asset in multiple accounts sums dated converted bases and keeps missing FX incomplete',async()=>{
+ const r={start_date:'2026-10-15',end_date:'2026-10-15'},accounts=[account,{...account,id:'b',account_identifier:'two'}];
+ fixture({trades:accounts.map((a,i)=>({symbol:'DEMO',entry_time:i?'2026-10-15':'2026-10-01',quantity:2,entry_price:100,instrument_type:'stock',side:'long',broker:'ibkr',account_identifier:a.account_identifier})),prices:[{symbol:'DEMO',payload:{currency:'USD',prices:[{date:'2026-10-14',close:100},{date:r.end_date,close:110}]}}]});
+ const old=db.query.getMockImplementation();let missing=false;db.query.mockImplementation(sql=>sql.includes('fx_daily_rates')?Promise.resolve({rows:[...(!missing?[{rate_date:'2026-10-14',rates:{GBP:.8}}]:[]),{rate_date:r.end_date,rates:{GBP:.7}}]}):old(sql));
+ const result=await getHistoricalHoldings('u',accounts,r,'GBP');expect(result.positions[0].periodResult.displayBasis).toBe(300);
+ missing=true;const partial=await getHistoricalHoldings('u',accounts,r,'GBP');expect(partial.positions[0].periodResult.displayBasis).toBeNull();
+});
