@@ -150,3 +150,33 @@ test('same asset in multiple accounts sums dated converted bases and keeps missi
  const result=await getHistoricalHoldings('u',accounts,r,'GBP');expect(result.positions[0].periodResult.displayBasis).toBe(300);
  missing=true;const partial=await getHistoricalHoldings('u',accounts,r,'GBP');expect(partial.positions[0].periodResult.displayBasis).toBeNull();
 });
+
+// Synthetic CFD fixtures: current account value is collateral plus broker P&L.
+function cfdFixture({side='long',currency='USD',prices=[],shared=[],fxRows=[],quantity=2,entryPrice=100,nativeEntry=100,splits=[]}={}) {
+ const r={start_date:'2026-10-15',end_date:'2026-10-15'};
+ fixture({trades:[{symbol:'DEMO',entry_time:'2026-10-01',quantity,entry_price:entryPrice,instrument_type:'cfd',side,broker:'etoro',account_identifier:'one',executions:[{type:'entry',etoro_leverage:2,etoro_native_price:nativeEntry}]}],prices:[{symbol:'DEMO',payload:{currency,prices,splits}}]});
+ const old=db.query.getMockImplementation();db.query.mockImplementation(sql=>sql.includes('FROM historical_prices')?Promise.resolve({rows:shared.map(p=>({symbol:'DEMO',price_date:p.date,close:p.close}))}):sql.includes('fx_daily_rates')?Promise.resolve({rows:fxRows}):old(sql));
+ return r;
+}
+test.each(['long','short'])('CFD %s opening equity prefers the verified exact-session USD close over a stale native cache',async side=>{
+ const r=cfdFixture({side,prices:[{date:'2026-10-13',close:110},{date:rEnd(),close:105}],shared:[{date:'2026-10-14',close:100},{date:rEnd(),close:105}]});
+ const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],r);
+ expect(result.positions[0]).toMatchObject({currentValue:side==='long'?110:90,periodResult:{basis:100,pnl:side==='long'?10:-10}});
+});
+function rEnd(){return '2026-10-15'}
+test('CFD missing prior-session close stays unavailable rather than carrying an older trading day forward',async()=>{
+ const r=cfdFixture({prices:[{date:'2026-10-13',close:110},{date:rEnd(),close:105}]});
+ const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],r);
+ expect(result.positions[0].periodResult).toMatchObject({basis:null,pnl:null,percent:null});
+});
+test('foreign CFD canonical USD closes undo close-date FX once before native P&L conversion',async()=>{
+ const r=cfdFixture({currency:'EUR',entryPrice:125,nativeEntry:100,prices:[{date:'2026-10-13',close:110}],shared:[{date:'2026-10-14',close:125},{date:rEnd(),close:132}],fxRows:[{rate_date:'2026-10-14',rates:{EUR:.8,GBP:.8}},{rate_date:rEnd(),rates:{EUR:5/6,GBP:.7}}]});
+ const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],r,'GBP');
+ // 125 USD collateral; native close 100 -> 110 EUR, 20 EUR P&L -> 24 USD.
+ expect(result.positions[0]).toMatchObject({currentValue:149,periodResult:{basis:125,displayBasis:100}});
+});
+test('CFD Monday opening equity uses Friday close and Friday display FX, with no weekend candle needed',async()=>{
+ const r=cfdFixture({prices:[],shared:[{date:'2026-10-09',close:100},{date:'2026-10-12',close:105}],fxRows:[{rate_date:'2026-10-09',rates:{GBP:.8}},{rate_date:'2026-10-12',rates:{GBP:.7}}]});
+ const result=await getHistoricalHoldings('u',[{...account,broker:'etoro'}],{...r,start_date:'2026-10-12',end_date:'2026-10-12'},'GBP');
+ expect(result.positions[0]).toMatchObject({currentValue:110,periodResult:{basis:100,displayBasis:80}});
+});
