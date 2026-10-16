@@ -108,7 +108,7 @@ async function readSource(userId,symbol,source,offset=0,priceType='stock') {
   // Internal ownership/link identifiers are not asset attributes.
   return {key:table,title,count:count.rows[0].count,offset,records:records.rows.map(({user_id,broker_connection_id,...row})=>row)};
 }
-async function getDetails(userId,input,query={}) {
+async function getDetails(userId,input,query={},options={}) {
   const symbol=validateSymbol(input);
   if(query.source) {
     const source=SOURCES.find(s=>s[0]===query.source);
@@ -133,7 +133,8 @@ async function getDetails(userId,input,query={}) {
   const storedLabels=isCrypto?[]:[...new Set(sections.filter(s=>['symbol_categories','global_enrichment_cache','enrichment_cache','eight_pillars_analysis'].includes(s.key)).flatMap(s=>s.records.flatMap(r=>
     ['finnhub_industry','gics_sector','gics_group','gics_industry','gics_sub_industry','sector','industry','country'].filter(k=>r[k]).map(k=>`${k.replace('finnhub_','').replaceAll('_',' ')}: ${r[k]}`))))];
   const brokerName=sections.find(s=>s.key==='broker_portfolio_snapshots').records.find(r=>r.broker==='trading212')?.position?.instrument?.name;
-  return {symbol,name:isCrypto?symbol:brokerName||profile?.company_name||yahoo?.name||symbol,
+  const previousClose=await require('./assetPreviousClose').readPreviousClose(symbol,priceType,options);
+  return {previousClose,symbol,name:isCrypto?symbol:brokerName||profile?.company_name||yahoo?.name||symbol,
     kind:isCrypto?'Crypto':isFund?'Fund / ETF':'Stock or other asset',
     labels:[...new Set([...(metadata?.categories||[]),...storedLabels])],labelSource:[metadata?.source,storedLabels.length?'Saved database classifications':null].filter(Boolean).join(' · ')||null,labelAsOf:metadata?.asOf||profile?.updated_at||null,
     referenceClassification:isCrypto||isFund?null:reference||null,

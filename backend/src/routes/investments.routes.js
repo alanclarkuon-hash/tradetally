@@ -15,7 +15,7 @@ const { validate, schemas } = require('../middleware/validation');
 router.use(authenticate);
 router.use(requiresTier('pro'));
 router.get('/assets/:symbol',async(req,res,next)=>{
-  try {res.json(await require('../services/assetDetailsService').getDetails(req.user.id,req.params.symbol,req.query));}
+  try {res.json(await require('../services/assetDetailsService').getDetails(req.user.id,req.params.symbol,req.query,{timeZone:req.user.timezone||'UTC'}));}
   catch(error){next(error);}
 });
 
