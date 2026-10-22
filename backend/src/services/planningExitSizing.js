@@ -6,6 +6,7 @@ function position(result,id) {
  return {entered:own.filter(r=>r.action==='entry'&&!r.stage_key.startsWith('roll_')).reduce((v,r)=>v+r.quantity,0),exited:own.filter(r=>r.action==='exit').reduce((v,r)=>v+r.quantity,0),own};
 }
 function state(plan,result) {
+ plan=require('./planningManagementRows').forManagement(plan);
  if(plan.definition.instrument==='option')return {accounts:[],pending:false};
  const accounts=accountIds(plan.definition).map(id=>{
   const p=position(result,id),confirmed=plan.exit_sizing?.[id],basis=confirmed?.entered??p.entered;
@@ -31,6 +32,7 @@ function initialise(plan,before,after) {
  return next;
 }
 function confirm(plan,result,input) {
+ plan=require('./planningManagementRows').forManagement(plan);
  const status=state(plan,result),account=status.accounts.find(a=>a.accountId===input.accountId);
  if(!account||!(account.entered>0))fail('Choose an account with entered quantity');
  if(status.needsReconciliation)fail('Reconcile changed entries or over-exits before revising exit quantities');

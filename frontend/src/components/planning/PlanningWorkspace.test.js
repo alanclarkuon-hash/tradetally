@@ -124,3 +124,26 @@ it('keeps unsupported broker checks explicit and missing stop risk distinct from
  const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/risk')?Promise.resolve({data:{currency:'GBP',knownRisk:0,unknown:1,limit:100,accounts:[{accountId:'ig',name:'Synthetic IG',knownRisk:0,unknown:1,buyingPower:null,brokerEvidence:{recent:false,note:'Manual broker verification required: live buying power, borrowing and working stops are not supplied by this integration'}},{accountId:'ibkr',name:'Synthetic IBKR',knownRisk:0,unknown:0,buyingPower:null,brokerEvidence:{recent:false,note:'Manual broker verification required: live buying power, borrowing and working stops are not supplied by this integration'}}],positions:[{accountId:'ig',symbol:'MISSING',risk:null,source:'Incomplete stop quantity, currency or FX evidence',coveredQuantity:0},{accountId:'ibkr',symbol:'PROTECTED',risk:0,source:'Manual plan invalidation levels',coveredQuantity:2,asOf:'2026-01-02T10:00:00Z'}]}}):original(url,...args));
  mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.text()).toContain('Incomplete coverage');expect(wrapper.text()).toContain('1 positions with unknown risk');const evidence=wrapper.findAll('details').find(d=>d.find('summary').text()==='Risk evidence');expect(evidence.text()).toContain('Manual broker verification required');expect(evidence.text()).toMatch(/MISSING.*Unavailable/);expect(evidence.text()).toMatch(/PROTECTED.*0\.00.*Manual plan invalidation levels/);expect(wrapper.text()).not.toContain('Available cash');
 });
+
+it.each(['entry','exit'])('persists a newly added %s row before management save and opening its trade finder',async kind=>{
+ plan={...plan,status:'watching',finalised:true};
+ put.mockImplementation(async(url,body)=>{
+  if(url==='/trade-plans/p'){plan={...plan,version:plan.version+1,definition:body.definition};return {data:{plan}}}
+  if(url.endsWith('/management')){
+   for(const action of ['entry','exit'])for(const key of Object.keys(body.management[action]||{})){
+    if(!(action==='exit'&&key==='runner')&&!plan.definition[action==='entry'?'entries':'exits'].some(row=>row.key===key)&&!body.management[action][key].stage)throw {response:{data:{error:'Management row does not belong to this plan'}}};
+   }
+   plan={...plan,version:plan.version+1,management:body.management};
+  }
+  return {data:{plan}};
+ });
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Add '+kind).trigger('click');
+ const index=wrapper.vm.managed[kind].length,addedKey=wrapper.vm.managed[kind].at(-1).key;
+ await wrapper.get(`[aria-label="${kind} ${index} price level"]`).setValue(100);await wrapper.get(`[aria-label="${kind} ${index} units"]`).setValue(1);
+ const row=wrapper.findAll('tr').find(r=>r.find(`[aria-label="${kind} ${index} units"]`).exists());await row.findAll('button').find(b=>b.text()==='Link trade').trigger('click');await flushPromises();
+ expect(wrapper.text()).not.toContain('Management row does not belong to this plan');
+ expect(wrapper.find('[role="dialog"]').text()).toContain('Find and link '+kind);
+ const key=addedKey;expect(plan.definition).toEqual(definition());expect(plan.management[kind][key].stage.label).toBeTruthy();
+ expect(plan.management[kind][key].units).toBe(1);
+ wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].some(row=>row.key===key&&row.units===1)).toBe(true);
+});

@@ -336,19 +336,23 @@ function adopt(p){++sequence;clearTimeout(previewTimer);previewError.value='';co
 let managementSnapshot='',managementFormSnapshot={entry:[],exit:[]}
 function hydrateManagement(){
  hydrating=true;
- for(const kind of ['entry','exit'])managed.value[kind]=(draft.value?.[kind==='entry'?'entries':'exits']||[]).map(e=>{
+ for(const kind of ['entry','exit']){
+ const original=draft.value?.[kind==='entry'?'entries':'exits']||[],keys=new Set(original.map(e=>e.key));
+ const added=Object.entries(plan.value.management?.[kind]||{}).filter(([key,m])=>!keys.has(key)&&m.stage).map(([key,m])=>({key,...m.stage}));
+ managed.value[kind]=[...original,...added].map(e=>{
   const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
   const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>fillRate(a.fill,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,draft.value.currency),0)/q:null;
   const next={...JSON.parse(JSON.stringify(e)),...m,...(a.length?{units:q,price:price??m.price??e.price,executed:true}:{}),executed:a.length?true:!!m.executed,time:m.time||new Date().toISOString()};
   // Keep row identity stable while Vue refreshes event handlers after a response.
   const current=managed.value[kind]?.find(v=>v.key===e.key);return current?Object.assign(current,next):next
  });
+ }
  managementSnapshot=JSON.stringify(managementPayload());
  managementFormSnapshot=JSON.parse(JSON.stringify(managed.value));
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
  return management
 }
 function mergeNewerManagement(base,local){
