@@ -18,9 +18,9 @@ function sourceFills(trade) {
  // journal rows, and fees/USDT conversion are already included in these prices.
  const okx=trade.broker==='okx'&&Array.isArray(executions)&&executions.length===1&&executions[0].okx_record_key&&executions[0].okx_entry&&executions[0].feesIncluded===true;
  const kraken=trade.broker==='kraken'&&Array.isArray(executions)&&executions.length===1&&executions[0].kraken_record_key&&executions[0].feesIncluded===true;
- if(okx||kraken){const key=String(executions[0][okx?'okx_record_key':'kraken_record_key']);const prefix=trade.broker+':';executions=[
-  {id:prefix+key+':entry',action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:0,fees:0},
-  ...(trade.exit_time?[{id:prefix+key+':exit',action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:0,fees:0}]:[])
+ if(okx||kraken){const metadata=executions[0];const key=String(executions[0][okx?'okx_record_key':'kraken_record_key']);const prefix=trade.broker+':';executions=[
+  {id:prefix+key+':entry',order_id:okx?metadata.okx_entry?.ordId:null,action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:0,fees:0},
+  ...(trade.exit_time?[{id:prefix+key+':exit',order_id:okx?metadata.okx_exit?.ordId:null,action:trade.side==='short'?'buy':'sell',quantity:trade.quantity,price:trade.exit_price,datetime:trade.exit_time,commission:0,fees:0}]:[])
  ];}
  const input=Array.isArray(executions)&&executions.length?executions:[
   {action:trade.side==='short'?'sell':'buy',quantity:trade.quantity,price:trade.entry_price,datetime:trade.entry_time,commission:trade.entry_commission??(Number(trade.commission||0)-Number(trade.exit_commission||0)),fees:trade.fees},
@@ -61,7 +61,8 @@ function sourceFills(trade) {
   const accountCurrency=e.account_currency||e.accountCurrency;
   const rawRate=e.broker_fx_rate??e.brokerFxRate;
   const transactionFx=typeof accountCurrency==='string'&&/^[A-Z]{3}$/.test(accountCurrency)?{accountCurrency,rate:accountCurrency===currency?1:positive(rawRate)?Number(rawRate):null}:null;
-  return {...snapshot,...(trade.broker==='etoro'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&Number.isFinite(reported)?{brokerReportedNet:reported,brokerLeverage:Number(e.etoro_leverage||1)}:{}),...(kind==='entry'&&capital!=null&&Number(e.etoro_leverage||1)===1?{economicPrice:capital/Number(e.quantity),investedCapital:capital}:{}),sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),...(verifiedAdjustment?{cashCredit:Math.max(0,-rawFees),feeCharge:Math.max(0,rawFees),netCosts:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:snapshot.costs,netFees:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:rawFees}:{}),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
+  const orderId=e.order_id??e.orderId??e.ordId;
+  return {...snapshot,...(orderId!=null&&String(orderId).trim()?{orderId:String(orderId)}:{}),...(trade.broker==='etoro'&&e.etoro_position_id!=null&&e.etoro_reported_net_profit!=null&&Number.isFinite(reported)?{brokerReportedNet:reported,brokerLeverage:Number(e.etoro_leverage||1)}:{}),...(kind==='entry'&&capital!=null&&Number(e.etoro_leverage||1)===1?{economicPrice:capital/Number(e.quantity),investedCapital:capital}:{}),sourceIndex:e.sourceIndex,commission:Number(e.commission||0),fees:Number(e.fees||e.fee||0),...(verifiedAdjustment?{cashCredit:Math.max(0,-rawFees),feeCharge:Math.max(0,rawFees),netCosts:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:snapshot.costs,netFees:Math.abs(brokerGross-reported)<=Math.abs(brokerGross-rawFees-reported)?0:rawFees}:{}),transactionFx,key:id?'id:'+String(id):'hash:'+fingerprint,fingerprint};
  }).filter(Boolean);
  const totalCosts=fills.reduce((sum,f)=>sum+f.costs,0);
  const aggregateKnown=trade.commission!=null||trade.fees!=null;

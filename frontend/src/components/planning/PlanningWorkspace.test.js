@@ -170,3 +170,13 @@ it.each(['entry','exit'])('persists a newly added %s row before management save 
  expect(plan.management[kind][key].units).toBe(1);
  wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].some(row=>row.key===key&&row.units===1)).toBe(true);
 });
+
+it('shows truncated broker order IDs with full hover titles in the summary and both finder lists',async()=>{
+ plan.finalised=true;const linkedId='1234567890123456789',availableId='9876543210987654321',original=get.getMockImplementation();
+ get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'link',trade_id:'old',source_key:'old-fill',stage_key:'a',action:'entry',quantity:1,valid:true,fill:{orderId:linkedId,price:100,currency:'USD',time:'2026-01-01'}}]},history:[]}}):url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'new',key:'new-fill',action:'entry',quantity:1,available:1,price:100,currency:'USD',time:'2026-01-02',orderId:availableId}]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ expect(wrapper.find('[title="'+linkedId+'"]').text()).toBe('Order 123456\u2026456789');
+ await button('Unlink trade').trigger('click');await flushPromises();expect(wrapper.findAll('[title="'+linkedId+'"]').length).toBe(2);
+ expect(wrapper.find('[role="dialog"] [title="'+availableId+'"]').text()).toBe('Order 987654\u2026654321');
+ expect(wrapper.find('[role="dialog"] [title="'+linkedId+'"]').attributes('aria-label')).toBe('Order ID '+linkedId);
+});
