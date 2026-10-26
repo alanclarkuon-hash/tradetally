@@ -90,3 +90,17 @@ test('purchased option maximum premium loss is separate from underlying stop ris
 test('multi-account queues cannot match an exit with entries from another account',()=>{const p=plan();p.definition.accountId='accountA';p.definition.accountIds=['accountB'];p.definition.entries=[{key:'a',accountId:'accountA'}];p.definition.exits=[{key:'b',accountId:'accountB'}];const t=trade();t.commission=0;t.executions=t.executions.slice(0,2).map(e=>({...e,quantity:10,commission:0}));const r=ledger(p,allocations(t),[t]);expect(r.overExit).toBe(true);expect(r.realisedProfit).toBeNull();expect(r.accounts.find(a=>a.accountId==='accountA').openQuantity).toBe(10)});
 
 test('a plan with no linked or provisional entries is never treated as exited',()=>{const r=ledger(plan(),[],[]);expect(r.economicallyClosed).toBe(false);expect(r.coverageComplete).toBe(false)});
+
+
+test('broker order IDs remain exact display metadata without invalidating existing source links',()=>{
+ const t=trade(),p=plan(),before=sourceFills(t),a=allocations(t);
+ t.executions[0].order_id='1234567890123456789';t.executions[1].orderId='9876543210987654321';
+ const after=sourceFills(t);expect(after[0].orderId).toBe('1234567890123456789');expect(after[1].orderId).toBe('9876543210987654321');
+ expect(after.map(f=>[f.key,f.fingerprint,f.price,f.quantity])).toEqual(before.map(f=>[f.key,f.fingerprint,f.price,f.quantity]));
+ const result=ledger(p,a,[t]);expect(result.unresolved).toBe(0);expect(result.records[0].fill.orderId).toBe('1234567890123456789');expect(result.realisedProfit).toBe(146);
+});
+test('OKX lot envelopes expose the respective entry and exit broker order IDs',()=>{
+ const t={...trade(),broker:'okx',quantity:2,entry_price:100,exit_price:110,entry_time:'2026-01-01T00:00:00Z',exit_time:'2026-01-02T00:00:00Z',commission:0,fees:0,executions:[{okx_record_key:'synthetic-lot',feesIncluded:true,okx_entry:{ordId:'1234567890123456789'},okx_exit:{ordId:'9876543210987654321'}}]};
+ const fills=sourceFills(t);expect(fills.map(f=>f.orderId)).toEqual(['1234567890123456789','9876543210987654321']);
+ delete t.executions[0].okx_entry.ordId;delete t.executions[0].okx_exit.ordId;expect(sourceFills(t).map(f=>f.fingerprint)).toEqual(fills.map(f=>f.fingerprint));
+});
