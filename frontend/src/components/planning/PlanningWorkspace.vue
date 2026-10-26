@@ -62,6 +62,7 @@
        <div v-if="draft.instrument==='option'"><small>Remaining capital at risk · maximum premium loss</small><strong>{{ convertedMoney(ledger.maximumLoss,ledger.currency,positionCurrency) }}</strong></div><div v-for="a in ledger.accounts||[]" v-show="planAccounts.length>1" :key="a.accountId"><small>{{ accounts.find(account=>account.id===a.accountId)?.accountName||'Account' }} · {{ a.openQuantity }} open</small><strong>{{ money(a.positionValue,a.currency) }} · <span :class="resultClass(a.realisedProfit)">realised {{ money(a.realisedProfit,a.currency) }}</span></strong></div><div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
        <div><small>AVG price</small><strong>{{ ledgerMoney('averagePrice',positionCurrency) }}</strong></div>
        <div><small>Unrealised profit / loss</small><strong :class="resultClass(unrealisedAmount)">{{ unrealisedAmount==null?'Unavailable':money(unrealisedAmount,positionCurrency) }}</strong><small v-if="workflow?.unrealised?.asOf" class="mt-1">Saved valuation · {{ executionDate(workflow.unrealised.asOf) }}</small><small v-else-if="workflow?.unrealised?.reason" class="mt-1">{{ workflow.unrealised.reason }}</small></div>
+       <div><small title="Return on the remaining open position cost, including entry fees">Unrealised profit / loss %</small><strong :class="resultClass(unrealisedPercent)">{{ unrealisedPercent==null?'Unavailable':unrealisedPercent.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'%' }}</strong></div>
        <div><small>Total realised profit</small><strong :class="resultClass(ledgerMetric('realisedProfit',positionCurrency))">{{ ledgerMoney('realisedProfit',positionCurrency) }}</strong></div>
        <div><small>Realised % gain</small><strong :class="resultClass(ledgerMetric('percentGain',positionCurrency))">{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
        <div><small>R:R</small><strong :class="resultClass(ledgerMetric('realisedR',positionCurrency))">{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
@@ -274,10 +275,14 @@ function rowPrice(kind,e,to){
  if(!(q>0)||records.some(a=>!a.valid||!fillRate(a.fill,to)))return '';
  return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
 }
-const unrealisedAmount=computed(()=>{
- const value=workflow.value?.unrealised;if(value?.status==='closed')return 0;if(value?.status!=='available'||!value.accounts?.length)return null;
- const amounts=value.accounts.map(a=>{const r=rate(a.currency,positionCurrency.value);return r&&Number.isFinite(a.amount)?a.amount*r:null});return amounts.some(a=>a==null)?null:amounts.reduce((a,b)=>a+b,0)
+const unrealisedValues=computed(()=>{
+ const value=workflow.value?.unrealised;if(value?.status==='closed')return {amount:0,costBasis:0,closed:true};if(value?.status!=='available'||!value.accounts?.length)return null;
+ let amount=0,costBasis=0,hasCost=true;
+ for(const a of value.accounts){const r=rate(a.currency,positionCurrency.value);if(!r||!Number.isFinite(a.amount))return null;amount+=a.amount*r;if(Number.isFinite(a.costBasis)&&a.costBasis>0)costBasis+=a.costBasis*r;else hasCost=false;}
+ return {amount,costBasis:hasCost?costBasis:null,closed:false}
 });
+const unrealisedAmount=computed(()=>unrealisedValues.value?.amount??null);
+const unrealisedPercent=computed(()=>{const v=unrealisedValues.value;return v?.closed?0:v?.costBasis>0?v.amount/v.costBasis*100:null});
 let unrealisedTimer,unrealisedLoading=false;
 async function refreshUnrealised(){
  if(!managing.value||!plan.value.id||busy.value||unrealisedLoading)return;
