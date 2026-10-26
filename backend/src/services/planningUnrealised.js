@@ -36,7 +36,7 @@ async function load(c,plan,result){
   if(!Number.isFinite(time)||time>Date.now()+60000||!conversion)return unavailable('Valuation date or display FX is unavailable');
   const cost=lot.q*lot.accountPrice,mark=value*conversion,fees=lot.q*lot.accountFeePerUnit;
   const amount=(lot.instrument==='cfd'||lot.side!=='short'?mark-cost:cost-mark)-fees;
-  const id=lot.accountId+'|'+lot.accountCurrency,group=groups.get(id)||{accountId:lot.accountId,currency:lot.accountCurrency,amount:0};group.amount+=amount;groups.set(id,group);
+  const id=lot.accountId+'|'+lot.accountCurrency,group=groups.get(id)||{accountId:lot.accountId,currency:lot.accountCurrency,amount:0,costBasis:0};group.amount+=amount;group.costBasis+=cost+fees;groups.set(id,group);
   if(!asOf||time<Date.parse(asOf))asOf=new Date(time).toISOString();sources.add(source);
  }
  return {status:'available',accounts:[...groups.values()],asOf,sources:[...sources],fx};

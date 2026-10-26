@@ -8,7 +8,7 @@ function client({price=110,source='yahoo',snapshots=[]}={}){return {query:jest.f
 const evidence=lots=>({openQuantity:lots.reduce((v,l)=>v+l.q,0),openLots:lots});
 test('values only remaining FIFO quantity after partial exits and apportions entry fees once',async()=>{
  const t={id:'t',symbol:'TEST',side:'long',original_currency:'USD',commission:3,fees:0,executions:[{id:'buy',action:'buy',quantity:10,price:100,commission:2,datetime:'2026-01-01'},{id:'sell',action:'sell',quantity:5,price:105,commission:1,datetime:'2026-01-02'}]};const fills=sourceFills(t),allocations=fills.map(f=>({trade_id:'t',source_key:f.key,source_snapshot:f,stage_key:f.action==='entry'?'entry':'exit',action:f.action,quantity:f.quantity})),result=ledger(plan,allocations,[t]);
- const before=result.realisedProfit,r=await load(client(),plan,result);expect(r.status).toBe('available');expect(r.accounts[0].amount).toBeCloseTo(49);expect(result.realisedProfit).toBe(before);expect(result.openLots[0].q).toBe(5);
+ const before=result.realisedProfit,r=await load(client(),plan,result);expect(r.status).toBe('available');expect(r.accounts[0].amount).toBeCloseTo(49);expect(r.accounts[0].costBasis).toBe(501);expect(result.realisedProfit).toBe(before);expect(result.openLots[0].q).toBe(5);
 });
 test('short profit reverses price movement and subtracts only remaining entry costs',async()=>{const r=await load(client({price:90}),plan,evidence([lot({side:'short'})]));expect(r.accounts[0].amount).toBe(49)});
 test('account FX retains acquisition cost while valuing current proceeds at reporting rates',async()=>{const r=await load(client(),plan,evidence([lot({accountPrice:75,accountCurrency:'GBP',accountFeePerUnit:.1})]));expect(r.accounts[0].amount).toBe(64.5);expect(r.accounts[0].currency).toBe('GBP')});
