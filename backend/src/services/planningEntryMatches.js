@@ -17,18 +17,25 @@ function prepare(plan,records){
 }
 function consume(queue,row,a){
  if(!row||row.status!=='matched')return null;
- const pieces=[];
- for(const match of row.matches){
-  const wanted=Number(match.quantity)*a.quantity/row.quantity;
-  const lots=queue.filter(l=>l.stageKey===match.entryKey&&l.q>EPS&&(!a.brokerPositionId||l.brokerPositionId===a.brokerPositionId)),available=lots.reduce((q,l)=>q+l.q,0);
-  if(wanted>available+EPS)return null;
-  let remaining=Math.min(wanted,available);
-  for(const [i,lot]of lots.entries()){
-   const q=i===lots.length-1?remaining:Math.min(remaining,wanted*lot.q/available);
+ if(!row.balance)Object.defineProperty(row,'balance',{value:new Map(row.matches.map(m=>[m.entryKey,m.quantity]))});
+ const eligible=row.matches.map(match=>{
+  const lots=queue.filter(l=>l.stageKey===match.entryKey&&l.q>EPS&&(!a.brokerPositionId||l.brokerPositionId===a.brokerPositionId));
+  const available=lots.reduce((q,l)=>q+l.q,0);
+  return {entryKey:match.entryKey,lots,available,capacity:Math.min(row.balance.get(match.entryKey),available)};
+ }).filter(m=>m.capacity>0);
+ const capacity=eligible.reduce((q,m)=>q+m.capacity,0);if(capacity+EPS<a.quantity)return null;
+ const pieces=[],used=[];let unassigned=Math.min(a.quantity,capacity);
+ for(const [index,match]of eligible.entries()){
+  const wanted=index===eligible.length-1?unassigned:Math.min(unassigned,a.quantity*match.capacity/capacity);
+  let remaining=wanted;
+  for(const [i,lot]of match.lots.entries()){
+   const q=i===match.lots.length-1?remaining:Math.min(remaining,wanted*lot.q/match.available);
    if(q>0){pieces.push({lot,q});remaining-=q;}
   }
+  used.push({entryKey:match.entryKey,quantity:wanted});unassigned-=wanted;
  }
  if(Math.abs(pieces.reduce((q,p)=>q+p.q,0)-a.quantity)>EPS)return null;
+ for(const m of used)row.balance.set(m.entryKey,Math.max(0,row.balance.get(m.entryKey)-m.quantity));
  for(const p of pieces)p.lot.q-=p.q;
  for(let i=queue.length-1;i>=0;i--)if(queue[i].q<=EPS)queue.splice(i,1);
  return pieces;
