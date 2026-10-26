@@ -189,3 +189,16 @@ it.each([[12,'text-green-600','dark:text-green-400'],[-12,'text-red-600','dark:t
  for(const label of ['Total realised profit','Realised % gain','R:R']){const classes=metric(label).classList;if(color){expect(classes.contains(color)).toBe(true);expect(classes.contains(darkColor)).toBe(true)}else expect([...classes].some(c=>/text-(green|red)-/.test(c))).toBe(false)}
  for(const label of ['Original plan risk','Total position size','Current risk to stop','AVG price'])expect([...metric(label).classList].some(c=>/text-(green|red)-/.test(c))).toBe(false);
 });
+
+it('shows unrealised P&L independently of realised profit with currency conversion and live refresh',async()=>{
+ vi.useFakeTimers();useAuthStore().user.settings.display_currency='GBP';plan.finalised=true;const original=get.getMockImplementation();
+ const unrealised={status:'available',accounts:[{accountId:'a',currency:'USD',amount:50}],asOf:'2026-10-26T12:00:00Z'};
+ get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[],currency:'USD',openQuantity:5,realisedProfit:12},unrealised,history:[]}}):url.endsWith('/unrealised')?Promise.resolve({data:{planVersion:1,unrealised:{...unrealised,accounts:[{currency:'USD',amount:-25}]}}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const metric=()=>wrapper.findAll('.position-metrics small').find(s=>s.text()==='Unrealised profit / loss').element.parentElement;
+ expect(metric().textContent).toContain('£40.00');expect(metric().querySelector('strong').classList.contains('text-green-600')).toBe(true);expect(metric().textContent).toContain('Saved valuation');
+ await vi.advanceTimersByTimeAsync(30000);await flushPromises();expect(metric().textContent).toContain('-£20.00');expect(metric().querySelector('strong').classList.contains('text-red-600')).toBe(true);
+});
+it.each([[{status:'closed'},'£0.00'],[{status:'unavailable',reason:'Quote missing'},'Unavailable']])('unrealised empty states stay neutral',async(unrealised,text)=>{
+ plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[]},unrealised,history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();const el=wrapper.findAll('.position-metrics small').find(s=>s.text()==='Unrealised profit / loss').element.parentElement;expect(el.textContent).toContain(text);expect(el.querySelector('strong').className).not.toMatch(/text-(green|red)/);
+});

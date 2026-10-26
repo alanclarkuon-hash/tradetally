@@ -102,10 +102,15 @@ router.get('/:id/workflow',run(async(req,res)=>{
  validId(req.params.id);
  const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
  const result=await evidence(db,p);
+ const unrealised=await require('../services/planningUnrealised').load(db,p,result);
  const history=(await db.query('SELECT event_type,created_at,snapshot FROM trade_plan_events WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at',[p.id,req.user.id])).rows;
  const tradeReviews=(await db.query('SELECT r.trade_id,r.adherence_score,r.review_type,r.reviewed_at,r.followed_plan FROM trade_playbook_reviews r WHERE r.user_id=$1 AND r.trade_id IN (SELECT trade_id FROM trade_plan_allocations WHERE plan_id=$2 AND user_id=$1)',[p.user_id,p.id])).rows;
  const journalAssessments=(await db.query('SELECT * FROM trade_plan_journal_assessments WHERE plan_id=$1 AND user_id=$2 ORDER BY created_at DESC,id',[p.id,p.user_id])).rows;
- res.json({exitSizing:require('../services/planningExitSizing').state(p,result),journalAssessments,fx:result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
+ res.json({unrealised,exitSizing:require('../services/planningExitSizing').state(p,result),journalAssessments,fx:unrealised.fx||result.displayFx||null,tradeReviews,ledger:result,history,review:p.review,reviewDraft:p.review_draft,baseline:p.baseline,needsUpdate:!!p.review&&p.review.evidenceDigest!==digest(result)});
+}));
+router.get('/:id/unrealised',run(async(req,res)=>{
+ validId(req.params.id);const p=(await db.query('SELECT * FROM trade_plans WHERE id=$1 AND user_id=$2',[req.params.id,req.user.id])).rows[0];if(!p)fail('Plan not found',404);
+ res.json({planVersion:p.version,unrealised:await require('../services/planningUnrealised').load(db,p,await evidence(db,p))});
 }));
 function digest(result){const evidence=result.records.map(a=>({id:a.id,q:a.quantity,fill:a.fill,valid:a.valid,...(a.journal_evidence?{journalEvidence:a.journal_evidence}:{})}));if(result.cashflows?.entries?.length)evidence.push({cashflows:result.cashflows.entries.map(e=>({id:e.id,fingerprint:e.fingerprint,status:e.status,fraction:e.fraction,treatment:e.treatment}))});return require('crypto').createHash('sha256').update(JSON.stringify(evidence)).digest('hex')}
 

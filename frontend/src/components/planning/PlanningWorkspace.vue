@@ -61,6 +61,7 @@
        <div><small>Current risk to stop</small><strong>{{ convertedMoney(ledger.capitalRisk,ledger.capitalRiskCurrency||ledger.currency,positionCurrency) }}</strong></div>
        <div v-if="draft.instrument==='option'"><small>Remaining capital at risk · maximum premium loss</small><strong>{{ convertedMoney(ledger.maximumLoss,ledger.currency,positionCurrency) }}</strong></div><div v-for="a in ledger.accounts||[]" v-show="planAccounts.length>1" :key="a.accountId"><small>{{ accounts.find(account=>account.id===a.accountId)?.accountName||'Account' }} · {{ a.openQuantity }} open</small><strong>{{ money(a.positionValue,a.currency) }} · <span :class="resultClass(a.realisedProfit)">realised {{ money(a.realisedProfit,a.currency) }}</span></strong></div><div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
        <div><small>AVG price</small><strong>{{ ledgerMoney('averagePrice',positionCurrency) }}</strong></div>
+       <div><small>Unrealised profit / loss</small><strong :class="resultClass(unrealisedAmount)">{{ unrealisedAmount==null?'Unavailable':money(unrealisedAmount,positionCurrency) }}</strong><small v-if="workflow?.unrealised?.asOf" class="mt-1">Saved valuation · {{ executionDate(workflow.unrealised.asOf) }}</small><small v-else-if="workflow?.unrealised?.reason" class="mt-1">{{ workflow.unrealised.reason }}</small></div>
        <div><small>Total realised profit</small><strong :class="resultClass(ledgerMetric('realisedProfit',positionCurrency))">{{ ledgerMoney('realisedProfit',positionCurrency) }}</strong></div>
        <div><small>Realised % gain</small><strong :class="resultClass(ledgerMetric('percentGain',positionCurrency))">{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
        <div><small>R:R</small><strong :class="resultClass(ledgerMetric('realisedR',positionCurrency))">{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
@@ -273,6 +274,17 @@ function rowPrice(kind,e,to){
  if(!(q>0)||records.some(a=>!a.valid||!fillRate(a.fill,to)))return '';
  return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
 }
+const unrealisedAmount=computed(()=>{
+ const value=workflow.value?.unrealised;if(value?.status==='closed')return 0;if(value?.status!=='available'||!value.accounts?.length)return null;
+ const amounts=value.accounts.map(a=>{const r=rate(a.currency,positionCurrency.value);return r&&Number.isFinite(a.amount)?a.amount*r:null});return amounts.some(a=>a==null)?null:amounts.reduce((a,b)=>a+b,0)
+});
+let unrealisedTimer,unrealisedLoading=false;
+async function refreshUnrealised(){
+ if(!managing.value||!plan.value.id||busy.value||unrealisedLoading)return;
+ const id=plan.value.id,version=plan.value.version;unrealisedLoading=true;
+ try{const {data}=await api.get('/trade-plans/'+id+'/unrealised');if(plan.value.id===id&&plan.value.version===version&&data.planVersion===version){workflow.value={...workflow.value,unrealised:data.unrealised};if(data.unrealised?.fx)fx.value=data.unrealised.fx}}
+ catch{/* Retain the last saved valuation and its timestamp when refresh is unavailable. */}finally{unrealisedLoading=false}
+}
 function ledgerMetric(metric,to){
  if(metric==='realisedR')return ledger.value.realisedR??null;
  if((ledger.value.accounts||[]).length>1){
@@ -457,8 +469,8 @@ watch([draft,managed],()=>{
  previewTimer=setTimeout(async()=>{try{const r=await api.post('/trade-plans/calculate',{definition:previewDefinition()});if(seq===sequence){calculation.value=r.data.calculation;previewError.value=''}}catch(e){if(seq===sequence)previewError.value=e.response?.data?.error||'Sizing preview could not update.'}},350)
 },{deep:true})
 function leaving(e){if(dirty){e.preventDefault();e.returnValue=''}}
-onMounted(async()=>{adopt(props.plan);window.addEventListener('beforeunload',leaving);try{const r=await api.get('/trade-plans/library');tags.value=r.data.tags||[];fx.value=r.data.fx;settings.value={...settings.value,...r.data.settings};recommendation.value=(await api.get('/trade-plans/recommendation')).data;if(plan.value.id)await reload()}catch(e){fail(e)}})
-onBeforeUnmount(()=>{if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);clearTimeout(saveTimer);clearTimeout(previewTimer);window.removeEventListener('beforeunload',leaving)})
+onMounted(async()=>{unrealisedTimer=setInterval(refreshUnrealised,30000);adopt(props.plan);window.addEventListener('beforeunload',leaving);try{const r=await api.get('/trade-plans/library');tags.value=r.data.tags||[];fx.value=r.data.fx;settings.value={...settings.value,...r.data.settings};recommendation.value=(await api.get('/trade-plans/recommendation')).data;if(plan.value.id)await reload()}catch(e){fail(e)}})
+onBeforeUnmount(()=>{clearInterval(unrealisedTimer);if(retainedUrl.value)URL.revokeObjectURL(retainedUrl.value);clearTimeout(saveTimer);clearTimeout(previewTimer);window.removeEventListener('beforeunload',leaving)})
 </script>
 <style scoped>
 .planning-workspace{container-type:inline-size;container-name:planning;min-width:0;display:flex;flex-direction:column;gap:18px;font-size:15px;line-height:1.5}
