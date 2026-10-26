@@ -43,7 +43,7 @@ async function etoroValues(connection,row){
    if(!saved.length||saved.length!==current.length)throw Error('Position set changed');
    const ids=new Set(saved.map(p=>String(field(p,'positionId'))));
    if(ids.size!==saved.length||current.some(p=>!ids.has(String(field(p,'positionId')))))throw Error('Position set changed');
-   let quantity=0,capital=0,value=0;const times=[];
+   let quantity=0,capital=0,value=0;const times=[],details=[];
    for(const old of saved){
     const p=current.find(p=>String(field(p,'positionId'))===String(field(old,'positionId')));
     if(String(field(old,'CID'))!==String(connection.externalAccountId)||String(field(p,'CID'))!==String(connection.externalAccountId))throw Error('Position account changed');
@@ -53,13 +53,13 @@ async function etoroValues(connection,row){
     for(const name of ['units','amount','openRate','openConversionRate'])if(!close(field(p,name),field(old,name)))throw Error('Position basis changed');
     const units=number(field(p,'units')),amount=number(field(p,'amount')),pnl=number(field(field(p,'unrealizedPnL'),'pnL'));
     if(!(units>0&&amount>0))throw Error('Invalid position basis');
-    quantity+=units;capital+=amount;value+=amount+pnl;times.push(sourceTime(p,observed));
+    const time=sourceTime(p,observed);quantity+=units;capital+=amount;value+=amount+pnl;times.push(time);details.push({positionId:String(field(p,'positionId')),quantity:units,capital:amount,value:amount+pnl,asOf:time.asOf});
    }
    if(!close(quantity,position.quantity)||Math.abs(capital-number(position.totalCost))>0.05)throw Error('Saved capital or quantity needs sync');
    // Reject an unknown extra live position even if its instrument metadata is new.
    if(live.some(p=>!raw.some(o=>String(field(o,'positionId'))===String(field(p,'positionId')))&&saved.some(o=>String(field(o,'instrumentId'))===String(field(p,'instrumentId')))))throw Error('New position needs sync');
    const time=times.reduce((a,b)=>Date.parse(a.asOf)<=Date.parse(b.asOf)?a:b);
-   values.push({symbol:position.symbol,instrumentType:position.instrumentType,quantity,capital,value,asOf:time.asOf,timestampKind:time.kind,status:'current',source:'broker:etoro:position'});
+   values.push({symbol:position.symbol,instrumentType:position.instrumentType,quantity,capital,value,details,asOf:time.asOf,timestampKind:time.kind,status:'current',source:'broker:etoro:position'});
   }catch(error){values.push({symbol:position.symbol,instrumentType:position.instrumentType,status:error.code==='VALUATION_UNAVAILABLE'?'unavailable':'sync_required'});}
  }
  return values;
@@ -99,7 +99,7 @@ function positionsFor(row){
   const valid=entry?.token===signature(row),value=valid?entry.values?.find(v=>v.symbol===p.symbol&&v.instrumentType===p.instrumentType):null;
   const status=row.connection_status&&row.connection_status!=='active'?'unavailable':!adapters.has(row.broker_type)?'unsupported':value?.refreshStatus|| (value?.status==='sync_required'?'sync_required':value?.status==='unsupported'?'unsupported':value?.status==='unavailable'?'unavailable':valid?entry.status:'waiting');
   if(value?.status!=='current'||!Number.isFinite(value.value))return {...p,valuationStatus:status};
-  return {...p,currentValue:value.value,valuationAsOf:value.asOf,valuationTimestampKind:value.timestampKind,valuationSource:value.source,valuationStatus:status};
+  return {...p,valuationDetails:value.details||[],currentValue:value.value,valuationAsOf:value.asOf,valuationTimestampKind:value.timestampKind,valuationSource:value.source,valuationStatus:status};
  });
 }
 async function read(userId,accounts=[]){
@@ -121,10 +121,15 @@ async function read(userId,accounts=[]){
  }
  return {observedAt:new Date().toISOString(),positions:[...groups.values()].filter(g=>!g.invalid)};
 }
+async function readDetailed(userId,accounts=[]){
+ const saved=(await rows(userId)).filter(r=>accounts.includes(r.account_identifier)),result=[];
+ for(const row of saved){schedule(row);for(const p of positionsFor(row)){if(p.valuationStatus==='current')for(const detail of p.valuationDetails||[])result.push({...detail,symbol:p.symbol,instrumentType:p.instrumentType,currency:'USD',accountIdentifier:row.account_identifier,source:p.valuationSource||'broker position'});}}
+ return result;
+}
 async function scheduleAll(){
  if(scheduling)return;scheduling=true;
  try{for(const row of await rows(null))schedule(row);}catch{/* Retry later without logging private broker details. */}finally{scheduling=false;}
 }
 function start(){if(timer)return;void scheduleAll();timer=setInterval(()=>void scheduleAll(),30000);timer.unref?.();}
 function stop(){clearInterval(timer);timer=null;}
-module.exports={read,positionsFor,start,stop,scheduleAll,etoroValues,adapters,LEVERAGED};
+module.exports={read,readDetailed,positionsFor,start,stop,scheduleAll,etoroValues,adapters,LEVERAGED};
