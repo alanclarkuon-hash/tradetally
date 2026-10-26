@@ -58,7 +58,7 @@
        <div><small>Original plan risk</small><strong>{{ convertedMoney(workflow?.baseline?.riskBudget??draft.riskBudget,draft.currency,positionCurrency) }}</strong></div>
        <div><small>Position stage</small><strong class="stage-value">{{ ledger.economicallyClosed?'Has exited':ledger.openQuantity>0?'In trade':'Awaiting entry' }}</strong></div></div>
        <div><small>Total position size</small><strong>{{ ledgerMoney('positionValue',positionCurrency) }}</strong></div>
-       <div><small>Current risk to stop</small><strong>{{ convertedMoney(ledger.capitalRisk,ledger.capitalRiskCurrency||ledger.currency,positionCurrency) }}</strong></div>
+       <div><small title="Projected P/L on remaining units at the stop, before fees or slippage">Current risk to stop</small><strong :class="resultClass(stopPnlAmount)">{{ convertedMoney(workflow?.stopProjection?.amount,workflow?.stopProjection?.currency,positionCurrency) }}</strong></div>
        <div v-if="draft.instrument==='option'"><small>Remaining capital at risk · maximum premium loss</small><strong>{{ convertedMoney(ledger.maximumLoss,ledger.currency,positionCurrency) }}</strong></div><div v-for="a in ledger.accounts||[]" v-show="planAccounts.length>1" :key="a.accountId"><small>{{ accounts.find(account=>account.id===a.accountId)?.accountName||'Account' }} · {{ a.openQuantity }} open</small><strong>{{ money(a.positionValue,a.currency) }} · <span :class="resultClass(a.realisedProfit)">realised {{ money(a.realisedProfit,a.currency) }}</span></strong></div><div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
        <div><small>AVG price</small><strong>{{ ledgerMoney('averagePrice',positionCurrency) }}</strong></div>
        <div><small>Unrealised profit / loss</small><strong :class="resultClass(unrealisedAmount)">{{ unrealisedAmount==null?'Unavailable':money(unrealisedAmount,positionCurrency) }}</strong><small v-if="workflow?.unrealised?.asOf" class="mt-1">Saved valuation · {{ executionDate(workflow.unrealised.asOf) }}</small><small v-else-if="workflow?.unrealised?.reason" class="mt-1">{{ workflow.unrealised.reason }}</small></div>
@@ -275,6 +275,7 @@ function rowPrice(kind,e,to){
  if(!(q>0)||records.some(a=>!a.valid||!fillRate(a.fill,to)))return '';
  return Number((records.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,to),0)/q).toFixed(6));
 }
+const stopPnlAmount=computed(()=>{const p=workflow.value?.stopProjection;if(p?.amount==null)return null;const r=rate(p.currency,positionCurrency.value);return r?p.amount*r:null});
 const unrealisedValues=computed(()=>{
  const value=workflow.value?.unrealised;if(value?.status==='closed')return {amount:0,costBasis:0,closed:true};if(value?.status!=='available'||!value.accounts?.length)return null;
  let amount=0,costBasis=0,hasCost=true;
@@ -287,7 +288,7 @@ let unrealisedTimer,unrealisedLoading=false;
 async function refreshUnrealised(){
  if(!managing.value||!plan.value.id||busy.value||unrealisedLoading)return;
  const id=plan.value.id,version=plan.value.version;unrealisedLoading=true;
- try{const {data}=await api.get('/trade-plans/'+id+'/unrealised');if(plan.value.id===id&&plan.value.version===version&&data.planVersion===version){workflow.value={...workflow.value,unrealised:data.unrealised};if(data.unrealised?.fx)fx.value=data.unrealised.fx}}
+ try{const {data}=await api.get('/trade-plans/'+id+'/unrealised');if(plan.value.id===id&&plan.value.version===version&&data.planVersion===version){workflow.value={...workflow.value,unrealised:data.unrealised,...(data.stopProjection?{stopProjection:data.stopProjection}:{})};if(data.fx||data.unrealised?.fx)fx.value=data.fx||data.unrealised.fx}}
  catch{/* Retain the last saved valuation and its timestamp when refresh is unavailable. */}finally{unrealisedLoading=false}
 }
 function ledgerMetric(metric,to){
