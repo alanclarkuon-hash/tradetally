@@ -141,3 +141,14 @@ test('joint reconciliation rejects different native parents before loading or ch
  {connection:{id:'child',userId:'owner',externalAccountId:'uid-child'},payload:{verifiedMainUid:'foreign',verifiedUid:'uid-child'}}]})).rejects.toThrow('verified');
  expect(client.query).toHaveBeenCalledTimes(1);
 });
+
+
+test('closing a plan-linked OKX open lot preserves its trade anchor instead of deleting it',async()=>{
+ const db=require('../../src/config/database'),{reconcile}=require('../../src/services/brokerSync/okxReconcile');
+ const p=fixture();p.fills[0]={...sell,fillSz:'9'};p.bills.find(b=>b.billId==='sell').balChg='-9';p.bills.find(b=>b.billId==='sellquote').balChg='26.5';p.trading[0].details=[{ccy:'USDT',cashBal:'106.5',eqUsd:'105.435'}];
+ const open={id:'linked-open',user_id:'owner',broker:'okx',broker_connection_id:'main',account_identifier:'OKX ****main',symbol:'TEST',side:'long',instrument_type:'crypto',original_currency:'USD',quantity:9,entry_price:2.244444,entry_time:new Date(ts).toISOString(),commission:0,fees:0,executions:[{okx_record_key:'buy:open',okx_origin_connection_id:'main',okx_entry:buy,feesIncluded:true}]};
+ const client={query:jest.fn(async(sql)=>{if(sql.startsWith('SELECT * FROM trades'))return {rows:[open]};if(sql.startsWith('SELECT * FROM user_accounts'))return {rows:[{currency:'USD'}]};if(sql.startsWith('DELETE FROM trades'))throw Error('trade_plan_allocations_trade_id_fkey');return {rows:[]};})};db.withTransaction.mockImplementation(fn=>fn(client));
+ await expect(reconcile({id:'main',userId:'owner',externalAccountId:'uid-main'},p,rates)).resolves.toMatchObject({failed:0});
+ expect(client.query.mock.calls.some(([sql])=>sql.startsWith('DELETE FROM trades'))).toBe(false);
+ expect(client.query.mock.calls.some(([sql,args])=>sql.startsWith('UPDATE trades')&&args.includes('linked-open'))).toBe(true);
+});
