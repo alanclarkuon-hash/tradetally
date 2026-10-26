@@ -87,10 +87,13 @@ it.each(['entry','exit'])('opens linked %s fills and removes only the chosen lin
  expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(1);
  await wrapper.find('[role="dialog"]').findAll('button').find(b=>b.text()==='Close').trigger('click');await flushPromises();
  expect(del).toHaveBeenCalledTimes(1);expect(wrapper.find('[role="dialog"]').exists()).toBe(false); await button('Unlink trade').trigger('click');await flushPromises();
+ expect(button('Link selected trades').attributes('disabled')).toBeDefined();
+ await wrapper.find('[role="dialog"] button[aria-label="Unlink trade2"]').trigger('click');await flushPromises();
+ expect(records.map(r=>r.id)).toEqual(['other']);
  await wrapper.find('[role="dialog"] input[type="checkbox"]').setValue(true);
  await button('Link selected trades').trigger('click');await flushPromises();
- expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',{version:2,stageKey:key,action:kind,journalAssessmentId:null,fills:[{tradeId:'trade1',sourceKey:'fill1',fingerprint:'a'.repeat(64),quantity:1}]});
- expect(del).toHaveBeenCalledTimes(1);expect(records.map(r=>r.id)).toEqual(['link2','other']);
+ expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',{version:3,stageKey:key,action:kind,journalAssessmentId:null,fills:[{tradeId:'trade1',sourceKey:'fill1',fingerprint:'a'.repeat(64),quantity:1}]});
+ expect(del).toHaveBeenCalledTimes(2);expect(records.map(r=>r.id)).toEqual(['other']);
 });
 
 it('links explicitly selected fills to one row in one request',async()=>{plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'one',key:'f1',fingerprint:'a'.repeat(64),action:'entry',available:2,price:100,currency:'USD',time:'2026-01-01'},{tradeId:'two',key:'f2',fingerprint:'b'.repeat(64),action:'entry',available:1,price:102,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await button('Link trade').trigger('click');await flushPromises();expect(button('Link selected trades').attributes('disabled')).toBeDefined();expect(wrapper.find('.finder-header').text()).toContain('Link selected trades');expect(wrapper.find('.finder-fills').classes()).toContain('overflow-y-auto');expect(wrapper.text()).not.toContain('Confirm splitting');for(const tick of wrapper.findAll('[role="dialog"] input[type="checkbox"]').slice(0,2))await tick.setValue(true);await button('Link selected trades').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',{version:1,stageKey:'a',action:'entry',journalAssessmentId:null,fills:[{tradeId:'one',sourceKey:'f1',fingerprint:'a'.repeat(64),quantity:2},{tradeId:'two',sourceKey:'f2',fingerprint:'b'.repeat(64),quantity:1}]});expect(wrapper.find('[role="dialog"]').exists()).toBe(false)})
