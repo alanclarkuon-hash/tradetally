@@ -83,6 +83,7 @@
    </section>
    <template v-for="kind in ['entry','exit']" :key="kind"><section class="card p-5">
     <div class="flex justify-between items-center mb-4"><h2 class="font-semibold text-lg">{{ kind==='entry'?'Entries':'Exits' }}</h2><div class="flex gap-2"><CurrencyToggle v-model="currencies[kind]" :currencies="currencyChoices" /><button class="btn-secondary" :disabled="preparationLocked" @click="addRow(kind)">Add {{ kind }}</button><button v-if="kind==='exit'&&rows(kind).filter(e=>e.key==='runner'||e.key.startsWith('runner_')).length<Math.max(1,planAccounts.length)" class="btn-secondary" :disabled="preparationLocked" @click="addRunner">Add runner</button></div></div>
+    <ExitEntryMatches v-if="kind==='exit'&&managing" :plan="plan" :matching="ledger.entryMatching||[]" :entries="rows('entry')" :exits="rows('exit')" :editable="!['completed','reviewed','cancelled'].includes(plan.status)" :prepare-save="prepareCashflow" @saved="reload"/>
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked" @change="changeStop($event,currencies[kind])"></label></div>
     <EntryJournalAssessment v-if="managing&&kind==='entry'&&journalStage" :key="journalStage" :plan="plan" :entry="rows('entry').find(e=>e.key===journalStage)" :has-entries="ledger.records?.some(a=>a.action==='entry'&&a.stage_key===journalStage)" @close="journalStage=null" @saved="reload"/><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th v-if="planAccounts.length>1">Account</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target ({{ symbol(currencies[kind]) }})</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
@@ -181,6 +182,7 @@ import BrokerOrderId from './BrokerOrderId.vue'
 import EntryJournalAssessment from './EntryJournalAssessment.vue'
 import EntryJournalHistory from './EntryJournalHistory.vue'
 import PlanningCashflows from './PlanningCashflows.vue'
+import ExitEntryMatches from './ExitEntryMatches.vue'
 
 import {planMilestones,planStatusLabel} from './planningStages'
 import {describeManagementEvent} from './managementTimeline'
@@ -220,7 +222,7 @@ const optionMoneyKeys=['strike','premium','atr']
 const optionNumbers=['strike','premium','multiplier','contractDelta','atr','atrMultiplier'],optionLabels={strike:'Strike',premium:'Premium',multiplier:'Contract multiplier',contractDelta:'Share-equivalent delta',atr:'Completed-candle ATR',atrMultiplier:'ATR multiplier'}
 let previewTimer,saveTimer,sequence=0,hydrating=false,dirty=false
 const linkedTradesExpanded=ref(false),timelineExpanded=ref(false)
-const managementTypes=new Set(['trade_linked','trade_unlinked','management_updated','stop_changed','option_rolled','entry_committed','commitment_released','commitment_fill_reconciled','entry_journal_assessed','cashflow_attributed','cashflow_attribution_removed','exit_quantities_rechecked'])
+const managementTypes=new Set(['trade_linked','trade_unlinked','management_updated','stop_changed','option_rolled','entry_committed','commitment_released','commitment_fill_reconciled','entry_journal_assessed','cashflow_attributed','cashflow_attribution_removed','exit_quantities_rechecked','exit_entries_matched'])
 const newest=(a,b)=>Date.parse(b.created_at||b.fill?.time||'')-Date.parse(a.created_at||a.fill?.time||'')
 const managementEvents=computed(()=>(workflow.value?.history||[]).filter(e=>managementTypes.has(e.event_type)).slice().sort(newest).flatMap(e=>describeManagementEvent(e, draft.value).map(action=>({...e,...action}))))
 const linkedTrades=computed(()=>(ledger.value.records||[]).filter(a=>!a.fill?.provisional).slice().sort(newest))
@@ -379,7 +381,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
  return management
 }
 function mergeNewerManagement(base,local){

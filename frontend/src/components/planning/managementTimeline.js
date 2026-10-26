@@ -21,6 +21,7 @@ export function describeManagementEvent(event,definition={}){
  if(event.event_type==='trade_unlinked')return [{title:(s.allocation?.action==='exit'?'Exit':'Entry')+' trade link removed',detail:s.reason||''}]
  if(event.event_type==='stop_changed')return [{title:'SL invalidation level changed',detail:money(s.previous,currency)+' → '+money(s.next,currency)+(s.reason?' · '+s.reason:'')}]
  if(event.event_type==='option_rolled')return [{title:'Option rolled for credit',detail:(s.netCredit!=null?money(s.netCredit,currency)+' · ':'')+(s.reason||'')}]
+ if(event.event_type==='exit_entries_matched')return [{title:'Exit entry matches saved · '+rowName('exit',s.exitKey),detail:(s.matches||[]).map(m=>quantity(m.quantity)+' from '+rowName('entry',m.entryKey)).join(', ')}]
  if(event.event_type==='exit_quantities_rechecked')return [{title:'Remaining exit quantities rechecked',detail:(s.rows||[]).map(r=>r.key+': '+quantity(r.units)).join(', ')+' · '+(s.reason||'')}]
  if(event.event_type==='cashflow_attribution_removed')return [{title:'Cashflow attribution removed',detail:s.reason||''}]
  if(event.event_type==='cashflow_attributed')return [{title:'Cashflow attributed · '+(s.source?.description||'Income / financing'),detail:(s.fraction*100)+'% · '+s.treatment+' · '+(s.reason||'')} ]
