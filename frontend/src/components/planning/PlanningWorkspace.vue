@@ -154,11 +154,19 @@
   <div v-if="finder" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-5" role="dialog" aria-modal="true" aria-labelledby="fill-title">
    <section class="card p-6 max-w-5xl w-full max-h-[85vh] flex flex-col overflow-hidden gap-4">
     <header class="finder-header shrink-0 space-y-3">
-     <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><div class="flex gap-3"><button class="btn-primary" :disabled="busy||finderLoading||!fills.some(f=>f.selected&&f.allocate>0)" @click="linkSelectedFills">Link selected trades</button><button class="btn-secondary" @click="closeFinder">Close</button></div></div>
+     <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><div class="flex gap-3"><button class="btn-primary" :disabled="busy||finderLoading||!finderChanged" @click="linkSelectedFills">Link selected trades</button><button class="btn-secondary" :disabled="busy" @click="closeFinder">Close</button></div></div>
      <p class="text-sm text-gray-400">{{ asset }} · {{ instrumentLabel }} · {{ accounts.find(a=>a.id===rowAccount(rows(finder.action).find(e=>e.key===finder.stageKey)||{}))?.accountName||'Unassigned' }} · {{ draft.direction==='short'?'Short / bearish':'Long / bullish' }}</p>
      <label v-if="finder.action==='entry'" class="block text-sm">Journal evidence for these fills<select v-model="finder.journalAssessmentId" class="input"><option :value="null">No saved entry assessment</option><option v-for="a in (workflow?.journalAssessments||[]).filter(a=>a.stage_key===finder.stageKey)" :key="a.id" :value="a.id">{{ a.snapshot.sessionDate }} · {{ new Date(a.snapshot.recordedAt).toLocaleString() }}{{ a.snapshot.status==='exception'?' · Exception':'' }}</option></select></label><p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
     </header>
     <div class="finder-fills min-h-0 overflow-y-auto">
+     <section v-if="finderExisting.length" aria-label="Linked trades on this row" class="mb-4">
+      <h3 class="font-semibold">Linked trades</h3>
+      <div v-for="a in finderExisting" :key="a.id" data-linked-fill class="flex items-center justify-between gap-3 border-b border-gray-700 py-3">
+       <label class="flex items-center gap-3"><input v-model="a.selected" type="checkbox" :disabled="busy||finderLoading" :aria-label="'Keep linked fill '+a.id"><span>{{ executionDate(a.fill?.time) }} &middot; {{ executionQuantity(a.quantity) }} @ {{ executionMoney(a.fill,linkedCurrency) }} &middot; {{ a.action }}<span v-if="!a.valid" class="block text-amber-700 dark:text-amber-300">Needs reconciliation</span></span></label>
+      </div>
+     </section>
+     <p v-if="finderExisting.length" class="text-sm text-gray-400">Keep linked trades ticked. Untick to unlink, or tick available trades to add them, then click Link selected trades to save.</p>
+     <h3 class="font-semibold">Available trades</h3>
      <p v-if="finderLoading" role="status">Loading trades…</p><p v-else-if="!fills.length">No available {{ finder.action }} fills for this asset, instrument and account.</p>
      <div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ executionQuantity(f.quantity) }} @ {{ money(f.price,f.currency) }} · {{ f.action }}<span v-if="f.zeroPriceEvidence" class="block text-sm text-gray-400">Zero value supported by broker cash evidence</span><span v-if="f.available<f.quantity-0.00000001" class="block text-sm text-gray-400">{{ executionQuantity(f.available) }} available to link · {{ executionQuantity(f.allocated??f.quantity-f.available) }} already allocated</span><span v-if="f.sharedPlans?.some(id=>id!==plan.id)" class="block text-sm text-amber-700 dark:text-amber-300">Shared source fill. Link only this plan's quantity; fees and broker results are apportioned.</span></span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
     </div>
@@ -386,24 +394,34 @@ async function action(name,body={}){if(actionPromise)await actionPromise;actionP
 async function performAction(name,body={}){if(savePromise&&!await savePromise)return;if(busy.value){error.value='Another action is still saving. Try again when it finishes.';return;}busy.value=true;error.value='';try{const base=JSON.parse(JSON.stringify(managed.value));await api.post('/trade-plans/'+plan.value.id+'/'+name,{version:plan.value.version,...body});await reload(base)}catch(e){fail(e)}finally{busy.value=false}}
 async function changeFinalisation(event){const wanted=event.target.checked;if(dirty||!plan.value.id){if(!await save()){event.target.checked=!!plan.value.finalised;return}}await action('finalisation',{finalised:wanted});event.target.checked=!!plan.value.finalised}
 async function continueToManage(){if(dirty||!plan.value.id){if(!await save())return}if(plan.value.status==='draft'){await action('status',{status:'watching'});if(!error.value)screen.value='Trade & Manage';return}if(!plan.value.finalised){error.value='Return to Draft and tick Finalised before recording trades';return}screen.value='Trade & Manage'}
-async function toggleTrade(kind,key){if(!linked(kind,key)){await findFills(kind,key);return}if(dirty&&!await save())return;busy.value=true;error.value='';try{await api.delete('/trade-plans/'+plan.value.id+'/row-allocations',{data:{version:plan.value.version,action:kind,stageKey:key}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
+async function toggleTrade(kind,key){await findFills(kind,key)}
+const finderLinks=computed(()=>(ledger.value.records||[]).filter(a=>!a.fill?.provisional&&a.action===finder.value?.action&&a.stage_key===finder.value?.stageKey));
+const finderExisting=ref([]);
+const finderChanged=computed(()=>finderExisting.value.some(a=>!a.selected)||fills.value.some(f=>f.selected&&f.allocate>0));
 let finderSequence=0;
-function closeFinder(){++finderSequence;finder.value=null;fills.value=[];finderLoading.value=false}
+function closeFinder(){++finderSequence;finder.value=null;fills.value=[];finderExisting.value=[];finderLoading.value=false}
 async function findFills(kind,key){
- if(linked(kind,key)&&!(kind==='entry'&&planCommitments.value.some(c=>c.stage_key===key))){error.value='Unlink the current trade before choosing another';return}
  error.value='';const request=++finderSequence;fills.value=[];finderLoading.value=true;
  finder.value={action:kind,stageKey:key,journalAssessmentId:kind==='entry'?(workflow.value?.journalAssessments||[]).find(a=>a.stage_key===key)?.id||null:null};
+ finderExisting.value=finderLinks.value.map(a=>({...a,selected:true}));
  try{
   if(actionPromise)await actionPromise;
   if((dirty||savePromise)&&!await save()){if(!error.value)error.value='Save changes before linking trades.';return}
   if(request!==finderSequence)return;
   if(!plan.value.id){error.value='Save and finalise the plan before linking a trade';return}
   const response=await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{accountId:rowAccount(rows(kind).find(e=>e.key===key)||{})}});
-  if(request===finderSequence)fills.value=response.data.fills.filter(f=>f.action===kind).map(f=>({...f,allocate:f.available,selected:false}));
+  if(request===finderSequence){finderExisting.value=finderLinks.value.map(a=>({...a,selected:true}));fills.value=response.data.fills.filter(f=>f.action===kind&&!finderExisting.value.some(a=>a.trade_id===f.tradeId&&a.source_key===f.key)).map(f=>({...f,allocate:f.available,selected:false}));}
  }catch(e){if(request===finderSequence)fail(e)}finally{if(request===finderSequence)finderLoading.value=false}
 }
-async function linkSelectedFills(){if(finderLoading.value||!finder.value)return;if(linked(finder.value.action,finder.value.stageKey)&&!(finder.value.action==='entry'&&planCommitments.value.some(c=>c.stage_key===finder.value.stageKey))){error.value='Unlink the current trade before choosing another';return}const selected=fills.value.filter(f=>f.selected);if(!selected.length||selected.some(f=>!(f.allocate>0)||f.allocate>f.available)){error.value='Choose valid quantities for all selected trades';return}await action('allocations',{stageKey:finder.value.stageKey,action:finder.value.action,journalAssessmentId:finder.value.journalAssessmentId,fills:selected.map(f=>({tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity:f.allocate}))});if(!error.value)closeFinder()}
-async function unlink(a){const reason=window.prompt('Why are you correcting this link?');if(!reason)return;busy.value=true;try{await api.delete('/trade-plans/'+plan.value.id+'/allocations/'+a.id,{data:{version:plan.value.version,reason}});await reload()}catch(e){fail(e)}finally{busy.value=false}}
+async function linkSelectedFills(){
+ if(busy.value||finderLoading.value||!finder.value||!finderChanged.value)return;
+ const selected=fills.value.filter(f=>f.selected),removed=finderExisting.value.filter(a=>!a.selected).map(a=>a.id);
+ if(selected.some(f=>!(f.allocate>0)||f.allocate>f.available)){error.value='Choose valid quantities for all selected trades';return}
+ await action('allocations',{stageKey:finder.value.stageKey,action:finder.value.action,journalAssessmentId:finder.value.journalAssessmentId,...(finderExisting.value.length?{removeAllocationIds:removed}:{}),fills:selected.map(f=>({tradeId:f.tradeId,sourceKey:f.key,fingerprint:f.fingerprint,quantity:f.allocate}))});
+ if(!error.value)closeFinder()
+}
+async function unlink(a){if(busy.value)return false;const reason=window.prompt('Why are you correcting this link?');if(!reason)return false;busy.value=true;error.value='';try{await api.delete('/trade-plans/'+plan.value.id+'/allocations/'+a.id,{data:{version:plan.value.version,reason}});await reload();return true}catch(e){fail(e);return false}finally{busy.value=false}}
+
 async function changeStop(e,c){let price;try{price=priceValue(e,c)}catch{return}if(hasLinks.value||managing.value){const reason=window.prompt('Why are you changing the SL invalidation level?');if(!reason){e.target.value=displayValue(draft.value.stopPrice,c);return}if(dirty&&!await save())return;await action('stop',{stopPrice:price,reason})}else draft.value.stopPrice=price}
 async function prepareCashflow(){if(actionPromise)await actionPromise;if(savePromise&&!await savePromise)return false;return !dirty||await save()}
 async function loadRollFills(){if(dirty&&!await save())return;try{rollFills.value=(await api.get('/trade-plans/'+plan.value.id+'/fills',{params:{purpose:'roll'}})).data.fills.filter(f=>f.contract)}catch(e){fail(e)}}

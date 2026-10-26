@@ -173,15 +173,26 @@ router.get('/:id/fills',run(async(req,res)=>{
 router.post('/:id/allocations',run(async(req,res)=>{
  const fillSchema=Joi.object({tradeId:uuid.required(),sourceKey:Joi.string().max(500).required(),fingerprint:Joi.string().hex().length(64).required(),quantity:Joi.number().positive().required()});
  const single=fillSchema.keys({journalAssessmentId:uuid.allow(null).default(null),version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required()});
- const batch=Joi.object({journalAssessmentId:uuid.allow(null).default(null),version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),fills:Joi.array().items(fillSchema).min(1).max(50).required()});
+ const batch=Joi.object({journalAssessmentId:uuid.allow(null).default(null),version:Joi.number().integer().required(),stageKey:Joi.string().max(64).required(),action:Joi.string().valid('entry','exit').required(),fills:Joi.array().items(fillSchema).min(0).max(50).required(),removeAllocationIds:Joi.array().items(uuid).unique().max(50)});
  const schema=(req.body.fills?batch:single).validate(req.body);
  if(schema.error)fail('Provide a valid fill allocation');const body=schema.value;
+ const editing=Array.isArray(body.removeAllocationIds);
+ if(body.fills&&!body.fills.length&&(!editing||!body.removeAllocationIds.length))fail('Choose at least one link change');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);
   if(!p.finalised||['cancelled','completed'].includes(p.status))fail('Finalise the plan before linking trades; completed plans retain their history');
   const exitSizingBefore=await evidence(c,p);
+  if(editing&&body.removeAllocationIds.length){
+   const removed=(await c.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4 AND id=ANY($5::uuid[]) FOR UPDATE',[p.id,p.user_id,body.action,body.stageKey,body.removeAllocationIds])).rows;
+   if(removed.length!==body.removeAllocationIds.length)fail('Linked trades changed. Reload the trade finder.',409);
+   await c.query('DELETE FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4 AND id=ANY($5::uuid[])',[p.id,p.user_id,body.action,body.stageKey,body.removeAllocationIds]);
+   for(const a of removed)await record(c,p,'trade_unlinked',{allocation:a,reason:'Updated selected fills in trade finder'});
+   // A removed broker execution must not silently turn into a provisional tick.
+   p.management=JSON.parse(JSON.stringify(p.management||{}));
+   if(p.management[body.action]?.[body.stageKey])p.management[body.action][body.stageKey].executed=false;
+  }
   const appendingReservedEntry=body.action==='entry'&&(await c.query("SELECT id FROM trade_plan_commitments WHERE plan_id=$1 AND user_id=$2 AND stage_key=$3 AND status='reserved'",[p.id,p.user_id,body.stageKey])).rows.length>0;
-  if(body.fills&&!appendingReservedEntry&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
+  if(body.fills&&!editing&&!appendingReservedEntry&&(await c.query('SELECT id FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2 AND action=$3 AND stage_key=$4',[p.id,p.user_id,body.action,body.stageKey])).rows.length)fail('Unlink the current trades before replacing this row',409);
   for(const selected of body.fills||[body]){
   const b={...body,...selected};
   const source=(await c.query('SELECT * FROM trades WHERE id=$1 AND user_id=$2 FOR UPDATE',[b.tradeId,req.user.id])).rows[0];if(!source)fail('Trade not found',404);
@@ -229,8 +240,11 @@ router.post('/:id/allocations',run(async(req,res)=>{
   if(b.action==='entry')await require('../services/planningCommitments').reconcileRow(c,p,b.stageKey);
   await record(c,p,'trade_linked',{tradeId:t.id,sourceKey:f.key,stageKey:b.stageKey,action:b.action,quantity:b.quantity,source:f});
   }
-  const exitSizing=require('../services/planningExitSizing').initialise(p,exitSizingBefore,await evidence(c,p));
-  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW(),exit_sizing=$3::jsonb WHERE id=$2",[JSON.stringify(p.baseline),p.id,JSON.stringify(exitSizing)]);
+  const after=await evidence(c,p);
+  if(editing&&after.overExit)fail('Selected links would leave exits without sufficient earlier entries',409);
+  const exitSizing=require('../services/planningExitSizing').initialise(p,exitSizingBefore,after);
+  const nextStatus=editing&&!after.records.length?'watching':'entered';
+  await c.query("UPDATE trade_plans SET baseline=$1::jsonb,status=$4,review=NULL,version=version+1,updated_at=NOW(),exit_sizing=$3::jsonb,management=$5::jsonb WHERE id=$2",[JSON.stringify(p.baseline),p.id,JSON.stringify(exitSizing),nextStatus,JSON.stringify(p.management||{})]);
  });
  res.status(201).json({success:true});
 }));

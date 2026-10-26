@@ -106,3 +106,17 @@ test('new management entry saves then links an original broker fill under the sa
  expect(linked.status).toBe(201);const insert=db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT INTO trade_plan_allocations'));expect(insert[1][4]).toBe('extra');expect(JSON.stringify(p.definition)).toBe(original);
  expect(db.query.mock.calls.some(([sql])=>/^UPDATE trades|^DELETE FROM trades/.test(sql))).toBe(false);
 });
+
+
+test('selection edits append to an occupied row without deleting retained links',async()=>{
+ const {a,group}=originalLinkFixture();const original=db.query.getMockImplementation();
+ db.query.mockImplementation(async(sql,args)=>sql.startsWith('SELECT id FROM trade_plan_allocations')?{rows:[{id:'retained'}]}:original(sql,args));
+ const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',removeAllocationIds:[],fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:2}]});
+ expect(r.status).toBe(201);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('DELETE'))).toBe(false);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('INSERT INTO trade_plan_allocations'))).toBe(true);
+});
+test('selection removals must belong to the same owner, plan, row and action',async()=>{
+ originalLinkFixture();const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',removeAllocationIds:[id],fills:[]});expect(r.status).toBe(409);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('DELETE'))).toBe(false);
+});
+test('an empty selection delta cannot increment version',async()=>{
+ const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',removeAllocationIds:[],fills:[]});expect(r.status).toBe(422);expect(db.query).not.toHaveBeenCalled();
+});
