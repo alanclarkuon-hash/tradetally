@@ -59,11 +59,11 @@
        <div><small>Position stage</small><strong class="stage-value">{{ ledger.economicallyClosed?'Has exited':ledger.openQuantity>0?'In trade':'Awaiting entry' }}</strong></div></div>
        <div><small>Total position size</small><strong>{{ ledgerMoney('positionValue',positionCurrency) }}</strong></div>
        <div><small>Current risk to stop</small><strong>{{ convertedMoney(ledger.capitalRisk,ledger.capitalRiskCurrency||ledger.currency,positionCurrency) }}</strong></div>
-       <div v-if="draft.instrument==='option'"><small>Remaining capital at risk · maximum premium loss</small><strong>{{ convertedMoney(ledger.maximumLoss,ledger.currency,positionCurrency) }}</strong></div><div v-for="a in ledger.accounts||[]" v-show="planAccounts.length>1" :key="a.accountId"><small>{{ accounts.find(account=>account.id===a.accountId)?.accountName||'Account' }} · {{ a.openQuantity }} open</small><strong>{{ money(a.positionValue,a.currency) }} · realised {{ money(a.realisedProfit,a.currency) }}</strong></div><div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
+       <div v-if="draft.instrument==='option'"><small>Remaining capital at risk · maximum premium loss</small><strong>{{ convertedMoney(ledger.maximumLoss,ledger.currency,positionCurrency) }}</strong></div><div v-for="a in ledger.accounts||[]" v-show="planAccounts.length>1" :key="a.accountId"><small>{{ accounts.find(account=>account.id===a.accountId)?.accountName||'Account' }} · {{ a.openQuantity }} open</small><strong>{{ money(a.positionValue,a.currency) }} · <span :class="resultClass(a.realisedProfit)">realised {{ money(a.realisedProfit,a.currency) }}</span></strong></div><div><small>Open units</small><strong>{{ number(ledger.openQuantity) }}</strong></div>
        <div><small>AVG price</small><strong>{{ ledgerMoney('averagePrice',positionCurrency) }}</strong></div>
-       <div><small>Total realised profit</small><strong>{{ ledgerMoney('realisedProfit',positionCurrency) }}</strong></div>
-       <div><small>Realised % gain</small><strong>{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
-       <div><small>R:R</small><strong>{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
+       <div><small>Total realised profit</small><strong :class="resultClass(ledgerMetric('realisedProfit',positionCurrency))">{{ ledgerMoney('realisedProfit',positionCurrency) }}</strong></div>
+       <div><small>Realised % gain</small><strong :class="resultClass(ledgerMetric('percentGain',positionCurrency))">{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
+       <div><small>R:R</small><strong :class="resultClass(ledgerMetric('realisedR',positionCurrency))">{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
       </div>
       <p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Source fills changed. Correct their links before completing review.</p>
      </section>
@@ -247,6 +247,7 @@ function money(v,c){if(v==null||v===''||!Number.isFinite(Number(v)))return 'Unav
 const executionQuantity=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:8})
 const number=v=>v==null||!Number.isFinite(Number(v))?'Unavailable':Number(v).toLocaleString(undefined,{maximumFractionDigits:6})
 const percent=v=>v==null?'Unavailable':number(v)+'%'
+const resultClass=v=>v==null||!Number.isFinite(Number(v))||Number(v)===0?'':Number(v)>0?'text-green-600 dark:text-green-400':'text-red-600 dark:text-red-400'
 function rate(from,to){if(from===to)return 1;const rates={USD:1,...fx.value?.rates};return rates[from]>0&&rates[to]>0?rates[to]/rates[from]:null}
 function convertedMoney(v,from,to){const r=rate(from,to);if(v===0)return money(0,to);return v==null?'Unavailable':r?money(v*r,to):'FX unavailable'}
 function displayValue(v,to,decimals){const r=rate(draft.value.currency,to);if(v==null||!r)return '';return decimals==null?Number((v*r).toFixed(6)):(v*r).toFixed(decimals)}
