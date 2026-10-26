@@ -59,41 +59,29 @@ it('finalised preparation is read-only but can be explicitly unfinalised',async(
 it('unfinished Draft cannot move to Watching',async()=>{mountPage();await flushPromises();expect(button('Move to Watching').attributes('disabled')).toBeDefined();expect(post).not.toHaveBeenCalled()})
 it('parent Watching transition focuses Trade & Manage while preserving the plan',async()=>{plan.finalised=true;mountPage();await flushPromises();await wrapper.setProps({plan:{...plan,status:'watching',version:2}});await flushPromises();expect(wrapper.find('button[aria-current=step]').text()).toBe('Trade & Manage');expect(wrapper.find('input[aria-label="entry 1 executed"]').exists()).toBe(true);expect(wrapper.find('input[aria-label="entry 1 units"]').attributes('disabled')).toBeUndefined()})
 
-it.each(['entry','exit'])('opens linked %s fills and removes only the chosen link',async kind=>{
- plan.status='entered';plan.finalised=true;
- const key=kind==='entry'?'a':'b';
- let records=[1,2].map(i=>({id:'link'+i,trade_id:'trade'+i,action:kind,stage_key:key,quantity:1,valid:true,fill:{provisional:false,price:100,currency:'USD',time:'2026-01-01T00:00:00Z'}}));
+it.each(['entry','exit'])('keeps linked %s fills checked and saves only additions and removals',async kind=>{
+ plan.status='entered';plan.finalised=true;const key=kind==='entry'?'a':'b';
+ const records=[1,2].map(i=>({id:'link'+i,trade_id:'trade'+i,source_key:'old'+i,action:kind,stage_key:key,quantity:1,valid:true,fill:{provisional:false,price:100,currency:'USD',time:'2026-01-01T00:00:00Z'}}));
  records.push({...records[0],id:'other',stage_key:'other-row'});
- const original=get.getMockImplementation();
- get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records,openQuantity:3},history:[]}}):url.endsWith('/fills')?Promise.resolve({data:{fills:records.some(r=>r.id==='link1')?[]:[{tradeId:'trade1',key:'fill1',fingerprint:'a'.repeat(64),action:kind,quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));
- del.mockImplementation(url=>{records=records.filter(r=>url!=='/trade-plans/p/allocations/'+r.id);plan={...plan,version:plan.version+1};return Promise.resolve({data:{success:true}})});
- const prompt=vi.spyOn(window,'prompt').mockReturnValue('Correct selected fill');
- mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
- await button('Unlink trade').trigger('click');await flushPromises();
- expect(del).not.toHaveBeenCalled();expect(prompt).not.toHaveBeenCalled();
- expect(wrapper.find('[role="dialog"]').exists()).toBe(true);
- expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(2);
- prompt.mockReturnValueOnce(null);
- await wrapper.find('[role="dialog"] button[aria-label="Unlink trade1"]').trigger('click');await flushPromises();
- expect(del).not.toHaveBeenCalled();expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(2);
- del.mockRejectedValueOnce({response:{data:{error:'Link could not be removed'}}});
- await wrapper.find('[role="dialog"] button[aria-label="Unlink trade1"]').trigger('click');await flushPromises();
- expect(wrapper.find('[role="dialog"]').text()).toContain('Link could not be removed');expect(records).toHaveLength(3);
- del.mockClear();
- await wrapper.find('[role="dialog"] button[aria-label="Unlink trade1"]').trigger('click');await flushPromises();
- expect(del).toHaveBeenCalledTimes(1);
- expect(del).toHaveBeenCalledWith('/trade-plans/p/allocations/link1',{data:{version:1,reason:'Correct selected fill'}});
- expect(records.map(r=>r.id)).toEqual(['link2','other']);
- expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(1);
- await wrapper.find('[role="dialog"]').findAll('button').find(b=>b.text()==='Close').trigger('click');await flushPromises();
- expect(del).toHaveBeenCalledTimes(1);expect(wrapper.find('[role="dialog"]').exists()).toBe(false); await button('Unlink trade').trigger('click');await flushPromises();
- expect(button('Link selected trades').attributes('disabled')).toBeDefined();
- await wrapper.find('[role="dialog"] button[aria-label="Unlink trade2"]').trigger('click');await flushPromises();
- expect(records.map(r=>r.id)).toEqual(['other']);
- await wrapper.find('[role="dialog"] input[type="checkbox"]').setValue(true);
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records,openQuantity:3},history:[]}}):url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'new',key:'newFill',fingerprint:'a'.repeat(64),action:kind,quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Unlink trade').trigger('click');await flushPromises();
+ expect(del).not.toHaveBeenCalled();
+ const checked=wrapper.findAll('[role="dialog"] [data-linked-fill] input[type="checkbox"]');expect(checked).toHaveLength(2);expect(checked.every(c=>c.element.checked)).toBe(true);
+ await wrapper.find('[role="dialog"] input[aria-label="Select fill new:newFill"]').setValue(true);
+ expect(button('Link selected trades').attributes('disabled')).toBeUndefined();
+ await checked[0].setValue(false);
+ post.mockRejectedValueOnce({response:{data:{error:'Source changed'}}});await button('Link selected trades').trigger('click');await flushPromises();
+ expect(wrapper.find('[role="dialog"]').text()).toContain('Source changed');expect(checked[1].element.checked).toBe(true);expect(del).not.toHaveBeenCalled();
  await button('Link selected trades').trigger('click');await flushPromises();
- expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',{version:3,stageKey:key,action:kind,journalAssessmentId:null,fills:[{tradeId:'trade1',sourceKey:'fill1',fingerprint:'a'.repeat(64),quantity:1}]});
- expect(del).toHaveBeenCalledTimes(2);expect(records.map(r=>r.id)).toEqual(['other']);
+ expect(post).toHaveBeenLastCalledWith('/trade-plans/p/allocations',{version:1,stageKey:key,action:kind,journalAssessmentId:null,removeAllocationIds:['link1'],fills:[{tradeId:'new',sourceKey:'newFill',fingerprint:'a'.repeat(64),quantity:1}]});
+ expect(wrapper.find('[role="dialog"]').exists()).toBe(false);expect(del).not.toHaveBeenCalled();
+});
+it('can save only an unticked link and closing discards unsaved selection changes',async()=>{
+ plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'one',trade_id:'t',source_key:'f',stage_key:'a',action:'entry',quantity:1,fill:{price:100,currency:'USD'}}]},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Unlink trade').trigger('click');await flushPromises();
+ await wrapper.find('[data-linked-fill] input').setValue(false);await wrapper.find('[role="dialog"]').findAll('button').find(b=>b.text()==='Close').trigger('click');expect(post).not.toHaveBeenCalled();expect(del).not.toHaveBeenCalled();
+ await button('Unlink trade').trigger('click');await flushPromises();expect(wrapper.find('[data-linked-fill] input').element.checked).toBe(true);
+ await wrapper.find('[data-linked-fill] input').setValue(false);expect(button('Link selected trades').attributes('disabled')).toBeUndefined();await button('Link selected trades').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',expect.objectContaining({removeAllocationIds:['one'],fills:[]}));
 });
 
 it('links explicitly selected fills to one row in one request',async()=>{plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'one',key:'f1',fingerprint:'a'.repeat(64),action:'entry',available:2,price:100,currency:'USD',time:'2026-01-01'},{tradeId:'two',key:'f2',fingerprint:'b'.repeat(64),action:'entry',available:1,price:102,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await button('Link trade').trigger('click');await flushPromises();expect(button('Link selected trades').attributes('disabled')).toBeDefined();expect(wrapper.find('.finder-header').text()).toContain('Link selected trades');expect(wrapper.find('.finder-fills').classes()).toContain('overflow-y-auto');expect(wrapper.text()).not.toContain('Confirm splitting');for(const tick of wrapper.findAll('[role="dialog"] input[type="checkbox"]').slice(0,2))await tick.setValue(true);await button('Link selected trades').trigger('click');await flushPromises();expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',{version:1,stageKey:'a',action:'entry',journalAssessmentId:null,fills:[{tradeId:'one',sourceKey:'f1',fingerprint:'a'.repeat(64),quantity:2},{tradeId:'two',sourceKey:'f2',fingerprint:'b'.repeat(64),quantity:1}]});expect(wrapper.find('[role="dialog"]').exists()).toBe(false)})
