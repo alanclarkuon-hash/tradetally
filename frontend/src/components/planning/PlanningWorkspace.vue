@@ -67,6 +67,7 @@
        <div><small>Realised % gain</small><strong :class="resultClass(ledgerMetric('percentGain',positionCurrency))">{{ percent(ledgerMetric('percentGain',positionCurrency)) }}</strong></div>
        <div><small>R:R</small><strong :class="resultClass(ledgerMetric('realisedR',positionCurrency))">{{ number(ledgerMetric('realisedR',positionCurrency)) }}</strong></div>
       </div>
+      <p v-if="ledger.matchingUnresolved" class="text-amber-700 dark:text-amber-300">Match entry rows under Exits to calculate realised profit and the remaining position cost.</p>
       <p v-if="ledger.unresolved" class="text-amber-700 dark:text-amber-300">Source fills changed. Correct their links before completing review.</p>
      </section>
      <PlanningCashflows v-if="managing" :plan="plan" :cashflows="ledger.cashflows||{}" v-model:currency="positionCurrency" :currencies="currencyChoices" :rates="fx?.rates" :editable="!['completed','reviewed','cancelled'].includes(plan.status)" :prepare-save="prepareCashflow" @saved="reload"/>
@@ -310,7 +311,7 @@ function ledgerMetric(metric,to){
  const r=rate(ledger.value.accountCurrency,to);
  return accountValue!=null&&r?(['percentGain','realisedR'].includes(metric)?accountValue:accountValue*r):null;
 }
-function ledgerMoney(metric,to){if(metric==='averagePrice'&&ledger.value.openQuantity<=1e-8)return '—';if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
+function ledgerMoney(metric,to){if(ledger.value.matchingUnresolved)return 'Unavailable';if(metric==='averagePrice'&&ledger.value.openQuantity<=1e-8)return '—';if(!hasLinks.value)return convertedMoney(ledger.value[metric],ledger.value.currency,to);const value=ledgerMetric(metric,to);if(value!=null)return money(value,to);if(hasLinks.value&&to!==ledger.value.currency)return 'Broker FX unavailable';return money(value,to)}
 function rowAmount(kind,e,i){
  const records=managing.value?(ledger.value.records||[]).filter(a=>a.action===kind&&a.stage_key===e.key):[];
  if(records.length){

@@ -2,7 +2,8 @@ const {priceCacheKey,usablePriceRow}=require('../utils/priceCacheIdentity');
 const {latestPlanningFx}=require('./planningFx');
 const unavailable=reason=>({status:'unavailable',accounts:[],reason,asOf:null});
 async function load(c,plan,result){
- if(result.unresolved||result.overExit||result.matchingUnresolved||result.costsUnresolved)return unavailable('Reconcile linked fills and costs first');
+ if(result.matchingUnresolved)return unavailable('Match entry rows under Exits to value the remaining units');
+ if(result.unresolved||result.overExit||result.costsUnresolved)return unavailable('Reconcile linked fills and costs first');
  if(!(result.openQuantity>1e-8))return {status:'closed',accounts:[],amount:0,currency:'USD',asOf:null};
  if(result.provisionalCount||!Array.isArray(result.openLots)||!result.openLots.length)return unavailable('Link and reconcile the open entry fills first');
  const lots=result.openLots,fx=await latestPlanningFx().catch(()=>null),rates={USD:1,...fx?.rates};
