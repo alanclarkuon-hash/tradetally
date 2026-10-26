@@ -72,6 +72,7 @@ function sourceFills(trade) {
  return fills.filter(f=>counts.get(f.key)===1);
 }
 function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade,assetSymbols=[]) {
+ plan=require('./planningManagementRows').forManagement(plan);
  if(!positive(quantity)||quantity+used>fill.quantity+1e-8)fail('Allocation exceeds the available source-fill quantity',409);
  if(fill.action!==action)fail('Choose a matching entry or exit fill');
  const rows=action==='entry'?plan.definition.entries:plan.definition.exits;
@@ -88,6 +89,7 @@ function verifyAllocation(plan,fill,quantity,used,action,stageKey,trade,assetSym
  }
 }
 function ledger(plan,allocations,trades) {
+ plan=require('./planningManagementRows').forManagement(plan);
  const byId=new Map(trades.map(t=>[t.id,t]));let unresolved=0;
  const provisional=[];
  const conversion=plan.provisionalConversion;

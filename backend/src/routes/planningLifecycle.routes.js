@@ -5,6 +5,7 @@ const {isDeepStrictEqual}=require('node:util');
 const db=require('../config/database');
 const {fail,calculate}=require('../services/tradePlanning');
 const {accountIds,stageAccount}=require('../services/planningAccounts');
+const {definitionForManagement}=require('../services/planningManagementRows');
 const {sourceFills,verifyAllocation,ledger}=require('../services/planningLedger');
 const brokerFills=require('../services/planBrokerFills');
 const {resolvePlanningSymbols}=require('../services/planningAssetSymbols');
@@ -197,7 +198,7 @@ router.post('/:id/allocations',run(async(req,res)=>{
   const used=allocations.reduce((s,a)=>s+Number(a.quantity),0);
   const assetSymbols=t.broker==='trading212'&&p.definition.instrument==='stock'&&String(t.symbol).toUpperCase()!==p.definition.symbol.toUpperCase()?await resolvePlanningSymbols(c,p.user_id,{broker:t.broker,account_identifier:t.account_identifier},p.definition.symbol):[];
   verifyAllocation(p,f,b.quantity,used,b.action,b.stageKey,t,assetSymbols);
-  const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[stageAccount(p.definition,b.action,b.stageKey),p.user_id])).rows[0];
+  const account=(await c.query('SELECT account_identifier FROM user_accounts WHERE id=$1 AND user_id=$2',[stageAccount(definitionForManagement(p),b.action,b.stageKey),p.user_id])).rows[0];
   if(!account?.account_identifier||account.account_identifier!==t.account_identifier)fail('Trade account does not match the selected plan account');
   const current=await evidence(c,p);
   if(current.unresolved)fail('Resolve changed source fills before adding allocations',409);
@@ -259,19 +260,29 @@ router.delete('/:id/allocations/:allocationId',run(async(req,res)=>{
 }));
 
 router.put('/:id/management',run(async(req,res)=>{
- const row=Joi.object({percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
+ const stage=Joi.object({label:Joi.string().max(120).required(),accountId:uuid.allow(null).default(null),riskWeight:Joi.number().min(0).max(100).default(0)});
+ const row=Joi.object({stage,percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(!p.finalised||['cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
   const m=schema.value.management;
+  const nextDefinition=definitionForManagement({...p,management:m});
+  for(const kind of ['entry','exit']){
+   if(Object.keys(m[kind]).length>40)fail('Management ladders support at most 40 rows each');
+   for(const [key,r] of Object.entries(m[kind]))if(r.stage){
+    if(p.definition[kind==='entry'?'entries':'exits'].some(e=>e.key===key))fail('Original plan rows cannot be replaced by management rows');
+    if(key.startsWith('roll_'))fail('Option roll rows must be created through the roll action');
+    if(r.stage.accountId&&!accountIds(p.definition).includes(r.stage.accountId))fail('Choose a selected plan account for each management row');
+   }
+  }
   for(const kind of ['entry','exit'])for(const key of Object.keys(m[kind])){
-   if(!(kind==='exit'&&key==='runner')&&!p.definition[kind==='entry'?'entries':'exits'].some(e=>e.key===key))fail('Management row does not belong to this plan');
+   if(!(kind==='exit'&&key==='runner')&&!nextDefinition[kind==='entry'?'entries':'exits'].some(e=>e.key===key))fail('Management row does not belong to this plan');
    const r=m[kind][key];if(r.executed&&(!(r.units>0)||!(r.price>0)))fail('Executed rows require a quantity and execution level');
    if(p.definition.instrument==='option'&&r.units!=null&&!Number.isInteger(r.units))fail('Options require whole contract quantities');
   }
   const allocated=(await c.query('SELECT action,stage_key FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[p.id,p.user_id])).rows;
-  for(const a of allocated){const r=m[a.action]?.[a.stage_key];if(r)r.executed=true;}
+  for(const a of allocated){const r=m[a.action]?.[a.stage_key],before=p.management?.[a.action]?.[a.stage_key];if(before?.stage&&(!r?.stage||!isDeepStrictEqual(before.stage,r.stage)))fail('Linked management rows cannot be removed or reassigned');if(r)r.executed=true;}
   const canonical=value=>Object.fromEntries(['entry','exit'].map(kind=>[kind,Object.fromEntries(Object.entries(value?.[kind]||{}).map(([key,r])=>[key,{...r,time:new Date(r.time).toISOString(),tactics:r.tactics||[],marketContext:r.marketContext||[]}]))]));
   if(isDeepStrictEqual(canonical(m),canonical(p.management)))return;
   const before=await evidence(c,p);const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');

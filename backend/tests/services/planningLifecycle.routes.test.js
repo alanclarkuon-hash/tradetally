@@ -52,7 +52,7 @@ function originalLinkFixture(planSymbol='TEST',tradeSymbol='TEST'){
   if(sql.startsWith('SELECT plan_id,stage_key,trade_id,source_key,quantity,source_snapshot'))return {rows:[legacy]};
   return {rows:[]};
  });
- return {a,b,group:groups[0],legacy};
+ return {a,b,group:groups[0],legacy,p};
 }
 test('new original broker allocation uses remaining quantity and stores stable source without modifying matched trades',async()=>{const {a,group}=originalLinkFixture();const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:2}]});expect(r.status).toBe(201);const insert=db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT INTO trade_plan_allocations'));expect(insert[1][6]).toBe(2);expect(JSON.parse(insert[1][7]).brokerExecution.identity).toBe('original');expect(db.query.mock.calls.some(([sql])=>/^UPDATE trades|^DELETE FROM trades/.test(sql))).toBe(false);expect(db.query.mock.calls.filter(([sql])=>sql.includes("broker='trading212'")).some(([sql])=>sql.includes('FOR UPDATE'))).toBe(true);});
 test('original execution cannot be overallocated across old partitions and new sources',async()=>{const {a,group}=originalLinkFixture();const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:3}]});expect(r.status).toBe(409);expect(r.body.error).toMatch(/available original/);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('INSERT'))).toBe(false);});
@@ -64,3 +64,45 @@ test('finder retains eligible older entries beyond the former 250 journal cutoff
 test('renamed ticker finder loads original broker groups by verified aliases without renaming their sources',async()=>{const {a,group}=originalLinkFixture('NVTS','LOKB');require('../../src/services/planningAssetSymbols').resolvePlanningSymbols.mockResolvedValueOnce(['NVTS','LOKB']);const query=db.query.getMockImplementation();db.query.mockImplementation((sql,args)=>sql.includes('FROM user_accounts')?Promise.resolve({rows:[{broker:'trading212',account_identifier:'synthetic'}]}):query(sql,args));const r=await request(app).get('/plans/'+id+'/fills');expect(r.status).toBe(200);expect(r.body.fills[0]).toMatchObject({key:group.key,tradeId:a.id,available:2});expect(db.query.mock.calls.some(([sql,args])=>sql.includes('UPPER(symbol)=ANY($4')&&args[3].includes('LOKB'))).toBe(true);expect(a.symbol).toBe('LOKB')});
 test('allocation accepts a catalogue-verified current ticker and preserves canonical source identity',async()=>{const {a,group}=originalLinkFixture('NVTS','LOKB');require('../../src/services/planningAssetSymbols').resolvePlanningSymbols.mockResolvedValueOnce(['NVTS','LOKB']);const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:2}]});expect(r.status).toBe(201);const insert=db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT INTO trade_plan_allocations'));expect(insert[1][3]).toBe(group.key);expect(JSON.parse(insert[1][7]).fingerprint).toBe(group.fill.fingerprint);expect(a.symbol).toBe('LOKB')});
 test('unverified ticker alias remains rejected before allocation writes',async()=>{const {a,group}=originalLinkFixture('NVTS','OTHER');const r=await request(app).post('/plans/'+id+'/allocations').send({version:1,stageKey:'a',action:'entry',fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:2}]});expect(r.status).toBe(422);expect(r.body.error).toMatch(/asset/);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('INSERT'))).toBe(false)});
+
+function managementRowFixture(management={},allocated=[]) {
+ const p={id,user_id:'owner',version:1,status:'watching',finalised:true,definition,management};
+ db.query.mockImplementation(async sql=>({rows:sql.includes('FROM trade_plans')?[p]:sql.startsWith('SELECT action,stage_key')?allocated:[]}));
+ return p;
+}
+const addedManagementRow=()=>({stage:{label:'Additional entry',accountId:null,riskWeight:0},executed:false,units:1,price:100,time:'2026-01-01T00:00:00Z',tactics:[],marketContext:[]});
+test.each(['entry','exit'])('registers a new %s management row without modifying the finalised definition or baseline',async action=>{
+ const p=managementRowFixture();const original=JSON.stringify(p.definition);
+ const r=await request(app).put('/plans/'+id+'/management').send({version:1,management:{entry:{},exit:{},[action]:{extra:addedManagementRow()}}});
+ expect(r.status).toBe(200);const update=db.query.mock.calls.find(([sql])=>sql.startsWith('UPDATE trade_plans SET management='));
+ expect(JSON.parse(update[1][0])[action].extra.stage.label).toBe('Additional entry');
+ expect(JSON.stringify(p.definition)).toBe(original);expect(update[0]).not.toMatch(/definition=/);expect(JSON.parse(update[1][1])).toBeNull();
+});
+test('unregistered management keys still produce the original ownership error',async()=>{
+ managementRowFixture();const row=addedManagementRow();delete row.stage;
+ const r=await request(app).put('/plans/'+id+'/management').send({version:1,management:{entry:{extra:row},exit:{}}});
+ expect(r.status).toBe(422);expect(r.body.error).toBe('Management row does not belong to this plan');
+ expect(db.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false);
+});
+test('additional management row cannot select an account outside its plan',async()=>{
+ managementRowFixture();const row=addedManagementRow();row.stage.accountId='00000000-0000-4000-8000-000000000099';
+ const r=await request(app).put('/plans/'+id+'/management').send({version:1,management:{entry:{extra:row},exit:{}}});
+ expect(r.status).toBe(422);expect(r.body.error).toMatch(/selected plan account/);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false);
+});
+test('linked additional management rows cannot be removed',async()=>{
+ managementRowFixture({entry:{extra:addedManagementRow()}},[{action:'entry',stage_key:'extra'}]);
+ const r=await request(app).put('/plans/'+id+'/management').send({version:1,management:{entry:{},exit:{}}});
+ expect(r.status).toBe(422);expect(r.body.error).toMatch(/cannot be removed/);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false);
+});
+
+test('new management entry saves then links an original broker fill under the saved row key',async()=>{
+ const {p,a,group}=originalLinkFixture();const original=JSON.stringify(p.definition),base=db.query.getMockImplementation();
+ db.query.mockImplementation(async(sql,args)=>{
+  if(sql.startsWith('UPDATE trade_plans SET management=')){p.management=JSON.parse(args[0]);p.version++;return {rows:[]};}
+  return base(sql,args);
+ });
+ const saved=await request(app).put('/plans/'+id+'/management').send({version:1,management:{entry:{extra:addedManagementRow()},exit:{}}});expect(saved.status).toBe(200);
+ const linked=await request(app).post('/plans/'+id+'/allocations').send({version:2,stageKey:'extra',action:'entry',fills:[{tradeId:a.id,sourceKey:group.key,fingerprint:group.fill.fingerprint,quantity:2}]});
+ expect(linked.status).toBe(201);const insert=db.query.mock.calls.find(([sql])=>sql.startsWith('INSERT INTO trade_plan_allocations'));expect(insert[1][4]).toBe('extra');expect(JSON.stringify(p.definition)).toBe(original);
+ expect(db.query.mock.calls.some(([sql])=>/^UPDATE trades|^DELETE FROM trades/.test(sql))).toBe(false);
+});
