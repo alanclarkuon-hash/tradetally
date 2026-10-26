@@ -104,3 +104,20 @@ test('OKX lot envelopes expose the respective entry and exit broker order IDs',(
  const fills=sourceFills(t);expect(fills.map(f=>f.orderId)).toEqual(['1234567890123456789','9876543210987654321']);
  delete t.executions[0].okx_entry.ordId;delete t.executions[0].okx_exit.ordId;expect(sourceFills(t).map(f=>f.fingerprint)).toEqual(fills.map(f=>f.fingerprint));
 });
+
+
+test.each([['long',90,-50,50],['long',110,50,0],['long',100,0,0],['short',110,-50,50],['short',90,50,0]])('stop P&L is signed for %s stop %s while capacity risk stays non-negative', (side,stop,expected,risk)=>{
+ const t=trade();t.side=side;if(side==='short')t.executions.forEach(e=>e.action=e.action==='buy'?'sell':'buy');const p=plan();p.definition.direction=side;p.definition.stopPrice=stop;
+ const r=ledger(p,allocations(t).slice(0,2),[t]);expect(r.openQuantity).toBe(5);expect(require('../../src/services/planningStopPnl').calculate(p,r)).toEqual({amount:expected,currency:'USD'});expect(r.capitalRisk).toBe(risk);expect(r.originalRisk).toBe(100);
+});
+test('signed stop P&L nets all remaining lots at the average basis rather than clamping individual profits',()=>{
+ const t=trade();t.commission=0;t.executions=[{id:'one',action:'buy',quantity:5,price:90,datetime:'2026-01-01'},{id:'two',action:'buy',quantity:5,price:110,datetime:'2026-01-02'}];const p=plan();p.definition.stopPrice=100;const r=ledger(p,allocations(t).map(a=>({...a,stage_key:'a'})),[t]);expect(require('../../src/services/planningStopPnl').calculate(p,r).amount).toBe(0);expect(r.capitalRisk).toBe(50);
+});
+
+test('stop projection uses remaining historical account acquisition FX and the current stop conversion',()=>{
+ const t=trade();t.executions=t.executions.slice(0,1).map(e=>({...e,account_currency:'GBP',broker_fx_rate:2}));t.commission=2;const p=plan();p.definition.stopPrice=100;
+ const r=ledger(p,allocations(t),[t]),project=require('../../src/services/planningStopPnl').calculate;expect(project(p,r,{GBP:.8}).amount).toBeCloseTo(375);expect(project(p,r,{}).amount).toBeNull();expect(r.capitalRisk).toBe(0);
+});
+test('stop projection is unavailable for invalid evidence or unsupported stops and zero after full exit',()=>{
+ const t=trade(),p=plan(),r=ledger(p,allocations(t),[t]),project=require('../../src/services/planningStopPnl').calculate;expect(project(p,r).amount).toBe(0);expect(project(p,{...r,unresolved:1}).amount).toBeNull();expect(project({...p,definition:{...p.definition,stopPrice:null}},r).amount).toBeNull();
+});
