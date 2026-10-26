@@ -180,3 +180,12 @@ it('shows truncated broker order IDs with full hover titles in the summary and b
  expect(wrapper.find('[role="dialog"] [title="'+availableId+'"]').text()).toBe('Order 987654\u2026654321');
  expect(wrapper.find('[role="dialog"] [title="'+linkedId+'"]').attributes('aria-label')).toBe('Order ID '+linkedId);
 });
+
+it.each([[12,'text-green-600','dark:text-green-400'],[-12,'text-red-600','dark:text-red-400'],[0,null,null],[null,null,null]])('uses app profit/loss colors for position result %s with neutral zero and missing values',async(value,color,darkColor)=>{
+ useAuthStore().user.settings.display_currency='USD';plan.finalised=true;const original=get.getMockImplementation();
+ get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{currency:'USD',records:[],realisedProfit:value,percentGain:value,realisedR:value,positionValue:100,capitalRisk:10,openQuantity:1,averagePrice:100},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const metric=label=>wrapper.findAll('.position-metrics small').find(s=>s.text()===label).element.parentElement.querySelector('strong');
+ for(const label of ['Total realised profit','Realised % gain','R:R']){const classes=metric(label).classList;if(color){expect(classes.contains(color)).toBe(true);expect(classes.contains(darkColor)).toBe(true)}else expect([...classes].some(c=>/text-(green|red)-/.test(c))).toBe(false)}
+ for(const label of ['Original plan risk','Total position size','Current risk to stop','AVG price'])expect([...metric(label).classList].some(c=>/text-(green|red)-/.test(c))).toBe(false);
+});
