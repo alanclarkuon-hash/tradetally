@@ -25,30 +25,7 @@
     <p v-if="loading" role="status" class="coverage">Loading balances and price history…</p>
     <section v-if="!hasAccountSelection && !loading" class="card-dense p-6" role="status"><h2 class="heading-card">No accounts selected</h2><p class="subtitle">Select an account using the accounts filter to view your portfolio.</p></section>
       <PortfolioCardLayout ref="cardLayout" :customizing="isCustomizing" :data-available="!!(hasAccountSelection && data && !loading)">
-        <template #total>
-          <CurrencyCard preference-key="portfoliodashboardview-1" :source-currency="currency" v-slot="{formatCurrency,currency:cardCurrency}">
-            <article class="card-dense value-card" aria-label="Portfolio value summary">
-              <div class="portfolio-summary">
-                <div class="portfolio-summary-total">
-                  <h2 class="summary-label">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</h2>
-                  <div class="money main-money">{{ formatCurrency(data.totals.portfolioValue) }}</div>
-                  <p class="card-foot muted">Latest · {{ data.accountCount }} accounts · {{ cardCurrency }}</p>
-                </div>
-                <dl class="portfolio-summary-breakdown">
-                  <div>
-                    <dt class="summary-label">Holdings value</dt>
-                    <dd class="money">{{ formatCurrency(data.totals.holdingsValue) }}</dd>
-                  </div>
-                  <div>
-                    <dt class="summary-label">Cash &amp; stablecoins</dt>
-                    <dd class="money">{{ formatCurrency(data.totals.cashValue+data.totals.stablecoinValue) }}</dd>
-                    <dd class="card-foot muted">Cash {{ formatCurrency(data.totals.cashValue) }} · Stablecoins {{ formatCurrency(data.totals.stablecoinValue) }}</dd>
-                  </div>
-                </dl>
-              </div>
-            </article>
-          </CurrencyCard>
-        </template>
+        <template #total><PortfolioSummaryRibbon :totals="data.totals" :account-count="data.accountCount" :source-currency="currency" :incomplete="incomplete" /></template>
       <template #allocation><CurrencyCard preference-key="portfoliodashboardview-4" :source-currency="currency" v-slot="{formatCurrency,formatSignedCurrency}"><section class="card-dense allocation" aria-label="Invested allocation">
         <div class="section-line"><h2>Capital at work</h2><p><strong>{{ allocation[0].percent.toFixed(1) }}%</strong> invested</p></div>
         <div class="allocation-track"><div v-for="part in allocation" :key="part.name" :style="{width:part.percent+'%',background:part.color}" :title="`${part.name}: ${formatCurrency(part.value)}`"></div></div>
@@ -85,6 +62,7 @@
 
 <script setup>
 import CurrencyCard from '@/components/common/CurrencyCard.vue'
+import PortfolioSummaryRibbon from '@/components/dashboard/PortfolioSummaryRibbon.vue'
 import CurrencyToggle from '@/components/common/CurrencyToggle.vue'
 import {useCardCurrencyPreference} from '@/composables/useCardCurrencyPreference'
 import {cardCurrencies} from '@/utils/cardCurrency'
@@ -251,15 +229,6 @@ onMounted(async()=>{await fetchAccounts();if(!loading.value&&!data.value)load()}
 .period-menu button{@apply text-sm text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700;display:block;width:100%;text-align:left;padding:8px 12px}
 .period-menu button.active{@apply bg-primary-50 dark:bg-primary-900/20 text-primary-700 dark:text-primary-300}
 .period-menu button:focus-visible{@apply outline-none ring-2 ring-inset ring-primary-500}
-.portfolio-summary{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:24px;clear:both}
-.summary-label{@apply text-sm font-medium text-gray-500 dark:text-gray-400}
-.portfolio-summary-breakdown{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px;border-left:1px solid;padding-left:24px;@apply border-gray-200 dark:border-gray-700}
-.portfolio-summary .main-money{font-size:36px}
-.portfolio-summary-breakdown .money{font-size:26px}
-@media(max-width:900px){.portfolio-summary{grid-template-columns:1fr;gap:20px}.portfolio-summary-breakdown{border-left:0;border-top:1px solid;padding-left:0;padding-top:20px;@apply border-gray-200 dark:border-gray-700}}
-@media(max-width:480px){.portfolio-summary-breakdown{grid-template-columns:1fr;gap:16px}}
-.value-card{padding:20px}
-.money{@apply text-gray-900 dark:text-white; font-size:30px;font-weight:600;margin:10px 0;font-variant-numeric:tabular-nums}
 .card-foot{font-size:12px;line-height:1.6}
 .muted{@apply text-gray-500 dark:text-gray-400}
 .gain{@apply text-green-600 dark:text-green-400}
