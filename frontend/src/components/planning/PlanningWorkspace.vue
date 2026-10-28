@@ -98,7 +98,7 @@
       <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"/></td>
       <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
       <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="toggleTrade(kind,e.key)">{{ linked(kind,e.key)?'Unlink trade':'Link trade' }}</button><button v-if="kind==='entry'" class="btn-secondary whitespace-nowrap ml-2" @click="journalStage=e.key">Journal evidence</button><button v-if="kind==='entry'&&linked(kind,e.key)&&planCommitments.some(c=>c.stage_key===e.key)" class="btn-secondary whitespace-nowrap ml-2" @click="findFills(kind,e.key)">Link remaining fills</button></td>
-      <td><button class="text-red-400" :disabled="preparationLocked||busy||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
+      <td><button class="text-red-400" :disabled="preparationLocked||busy||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1&&(!managing||draft.entries[0].key===e.key))" @click="rows(kind).splice(i,1)">Remove</button></td>
      </tr>
      </tbody><tfoot>
       <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(managing?rows('entry').reduce((sum,e,i)=>sum+Number(e.units??rowUnits('entry',e,i)??0),0):calculation?.plannedQuantity) }}</td><td>{{ managing?rowTotalMoney('entry'):convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>

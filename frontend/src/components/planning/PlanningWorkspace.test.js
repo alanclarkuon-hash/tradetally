@@ -216,3 +216,23 @@ it.each([[-50,'-£40.00','text-red-600'],[50,'£40.00','text-green-600'],[0,'£0
  plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[],capitalRisk:50,capitalRiskCurrency:'USD',stopPnl,stopPnlCurrency:'USD'},stopProjection:{amount:stopPnl,currency:'USD'},history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();const el=wrapper.findAll('.position-metrics small').find(s=>s.text()==='Current risk to stop').element.parentElement.querySelector('strong');expect(el.textContent).toBe(text);if(color)expect(el.classList.contains(color)).toBe(true);else expect(el.className).not.toMatch(/text-(green|red)/);
 });
 it('explains missing entry matches instead of reporting a broker FX failure',async()=>{plan={...plan,status:'entered',finalised:true};const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{matchingUnresolved:1,records:[{action:'entry',stage_key:'a',quantity:10,valid:true,fill:{currency:'USD',price:100}}],currency:'USD',accountCurrency:'USD',realisedProfit:null,accountRealisedProfit:null,positionValue:null,openQuantity:5},history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.text()).toContain('Match entry rows under Exits');expect(wrapper.get('.position-metrics').text()).not.toContain('Broker FX unavailable')});
+
+it('can remove an unlinked added management entry while preserving the only original entry',async()=>{
+ plan.finalised=true;plan.status='entered';plan.management={entry:{extra:{stage:{label:'Extra unlinked stage',accountId:null,riskWeight:0},executed:false,units:null,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[]}},exit:{}};
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ expect(wrapper.vm.managed.entry).toHaveLength(2);
+ const originalRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 1 units"]').exists()),extraRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 2 units"]').exists());
+ const remove=r=>r.findAll('button').find(b=>b.text()==='Remove');
+ expect(remove(originalRow).attributes('disabled')).toBeDefined();expect(remove(extraRow).attributes('disabled')).toBeUndefined();
+ await remove(extraRow).trigger('click');await button('Save changes').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/p/management',expect.objectContaining({management:expect.objectContaining({entry:expect.not.objectContaining({extra:expect.anything()})})}));
+ expect(wrapper.vm.managed.entry.map(r=>r.key)).toEqual(['a']);expect(plan.definition.entries.map(r=>r.key)).toEqual(['a']);
+ await button('Plan').trigger('click');await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed.entry.map(r=>r.key)).toEqual(['a']);
+});
+
+it('still prevents removing an added management entry that has a linked trade',async()=>{
+ plan.finalised=true;plan.status='entered';plan.management={entry:{extra:{stage:{label:'Linked extra stage',accountId:null,riskWeight:0},executed:true,units:1,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[]}},exit:{}};
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'synthetic-link',trade_id:'synthetic-trade',action:'entry',stage_key:'extra',quantity:1,valid:true,fill:{price:95,currency:'USD',time:'2026-01-01T10:00:00Z',provisional:false}}],entered:1,openQuantity:1,currency:'USD'},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const extraRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 2 units"]').exists());expect(extraRow.findAll('button').find(b=>b.text()==='Remove').attributes('disabled')).toBeDefined();
+});
