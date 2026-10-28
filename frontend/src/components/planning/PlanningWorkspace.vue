@@ -368,7 +368,7 @@ function hydrateManagement(){
  hydrating=true;
  for(const kind of ['entry','exit']){
  const original=draft.value?.[kind==='entry'?'entries':'exits']||[],keys=new Set(original.map(e=>e.key));
- const added=Object.entries(plan.value.management?.[kind]||{}).filter(([key,m])=>!keys.has(key)&&m.stage).map(([key,m])=>({key,...m.stage}));
+ const added=Object.entries(plan.value.management?.[kind]||{}).filter(([key,m])=>!keys.has(key)&&m.stage).sort(([,a],[,b])=>(a.position??Number.MAX_SAFE_INTEGER)-(b.position??Number.MAX_SAFE_INTEGER)).map(([key,m])=>({key,...m.stage}));
  managed.value[kind]=[...original,...added].map(e=>{
   const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
   const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>fillRate(a.fill,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,draft.value.currency),0)/q:null;
@@ -382,7 +382,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map((e,position)=>[e.key,{position,...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
  return management
 }
 function mergeNewerManagement(base,local){

@@ -306,12 +306,12 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
 
 router.put('/:id/management',run(async(req,res)=>{
  const stage=Joi.object({label:Joi.string().max(120).required(),accountId:uuid.allow(null).default(null),riskWeight:Joi.number().min(0).max(100).default(0)});
- const row=Joi.object({stage,entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
+ const row=Joi.object({stage,position:Joi.number().integer().min(0).max(39),entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(!p.finalised||['cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
-  const m=schema.value.management;
+  const m=require('../services/planningManagementRows').preservePositions(p.management,schema.value.management);
   for(const [key,row]of Object.entries(m.exit))if(row.entryMatches&&!isDeepStrictEqual(row.entryMatches,p.management?.exit?.[key]?.entryMatches))fail('Save entry matches through the exit match editor');
   for(const [key,row]of Object.entries(p.management?.exit||{}))if(row.entryMatches&&!m.exit[key]?.entryMatches)m.exit[key]={...m.exit[key],entryMatches:row.entryMatches};
   const nextDefinition=definitionForManagement({...p,management:m});

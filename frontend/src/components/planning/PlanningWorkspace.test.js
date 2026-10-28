@@ -236,3 +236,34 @@ it('still prevents removing an added management entry that has a linked trade',a
  mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
  const extraRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 2 units"]').exists());expect(extraRow.findAll('button').find(b=>b.text()==='Remove').attributes('disabled')).toBeDefined();
 });
+
+it.each(['entry','exit'])('keeps a new %s last after JSONB-style save/reload and reopening',async kind=>{
+ const existing='f'.repeat(32);plan.status='entered';plan.finalised=true;
+ plan.management={entry:{},exit:{}};plan.management[kind][existing]={stage:{label:'Earlier custom row',accountId:null,riskWeight:0},executed:false,units:null,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[],...(kind==='exit'?{percent:0,premium:null}:{})};
+ const originalDefinition=structuredClone(plan.definition);
+ put.mockImplementation(async(url,body)=>{if(url.endsWith('/management')){
+  const unordered=Object.fromEntries(['entry','exit'].map(action=>[action,Object.fromEntries(Object.entries(body.management[action]).sort(([a],[b])=>a.length-b.length||a.localeCompare(b)))]));
+  plan={...plan,version:plan.version+1,management:unordered};
+ }return {data:{plan}}});
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Add '+kind).trigger('click');
+ const expected=wrapper.vm.managed[kind].map(r=>r.key),added=expected.at(-1);expect(expected.indexOf(existing)).toBeLessThan(expected.indexOf(added));
+ await button('Save changes').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+ const saved=put.mock.calls.find(([url])=>url.endsWith('/management'))[1].management[kind];
+ expect(saved[existing].position).toBeLessThan(saved[added].position);expect(plan.definition).toEqual(originalDefinition);
+ wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+});
+
+it.each(['entry','exit'])('keeps two new %s rows appended when another row is added during an in-flight save',async kind=>{
+ const pending=deferred();let calls=0;plan.status='entered';plan.finalised=true;
+ put.mockImplementation(async(url,body)=>{if(url.endsWith('/management')){
+  if(++calls===1)await pending.promise;
+  plan={...plan,version:plan.version+1,management:Object.fromEntries(['entry','exit'].map(action=>[action,Object.fromEntries(Object.entries(body.management[action]).sort(([a],[b])=>a.length-b.length||a.localeCompare(b)))]))};
+ }return {data:{plan}}});
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ await button('Add '+kind).trigger('click');const first=wrapper.vm.managed[kind].at(-1).key;
+ await button('Save changes').trigger('click');await flushPromises();expect(calls).toBe(1);
+ // Reproduce a row-add event already queued when the save disabled the page.
+ wrapper.vm.addRow(kind);await wrapper.vm.$nextTick();const second=wrapper.vm.managed[kind].at(-1).key,expected=wrapper.vm.managed[kind].map(r=>r.key);
+ pending.resolve();await flushPromises();expect(calls).toBe(2);expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);expect(wrapper.vm.managed[kind].slice(-2).map(r=>r.key)).toEqual([first,second]);
+ wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+});
