@@ -120,7 +120,7 @@ class Trade {
       originalPnlCurrency, original_pnl_currency, originalCommissionCurrency, original_commission_currency,
       originalFeesCurrency, original_fees_currency,
       stopLoss, takeProfit, takeProfitTargets, chartUrl,
-      brokerConnectionId, accountIdentifier, account_identifier,
+      brokerConnectionId, accountIdentifier, account_identifier, broker_trade_id,
       conid, manualTargetHitFirst,
       postExitWindowOverrideMinutes, post_exit_window_override_minutes,
       postExitMae, postExitMfe, post_exit_mae, post_exit_mfe
@@ -463,6 +463,11 @@ class Trade {
                 console.log("[STOP LOSS] Applied default");
               }
             }
+          } else if (stopLossType === 'points') {
+            finalStopLoss = this.calculateDefaultStopLossFromSettings({
+              symbol, side, entry_price: entryPrice, quantity,
+              instrument_type: instrumentType, underlying_asset: finalUnderlyingAsset || underlyingAsset
+            }, userSettings);
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantity > 0) {
             // Dollar-based stop loss: fixed risk per trade (e.g., $100 per trade)
             // Uses same multipliers as calculatePnL: stocks 1, options contractSize (100), futures pointValue
@@ -595,9 +600,9 @@ class Trade {
         original_currency, exchange_rate, original_entry_price_currency, original_exit_price_currency,
         original_pnl_currency, original_commission_currency, original_fees_currency,
         stop_loss, take_profit, take_profit_targets, r_value, chart_url, broker_connection_id, account_identifier, conid, manual_target_hit_first,
-        post_exit_window_override_minutes, post_exit_mae, post_exit_mfe
+        post_exit_window_override_minutes, post_exit_mae, post_exit_mfe, broker_trade_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64, $65)
       RETURNING *
     `;
 
@@ -627,7 +632,7 @@ class Trade {
       manualTargetHitFirst || null,
       finalPostExitWindowOverrideMinutes,
       roundToDbPrecision(finalPostExitMae),
-      roundToDbPrecision(finalPostExitMfe)
+      roundToDbPrecision(finalPostExitMfe), broker_trade_id || null
     ];
 
     let createdTrade;
@@ -1414,6 +1419,12 @@ class Trade {
                 console.log("[STOP LOSS UPDATE] Applied fallback");
               }
             }
+          } else if (stopLossType === 'points') {
+            updates.stopLoss = this.calculateDefaultStopLossFromSettings({
+              symbol, side, entry_price: entryPrice, quantity: quantityForDefaults,
+              instrument_type: updates.instrumentType ?? currentTrade.instrument_type,
+              underlying_asset: updates.underlyingAsset ?? currentTrade.underlying_asset
+            }, userSettings);
           } else if (stopLossType === 'dollar' && userSettings?.default_stop_loss_dollars > 0 && quantityForDefaults > 0) {
             // Dollar-based stop loss (same multipliers as calculatePnL for options/futures)
             const stopLossDollars = parseFloat(userSettings.default_stop_loss_dollars);
@@ -2110,8 +2121,8 @@ class Trade {
     // Determine the multiplier based on instrument type
     let multiplier;
     if (instrumentType === 'future') {
-      // For futures, use point value (e.g., $5 per point for ES, $2 for MNQ)
-      multiplier = pointValue || 1;
+      if (!Number.isFinite(Number(pointValue)) || Number(pointValue) <= 0) return null;
+      multiplier = Number(pointValue);
     } else if (instrumentType === 'option') {
       // For options, use contract size (typically 100 shares per contract)
       multiplier = contractSize || 100;
@@ -2140,6 +2151,7 @@ class Trade {
   static calculatePnLPercent(entryPrice, exitPrice, side, pnl = null, quantity = null, instrumentType = 'stock', pointValue = null, contractSize = null) {
     // Note: exitPrice === 0 is valid for expired worthless options, so use explicit null checks
     if (exitPrice == null || entryPrice == null || entryPrice <= 0) return null;
+    if (instrumentType === 'future' && !(Number(pointValue) > 0)) return null;
 
     let pnlPercent;
 
@@ -2220,6 +2232,7 @@ class Trade {
         finalPointValue = getFuturesPointValue(underlying);
       }
 
+      if (!Number.isFinite(finalPointValue) || finalPointValue <= 0) return null;
       multiplier = finalPointValue;
     } else if (normalizedInstrumentType === 'option') {
       const parsedContractSize = contractSize ? parseFloat(contractSize) : null;
@@ -2250,7 +2263,8 @@ class Trade {
     if (!defaultStopLossDollars || defaultStopLossDollars <= 0 || !quantity || quantity <= 0) return null;
     let multiplier;
     if (instrumentType === 'future') {
-      multiplier = pointValue || 1;
+      if (!Number.isFinite(Number(pointValue)) || Number(pointValue) <= 0) return null;
+      multiplier = Number(pointValue);
     } else if (instrumentType === 'option') {
       multiplier = contractSize || 100;
     } else {
@@ -2476,6 +2490,18 @@ class Trade {
       } else if (side === 'short' || side === 'sell') {
         stopLoss = entryPrice * (1 + stopLossPercent / 100);
       }
+    } else if (stopLossType === 'points') {
+      const instrument_type = normalizeInstrumentType(trade.instrument_type || trade.instrumentType || 'stock', trade.symbol);
+      const underlying = String(instrument_type === 'future'
+        ? (trade.underlying_asset || trade.underlyingAsset || extractUnderlyingFromFuturesSymbol(trade.symbol))
+        : trade.symbol || '').trim().toUpperCase();
+      const overrides = settings?.default_stop_loss_points_by_underlying ?? settings?.defaultStopLossPointsByUnderlying ?? {};
+      const points = Number(Object.prototype.hasOwnProperty.call(overrides, underlying)
+        ? overrides[underlying]
+        : (settings?.default_stop_loss_points ?? settings?.defaultStopLossPoints));
+      if (!Number.isFinite(points) || points <= 0) return null;
+      if (side === 'long' || side === 'buy') stopLoss = entryPrice - points;
+      else if (side === 'short' || side === 'sell') stopLoss = entryPrice + points;
     } else if (stopLossType === 'dollar') {
       const stopLossDollars = parseFloat(this.getSettingValue(settings, 'default_stop_loss_dollars', 'defaultStopLossDollars'));
       if (!isFinite(stopLossDollars) || stopLossDollars <= 0 || !isFinite(quantity) || quantity <= 0) return null;

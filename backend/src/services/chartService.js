@@ -25,15 +25,15 @@ function toEpochSeconds(value) {
 
 class ChartService {
   static async convertTradeChartForDisplay(req, chart_data, candles_source) {
-    const { convertForDisplay, resolveDisplayCurrency, getRatesToDisplay } = require('../utils/displayCurrency');
-    const display_currency = await resolveDisplayCurrency(req.user.id);
+    const { convertForDisplay, getRatesToDisplay } = require('../utils/displayCurrency');
     const converted = await convertForDisplay(req, chart_data, {
       clone: true,
       rowCurrency: true,
       skipKeys: new Set(['candles'])
     });
+    const price_currency = converted.trade?.price_currency || converted.display_currency || display_currency;
     const sources = [...new Set([candles_source,...(chart_data.trade?.executions||[]).map(e=>e.source_price_currency).filter(Boolean)])];
-    const rates = await getRatesToDisplay(sources, display_currency);
+    const rates = await getRatesToDisplay(sources, price_currency);
     for(const [index,e] of (converted.trade?.executions||[]).entries()){
       const source=chart_data.trade.executions[index];
       if(source.source_price_currency && Number.isFinite(source.source_price)){
@@ -41,11 +41,11 @@ class ChartService {
         e.source_price=source.source_price;
         e.source_price_currency=source.source_price_currency;
         e.price=r ? source.source_price*r : null;
-        e.price_currency=r ? display_currency : source.source_price_currency;
+        e.price_currency=r ? price_currency : source.source_price_currency;
       }
     }
     const candle_rate = rates[candles_source];
-    converted.candles_currency = candle_rate ? display_currency : candles_source;
+    converted.candles_currency = candle_rate ? price_currency : candles_source;
     if (candle_rate && Array.isArray(converted.candles)) {
       for (const candle of converted.candles) {
         for (const field of ['open', 'high', 'low', 'close']) {
@@ -59,13 +59,13 @@ class ChartService {
     // Split detection compares prices, so both sides must first be in the
     // same currency. An FX ratio must never be interpreted as a stock split.
     const trade = converted.trade;
-    const trade_currency = trade?.effective_currency || trade?.currency || converted.display_currency;
+    const trade_currency = trade?.price_currency || trade?.effective_currency || trade?.currency || converted.display_currency;
     converted.price_scale = 1;
     if (trade && trade_currency === converted.candles_currency) {
       this.alignCandlesToTradePrices(converted, {
         instrument_type: trade.instrument_type ?? trade.instrumentType,
-        entry_price: trade.entry_price ?? trade.entryPrice,
-        exit_price: trade.exit_price ?? trade.exitPrice,
+        entry_price: trade.native_prices?.entry_price ?? trade.entry_price ?? trade.entryPrice,
+        exit_price: trade.native_prices?.exit_price ?? trade.exit_price ?? trade.exitPrice,
         entry_time: trade.entry_time ?? trade.entryTime ?? trade.entryDate,
         exit_time: trade.exit_time ?? trade.exitTime ?? trade.exitDate,
         trade_date: trade.trade_date ?? trade.tradeDate
@@ -258,13 +258,9 @@ class ChartService {
   // When billing is disabled (self-hosted): configured market data provider preferred, Alpha Vantage fallback, all users
   static async getTradeChartData(userId, symbol, entryDate, exitDate = null, hostHeader = null, resolution = '1', trade = null) {
     try {
-      // Crypto symbols always use CoinGecko regardless of tier/billing
-      if (finnhub.isCryptoSymbol(symbol)) {
-        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
-        return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
-      }
-
-      // Check user tier and billing status
+      // Check user tier and billing status. This runs before every data
+      // source (crypto included) so the Pro gate cannot be bypassed by
+      // instrument type.
       const userTier = await TierService.getUserTier(userId, hostHeader);
       const isProUser = userTier === 'pro';
       const billingEnabled = await TierService.isBillingEnabled(hostHeader);
@@ -278,6 +274,12 @@ class ChartService {
         const error = new Error('Trade charts are a Pro feature. Upgrade to Pro for high-precision candlestick charts.');
         error.statusCode = 403;
         throw error;
+      }
+
+      // Crypto symbols use CoinGecko on every install (after the tier gate)
+      if (finnhub.isCryptoSymbol(symbol)) {
+        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
+        return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
       }
 
       // Futures select by provider capability; configured sources are tried

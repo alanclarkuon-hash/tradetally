@@ -475,7 +475,17 @@
 
             <!-- AI Insight of the Day -->
             <template v-if="element.id === 'ai-insight'">
+              <div v-if="showProLock" class="card" data-testid="ai-insight-locked">
+                <div class="card-body">
+                  <h3 class="heading-card">AI Insight</h3>
+                  <ProUpgradePrompt
+                    variant="compact"
+                    description="Get a daily AI insight on your trading patterns with TradeTally Pro."
+                  />
+                </div>
+              </div>
               <AiInsightCard
+                v-else-if="isProUser"
                 :insights="aiInsights"
                 :loading="aiInsightLoading"
                 :error="aiInsightError"
@@ -1080,7 +1090,7 @@
             <!-- Upcoming Earnings Section (Pro Only) -->
             <template v-if="element.id === 'upcoming-earnings'">
               <UpcomingEarningsSection
-                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                v-if="openTradeSymbols.length > 0 && isProUser"
                 :symbols="openTradeSymbols"
               />
             </template>
@@ -1088,7 +1098,7 @@
             <!-- Trade News Section (Pro Only) -->
             <template v-if="element.id === 'trade-news'">
               <TradeNewsSection
-                v-if="openTradeSymbols.length > 0 && authStore.user?.tier === 'pro'"
+                v-if="openTradeSymbols.length > 0 && isProUser"
                 :symbols="openTradeSymbols"
               />
             </template>
@@ -1666,6 +1676,9 @@ import MoneyPrivacyToggle from '@/components/dashboard/MoneyPrivacyToggle.vue'
 import { useDashboardPrivacy } from '@/composables/useDashboardPrivacy'
 import { ref, onMounted, nextTick, watch, computed, onUnmounted, defineAsyncComponent } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useProAccess } from '@/composables/useProAccess'
+import { isProTradeFilterKey } from '@/utils/proTradeFilters'
+import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { formatTradeDate, formatLocalDate } from '@/utils/date'
@@ -1730,6 +1743,7 @@ import { plan_bar, range_bar } from '@/utils/positionRangeBars'
 import draggable from 'vuedraggable'
 
 const authStore = useAuthStore()
+const { isProUser, showProLock } = useProAccess()
 const { formatTime: formatTimeTz } = useUserTimezone()
 const { hideAmounts } = useDashboardPrivacy()
 const { formatCurrency, currencySymbol, currencyCode, formatSignedCurrency } = useCurrencyFormatter({ privacy: hideAmounts })
@@ -1999,6 +2013,8 @@ const activeAdvancedFilterCount = computed(() => {
 function appendAdvancedFilterParams(params) {
   for (const [k, v] of Object.entries(appliedFilters.value || {})) {
     if (ADVANCED_FILTER_IGNORE_KEYS.has(k)) continue
+    // Advanced-panel filters are Pro-only; the API ignores them for free users.
+    if (showProLock.value && isProTradeFilterKey(k)) continue
     if (!isActiveAdvancedFilterValue(v)) continue
     params.append(k, Array.isArray(v) ? v.join(',') : String(v))
   }
@@ -2108,6 +2124,12 @@ const aiInsightError = ref(null)
 
 let fetchAiInsightRequestId=0
 async function fetchAiInsight() {
+  // AI insights are a Pro feature; free users see an upgrade prompt instead.
+  if (!isProUser.value) {
+    aiInsights.value = []
+    aiInsightLoading.value = false
+    return
+  }
   const requestId=++fetchAiInsightRequestId
   aiInsightLoading.value = true
   aiInsightError.value = null
@@ -2220,7 +2242,7 @@ const newsRailSection = computed(
 const newsRailUserVisible = computed(() => newsRailSection.value?.visible !== false)
 const showNewsRail = computed(() => {
   if (openTradeSymbols.value.length === 0) return false
-  if (authStore.user?.tier !== 'pro') return false
+  if (!isProUser.value) return false
   // While customizing, keep the rail mounted so the toggle/header is visible.
   return newsRailUserVisible.value || isCustomizing.value
 })
@@ -3164,6 +3186,8 @@ watch(filters, () => {
   if (filters.value.timeRange === 'custom' && (!filters.value.startDate || !filters.value.endDate || filters.value.startDate > filters.value.endDate)) return
   applyFilters()
 }, { deep: true })
+
+watch(isProUser, (is_pro, was_pro) => { if (is_pro && !was_pro) fetchAiInsight() })
 // Watch for global account filter changes
 watch(selectedAccount, () => {
   analytics.value=null;recentTrades.value=[];aiInsights.value=[];behavioralSummary.value=null;openTrades.value=[]

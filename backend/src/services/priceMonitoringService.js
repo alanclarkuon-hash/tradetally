@@ -98,6 +98,43 @@ class PriceMonitoringService {
       lastRotation:this.lastRotation,lastBatch:this.lastBatch};
   }
 
+  // Symbols to refresh each cycle. Open-trade symbols are always included
+  // because they feed the (free) dashboard open-positions quotes via the
+  // price_monitoring cache. Alert, watchlist and holdings symbols are Pro
+  // features, so they are only monitored for users who are currently Pro.
+  async getMonitoredSymbols() {
+    const [openTradeResult, proFeatureResult] = await Promise.all([
+      db.query(`
+        SELECT DISTINCT symbol FROM trades
+        WHERE exit_price IS NULL AND exit_time IS NULL
+      `),
+      db.query(`
+        SELECT DISTINCT symbol, user_id
+        FROM (
+          SELECT symbol, user_id FROM price_alerts WHERE is_active = TRUE
+          UNION
+          SELECT wi.symbol, w.user_id
+            FROM watchlist_items wi
+            JOIN watchlists w ON w.id = wi.watchlist_id
+          UNION
+          SELECT symbol, user_id FROM investment_holdings
+        ) AS pro_symbols
+      `)
+    ]);
+
+    const proUserIds = new Set(
+      await TierService.filterProUserIds(proFeatureResult.rows.map(row => row.user_id))
+    );
+
+    const symbols = new Set(openTradeResult.rows.map(row => row.symbol));
+    for (const row of proFeatureResult.rows) {
+      if (proUserIds.has(String(row.user_id))) {
+        symbols.add(row.symbol);
+      }
+    }
+    return [...symbols].filter(Boolean);
+  }
+
   async monitorPrices() {
     if (this.cycleRunning) {this.skippedTicks++;return;}
     this.cycleRunning = true;
@@ -119,6 +156,8 @@ class PriceMonitoringService {
       `;
 
       const symbolsResult = await db.query(symbolsQuery);
+      const permittedSymbols = new Set(await this.getMonitoredSymbols());
+      symbolsResult.rows = symbolsResult.rows.filter(row => permittedSymbols.has(row.symbol));
       const snapshots = await db.query('SELECT positions FROM broker_portfolio_snapshots');
       const { currentSymbol } = require('./brokerSync/trading212Instruments');
       const brokerSymbols = snapshots.rows.flatMap(row => (row.positions || []).map(p => ({

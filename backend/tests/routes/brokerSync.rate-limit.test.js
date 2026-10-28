@@ -17,6 +17,8 @@ jest.mock('../../src/controllers/brokerSync.controller', () => ({
   addEtoroConnection: jest.fn(),
   addOkxConnection: jest.fn(),
   addKrakenConnection: jest.fn(),
+  getOandaAccounts: jest.fn((req, res) => res.json({ success: true, data: [] })),
+  addOandaConnection: jest.fn(),
   initSchwabOAuth: jest.fn((req, res) => {
     res.json({ success: true, auth_url: 'https://example.com/oauth' });
   }),
@@ -38,7 +40,7 @@ const request = require('supertest');
 const brokerSyncRoutes = require('../../src/routes/brokerSync.routes');
 
 describe('broker sync route rate limiting', () => {
-  test('POST /connections/schwab/init returns the standardized 429 payload after the route limit is exceeded', async () => {
+  test('Schwab initialization and OANDA account discovery share the standardized route limit', async () => {
     const app = express();
     app.set('trust proxy', false);
     app.use(express.json());
@@ -46,8 +48,8 @@ describe('broker sync route rate limiting', () => {
 
     for (let i = 0; i < 20; i += 1) {
       const response = await request(app)
-        .post('/connections/schwab/init')
-        .send({});
+        .post(i % 2 ? '/connections/oanda/accounts' : '/connections/schwab/init')
+        .send(i % 2 ? { api_token: 'test-token', broker_environment: 'practice' } : {});
       expect(response.status).toBe(200);
     }
 

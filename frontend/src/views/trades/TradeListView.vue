@@ -276,6 +276,9 @@
               <button @click="showBulkStopsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
                 Set stops / R
               </button>
+              <button @click="showBulkChartsModal = true" class="px-3 py-2 text-sm bg-primary-600 text-white rounded-md hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2">
+                Add chart link
+              </button>
               <button
                 v-if="allocationEnabled && allocationGroups.length >= 2"
                 @click="showBulkAllocationModal = true"
@@ -367,12 +370,12 @@
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Entry</div>
-              <div class="text-gray-900 dark:text-white">{{ formatTradeCurrency(trade.entry_price, trade) }}</div>
+              <div class="text-gray-900 dark:text-white">{{ formatTradePrice(trade, 'entry_price') }}</div>
             </div>
             <div>
               <div class="text-gray-500 dark:text-gray-400">Exit</div>
               <div class="text-gray-900 dark:text-white">
-                {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
+                {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradePrice(trade, 'exit_price') : '-' }}
               </div>
             </div>
             <div>
@@ -571,7 +574,7 @@
                         <!-- Instrument type badge -->
                         <span v-if="getInstrumentType(trade) === 'option'"
                           :class="tradeBadgeClass('option')"
-                          :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatTradeCurrency(trade.strike_price, trade)} - Exp: ${trade.expiration_date}`">
+                          :title="`${trade.option_type?.toUpperCase()} - Strike: ${formatTradePrice(trade, 'strike_price')} - Exp: ${trade.expiration_date}`">
                           OPT
                         </span>
                         <span v-else-if="getInstrumentType(trade) === 'future'"
@@ -647,14 +650,14 @@
                 <td v-else-if="column.visible && column.key === 'entry'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ formatTradeCurrency(trade.entry_price, trade) }}
+                  {{ formatTradePrice(trade, 'entry_price') }}
                 </td>
 
                 <!-- Exit Column -->
                 <td v-else-if="column.visible && column.key === 'exit'" 
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']" 
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradeCurrency(trade.exit_price, trade) : '-' }}
+                  {{ trade.exit_price !== null && trade.exit_price !== undefined ? formatTradePrice(trade, 'exit_price') : '-' }}
                 </td>
 
                 <!-- Net P&L Column -->
@@ -875,7 +878,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.stop_loss || trade.stopLoss) ? formatTradeCurrency(trade.stop_loss || trade.stopLoss, trade) : '-' }}
+                    {{ (trade.stop_loss || trade.stopLoss) ? formatTradePrice(trade, 'stop_loss') : '-' }}
                   </div>
                 </td>
 
@@ -883,7 +886,7 @@
                     :class="[getCellPadding, 'whitespace-nowrap cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
                   <div class="text-sm text-gray-900 dark:text-white font-mono">
-                    {{ (trade.take_profit || trade.takeProfit) ? formatTradeCurrency(trade.take_profit || trade.takeProfit, trade) : '-' }}
+                    {{ (trade.take_profit || trade.takeProfit) ? formatTradePrice(trade, 'take_profit') : '-' }}
                   </div>
                 </td>
 
@@ -946,7 +949,7 @@
                 <td v-else-if="column.visible && column.key === 'strikePrice'"
                     :class="[getCellPadding, 'whitespace-nowrap text-sm text-gray-900 dark:text-white cursor-pointer']"
                     @click="$router.push(`/trades/${trade.id}`)">
-                  {{ trade.strike_price ? formatTradeCurrency(trade.strike_price, trade) : '-' }}
+                  {{ trade.strike_price ? formatTradePrice(trade, 'strike_price') : '-' }}
                 </td>
 
                 <td v-else-if="column.visible && column.key === 'expirationDate'"
@@ -1174,6 +1177,8 @@
     />
     <BulkTradeStopsModal :open="showBulkStopsModal" :trade-ids="selectedTrades" :trades="tradesStore.trades"
       @close="showBulkStopsModal = false" @saved="handleBulkStopsSaved" />
+    <BulkTradeChartsModal :open="showBulkChartsModal" :trade_ids="selectedTrades"
+      @close="showBulkChartsModal = false" @saved="handleBulkChartsSaved" />
   </div>
 </template>
 
@@ -1193,6 +1198,7 @@ const TradeFilters = defineAsyncComponent(() => import('@/components/trades/Trad
 const BulkTradeAllocationModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeAllocationModal.vue'))
 const BulkTradeEditModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeEditModal.vue'))
 const BulkTradeStopsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeStopsModal.vue'))
+const BulkTradeChartsModal = defineAsyncComponent(() => import('@/components/trades/BulkTradeChartsModal.vue'))
 import TradeCommentsDialog from '@/components/trades/TradeCommentsDialog.vue'
 import EnrichmentStatus from '@/components/trades/EnrichmentStatus.vue'
 import ColumnCustomizer from '@/components/trades/ColumnCustomizer.vue'
@@ -1203,6 +1209,7 @@ import TradeMarketSessionBadge from '@/components/trades/TradeMarketSessionBadge
 import { mdiNewspaper } from '@mdi/js'
 import api from '@/services/api'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useTradePriceFormatter } from '@/composables/useTradePriceFormatter'
 import { getTradeDateOnlyParts } from '@/utils/date'
 import { getTradeGrossPnl, isTradeOpen } from '@/utils/tradePnl'
 import { getTradeSessionBadge } from '@/utils/tradeMarketSession'
@@ -1214,6 +1221,7 @@ const uiPreferencesStore = useUiPreferencesStore()
 const { showSuccess, showWarning } = useNotification()
 const { selectedAccount } = useGlobalAccountFilter()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+const { formatTradePrice } = useTradePriceFormatter()
 const { formatTime: formatTimeTz, userTimezone } = useUserTimezone()
 const route = useRoute()
 const router = useRouter()
@@ -1341,6 +1349,7 @@ const allocationEnabled = ref(false)
 const allocationGroups = ref([])
 const showBulkAllocationModal = ref(false)
 const showBulkEditModal = ref(false)
+const showBulkChartsModal = ref(false)
 const showBulkStopsModal = ref(false)
 
 // Filters modal
@@ -1938,6 +1947,11 @@ function handleBulkEditSaved(result) {
 
 function handleBulkStopsSaved(result) {
   showBulkStopsModal.value = false
+  handleBulkEditSaved(result)
+}
+
+function handleBulkChartsSaved(result) {
+  showBulkChartsModal.value = false
   handleBulkEditSaved(result)
 }
 

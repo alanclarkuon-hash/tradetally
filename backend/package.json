@@ -1,6 +1,6 @@
 {
   "name": "tradetally-backend",
-  "version": "2.13.0",
+  "version": "2.14.0",
   "packageManager": "pnpm@10.34.5",
   "description": "Backend API for TradeTally trade journaling platform",
   "main": "src/server.js",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
+    "@apple/app-store-server-library": "^3.1.0",
     "@google/generative-ai": "^0.24.1",
     "@opentelemetry/api-logs": "^0.220.0",
     "@opentelemetry/exporter-logs-otlp-http": "^0.220.0",
@@ -44,7 +45,6 @@
     "multer": "^2.3.0",
     "node-cron": "^4.6.0",
     "node-fetch": "^2.7.0",
-    "node-forge": "^1.4.0",
     "nodemailer": "^10.0.10",
     "openai": "^6.46.0",
     "pdf-parse": "2.4.5",
