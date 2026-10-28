@@ -267,3 +267,36 @@ it.each(['entry','exit'])('keeps two new %s rows appended when another row is ad
  pending.resolve();await flushPromises();expect(calls).toBe(2);expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);expect(wrapper.vm.managed[kind].slice(-2).map(r=>r.key)).toEqual([first,second]);
  wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
 });
+
+
+it.each(['entry','exit'])('filters %s broker order numbers without losing hidden selections or unlinking hidden trades',async kind=>{
+ plan.status='entered';plan.finalised=true;const stage=kind==='entry'?'a':'b';
+ const ids=['8100000000000000001','8100000000000000002','8100000000000000003'];
+ const records=ids.slice(0,2).map((orderId,i)=>({id:'linked'+i,trade_id:'old'+i,source_key:'key'+i,stage_key:stage,action:kind,quantity:1,valid:true,fill:{provisional:false,price:100,currency:'USD',time:'2026-01-01',orderId}}));
+ const available=[ids[0],ids[2],null].map((orderId,i)=>({tradeId:'available'+i,key:'fill'+i,fingerprint:'a'.repeat(64),action:kind,quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01',orderId}));
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records,openQuantity:2},history:[]}}):url.endsWith('/fills')?Promise.resolve({data:{fills:available}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Unlink trade').trigger('click');await flushPromises();post.mockClear();put.mockClear();
+ const filter=()=>wrapper.get('input[aria-label="Filter by order number"]');
+ await filter().setValue('  '+ids[0]+'  ');
+ expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(1);
+ expect(wrapper.findAll('[role="dialog"] input[aria-label^="Select fill"]')).toHaveLength(1);
+ await wrapper.get('input[aria-label="Select fill available0:fill0"]').setValue(true);
+ await wrapper.get('input[aria-label="Keep linked fill linked0"]').setValue(false);
+ await filter().setValue(ids[2]);await wrapper.get('input[aria-label="Select fill available1:fill1"]').setValue(true);
+ expect(post).not.toHaveBeenCalled();expect(put).not.toHaveBeenCalled();
+ await button('Clear order filter').trigger('click');
+ expect(wrapper.findAll('[role="dialog"] input[aria-label^="Select fill"]')).toHaveLength(3);
+ expect(wrapper.get('input[aria-label="Select fill available0:fill0"]').element.checked).toBe(true);
+ expect(wrapper.get('input[aria-label="Keep linked fill linked1"]').element.checked).toBe(true);
+ await filter().setValue('no-such-order');expect(wrapper.text()).toContain('No available trades match this order number');expect(wrapper.text()).toContain('No linked trades match this order number');
+ await button('Link selected trades').trigger('click');await flushPromises();
+ expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',expect.objectContaining({action:kind,stageKey:stage,removeAllocationIds:['linked0'],fills:[expect.objectContaining({tradeId:'available0',quantity:1}),expect.objectContaining({tradeId:'available1',quantity:1})]}));
+});
+
+it('resets the order filter on reopen and accepts partial alphanumeric broker IDs',async()=>{
+ plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'one',key:'one',action:'entry',orderId:'SYNTH-ABC-0042',quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await button('Link trade').trigger('click');await flushPromises();
+ await wrapper.get('input[aria-label="Filter by order number"]').setValue('abc-00');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
+ await wrapper.get('input[aria-label="Filter by order number"]').setValue('missing');await wrapper.findAll('[role="dialog"] button').find(b=>b.text()==='Close').trigger('click');
+ await button('Link trade').trigger('click');await flushPromises();expect(wrapper.get('input[aria-label="Filter by order number"]').element.value).toBe('');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
+});
