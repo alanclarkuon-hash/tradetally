@@ -26,9 +26,7 @@ const props=defineProps({customizing:Boolean,dataAvailable:{type:Boolean,default
 const preferences=useUiPreferencesStore()
 const key='portfolioDashboardLayout'
 const defaults=[
-  {id:'total',title:'Combined portfolio value'},
-  {id:'holdings',title:'Holdings value'},
-  {id:'cash',title:'Cash & stablecoins'},
+  {id:'total',title:'Combined portfolio value',wide:true},
   {id:'allocation',title:'Capital at work',wide:true},
   {id:'history',title:'Portfolio Value',wide:true},
   {id:'heatmap',title:'Inside your holdings',wide:true},
@@ -39,9 +37,18 @@ const layout=ref(fresh())
 let ready=false
 function restore(saved){
   const found=new Set(),cards=[]
-  for(const entry of Array.isArray(saved)?saved:[]){
-    const definition=defaults.find(card=>card.id===entry?.id)
-    if(definition&&!found.has(entry.id)){cards.push({...definition,visible:entry.visible!==false});found.add(entry.id)}
+  const entries=Array.isArray(saved)?saved:[]
+  const summaryIds=['total','holdings','cash']
+  const hasLegacySummary=entries.some(entry=>['holdings','cash'].includes(entry?.id))
+  for(const entry of entries){
+    const id=summaryIds.includes(entry?.id)?'total':entry?.id
+    const definition=defaults.find(card=>card.id===id)
+    if(definition&&!found.has(id)){
+      const visible=id==='total'&&hasLegacySummary
+        ?entries.some(card=>summaryIds.includes(card?.id)&&card.visible!==false)
+        :entry.visible!==false
+      cards.push({...definition,visible});found.add(id)
+    }
   }
   return [...cards,...fresh().filter(card=>!found.has(card.id))]
 }

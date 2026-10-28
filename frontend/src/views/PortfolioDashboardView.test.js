@@ -45,6 +45,24 @@ beforeEach(() => {
 })
 
 describe('Portfolio summary cards', () => {
+  it('keeps total, holdings and cash breakdown in one card with a shared currency control',async()=>{
+    mock.get.mockImplementation(async url=>({data:url.endsWith('/dashboard')?{...dashboard,currency:'GBP',totals:{...dashboard.totals,cashValue:30,stablecoinValue:10}}:url.endsWith('/display-fx')?{rates:{USD:1,GBP:.8,EUR:.9}}:{change:25}}))
+    const view=create();await flushPromises()
+    const card=view.find('[data-card="total"]')
+    expect(card.text()).toContain('Combined portfolio value')
+    expect(card.text()).toContain('£100.00')
+    expect(card.text()).toContain('Holdings value£60.00')
+    expect(card.text()).toContain('Cash & stablecoins£40.00')
+    expect(card.text()).toContain('Cash £30.00 · Stablecoins £10.00')
+    expect(card.findAll('button.currency-toggle')).toHaveLength(1)
+    expect(view.find('[data-card="holdings"]').exists()).toBe(false)
+    expect(view.find('[data-card="cash"]').exists()).toBe(false)
+    await card.find('button.currency-toggle').trigger('click');await flushPromises()
+    expect(card.text()).toContain('$125.00')
+    expect(card.text()).toContain('Holdings value$75.00')
+    expect(card.text()).toContain('Cash & stablecoins$50.00')
+    view.unmount()
+  })
   it('refreshes background metadata without recapturing history and stops after completion',async()=>{
     vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval']})
     let calls=0
@@ -170,9 +188,9 @@ describe('Portfolio summary cards', () => {
     const view = create()
     await flushPromises()
     expect(view.findAll('article')[0].text()).toContain('£100.00')
-    expect(view.findAll('article')[1].text()).toContain('£60.00')
+    expect(view.find('[aria-label="Portfolio value summary"]').text()).toContain('£60.00')
     expect(view.findAll('article')[0].text()).not.toContain('change')
-    expect(view.findAll('article')[1].text()).not.toContain('since acquisition')
+    expect(view.find('[aria-label="Portfolio value summary"]').text()).not.toContain('since acquisition')
     expect(view.findComponent({ name: 'PortfolioValueChart' }).props('history')).toEqual({change:25,captureWarnings:[]})
     view.unmount()
   })
