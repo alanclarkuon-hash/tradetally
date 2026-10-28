@@ -18,7 +18,10 @@ jest.mock('../../src/utils/historicalPriceCache', () => ({}));
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => ({ sendMail: jest.fn() }))
 }));
-jest.mock('../../src/services/tierService', () => ({}));
+jest.mock('../../src/services/tierService', () => ({
+  filterProUserIds: jest.fn(),
+  isProUser: jest.fn().mockResolvedValue(true)
+}));
 jest.mock('../../src/services/notificationPreferenceService', () => ({
   isNotificationEnabled: jest.fn()
 }));
@@ -33,12 +36,15 @@ const finnhub = require('../../src/utils/finnhub');
 const priceFallbackManager = require('../../src/utils/priceFallbackManager');
 const priceMonitoringService = require('../../src/services/priceMonitoringService');
 const currentQuotes = require('../../src/services/currentQuoteService');
+const TierService = require('../../src/services/tierService');
 
 describe('priceMonitoringService price alert webhook publication', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(true);
     db.query.mockResolvedValue({ rows: [] });
+    TierService.filterProUserIds.mockImplementation(async ids=>ids.map(String));
+    jest.spyOn(priceMonitoringService,'getMonitoredSymbols').mockImplementation(async()=> (await db.query('SELECT symbol FROM (SELECT DISTINCT symbol FROM trades) permitted')).rows.map(r=>r.symbol));
     finnhub.isCryptoSymbol = jest.fn(() => false);
     priceFallbackManager.getQuoteWithFallback = jest.fn();
     priceMonitoringService.failedSymbols.clear();
@@ -120,6 +126,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
   });
 
   test('scheduled monitoring retains trade instrument types instead of guessing from ticker',async()=>{
+    priceMonitoringService.getMonitoredSymbols.mockResolvedValue(['FET']);
     db.query.mockResolvedValueOnce({rows:[{symbol:'FET',instrument_type:'crypto'},{symbol:'FET',instrument_type:'stock'}]});
     db.query.mockResolvedValueOnce({rows:[]});
     const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
@@ -138,6 +145,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
     expect(priceMonitoringService.cycleRunning).toBe(false);
   });
   test('failed symbols do not starve later independent broker holdings',async()=>{
+    priceMonitoringService.getMonitoredSymbols.mockResolvedValue(Array.from({length:6},(_,i)=>'FAILED'+i).concat(['WAGB.L']));
     db.query.mockResolvedValueOnce({rows:Array.from({length:6},(_,i)=>({symbol:'FAILED'+i,instrument_type:'stock'})).concat([{symbol:'WAGB.L',instrument_type:'stock'}])}).mockResolvedValue({rows:[]});
     const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
     await priceMonitoringService.monitorPrices();
@@ -158,4 +166,49 @@ describe('priceMonitoringService price alert webhook publication', () => {
     update.mockRestore();now.mockRestore();priceMonitoringService.maxSymbolsPerCycle=limit;
   });
 
+});
+
+describe('priceMonitoringService Pro gating', () => {
+  beforeEach(() => {
+    priceMonitoringService.getMonitoredSymbols.mockRestore?.();
+    jest.clearAllMocks();
+    TierService.filterProUserIds.mockImplementation(async ids => ids.filter(id => id === 'pro-user'));
+  });
+
+  test('checkAlerts only triggers alerts for users resolved as Pro', async () => {
+    db.query.mockResolvedValueOnce({
+      rows: [
+        { id: 'a-free', user_id: 'free-user', symbol: 'AAPL' },
+        { id: 'a-pro', user_id: 'pro-user', symbol: 'AAPL' }
+      ]
+    });
+    const shouldSpy = jest.spyOn(priceMonitoringService, 'shouldTriggerAlert').mockReturnValue(true);
+    const triggerSpy = jest.spyOn(priceMonitoringService, 'triggerAlert').mockResolvedValue();
+
+    await priceMonitoringService.checkAlerts();
+
+    expect(TierService.filterProUserIds).toHaveBeenCalledWith(['free-user', 'pro-user']);
+    expect(triggerSpy).toHaveBeenCalledTimes(1);
+    expect(triggerSpy.mock.calls[0][0].id).toBe('a-pro');
+    shouldSpy.mockRestore();
+    triggerSpy.mockRestore();
+  });
+
+  test('monitors open-trade symbols for everyone but Pro-feature symbols only for Pro users', async () => {
+    db.query.mockImplementation(async (sql) => {
+      if (sql.includes('FROM trades')) {
+        return { rows: [{ symbol: 'SPY' }] };
+      }
+      return {
+        rows: [
+          { symbol: 'TSLA', user_id: 'free-user' },
+          { symbol: 'NVDA', user_id: 'pro-user' }
+        ]
+      };
+    });
+
+    const symbols = await priceMonitoringService.getMonitoredSymbols();
+
+    expect(symbols.sort()).toEqual(['NVDA', 'SPY']);
+  });
 });

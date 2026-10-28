@@ -1,6 +1,12 @@
 const db = require('../config/database');
 const NotificationPreferenceService = require('./notificationPreferenceService');
 
+// Lazy require keeps this module free of a load-time dependency cycle.
+async function isProUser(userId) {
+  const TierService = require('./tierService');
+  return TierService.isProUser(userId);
+}
+
 class NotificationService {
   
   // Get SSE connections from notifications controller
@@ -317,10 +323,16 @@ class NotificationService {
   // Send behavioral pattern alert
   static async sendBehavioralAlert(userId, patternType, severity, message) {
     try {
+      // Pro-only content
+      if (!await isProUser(userId)) {
+        console.log(`[INFO] Behavioral alert notification skipped for recipient - Pro required`);
+        return;
+      }
+
       // Check if user has trade reminders enabled (closest preference for behavioral alerts)
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
-        console.log(`Behavioral alert notification skipped for user ${userId} - preference disabled`);
+        console.log(`Behavioral alert notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -345,10 +357,16 @@ class NotificationService {
   // Send price alert notification (existing functionality)
   static async sendPriceAlert(userId, alert) {
     try {
+      // Pro-only content
+      if (!await isProUser(userId)) {
+        console.log(`[INFO] Price alert notification skipped for recipient - Pro required`);
+        return;
+      }
+
       // Check if user has price alerts enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
       if (!isEnabled) {
-        console.log(`Price alert notification skipped for user ${userId} - preference disabled`);
+        console.log(`Price alert notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -389,10 +407,16 @@ class NotificationService {
   // Send news notification for open positions
   static async sendNewsNotification(userId, newsData) {
     try {
+      // Pro-only content
+      if (!await isProUser(userId)) {
+        console.log(`[INFO] News notification skipped for recipient - Pro required`);
+        return;
+      }
+
       // Check if user has news notifications enabled for open positions
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
       if (!isEnabled) {
-        console.log(`News notification skipped for user ${userId} - preference disabled`);
+        console.log(`News notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -420,10 +444,16 @@ class NotificationService {
   // Send earnings announcement notification
   static async sendEarningsNotification(userId, earningsData) {
     try {
+      // Pro-only content
+      if (!await isProUser(userId)) {
+        console.log(`[INFO] Earnings notification skipped for recipient - Pro required`);
+        return;
+      }
+
       // Check if user has earnings notifications enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
       if (!isEnabled) {
-        console.log(`Earnings notification skipped for user ${userId} - preference disabled`);
+        console.log(`Earnings notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -452,10 +482,16 @@ class NotificationService {
   // Send trade reminder notification
   static async sendTradeReminderNotification(userId, reminderData) {
     try {
+      // Pro-only content
+      if (!await isProUser(userId)) {
+        console.log(`[INFO] Trade reminder notification skipped for recipient - Pro required`);
+        return;
+      }
+
       // Check if user has trade reminders enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
-        console.log(`Trade reminder notification skipped for user ${userId} - preference disabled`);
+        console.log(`Trade reminder notification skipped for recipient - preference disabled`);
         return;
       }
 

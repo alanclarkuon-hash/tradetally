@@ -87,7 +87,7 @@ test('bounded reconstruction fetches only recent prices while replaying older na
  const client={query:jest.fn().mockResolvedValue({rows:[]})};db.withTransaction=jest.fn(fn=>fn(client));
  try {
   const result=await require('../src/services/portfolioReconstructionService').reconstruct('owner',{broker:'kraken',accountIdentifiers:['owned'],fromDate:'2026-01-16',fetchPrices:true,apply:true});
-  expect(prices).toHaveBeenCalledWith('BTC','2026-01-09','2026-01-19','owner',expect.any(Object));
+  expect(prices).toHaveBeenCalledWith('BTC','2026-01-16','2026-01-19','owner',expect.any(Object));
   expect(prices).toHaveBeenCalledTimes(1);expect(result[0].gaps).toBe(0);
   const values=client.query.mock.calls.filter(([sql])=>sql.startsWith('INSERT INTO portfolio_reconstructed_values'));
   expect(values).toHaveLength(4);expect(values.every(([,args])=>args[3]===200)).toBe(true);

@@ -83,3 +83,15 @@ test('routine scoped maintenance excludes untouched accounts and does not restar
  expect(reconstruction.reconstruct).toHaveBeenCalledWith('owner',expect.objectContaining({accountIdentifiers:['owned'],fromDate:'2026-10-02'}));
  expect(capture.captureToday).toHaveBeenCalledWith('owner',{accounts:'owned'});
 });
+
+
+test('daily maintenance queues only the recent overlap, not accepted historical coverage gaps',async()=>{
+ const enqueue=jest.spyOn(require('../src/services/historyBackfillService'),'enqueue').mockResolvedValue('job');
+ db.query.mockImplementation(async sql=>({rows:sql==='SELECT id FROM users'?[{id:'owner'}]:[
+  {account_identifier:'existing',initial_balance_date:'2020-01-01',latest:'2026-10-01'},
+  {account_identifier:'new',initial_balance_date:'2026-09-01',latest:null}]}));
+ try {
+  await require('../src/services/brokerPortfolioMaintenance').maintainAllUsers();
+  expect(enqueue).toHaveBeenCalledWith('owner',{accounts:{existing:'2026-09-29',new:'2026-09-01'}});
+ } finally {enqueue.mockRestore();}
+});

@@ -281,8 +281,12 @@ router.delete('/:id/allocations/:allocationId',run(async(req,res)=>{
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.status==='completed')fail('Reopen the review before correcting a completed plan');
   const a=(await c.query('DELETE FROM trade_plan_allocations WHERE id=$1 AND plan_id=$2 AND user_id=$3 RETURNING *',[req.params.allocationId,p.id,p.user_id])).rows[0];if(!a)fail('Allocation not found',404);
+  const management=JSON.parse(JSON.stringify(p.management||{}));
+  // Removing the last broker fill must not revive its old execution as a tick.
+  // Keep entry-match intent so explicitly relinking the same source can restore it.
+  if(management[a.action]?.[a.stage_key])management[a.action][a.stage_key].executed=false;
   await record(c,p,'trade_unlinked',{allocation:a,reason:req.body.reason.trim()});
-  await c.query("UPDATE trade_plans SET status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$1",[p.id]);
+  await c.query("UPDATE trade_plans SET management=$2::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$1",[p.id,JSON.stringify(management)]);
  });res.json({success:true});
 }));
 
@@ -299,6 +303,7 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
   management.exit[b.exitKey]={...management.exit[b.exitKey],entryMatches:b.matches};
   const after=await evidence(c,{...p,management}),row=after.entryMatching?.find(r=>r.exitKey===b.exitKey);
   if(after.overExit||row?.status!=='matched')fail('Matched quantities must cover this exit exactly using available earlier entries in the same account and contract',409);
+  if(before.entryMatching.some(r=>r.exitKey!==b.exitKey&&r.status==='matched'&&after.entryMatching.find(next=>next.exitKey===r.exitKey)?.status!=='matched'))fail('These units are already matched to another exit. Change that exit match first.',409);
   await c.query('UPDATE trade_plans SET management=$1::jsonb,review=NULL,version=version+1,updated_at=NOW() WHERE id=$2',[JSON.stringify(management),p.id]);
   await record(c,p,'exit_entries_matched',{exitKey:b.exitKey,previous,matches:b.matches});
  });res.json({success:true});
@@ -306,12 +311,12 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
 
 router.put('/:id/management',run(async(req,res)=>{
  const stage=Joi.object({label:Joi.string().max(120).required(),accountId:uuid.allow(null).default(null),riskWeight:Joi.number().min(0).max(100).default(0)});
- const row=Joi.object({stage,entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
+ const row=Joi.object({stage,label:Joi.string().max(120),position:Joi.number().integer().min(0).max(39),entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(!p.finalised||['cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
-  const m=schema.value.management;
+  const m=require('../services/planningManagementRows').preservePositions(p.management,schema.value.management);
   for(const [key,row]of Object.entries(m.exit))if(row.entryMatches&&!isDeepStrictEqual(row.entryMatches,p.management?.exit?.[key]?.entryMatches))fail('Save entry matches through the exit match editor');
   for(const [key,row]of Object.entries(p.management?.exit||{}))if(row.entryMatches&&!m.exit[key]?.entryMatches)m.exit[key]={...m.exit[key],entryMatches:row.entryMatches};
   const nextDefinition=definitionForManagement({...p,management:m});

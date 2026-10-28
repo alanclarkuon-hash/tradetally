@@ -22,3 +22,101 @@ test('multiple fills within a matched entry row share weighted cost without allo
 test('two exits cannot consume the same matched units twice',()=>{const {p,trades,allocations}=fixture();p.definition.exits.push({key:'second'});p.management.exit.second={entryMatches:[{entryKey:'level',quantity:3}]};const t={...trades[2],id:'sale2',executions:[{...trades[2].executions[0],id:'sale2',quantity:3,datetime:'2026-01-04T10:00:00Z'}]};const f=sourceFills(t)[0];const r=ledger(p,[...allocations,{id:'sale2',trade_id:t.id,source_key:f.key,stage_key:'second',action:'exit',quantity:3,source_snapshot:f}],[...trades,t]);expect(r.matchingUnresolved).toBeGreaterThan(0);expect(r.realisedProfit).toBeNull()});
 test('broker position identities resolve the entry row without inferring FIFO',()=>{const {p,trades}=fixture();delete p.management.exit.take.entryMatches;trades.forEach((t,i)=>{t.broker='etoro';t.executions[0].etoro_position_id=i===0?'old-position':'sold-position'});const a=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:t.id==='sale'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});const r=ledger(p,a,trades);expect(r.matchingUnresolved).toBe(0);expect(r.realisedProfit).toBe(40);expect(r.entryMatching[0].matches).toEqual([{entryKey:'level',quantity:2}])});
 test('one exit row can close multiple broker positions from selected entry rows',()=>{const {p,trades}=fixture();p.management.exit.take.entryMatches=[{entryKey:'old',quantity:1},{entryKey:'level',quantity:1}];trades.forEach((t,i)=>{t.broker='etoro';t.executions[0].etoro_position_id=i===1?'position-b':'position-a'});trades[2].executions[0].quantity=1;const t={...trades[2],id:'second-sale',executions:[{...trades[2].executions[0],id:'second-sale',etoro_position_id:'position-b'}]};trades.push(t);const a=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});const r=ledger(p,a,trades);expect(r.matchingUnresolved).toBe(0);expect(r.realisedProfit).toBe(30)});
+
+function precisionFixture(entryQuantity,exitQuantity,matchedQuantity=exitQuantity){
+ const {p,trades}=fixture();trades[1].executions[0].quantity=entryQuantity;trades[2].executions[0].quantity=exitQuantity;
+ p.management.exit.take.entryMatches=[{entryKey:'level',quantity:matchedQuantity}];
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:t.id==='sale'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ return {p,trades,allocations};
+}
+test.each([17.00000002,17.00000001])('broker-precision boundary matches do not fail due to binary subtraction (%s)',matched=>{
+ const {p,trades,allocations}=precisionFixture(17.00000001,17.00000002,matched),before=JSON.stringify({p,trades,allocations});
+ const r=ledger(p,allocations,trades);
+ expect(r.entryMatching.find(row=>row.exitKey==='take').status).toBe('matched');expect(r.matchingUnresolved).toBe(0);expect(r.overExit).toBe(false);
+ const used=r.records.find(a=>a.action==='exit').matchedEntries.reduce((q,a)=>q+a.quantity,0);
+ expect(used).toBe(17.00000001);expect(r.realisedProfit).toBeCloseTo(17.00000001*20,10);expect(r.accountRealisedProfit).not.toBeNull();
+ expect(r.openLots.find(l=>l.stageKey==='old').q).toBe(2);expect(JSON.stringify({p,trades,allocations})).toBe(before);
+});
+test('a real shortage beyond the matching allowance remains rejected',()=>{
+ const {p,trades,allocations}=precisionFixture(17.00000001,17.00000004);const r=ledger(p,allocations,trades);
+ expect(r.entryMatching.find(row=>row.exitKey==='take').status).toBe('needs_match');expect(r.realisedProfit).toBeNull();
+});
+test('a tolerance-sized final residual is closed consistently without an invented entry quantity',()=>{
+ const {p,trades,allocations}=precisionFixture(17.00000001,17.00000002);const r=ledger(p,allocations.filter(a=>a.stage_key!=='old'),trades);
+ expect(r.overExit).toBe(false);expect(r.matchingUnresolved).toBe(0);expect(r.economicallyClosed).toBe(true);expect(r.openLots).toEqual([]);
+ expect(r.records.find(a=>a.action==='exit').matchedEntries[0].quantity).toBe(17.00000001);
+});
+
+test('a precision-boundary exit split over two rows never exceeds either real entry capacity',()=>{
+ const {p,trades}=precisionFixture(8.00000001,17.00000002);trades[0].executions[0].quantity=9;
+ p.management.exit.take.entryMatches=[{entryKey:'old',quantity:9},{entryKey:'level',quantity:8.00000001}];
+ const a=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:t.id==='sale'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,a,trades);expect(r.matchingUnresolved).toBe(0);expect(r.realisedProfit).toBeCloseTo(250.0000002,8);
+ const matches=r.records.find(x=>x.action==='exit').matchedEntries;
+ expect(matches.find(m=>m.entryKey==='old').quantity).toBeLessThanOrEqual(9);expect(matches.find(m=>m.entryKey==='level').quantity).toBeLessThanOrEqual(8.00000001);
+});
+test('a genuinely linked minimum-sized entry can be consumed but an empty queue cannot create units',()=>{
+ const {p,trades,allocations}=precisionFixture(1e-8,1e-8);const r=ledger(p,allocations,trades);expect(r.matchingUnresolved).toBe(0);expect(r.records.find(a=>a.action==='exit').matchedEntries[0].quantity).toBe(1e-8);
+ expect(require('../../src/services/planningEntryMatches').consume([],{status:'matched',matches:[{entryKey:'level',quantity:1e-8}]},{quantity:1e-8})).toBeNull();
+});
+
+
+test('availability subtracts another exit match and restores the current exit own units for editing',()=>{
+ const {p,trades,allocations}=fixture();
+ const t={...trades[2],id:'later-sale',executions:[{...trades[2].executions[0],id:'later-sale',quantity:1,datetime:'2026-01-04T10:00:00Z'}]};
+ const f=sourceFills(t)[0];p.definition.exits.push({key:'later'});
+ const all=[...allocations,{id:t.id,trade_id:t.id,source_key:f.key,stage_key:'later',action:'exit',quantity:1,source_snapshot:f}];
+ const r=ledger(p,all,[...trades,t]);const option=r.entryMatching.find(x=>x.exitKey==='later').options.find(o=>o.entryKey==='level');
+ expect(option).toMatchObject({quantity:2,totalQuantity:4,assignedQuantity:2});
+ p.management.exit.later={entryMatches:[{entryKey:'level',quantity:1}]};
+ const editing=ledger(p,all,[...trades,t]);
+ expect(editing.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level').quantity).toBe(3);
+ expect(editing.entryMatching.find(x=>x.exitKey==='later').options.find(o=>o.entryKey==='level').quantity).toBe(2);
+ expect(editing.realisedProfit).toBe(60);
+});
+
+test('availability accounts for later saved exits without silently choosing FIFO for the current exit',()=>{
+ const {p,trades,allocations}=fixture();delete p.management.exit.take.entryMatches;
+ const t={...trades[2],id:'reserved-later',executions:[{...trades[2].executions[0],id:'reserved-later',quantity:4,datetime:'2026-01-04T10:00:00Z'}]};
+ const f=sourceFills(t)[0];p.definition.exits.push({key:'later'});p.management.exit.later={entryMatches:[{entryKey:'level',quantity:4}]};
+ const r=ledger(p,[...allocations,{id:t.id,trade_id:t.id,source_key:f.key,stage_key:'later',action:'exit',quantity:4,source_snapshot:f}],[...trades,t]);
+ expect(r.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level')).toMatchObject({quantity:0,totalQuantity:4,assignedQuantity:4});
+ expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('needs_match');
+});
+
+
+test('availability deducts only consumed source fills that were eligible at this exit time',()=>{
+ const {p,trades,allocations}=fixture();delete p.management.exit.take.entryMatches;
+ const lateEntry={...trades[1],id:'late-entry',executions:[{...trades[1].executions[0],id:'late-entry',datetime:'2026-01-05T10:00:00Z'}]};
+ const laterExit={...trades[2],id:'later-exit',executions:[{...trades[2].executions[0],id:'later-exit',quantity:4,datetime:'2026-01-06T10:00:00Z'}]};
+ p.definition.exits.push({key:'later'});p.management.exit.later={entryMatches:[{entryKey:'level',quantity:4}]};
+ const extra=[lateEntry,laterExit].map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='entry'?'level':'later',action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,[...allocations,...extra],[...trades,lateEntry,laterExit]);
+ expect(r.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level')).toMatchObject({quantity:2,totalQuantity:4,assignedQuantity:2});
+});
+
+
+test.each([16.40000001,16.40000002])('sequential exit fragments retain whole-row precision after cancellation (%s)',matched=>{
+ const {p,trades}=precisionFixture(16.40000001,15.4,matched);
+ const tail={...trades[2],id:'sale-z',executions:[{...trades[2].executions[0],id:'sale-z',quantity:1.00000002}]};trades.push(tail);
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const before=JSON.stringify({p,trades,allocations}),r=ledger(p,allocations,trades);
+ expect(r.matchingUnresolved).toBe(0);expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('matched');
+ const used=r.records.filter(a=>a.action==='exit').flatMap(a=>a.matchedEntries).reduce((q,m)=>q+m.quantity,0);
+ expect(used).toBeLessThanOrEqual(16.40000001);expect(r.realisedProfit).toBeCloseTo(16.40000001*20,10);
+ expect(JSON.stringify({p,trades,allocations})).toBe(before);
+});
+
+test('consuming another row cannot discard an unrelated minimum-sized entry',()=>{
+ const {p,trades}=precisionFixture(4,1);trades[0].executions[0].quantity=1e-8;
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,allocations,trades);expect(r.openLots.find(l=>l.stageKey==='old')?.q).toBe(1e-8);
+});
+
+
+test('sequential fragments still reject a genuine shortage beyond the existing allowance',()=>{
+ const {p,trades}=precisionFixture(16.40000001,15.4,16.40000003);
+ trades.push({...trades[2],id:'sale-z',executions:[{...trades[2].executions[0],id:'sale-z',quantity:1.00000003}]});
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,allocations,trades);expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('needs_match');expect(r.realisedProfit).toBeNull();
+});

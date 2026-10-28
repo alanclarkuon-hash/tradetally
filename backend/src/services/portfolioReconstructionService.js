@@ -81,7 +81,7 @@ function parseYahoo(result) {
 }
 
 // Merge only verified missing sessions; failed downloads retain earlier history.
-async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
+async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null,maintenance=false}={}) {
  const identity=require('./cryptoHistoryIdentity'),storageSymbol=identity.nativeKey(symbol),crypto=symbol.endsWith('-USD');
  const stored=(await db.query('SELECT payload FROM portfolio_reconstruction_prices WHERE symbol=$1',[storageSymbol])).rows[0]?.payload;
  const cached=!crypto||identity.usableNative(symbol,stored)?stored:null;
@@ -96,11 +96,18 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
  try {
   for(const gap of gaps){
    // Shared finalized daily prices use broker-first routing and USD units.
-   const shared=userId?await require('./portfolioService')._getDailySeries(ticker,gap.from,gap.to,userId,{instrumentType:crypto?'crypto':'stock',background:false}):[];
+   const shared=userId?await require('./portfolioService')._getDailySeries(ticker,gap.from,gap.to,userId,{instrumentType:crypto?'crypto':'stock',background:false,maintenance}):[];
    let native=null;
+   // Shared cache is checked first so new broker/provider evidence is never
+   // hidden behind a failed native metadata request's cooldown.
+   const nativeProof=(!crypto&&!cached?.currency&&shared.length)?(await db.query("SELECT price_date FROM historical_prices WHERE symbol=$1 AND is_final AND data_source='broker:etoro:statement-native-usd' AND price_date BETWEEN $2 AND $3",[ticker,gap.from,gap.to])).rows:[];
+   const evidence=[nativeProof,cached?.currency,cached?.splits,cached?.listing,cached?.historicalIdentity,cached?.prices,shared];
+   if(maintenance&&!require('./historyProviderRetry').begin(['native',userId,symbol,gap.from,gap.to],evidence))continue;
    if(!crypto){
     try {
-     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(gap.to)/1000+86400,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
+     // Keep later split events through yesterday even for an already-sold lot:
+     // Yahoo closes may be adjusted by a split after the requested holding dates.
+     const response=await axios.get('https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(require('./holdingsHistoryProvider').yahooTicker(ticker)),{params:{interval:'1d',period1:Date.parse(gap.from)/1000-7*86400,period2:Date.parse(date(Date.now()))/1000,events:'splits'},timeout:12000,maxRedirects:0,maxContentLength:8*1024*1024,headers:{'User-Agent':'TradeTally split metadata'}});
      const result=response.data?.chart?.result?.[0];
      if(result?.meta?.symbol || require('./holdingsHistoryProvider').yahooTicker(ticker)!==ticker)require('./holdingsHistoryProvider').verifyYahooListing(ticker,result?.meta);
      native=parseYahoo(result);
@@ -138,7 +145,7 @@ async function loadMarket(symbol,from,to,{fetchPrices=false,userId=null}={}) {
    if(!currency&&shared.length){
     // Only this separately proven native-USD route can establish currency.
     // Ordinary normalized USD cache rows may originate in any quote currency.
-    const verified=(await db.query("SELECT price_date FROM historical_prices WHERE symbol=$1 AND is_final AND data_source='broker:etoro:statement-native-usd' AND price_date BETWEEN $2 AND $3",[ticker,gap.from,gap.to])).rows;
+    const verified=nativeProof;
     const dates=new Set(verified.map(r=>new Date(r.price_date).toISOString().slice(0,10)));
     if(shared.every(c=>dates.has(date(c.time*1000))))currency='USD';
    }
@@ -211,8 +218,16 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   const market=new Map(),cryptoRates=snapshot?.payload?.valuation?.rates||{},payload=snapshot?.payload;
   const marketSymbolFor=t=>require('./cryptoHistoryIdentity').lotIdentity(t)?.symbol?require('./cryptoHistoryIdentity').lotIdentity(t).symbol+'-USD':account.broker==='etoro'&&t.instrument_type!=='crypto'&&etoroLots.get(t)?.marketSymbol?
    historySymbol(etoroLots.get(t).marketSymbol,date(t.entry_time||t.trade_date)):historicalMarketSymbol(t.symbol,t.instrument_type,date(t.entry_time||t.trade_date));
-  const need=new Set();
-  let fills=[],splits=[],etoroSplits=[],etoroLots=new Map();
+  const need=new Set(),holdingRanges=new Map();
+  const requireHolding=(symbol,opened,closed)=>{
+   const fromDay=[opened,fromDate||start,start].sort().at(-1);
+   const toDay=closed?[date(Date.parse(closed)-86400000),end].sort()[0]:end;
+   if(fromDay>toDay)return;
+   need.add(symbol);
+   const range={from:symbol.endsWith('-USD')?fromDay:date(Date.parse(fromDay)-7*86400000),to:toDay};
+   const list=holdingRanges.get(symbol)||[];list.push(range);holdingRanges.set(symbol,list);
+  };
+  let fills=[],splits=[],etoroSplits=[],etoroLots=new Map(),cachedShareSplits=[];
   if(account.broker==='etoro') {
    const reports=(await db.query("SELECT records FROM broker_cash_reports WHERE user_id=$1 AND account_id=$2 AND broker_type='etoro'",[userId,account.id])).rows;
    const records=reports.flatMap(r=>r.records||[]);
@@ -222,7 +237,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   if(account.broker==='kraken') {
    if(!payload?.reconciled||!payload.nativeReconciliation?.nativeBalancesMatched)blockers.push('Native crypto ledger has not reconciled');
    native=walletHistory(Object.values(payload?.ledger||{}).map(l=>({wallet:nativeWalletCode(l.asset),time:Number(l.time)*1000,amount:l.amount,fee:l.fee})),start,end);
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&!FIAT.has(s))need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&!FIAT.has(s))requireHolding(s+'-USD',r.date,date(Date.parse(r.date)+86400000));
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Full native ledger including fees and Earn wallets; dated USD closes';
   }else if(account.broker==='okx') {
@@ -232,7 +247,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
    for(const p of payload?.trading?.[0]?.details||[])if(Math.abs((final[p.ccy]||0)-Number(p.cashBal))>1e-8)blockers.push(`Native crypto quantity mismatch: ${p.ccy}`);
    cutoff=payload?.asOf?.slice(0,10)||start;
    method='Reconciled Trading-wallet settlement bills; dated USD closes';
-   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&s!=='USDT')need.add(s+'-USD');
+   for(const r of native)for(const [s,q] of Object.entries(r.quantities))if(r.date>=priceFrom&&Math.abs(q)>1e-9&&s!=='USDT')requireHolding(s+'-USD',r.date,date(Date.parse(r.date)+86400000));
   }else {
    const ledgerService={ig:'igCashLedger',ibkr:'ibkrCashLedger',etoro:'etoroCashStatement',trading212:'trading212CashLedger'}[account.broker];
    const ledger=ledgerService?await require('./brokerSync/'+ledgerService).loadLedger(userId,account,start,end):null;
@@ -257,19 +272,34 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
     for(const e of subscriptions)if(Number(e.metadata?.statement_annotation?.apiAmount)>0)fills.push({date:date(e.event_date),symbol:'NG.L',quantity:Number(e.metadata.statement_annotation.apiAmount)/6.45});
     fills.forEach(f=>need.add(f.symbol));
    }else {
-    for(const t of trades)if((['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))&&!require('./historyInstrumentIdentity').identity(t,date(t.entry_time||t.trade_date)).unsupported)need.add(marketSymbolFor(t));
+    for(const t of trades)if((['stock','crypto'].includes(t.instrument_type)||(account.broker==='etoro'&&t.instrument_type==='cfd'))&&!require('./historyInstrumentIdentity').identity(t,date(t.entry_time||t.trade_date)).unsupported)requireHolding(marketSymbolFor(t),date(t.entry_time||t.trade_date),t.exit_time?date(t.exit_time):null);
+   }
+  }
+  if(account.broker==='trading212'&&need.size) {
+   // Existing native caches already carry the split events used by share replay.
+   // Unknown identities keep the conservative full range until metadata exists.
+   const known=(await db.query('SELECT symbol,payload FROM portfolio_reconstruction_prices WHERE symbol=ANY($1)',[[...need]])).rows;
+   const verified=new Map(known.filter(r=>r.symbol&&r.payload?.currency&&Array.isArray(r.payload.splits)&&r.payload.prices?.length).map(r=>[r.symbol,r.payload]));
+   const cachedSplits=[...verified].flatMap(([symbol,p])=>historySplits(symbol,p.splits).map(split=>({...split,symbol})));
+   cachedShareSplits=cachedSplits;
+   const holdings=replayShares(fills,cachedSplits,start,end),all=[...need];need.clear();
+   for(const symbol of all) {
+    if(!verified.has(symbol)) {need.add(symbol);continue;}
+    for(const row of holdings)if(Math.abs(row.quantities[symbol]||0)>1e-8)requireHolding(symbol,row.date,date(Date.parse(row.date)+86400000));
    }
   }
   // Fetch public market prices only; never authenticated broker APIs or syncs.
   let processed=0;
   const symbols=[...need];
-  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});market.set(s,await loadMarket(s,priceFrom>start?priceFrom:start,end,{fetchPrices,userId}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
+  let next=0;await Promise.all([0,1,2].map(async()=>{while(next<symbols.length){const s=symbols[next++];await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});const ranges=holdingRanges.get(s)||[{from:priceFrom>start?priceFrom:start,to:end}];
+    const merged=[];for(const r of ranges.sort((a,b)=>a.from.localeCompare(b.from))){const last=merged.at(-1);if(last&&r.from<=date(Date.parse(last.to)+86400000))last.to=last.to>r.to?last.to:r.to;else merged.push({...r});}
+    for(const r of merged)market.set(s,await loadMarket(s,r.from,r.to,{fetchPrices,userId,maintenance:true}));processed++;await onProgress({broker:account.broker,stage:'prices',processed,total:symbols.length,currentSymbol:s});}}));
   const stockPrice=(s,d)=>{const series=market.get(s),p=historicalPrice(series,d,s.endsWith('-USD'));return p>0&&fx(series.currency,d)>0?p*fx(series.currency,d):null;};
   // Retired markets may have disappeared from live pair metadata. Their
   // official daily archive retains actual historical closes.
   if(account.broker==='kraken'&&fetchPrices)for(const s of symbols) {
    const coin=s.slice(0,-4);
-   const missing=native.some(r=>r.date>=priceFrom&&r.date<=cutoff&&r.quantities[coin]>1e-9&&
+   const missing=native.some(r=>r.date>=(fromDate||start)&&r.date<=cutoff&&r.quantities[coin]>1e-9&&
     !(Number(cryptoRates[coin]?.[r.date])||Number(publicCryptoRates[coin]?.[r.date])||stockPrice(s,r.date)));
    if(!missing)continue;
    try {
@@ -285,7 +315,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   // Sonic launched before Kraken retired FTM. Use its dated market price only
   // where the original FTM close is absent and this import proves a 1:1 swap.
   if(account.broker==='kraken'&&fetchPrices&&[...migrationAliases].some(([key,old])=>key.startsWith('S:')&&old==='FTM')) {
-   const missing=native.filter(r=>r.date>=priceFrom&&r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
+   const missing=native.filter(r=>r.date>=(fromDate||start)&&r.date>='2024-12-18'&&r.quantities.FTM>1e-9&&!stockPrice('FTM-USD',r.date));
    if(missing.length)try {
     const candles=(await axios.get('https://data-api.binance.vision/api/v3/klines',{params:{symbol:'SUSDT',interval:'1d',startTime:Date.parse(missing[0].date),endTime:Date.parse(missing.at(-1).date)+86400000-1,limit:1000},timeout:15000,maxRedirects:0,maxContentLength:1024*1024})).data;
     const existing=market.get('FTM-USD'),prices=new Map((existing?.prices||[]).map(p=>[p.date,p.close])),proxyDates=new Set(existing?.proxyDates||[]);
@@ -301,6 +331,7 @@ async function reconstruct(userId,{fetchPrices=false,apply=false,broker=null,acc
   }
   let shareIssues=new Map();
   if(account.broker==='trading212') {
+   splits.push(...cachedShareSplits.filter(split=>!need.has(split.symbol)));
    for(const s of need)for(const split of historySplits(s,market.get(s)?.splits||[]))splits.push({...split,symbol:s});
    native=replayShares(fills,splits,start,end);
    const totals=replayShares(fills,splits,start,today).at(-1)?.quantities||{};

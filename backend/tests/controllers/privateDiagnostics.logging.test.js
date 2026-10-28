@@ -1,5 +1,6 @@
 const util = require('util');
 jest.mock('../../src/config/database', () => ({ query: jest.fn(), connect: jest.fn(), withTransaction: jest.fn(async fn => fn({query: require('../../src/config/database').query})) }));
+jest.mock('../../src/services/tierService', () => ({isProUser:jest.fn().mockResolvedValue(true)}));
 jest.mock('../../src/models/User', () => ({getSettings:jest.fn().mockResolvedValue({})}));
 jest.mock('../../src/models/Trade', () => ({convertHoldTimeRange:jest.fn()}));
 jest.mock('../../src/services/tradeQueries', () => ({cacheKey:jest.fn((id,f)=>id+JSON.stringify(f)),getAnalytics:jest.fn()}));

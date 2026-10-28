@@ -4,6 +4,7 @@ jest.mock('../../src/utils/finnhub', () => ({ getStockCandles: jest.fn() }));
 jest.mock('../../src/utils/alphaVantage', () => ({ isConfigured: () => true, getDailyData: jest.fn() }));
 jest.mock('../../src/utils/historicalPriceCache', () => ({ getRange: jest.fn(), hasRange: jest.fn(), insertCandles: jest.fn() }));
 jest.mock('../../src/services/holdingsService', () => ({}));
+jest.mock('../../src/services/tierService',()=>({filterProUserIds:jest.fn(async ids=>ids.map(String))}));
 jest.mock('../../src/services/notificationService', () => ({}));
 jest.mock('../../src/services/holdingsHistoryProvider', () => ({
   ...jest.requireActual('../../src/services/holdingsHistoryProvider'), yahoo: jest.fn(), crypto: jest.fn()
@@ -134,7 +135,7 @@ test('flat holdings with missing early prices cannot publish fabricated return m
 
 test('new nightly warmup shares the currency-safe pipeline rather than writing native foreign candles',async()=>{
  const db=require('../../src/config/database');
- db.query.mockImplementation(async sql=>({rows:sql.includes('MIN(eff)')?[{symbol:'SYNTH.L',earliest:'2026-08-01'}]:[]}));
+ db.query.mockImplementation(async sql=>({rows:sql.includes('MIN(eff)')?[{symbol:'SYNTH.L',user_id:'synthetic',earliest:'2026-08-01'}]:[]}));
  cache.getUnavailableSymbols=jest.fn().mockResolvedValue(new Set());
  cache.markUnavailable=jest.fn();
  cache.clearUnavailable=jest.fn().mockResolvedValue();
@@ -148,4 +149,21 @@ test('new nightly warmup shares the currency-safe pipeline rather than writing n
   expect(cache.insertCandles).not.toHaveBeenCalled();
   expect(cache.markUnavailable).not.toHaveBeenCalled();
  } finally {daily.mockRestore();raw.mockRestore();}
+});
+
+
+test('maintenance retries cool down but cache changes and explicit requests are not hidden',async()=>{
+ const venue=jest.spyOn(require('../../src/services/exchangeCalendar'),'resolve').mockResolvedValue(null);
+ const download=jest.spyOn(PortfolioService,'_fetchDailySeries').mockResolvedValue([]);
+ const options={maintenance:true};
+ try {
+  await PortfolioService._getDailySeries('MAINTENANCE235','2026-08-01','2026-08-31','owner',options);
+  await PortfolioService._getDailySeries('MAINTENANCE235','2026-08-01','2026-08-31','owner',options);
+  expect(download).toHaveBeenCalledTimes(1);
+  cache.getRange.mockResolvedValue([candle]);
+  await PortfolioService._getDailySeries('MAINTENANCE235','2026-08-01','2026-08-31','owner',options);
+  expect(download).toHaveBeenCalledTimes(2);
+  await PortfolioService._getDailySeries('MAINTENANCE235','2026-08-01','2026-08-31','owner');
+  expect(download).toHaveBeenCalledTimes(3);
+ } finally {venue.mockRestore();download.mockRestore();}
 });

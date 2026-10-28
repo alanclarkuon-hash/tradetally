@@ -88,7 +88,7 @@
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked" @change="changeStop($event,currencies[kind])"></label></div>
     <EntryJournalAssessment v-if="managing&&kind==='entry'&&journalStage" :key="journalStage" :plan="plan" :entry="rows('entry').find(e=>e.key===journalStage)" :has-entries="ledger.records?.some(a=>a.action==='entry'&&a.stage_key===journalStage)" @close="journalStage=null" @saved="reload"/><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th v-if="planAccounts.length>1">Account</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target ({{ symbol(currencies[kind]) }})</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
-      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
+      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"></td>
       <td v-if="planAccounts.length>1"><select v-model="e.accountId" :aria-label="kind+' '+(i+1)+' account'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><option :value="null">{{ accounts.find(a=>a.id===draft.accountId)?.accountName }}</option><option v-for="a in planAccounts.filter(a=>a.id!==draft.accountId)" :key="a.id" :value="a.id">{{ a.accountName }}</option></select></td><td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
       <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
       <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
@@ -98,7 +98,7 @@
       <td><TagSelect v-model="e.tactics" :tags="library[kind]" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"/></td>
       <td v-if="managing"><input type="checkbox" :aria-label="kind+' '+(i+1)+' executed'" :checked="linked(kind,e.key)||e.executed" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.executed=$event.target.checked"></td>
       <td v-if="managing"><button class="btn-secondary whitespace-nowrap" @click="toggleTrade(kind,e.key)">{{ linked(kind,e.key)?'Unlink trade':'Link trade' }}</button><button v-if="kind==='entry'" class="btn-secondary whitespace-nowrap ml-2" @click="journalStage=e.key">Journal evidence</button><button v-if="kind==='entry'&&linked(kind,e.key)&&planCommitments.some(c=>c.stage_key===e.key)" class="btn-secondary whitespace-nowrap ml-2" @click="findFills(kind,e.key)">Link remaining fills</button></td>
-      <td><button class="text-red-400" :disabled="preparationLocked||busy||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1)" @click="rows(kind).splice(i,1)">Remove</button></td>
+      <td><button class="text-red-400" :disabled="preparationLocked||busy||linked(kind,e.key)||(kind==='entry'&&draft.entries.length===1&&(!managing||draft.entries[0].key===e.key))" @click="rows(kind).splice(i,1)">Remove</button></td>
      </tr>
      </tbody><tfoot>
       <tr v-if="kind==='entry'"><th>Total</th><td></td><td>{{ number(draft.entries.reduce((s,e)=>s+Number(e.riskWeight||0),0)) }}%</td><td>{{ number(managing?rows('entry').reduce((sum,e,i)=>sum+Number(e.units??rowUnits('entry',e,i)??0),0):calculation?.plannedQuantity) }}</td><td>{{ managing?rowTotalMoney('entry'):convertedMoney(calculation?.plannedValue,draft.currency,currencies.entry) }}</td></tr>
@@ -160,19 +160,26 @@
     <header class="finder-header shrink-0 space-y-3">
      <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="fill-title" class="text-lg font-semibold">Find and link {{ finder.action }}</h2><div class="flex gap-3"><button class="btn-primary" :disabled="busy||finderLoading||!finderChanged" @click="linkSelectedFills">Link selected trades</button><button class="btn-secondary" :disabled="busy" @click="closeFinder">Close</button></div></div>
      <p class="text-sm text-gray-400">{{ asset }} · {{ instrumentLabel }} · {{ accounts.find(a=>a.id===rowAccount(rows(finder.action).find(e=>e.key===finder.stageKey)||{}))?.accountName||'Unassigned' }} · {{ draft.direction==='short'?'Short / bearish':'Long / bullish' }}</p>
+     <div class="space-y-1">
+      <label for="finder-order-number" class="block text-sm font-medium">Order number</label>
+      <div class="flex flex-wrap items-center gap-3"><input id="finder-order-number" v-model="finderOrderNumber" type="search" class="input max-w-lg" aria-label="Filter by order number" placeholder="Enter all or part of a broker order number" autocomplete="off" :spellcheck="false" maxlength="128" aria-describedby="finder-order-help" /><button v-if="finderOrderNumber" type="button" class="btn-secondary" @click="finderOrderNumber=''">Clear order filter</button></div>
+      <p id="finder-order-help" class="text-sm text-gray-500 dark:text-gray-400">Filtering keeps selections, including hidden trades.</p>
+      <p v-if="finderOrderQuery" class="text-sm text-gray-500 dark:text-gray-400" role="status">{{ visibleFinderExisting.length }} of {{ finderExisting.length }} linked · {{ visibleFinderFills.length }} of {{ fills.length }} available</p>
+     </div>
      <label v-if="finder.action==='entry'" class="block text-sm">Journal evidence for these fills<select v-model="finder.journalAssessmentId" class="input"><option :value="null">No saved entry assessment</option><option v-for="a in (workflow?.journalAssessments||[]).filter(a=>a.stage_key===finder.stageKey)" :key="a.id" :value="a.id">{{ a.snapshot.sessionDate }} · {{ new Date(a.snapshot.recordedAt).toLocaleString() }}{{ a.snapshot.status==='exception'?' · Exception':'' }}</option></select></label><p v-if="error" role="alert" class="text-red-400">{{ error }}</p>
     </header>
     <div class="finder-fills min-h-0 overflow-y-auto">
      <section v-if="finderExisting.length" aria-label="Linked trades on this row" class="mb-4">
       <h3 class="font-semibold">Linked trades</h3>
-      <div v-for="a in finderExisting" :key="a.id" data-linked-fill class="flex items-center justify-between gap-3 border-b border-gray-700 py-3">
+      <p v-if="!visibleFinderExisting.length" class="text-sm text-gray-500 dark:text-gray-400">No linked trades match this order number.</p>
+      <div v-for="a in visibleFinderExisting" :key="a.id" data-linked-fill class="flex items-center justify-between gap-3 border-b border-gray-700 py-3">
        <label class="flex items-center gap-3"><input v-model="a.selected" type="checkbox" :disabled="busy||finderLoading" :aria-label="'Keep linked fill '+a.id"><span>{{ executionDate(a.fill?.time) }} &middot; {{ executionQuantity(a.quantity) }} @ {{ executionMoney(a.fill,linkedCurrency) }} &middot; {{ a.action }} <BrokerOrderId :order-id="a.fill?.orderId" /><span v-if="!a.valid" class="block text-amber-700 dark:text-amber-300">Needs reconciliation</span></span></label>
       </div>
      </section>
      <p v-if="finderExisting.length" class="text-sm text-gray-400">Keep linked trades ticked. Untick to unlink, or tick available trades to add them, then click Link selected trades to save.</p>
      <h3 class="font-semibold">Available trades</h3>
-     <p v-if="finderLoading" role="status">Loading trades…</p><p v-else-if="!fills.length">No available {{ finder.action }} fills for this asset, instrument and account.</p>
-     <div v-for="f in fills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ executionQuantity(f.quantity) }} @ {{ money(f.price,f.currency) }} · {{ f.action }} <BrokerOrderId :order-id="f.orderId" /><span v-if="f.zeroPriceEvidence" class="block text-sm text-gray-400">Zero value supported by broker cash evidence</span><span v-if="f.available<f.quantity-0.00000001" class="block text-sm text-gray-400">{{ executionQuantity(f.available) }} available to link · {{ executionQuantity(f.allocated??f.quantity-f.available) }} already allocated</span><span v-if="f.sharedPlans?.some(id=>id!==plan.id)" class="block text-sm text-amber-700 dark:text-amber-300">Shared source fill. Link only this plan's quantity; fees and broker results are apportioned.</span></span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
+     <p v-if="finderLoading" role="status">Loading trades…</p><p v-else-if="!visibleFinderFills.length">{{ finderOrderQuery?'No available trades match this order number.':'No available '+finder.action+' fills for this asset, instrument and account.' }}</p>
+     <div v-for="f in visibleFinderFills" :key="f.tradeId+f.key" class="grid sm:grid-cols-[2rem_1fr_8rem] gap-3 items-center border-b border-gray-700 py-3"><input v-model="f.selected" type="checkbox" :aria-label="'Select fill '+f.tradeId+':'+f.key"><span>{{ new Date(f.time).toLocaleString() }} · {{ executionQuantity(f.quantity) }} @ {{ money(f.price,f.currency) }} · {{ f.action }} <BrokerOrderId :order-id="f.orderId" /><span v-if="f.zeroPriceEvidence" class="block text-sm text-gray-400">Zero value supported by broker cash evidence</span><span v-if="f.available<f.quantity-0.00000001" class="block text-sm text-gray-400">{{ executionQuantity(f.available) }} available to link · {{ executionQuantity(f.allocated??f.quantity-f.available) }} already allocated</span><span v-if="f.sharedPlans?.some(id=>id!==plan.id)" class="block text-sm text-amber-700 dark:text-amber-300">Shared source fill. Link only this plan's quantity; fees and broker results are apportioned.</span></span><input v-model.number="f.allocate" type="number" step="any" min="0" :max="f.available" class="input" aria-label="Allocation quantity"></div>
     </div>
    </section>
   </div>
@@ -368,7 +375,7 @@ function hydrateManagement(){
  hydrating=true;
  for(const kind of ['entry','exit']){
  const original=draft.value?.[kind==='entry'?'entries':'exits']||[],keys=new Set(original.map(e=>e.key));
- const added=Object.entries(plan.value.management?.[kind]||{}).filter(([key,m])=>!keys.has(key)&&m.stage).map(([key,m])=>({key,...m.stage}));
+ const added=Object.entries(plan.value.management?.[kind]||{}).filter(([key,m])=>!keys.has(key)&&m.stage).sort(([,a],[,b])=>(a.position??Number.MAX_SAFE_INTEGER)-(b.position??Number.MAX_SAFE_INTEGER)).map(([key,m])=>({key,...m.stage}));
  managed.value[kind]=[...original,...added].map(e=>{
   const m=plan.value.management?.[kind]?.[e.key]||{},a=ledger.value.records?.filter(a=>a.action===kind&&a.stage_key===e.key&&!a.fill.provisional)||[];
   const q=a.reduce((sum,a)=>sum+a.quantity,0),price=q>0&&a.every(a=>fillRate(a.fill,draft.value.currency))?a.reduce((sum,a)=>sum+a.quantity*a.fill.price*fillRate(a.fill,draft.value.currency),0)/q:null;
@@ -382,7 +389,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map(e=>[e.key,{...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map((e,position)=>[e.key,{position,label:e.label,...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:linked(k,e.key)&&plan.value.management?.[k]?.[e.key]?.stage?plan.value.management[k][e.key].stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
  return management
 }
 function mergeNewerManagement(base,local){
@@ -418,12 +425,17 @@ async function changeFinalisation(event){const wanted=event.target.checked;if(di
 async function continueToManage(){if(dirty||!plan.value.id){if(!await save())return}if(plan.value.status==='draft'){await action('status',{status:'watching'});if(!error.value)screen.value='Trade & Manage';return}if(!plan.value.finalised){error.value='Return to Draft and tick Finalised before recording trades';return}screen.value='Trade & Manage'}
 async function toggleTrade(kind,key){await findFills(kind,key)}
 const finderLinks=computed(()=>(ledger.value.records||[]).filter(a=>!a.fill?.provisional&&a.action===finder.value?.action&&a.stage_key===finder.value?.stageKey));
-const finderExisting=ref([]);
+const finderExisting=ref([]),finderOrderNumber=ref('');
+const finderOrderQuery=computed(()=>finderOrderNumber.value.trim().toLowerCase());
+const matchesFinderOrder=id=>!finderOrderQuery.value||(id!=null&&String(id).toLowerCase().includes(finderOrderQuery.value));
+// Filter views only. Saving still uses the complete selection state below.
+const visibleFinderExisting=computed(()=>finderExisting.value.filter(a=>matchesFinderOrder(a.fill?.orderId)));
+const visibleFinderFills=computed(()=>fills.value.filter(f=>matchesFinderOrder(f.orderId)));
 const finderChanged=computed(()=>finderExisting.value.some(a=>!a.selected)||fills.value.some(f=>f.selected&&f.allocate>0));
 let finderSequence=0;
-function closeFinder(){++finderSequence;finder.value=null;fills.value=[];finderExisting.value=[];finderLoading.value=false}
+function closeFinder(){++finderSequence;finder.value=null;fills.value=[];finderExisting.value=[];finderOrderNumber.value='';finderLoading.value=false}
 async function findFills(kind,key){
- error.value='';const request=++finderSequence;fills.value=[];finderLoading.value=true;
+ error.value='';finderOrderNumber.value='';const request=++finderSequence;fills.value=[];finderLoading.value=true;
  finder.value={action:kind,stageKey:key,journalAssessmentId:kind==='entry'?(workflow.value?.journalAssessments||[]).find(a=>a.stage_key===key)?.id||null:null};
  finderExisting.value=finderLinks.value.map(a=>({...a,selected:true}));
  try{
@@ -469,7 +481,18 @@ watch([()=>props.portfolioCapital,()=>draft.value?.currency,fx],applySelectedCap
 watch(()=>props.playbooks,()=>{if(!draft.value)return;hydrating=true;applyPlaybookSetup();queueMicrotask(()=>hydrating=false)},{deep:true})
 watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
 watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
-function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
+function previewDefinition(){
+ const d=clean();
+ if(managing.value){
+  // Management keeps ordering, stage identity, execution and match metadata.
+  // Calculate accepts only definition fields; do not forward the whole row.
+  const shared=['key','label','accountId','price','units','marketContext','tactics'];
+  const project=(row,fields)=>Object.fromEntries(fields.filter(key=>Object.hasOwn(row,key)).map(key=>[key,row[key]]));
+  d.entries=managed.value.entry.map(row=>project(row,[...shared,'riskWeight','tactic']));
+  d.exits=managed.value.exit.map(row=>project(row,[...shared,'percent','premium']));
+ }
+ return d
+}
 watch([draft,managed],()=>{
  if(hydrating)return;dirty=true;clearTimeout(saveTimer);
  if(!preparationLocked.value&&plan.value.id&&!planCommitments.value.length&&!['reviewed','completed','cancelled'].includes(plan.value.status))saveTimer=setTimeout(save,900);

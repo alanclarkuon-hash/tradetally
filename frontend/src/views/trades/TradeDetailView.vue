@@ -49,6 +49,10 @@
           >
             <SparklesIcon class="h-4 w-4" />
             <span>{{ showAIPanel ? 'Hide Analysis' : 'Analyze Trade' }}</span>
+            <span
+              v-if="showProLock"
+              class="px-1.5 py-0.5 text-xs font-semibold rounded bg-white/20"
+            >Pro</span>
           </button>
           <button
             v-if="trade.entry_price !== null && trade.entry_price !== undefined"
@@ -236,7 +240,12 @@
       </div>
 
       <!-- AI Single Trade Analysis -->
-      <div v-if="showAIPanel" class="card">
+      <ProUpgradePrompt
+        v-if="showAIPanel && showProLock"
+        variant="card"
+        description="Get an AI review of this trade's executions, setup, news, and charts with TradeTally Pro."
+      />
+      <div v-else-if="showAIPanel && isProUser" class="card">
         <AIConversationPanel
           :trade-id="trade.id"
           title="AI Trade Analysis"
@@ -297,7 +306,7 @@
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Currency</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ getTradeCurrency() }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ trade.price_currency || getTradeCurrency() }}</dd>
                 </div>
                 <!-- Options-specific fields -->
                 <div v-if="trade.instrument_type === 'option'">
@@ -323,7 +332,7 @@
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.strike_price">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Strike Price</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.strike_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'strike_price') }}</dd>
                 </div>
                 <div v-if="trade.instrument_type === 'option' && trade.expiration_date">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Expiration Date</dt>
@@ -337,14 +346,14 @@
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Entry Price (per share)' : 'Entry Price' }}
                   </dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.entry_price) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'entry_price') }}</dd>
                 </div>
                 <div>
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">
                     {{ trade.instrument_type === 'option' ? 'Exit Price (per share)' : 'Exit Price' }}
                   </dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">
-                    <template v-if="trade.exit_time">{{ formatTradeCurrency(trade.exit_price) }}</template>
+                    <template v-if="trade.exit_time">{{ formatTradePrice(trade, 'exit_price') }}</template>
                     <template v-else-if="manualOptionPrice !== null">
                       {{ formatTradeCurrency(manualOptionPrice) }}
                       <span class="text-xs text-gray-500 dark:text-gray-400 font-normal ml-1">(current)</span>
@@ -354,18 +363,18 @@
                 </div>
                 <div v-if="trade.stopLoss || trade.stop_loss">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Stop Loss</dt>
-                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradeCurrency(trade.stop_loss || trade.stopLoss) }}</dd>
+                  <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono">{{ formatTradePrice(trade, 'stop_loss') }}</dd>
                 </div>
                 <div v-if="trade.takeProfit || trade.take_profit || (trade.take_profit_targets && trade.take_profit_targets.length > 0)">
                   <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Take Profit</dt>
                   <dd class="mt-1 text-sm text-gray-900 dark:text-white font-mono flex flex-wrap gap-x-4 gap-y-1">
                     <!-- Show single take_profit as TP1 only when NO take_profit_targets exist -->
                     <span v-if="(trade.take_profit || trade.takeProfit) && (!trade.take_profit_targets || trade.take_profit_targets.length === 0)">
-                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradeCurrency(trade.take_profit || trade.takeProfit) }}
+                      <span class="text-xs text-gray-400 mr-1">TP1:</span>{{ formatTradePrice(trade, 'take_profit') }}
                     </span>
                     <!-- Show all targets from take_profit_targets as TP1, TP2, etc. -->
                     <span v-for="(target, index) in (trade.take_profit_targets || [])" :key="index">
-                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTradeCurrency(target.price) }}
+                      <span class="text-xs text-gray-400 mr-1">TP{{ index + 1 }}:</span>{{ formatTargetPrice(target, index) }}
                       <span v-if="target.shares" class="text-xs text-gray-400 ml-0.5">({{ target.shares }})</span>
                     </span>
                   </dd>
@@ -1106,10 +1115,10 @@
                         {{ formatQuantity(execution.quantity) }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradeCurrency(execution.entryPrice) : '-' }}
+                        {{ execution.entryPrice !== null && execution.entryPrice !== undefined ? formatTradePrice(execution, 'entry_price') : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono text-gray-900 dark:text-white">
-                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradeCurrency(execution.exitPrice) : '-' }}
+                        {{ execution.exitPrice !== null && execution.exitPrice !== undefined ? formatTradePrice(execution, 'exit_price') : '-' }}
                       </td>
                       <td class="px-3 py-4 whitespace-nowrap text-sm font-mono"
                           :class="[
@@ -1194,13 +1203,13 @@
                     <div v-if="execution.entryPrice !== null && execution.entryPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Entry Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatTradeCurrency(execution.entryPrice) }}
+                        {{ formatTradePrice(execution, 'entry_price') }}
                       </div>
                     </div>
                     <div v-if="execution.exitPrice !== null && execution.exitPrice !== undefined">
                       <div class="text-gray-500 dark:text-gray-400 text-xs">Exit Price</div>
                       <div class="font-mono text-gray-900 dark:text-white">
-                        {{ formatTradeCurrency(execution.exitPrice) }}
+                        {{ formatTradePrice(execution, 'exit_price') }}
                       </div>
                     </div>
                     <div v-if="execution.exitTime">
@@ -1596,8 +1605,17 @@
             </div>
           </div>
 
-          <!-- News Section -->
-          <div v-if="trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+          <!-- News Section (Pro only) -->
+          <div v-if="showProLock && trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
+            <div class="card-body">
+              <h3 class="heading-card">Breaking News</h3>
+              <ProUpgradePrompt
+                variant="compact"
+                description="See the news and sentiment around this trade with TradeTally Pro."
+              />
+            </div>
+          </div>
+          <div v-else-if="isProUser && trade.has_news && trade.news_events && trade.news_events.length > 0" class="card">
             <div class="card-body">
               <div class="flex items-center justify-between mb-4">
                 <h3 class="heading-card">Breaking News</h3>
@@ -1687,6 +1705,7 @@ import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
 import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
+import { useTradePriceFormatter } from '@/composables/useTradePriceFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
 import StockLogo from '@/components/common/StockLogo.vue'
@@ -1695,6 +1714,7 @@ import TradeChartVisualization from '@/components/trades/TradeChartVisualization
 import TradeImages from '@/components/trades/TradeImages.vue'
 import TradeCharts from '@/components/trades/TradeCharts.vue'
 import ProUpgradePrompt from '@/components/ProUpgradePrompt.vue'
+import { useProAccess } from '@/composables/useProAccess'
 import BaseSelect from '@/components/common/BaseSelect.vue'
 import { useAIStore } from '@/stores/ai'
 import { getTradeDateOnlyParts } from '@/utils/date'
@@ -1717,6 +1737,7 @@ const aiStore = useAIStore()
 const { showSuccess, showError, showConfirmation, showDangerConfirmation } = useNotification()
 const { formatDateTime: formatDateTimeTz, formatTime: formatTimeTz, timezoneLabel } = useUserTimezone()
 const { formatCurrency, currencySymbol, formatSignedCurrency } = useCurrencyFormatter()
+const { formatTradePrice } = useTradePriceFormatter()
 
 function reloadScrollStorageKey() {
   return `trade_detail_scroll:${route.params.id}`
@@ -1753,6 +1774,15 @@ function formatTradeCurrency(value, options = {}) {
 
 function formatTradeSignedCurrency(value, options = {}) {
   return formatSignedCurrency(value, { ...options, currency: getTradeCurrency() })
+}
+
+function formatTargetPrice(target, index) {
+  return formatTradePrice({
+    ...target,
+    native_prices: trade.value?.native_prices?.take_profit_targets?.[index],
+    price_currency: trade.value?.price_currency,
+    effective_currency: getTradeCurrency()
+  }, 'price')
 }
 
 function formatExcursionValue(value) {
@@ -1890,10 +1920,8 @@ const manualGradingReviewForm = reactive({
   reviewNotes: ''
 })
 
-const isPlaybookFeatureAvailable = computed(() => {
-  if (!authStore.user) return false
-  return authStore.user.billingEnabled === false || authStore.user.tier === 'pro' || authStore.user.role === 'admin'
-})
+const { isProUser, showProLock } = useProAccess()
+const isPlaybookFeatureAvailable = isProUser
 
 const selectedAdherencePlaybook = computed(() => {
   return adherencePlaybooks.value.find(playbook => playbook.id === selectedAdherencePlaybookId.value) || null
@@ -2281,6 +2309,8 @@ const processedExecutions = computed(() => {
     }
 
     return [{
+      native_prices: trade.value.native_prices,
+      price_currency: trade.value.price_currency,
       side: tradeSide,
       action: tradeSide,
       quantity,
@@ -2302,11 +2332,13 @@ const processedExecutions = computed(() => {
   )
 
   let runningPosition = 0
-  return executions.map((execution) => {
+  return executions.map((execution, execution_index) => {
     if (!execution) {
       return { action: 'N/A', quantity: 0, price: 0, value: 0, commission: 0, fees: 0, runningPosition: 0, avgCost: null, datetime: null, grossPnl: null, netPnl: null, pnl: null }
     }
 
+    const native_prices = trade.value.native_prices?.executions?.[execution_index]
+    const price_currency = trade.value.price_currency
     const quantity = parseFloat(execution.quantity) || 0
     const commission = parseFloat(execution.commission) || 0
     const fees = parseFloat(execution.fees) || 0
@@ -2319,12 +2351,16 @@ const processedExecutions = computed(() => {
         ?? execution.exit_price
         ?? (executionExitTime && Number(trade.value.exit_price) === 0 ? 0 : null)
       const exitPrice = rawExit != null ? parseFloat(rawExit) : null
-      const grossPnl = (exitPrice != null && quantity > 0)
-        ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
-        : null
+      const grossPnl = execution.gross_realized_pnl != null
+        ? parseFloat(execution.gross_realized_pnl)
+        : (exitPrice != null && quantity > 0)
+          ? (tradeSide === 'short' ? (entryPrice - exitPrice) * quantity * valueMultiplier : (exitPrice - entryPrice) * quantity * valueMultiplier)
+          : null
 
       return {
         ...execution,
+        native_prices,
+        price_currency,
         action: execution.side || tradeSide,
         quantity,
         price: entryPrice,
@@ -2356,6 +2392,11 @@ const processedExecutions = computed(() => {
 
     return {
       ...execution,
+      price_currency,
+      native_prices: native_prices ? {
+        entry_price: native_prices.entry_price ?? (isOpening ? native_prices.price : null),
+        exit_price: native_prices.exit_price ?? (isOpening ? null : native_prices.price)
+      } : undefined,
       action,
       quantity,
       price,

@@ -205,6 +205,22 @@ class BrokerConnection {
       params = [userId,brokerType,encryptionService.encrypt(etoroApiKey),
         encryptionService.encrypt(etoroUserKey),externalAccountId,
         JSON.stringify(brokerMetadata || {}),accountLabel,syncTime,syncStartDate];
+    } else if (brokerType === 'oanda') {
+      query = `
+        INSERT INTO broker_connections (user_id, broker_type, connection_status,
+          oanda_api_token, external_account_id, broker_environment, broker_metadata,
+          account_label, auto_sync_enabled, sync_frequency, sync_time, sync_start_date)
+        VALUES ($1, $2, 'pending', $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (user_id, broker_environment, external_account_id) WHERE broker_type = 'oanda'
+        DO UPDATE SET oanda_api_token = EXCLUDED.oanda_api_token,
+          broker_metadata = EXCLUDED.broker_metadata, account_label = EXCLUDED.account_label,
+          auto_sync_enabled = EXCLUDED.auto_sync_enabled, sync_frequency = EXCLUDED.sync_frequency,
+          sync_time = EXCLUDED.sync_time, sync_start_date = EXCLUDED.sync_start_date,
+          connection_status = 'pending', consecutive_failures = 0, updated_at = CURRENT_TIMESTAMP
+        RETURNING *`;
+      params = [userId, brokerType, encryptionService.encrypt(connectionData.oanda_api_token),
+        externalAccountId, brokerEnvironment || 'practice', JSON.stringify(brokerMetadata || {}),
+        accountLabel, autoSyncEnabled, syncFrequency, syncTime, syncStartDate];
     } else if (brokerType === 'trading212') {
       query = `
         INSERT INTO broker_connections (
@@ -1035,6 +1051,13 @@ class BrokerConnection {
       if (includeCredentials) {
         connection.etoroApiKey = encryptionService.decrypt(row.etoro_api_key);
         connection.etoroUserKey = encryptionService.decrypt(row.etoro_user_key);
+      }
+    } else if (row.broker_type === 'oanda') {
+      connection.externalAccountId = row.external_account_id;
+      connection.brokerEnvironment = row.broker_environment || 'practice';
+      connection.brokerMetadata = row.broker_metadata || {};
+      if (includeCredentials && row.oanda_api_token) {
+        connection.oanda_api_token = safeDecrypt(row.oanda_api_token, 'oanda_api_token');
       }
     } else if (row.broker_type === 'trading212') {
       connection.externalAccountId = row.external_account_id;

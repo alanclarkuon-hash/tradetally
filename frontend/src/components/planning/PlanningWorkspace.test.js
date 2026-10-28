@@ -1,3 +1,5 @@
+import {createRequire} from 'node:module'
+const {normalize:normalizePlanningDefinition}=createRequire(import.meta.url)('../../../../backend/src/services/tradePlanning.js')
 import {createPinia,setActivePinia} from 'pinia'
 import {useAuthStore} from '@/stores/auth'
 
@@ -216,3 +218,114 @@ it.each([[-50,'-£40.00','text-red-600'],[50,'£40.00','text-green-600'],[0,'£0
  plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[],capitalRisk:50,capitalRiskCurrency:'USD',stopPnl,stopPnlCurrency:'USD'},stopProjection:{amount:stopPnl,currency:'USD'},history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();const el=wrapper.findAll('.position-metrics small').find(s=>s.text()==='Current risk to stop').element.parentElement.querySelector('strong');expect(el.textContent).toBe(text);if(color)expect(el.classList.contains(color)).toBe(true);else expect(el.className).not.toMatch(/text-(green|red)/);
 });
 it('explains missing entry matches instead of reporting a broker FX failure',async()=>{plan={...plan,status:'entered',finalised:true};const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{matchingUnresolved:1,records:[{action:'entry',stage_key:'a',quantity:10,valid:true,fill:{currency:'USD',price:100}}],currency:'USD',accountCurrency:'USD',realisedProfit:null,accountRealisedProfit:null,positionValue:null,openQuantity:5},history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.text()).toContain('Match entry rows under Exits');expect(wrapper.get('.position-metrics').text()).not.toContain('Broker FX unavailable')});
+
+it('can remove an unlinked added management entry while preserving the only original entry',async()=>{
+ plan.finalised=true;plan.status='entered';plan.management={entry:{extra:{stage:{label:'Extra unlinked stage',accountId:null,riskWeight:0},executed:false,units:null,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[]}},exit:{}};
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ expect(wrapper.vm.managed.entry).toHaveLength(2);
+ const originalRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 1 units"]').exists()),extraRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 2 units"]').exists());
+ const remove=r=>r.findAll('button').find(b=>b.text()==='Remove');
+ expect(remove(originalRow).attributes('disabled')).toBeDefined();expect(remove(extraRow).attributes('disabled')).toBeUndefined();
+ await remove(extraRow).trigger('click');await button('Save changes').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/p/management',expect.objectContaining({management:expect.objectContaining({entry:expect.not.objectContaining({extra:expect.anything()})})}));
+ expect(wrapper.vm.managed.entry.map(r=>r.key)).toEqual(['a']);expect(plan.definition.entries.map(r=>r.key)).toEqual(['a']);
+ await button('Plan').trigger('click');await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed.entry.map(r=>r.key)).toEqual(['a']);
+});
+
+it('still prevents removing an added management entry that has a linked trade',async()=>{
+ plan.finalised=true;plan.status='entered';plan.management={entry:{extra:{stage:{label:'Linked extra stage',accountId:null,riskWeight:0},executed:true,units:1,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[]}},exit:{}};
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'synthetic-link',trade_id:'synthetic-trade',action:'entry',stage_key:'extra',quantity:1,valid:true,fill:{price:95,currency:'USD',time:'2026-01-01T10:00:00Z',provisional:false}}],entered:1,openQuantity:1,currency:'USD'},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const extraRow=wrapper.findAll('tbody tr').find(r=>r.find('[aria-label="entry 2 units"]').exists());expect(extraRow.findAll('button').find(b=>b.text()==='Remove').attributes('disabled')).toBeDefined();
+});
+
+it.each(['entry','exit'])('keeps a new %s last after JSONB-style save/reload and reopening',async kind=>{
+ const existing='f'.repeat(32);plan.status='entered';plan.finalised=true;
+ plan.management={entry:{},exit:{}};plan.management[kind][existing]={stage:{label:'Earlier custom row',accountId:null,riskWeight:0},executed:false,units:null,price:95,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[],...(kind==='exit'?{percent:0,premium:null}:{})};
+ const originalDefinition=structuredClone(plan.definition);
+ put.mockImplementation(async(url,body)=>{if(url.endsWith('/management')){
+  const unordered=Object.fromEntries(['entry','exit'].map(action=>[action,Object.fromEntries(Object.entries(body.management[action]).sort(([a],[b])=>a.length-b.length||a.localeCompare(b)))]));
+  plan={...plan,version:plan.version+1,management:unordered};
+ }return {data:{plan}}});
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Add '+kind).trigger('click');
+ const expected=wrapper.vm.managed[kind].map(r=>r.key),added=expected.at(-1);expect(expected.indexOf(existing)).toBeLessThan(expected.indexOf(added));
+ await button('Save changes').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+ const saved=put.mock.calls.find(([url])=>url.endsWith('/management'))[1].management[kind];
+ expect(saved[existing].position).toBeLessThan(saved[added].position);expect(plan.definition).toEqual(originalDefinition);
+ wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+});
+
+it.each(['entry','exit'])('keeps two new %s rows appended when another row is added during an in-flight save',async kind=>{
+ const pending=deferred();let calls=0;plan.status='entered';plan.finalised=true;
+ put.mockImplementation(async(url,body)=>{if(url.endsWith('/management')){
+  if(++calls===1)await pending.promise;
+  plan={...plan,version:plan.version+1,management:Object.fromEntries(['entry','exit'].map(action=>[action,Object.fromEntries(Object.entries(body.management[action]).sort(([a],[b])=>a.length-b.length||a.localeCompare(b)))]))};
+ }return {data:{plan}}});
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ await button('Add '+kind).trigger('click');const first=wrapper.vm.managed[kind].at(-1).key;
+ await button('Save changes').trigger('click');await flushPromises();expect(calls).toBe(1);
+ // Reproduce a row-add event already queued when the save disabled the page.
+ wrapper.vm.addRow(kind);await wrapper.vm.$nextTick();const second=wrapper.vm.managed[kind].at(-1).key,expected=wrapper.vm.managed[kind].map(r=>r.key);
+ pending.resolve();await flushPromises();expect(calls).toBe(2);expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);expect(wrapper.vm.managed[kind].slice(-2).map(r=>r.key)).toEqual([first,second]);
+ wrapper.unmount();mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();expect(wrapper.vm.managed[kind].map(r=>r.key)).toEqual(expected);
+});
+
+
+it.each(['entry','exit'])('filters %s broker order numbers without losing hidden selections or unlinking hidden trades',async kind=>{
+ plan.status='entered';plan.finalised=true;const stage=kind==='entry'?'a':'b';
+ const ids=['8100000000000000001','8100000000000000002','8100000000000000003'];
+ const records=ids.slice(0,2).map((orderId,i)=>({id:'linked'+i,trade_id:'old'+i,source_key:'key'+i,stage_key:stage,action:kind,quantity:1,valid:true,fill:{provisional:false,price:100,currency:'USD',time:'2026-01-01',orderId}}));
+ const available=[ids[0],ids[2],null].map((orderId,i)=>({tradeId:'available'+i,key:'fill'+i,fingerprint:'a'.repeat(64),action:kind,quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01',orderId}));
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records,openQuantity:2},history:[]}}):url.endsWith('/fills')?Promise.resolve({data:{fills:available}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();await button('Unlink trade').trigger('click');await flushPromises();post.mockClear();put.mockClear();
+ const filter=()=>wrapper.get('input[aria-label="Filter by order number"]');
+ await filter().setValue('  '+ids[0]+'  ');
+ expect(wrapper.findAll('[role="dialog"] [data-linked-fill]')).toHaveLength(1);
+ expect(wrapper.findAll('[role="dialog"] input[aria-label^="Select fill"]')).toHaveLength(1);
+ await wrapper.get('input[aria-label="Select fill available0:fill0"]').setValue(true);
+ await wrapper.get('input[aria-label="Keep linked fill linked0"]').setValue(false);
+ await filter().setValue(ids[2]);await wrapper.get('input[aria-label="Select fill available1:fill1"]').setValue(true);
+ expect(post).not.toHaveBeenCalled();expect(put).not.toHaveBeenCalled();
+ await button('Clear order filter').trigger('click');
+ expect(wrapper.findAll('[role="dialog"] input[aria-label^="Select fill"]')).toHaveLength(3);
+ expect(wrapper.get('input[aria-label="Select fill available0:fill0"]').element.checked).toBe(true);
+ expect(wrapper.get('input[aria-label="Keep linked fill linked1"]').element.checked).toBe(true);
+ await filter().setValue('no-such-order');expect(wrapper.text()).toContain('No available trades match this order number');expect(wrapper.text()).toContain('No linked trades match this order number');
+ await button('Link selected trades').trigger('click');await flushPromises();
+ expect(post).toHaveBeenCalledWith('/trade-plans/p/allocations',expect.objectContaining({action:kind,stageKey:stage,removeAllocationIds:['linked0'],fills:[expect.objectContaining({tradeId:'available0',quantity:1}),expect.objectContaining({tradeId:'available1',quantity:1})]}));
+});
+
+it('resets the order filter on reopen and accepts partial alphanumeric broker IDs',async()=>{
+ plan.finalised=true;const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/fills')?Promise.resolve({data:{fills:[{tradeId:'one',key:'one',action:'entry',orderId:'SYNTH-ABC-0042',quantity:1,available:1,price:100,currency:'USD',time:'2026-01-01'}]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await button('Link trade').trigger('click');await flushPromises();
+ await wrapper.get('input[aria-label="Filter by order number"]').setValue('abc-00');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
+ await wrapper.get('input[aria-label="Filter by order number"]').setValue('missing');await wrapper.findAll('[role="dialog"] button').find(b=>b.text()==='Close').trigger('click');
+ await button('Link trade').trigger('click');await flushPromises();expect(wrapper.get('input[aria-label="Filter by order number"]').element.value).toBe('');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
+});
+
+
+it('renames original and added management rows with schema-valid previews while keeping metadata separate',async()=>{
+ vi.useFakeTimers();plan.status='entered';plan.finalised=true;plan.definition.runnerMode='row';plan.management={entry:{a:{position:0,executed:false,units:null,price:100,time:'2026-01-01T00:00:00Z'}},exit:{b:{position:0,executed:false,units:null,price:120,time:'2026-01-01T00:00:00Z',percent:80,entryMatches:[{entryKey:'a',quantity:1}]},extra:{position:1,stage:{label:'Extra target',accountId:null,riskWeight:0},executed:false,units:null,price:125,time:'2026-01-01T00:00:00Z',percent:20}}};
+ const originalDefinition=JSON.stringify(plan.definition);
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ await wrapper.get('input[aria-label="exit 1 Fib level"]').setValue('Renamed target');
+ await vi.advanceTimersByTimeAsync(400);const payload=post.mock.calls.filter(([url])=>url==='/trade-plans/calculate').at(-1)[1].definition;
+ expect(()=>normalizePlanningDefinition(payload)).not.toThrow();
+ expect(payload.exits[0].label).toBe('Renamed target');
+ for(const row of [...payload.entries,...payload.exits])for(const key of ['position','executed','time','stage','entryMatches'])expect(row).not.toHaveProperty(key);
+ await wrapper.get('input[aria-label="exit 2 Fib level"]').setValue('Renamed extra');
+ await button('Save changes').trigger('click');await flushPromises();
+ const saved=put.mock.calls.filter(([url])=>url.endsWith('/management')).at(-1)[1].management;
+ expect(saved.exit.b).toMatchObject({label:'Renamed target',position:0,entryMatches:[{entryKey:'a',quantity:1}]});
+ expect(saved.exit.extra).toMatchObject({label:'Renamed extra',position:1});expect(JSON.stringify(plan.definition)).toBe(originalDefinition);
+ expect(wrapper.get('input[aria-label="exit 1 Fib level"]').element.value).toBe('Renamed target');expect(wrapper.get('input[aria-label="exit 2 Fib level"]').element.value).toBe('Renamed extra');
+});
+
+it('allows display-only renaming of linked rows while their financial controls remain locked',async()=>{
+ plan.status='entered';plan.finalised=true;plan.definition.runnerMode='row';plan.management={exit:{extra:{position:1,stage:{label:'Created target',accountId:null,riskWeight:0},executed:true,units:1,price:125,time:'2026-01-01T00:00:00Z',percent:20,entryMatches:[{entryKey:'a',quantity:1}]}}};
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'linked',trade_id:'synthetic',source_key:'fill',stage_key:'extra',action:'exit',quantity:1,valid:true,fill:{provisional:false,price:125,currency:'USD',time:'2026-01-01'}}]},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const name=wrapper.get('input[aria-label="exit 2 Fib level"]');expect(name.attributes('disabled')).toBeUndefined();await name.setValue('Display alias');
+ expect(wrapper.get('input[aria-label="exit 2 units"]').attributes('disabled')).toBeDefined();await button('Save changes').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/p/management',expect.objectContaining({management:expect.objectContaining({exit:expect.objectContaining({extra:expect.objectContaining({label:'Display alias',stage:{label:'Created target',accountId:null,riskWeight:0},entryMatches:[{entryKey:'a',quantity:1}]})})})}));
+});

@@ -1,0 +1,26 @@
+// Separate TEST only. Exercises actual JSONB persistence with an inactive synthetic owner.
+const root='/app/backend',db=require(root+'/src/config/database'),assert=require('node:assert/strict'),crypto=require('node:crypto'),express=require(root+'/node_modules/express');
+if(process.env.DB_NAME!=='tradetally_test')throw Error('Separate TEST database required');
+const owner=crypto.randomUUID(),account=crypto.randomUUID(),pid=crypto.randomUUID(),older='f'.repeat(32),newer='0'.repeat(32),latest='1'.repeat(32);let server;
+(async()=>{try{
+ await db.query("INSERT INTO users(id,email,username,password_hash,is_active,is_verified,tier) VALUES($1,$2,$3,'not-a-login-hash',false,false,'pro')",[owner,'synthetic-'+owner+'@example.invalid','synthetic-'+owner]);
+ await db.query("INSERT INTO user_accounts(id,user_id,account_name,account_identifier,initial_balance_date,currency) VALUES($1,$2,'Synthetic','synthetic-order',CURRENT_DATE,'USD')",[account,owner]);
+ const definition=require(root+'/src/services/tradePlanning').normalize({title:'Synthetic row order',symbol:'SYNTH',instrument:'stock',direction:'long',accountId:account,currency:'USD',riskBudget:100,stopPrice:90,quantityStep:.01,runnerMode:'row',entries:[{key:'base',label:'Original entry',price:100,riskWeight:100}],exits:[{key:'target',label:'Original exit',price:110,percent:100}],options:{}});
+ await db.query("INSERT INTO trade_plans(id,user_id,status,finalised,definition) VALUES($1,$2,'watching',true,$3::jsonb)",[pid,owner,JSON.stringify(definition)]);
+ const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:owner};next()});app.use('/plans',require(root+'/src/routes/planningLifecycle.routes'));app.use((e,req,res,next)=>res.status(500).json({error:e.message}));server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));
+ const url='http://127.0.0.1:'+server.address().port+'/plans/'+pid+'/management',plan=async()=>(await db.query('SELECT * FROM trade_plans WHERE id=$1',[pid])).rows[0];
+ const row=(label,position,extra=false,exit=false)=>({position,executed:false,units:null,price:null,time:'2026-01-01T10:00:00Z',tactics:[],marketContext:[],...(extra?{stage:{label,accountId:null,riskWeight:0}}:{}),...(exit?{percent:0,premium:null}:{})});
+ async function save(management){const current=await plan(),res=await fetch(url,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({version:current.version,management})});return {status:res.status,body:await res.json()};}
+ const management={entry:{base:row('Original entry',0),[older]:row('Z earlier entry',1,true),[newer]:row('A new entry',2,true)},exit:{target:row('Original exit',0,false,true),[older]:row('Z earlier exit',1,true,true),[newer]:row('A new exit',2,true,true)}};
+ let r=await save(management);assert.equal(r.status,200,JSON.stringify(r.body));let saved=await plan();
+ assert.ok(Object.keys(saved.management.entry).indexOf(newer)<Object.keys(saved.management.entry).indexOf(older),'Fixture must actually reorder keys through JSONB');
+ const effective=()=>require(root+'/src/services/planningManagementRows').definitionForManagement(saved);
+ assert.deepEqual(effective().entries.map(r=>r.key),['base',older,newer]);assert.deepEqual(effective().exits.map(r=>r.key),['target',older,newer]);
+ management.entry[latest]=row('Newest entry',3,true);management.exit[latest]=row('Newest exit',3,true,true);
+ r=await save(management);assert.equal(r.status,200,JSON.stringify(r.body));saved=await plan();assert.deepEqual(effective().entries.map(r=>r.key),['base',older,newer,latest]);assert.deepEqual(effective().exits.map(r=>r.key),['target',older,newer,latest]);
+ const legacy=JSON.parse(JSON.stringify(management));for(const action of ['entry','exit'])for(const r of Object.values(legacy[action]))delete r.position;
+ r=await save(legacy);assert.equal(r.status,200,JSON.stringify(r.body));saved=await plan();assert.equal(saved.management.entry[latest].position,3);assert.deepEqual(effective().entries.map(r=>r.key),['base',older,newer,latest]);assert.deepEqual(effective().exits.map(r=>r.key),['target',older,newer,latest]);
+ const version=saved.version,invalid=JSON.parse(JSON.stringify(management));invalid.entry[latest].position=-1;r=await save(invalid);assert.equal(r.status,422);assert.equal((await plan()).version,version);
+ delete management.entry[newer];delete management.exit[newer];r=await save(management);assert.equal(r.status,200,JSON.stringify(r.body));saved=await plan();assert.deepEqual(effective().entries.map(r=>r.key),['base',older,latest]);assert.deepEqual(effective().exits.map(r=>r.key),['target',older,latest]);assert.deepEqual(saved.definition,definition);
+ console.log(JSON.stringify({realDatabase:true,jsonbActuallyReorderedKeys:true,entryOrderPreserved:true,exitOrderPreserved:true,newRowsAppended:true,legacyClientPositionsPreserved:true,invalidPositionRejected:true,unlinkedRowRemovalPreserved:true,originalDefinitionUnchanged:true}));
+}finally{if(server)await new Promise(r=>server.close(r));await db.query('DELETE FROM trade_plan_events WHERE user_id=$1',[owner]);await db.query('DELETE FROM trade_plans WHERE user_id=$1',[owner]);await db.query('DELETE FROM user_accounts WHERE user_id=$1',[owner]);await db.query('DELETE FROM users WHERE id=$1',[owner]);await db.pool.end();}})().catch(e=>{console.error(e);process.exitCode=1});

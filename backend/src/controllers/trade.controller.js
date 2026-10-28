@@ -18,7 +18,7 @@ const { priceCacheKey } = require('../utils/priceCacheIdentity');
 const symbolCategories = require('../utils/symbolCategories');
 const imageProcessor = require('../utils/imageProcessor');
 const ensureString = require('../utils/ensureString');
-const { parseTradeFilters, tradeFilterProfiles } = require('../utils/tradeFilters');
+const { parseTradeFilters, tradeFilterProfiles, restrictFiltersToTier } = require('../utils/tradeFilters');
 const upload = require('../middleware/upload');
 const { normalizeCsvBuffer, stripNullCharacters } = require('../utils/csv/encoding');
 const currencyConverter = require('../utils/currencyConverter');
@@ -53,6 +53,7 @@ const AmbiguousTradeReviewService = require('../services/ambiguousTradeReviewSer
 const BulkTradeMetadataService = require('../services/bulkTradeMetadataService');
 const FeeProfileService = require('../services/feeProfileService');
 const BulkTradeStopsService = require('../services/bulkTradeStopsService');
+const BulkTradeChartsService = require('../services/bulkTradeChartsService');
 const BrokerTradeExclusions = require('../services/brokerTradeExclusions');
 
 // Analytics requests can arrive in parallel from the dashboard, trade list,
@@ -765,8 +766,13 @@ const tradeController = {
     try {
       const { limit = 50, offset = 0 } = req.query;
 
+      // Round trips use their own SQL builder (Trade.getRoundTripTrades), so
+      // drop Pro-only advanced filters here rather than in TradeQueries.
       const filters = {
-        ...parseTradeFilters(req.query, tradeFilterProfiles.roundTrip),
+        ...(await restrictFiltersToTier(
+          req.user.id,
+          parseTradeFilters(req.query, tradeFilterProfiles.roundTrip)
+        )),
         limit: parseInt(limit),
         offset: parseInt(offset)
       };
@@ -1655,6 +1661,20 @@ const tradeController = {
           tradeId: change.trade_id,
           bulk: true,
           changedFields: ['stop_loss', 'r_value']
+        });
+      }
+    } catch (error) { next(error); }
+  },
+
+  async bulkAddCharts(req, res, next) {
+    try {
+      const result = await BulkTradeChartsService.add(
+        req.user.id, req.body?.trade_ids, req.body?.chart_url, req.body?.chart_title
+      );
+      res.json(result);
+      for (const change of result.changes) {
+        publishTradeEvent('trade.updated', req, {
+          tradeId: change.trade_id, bulk: true, changedFields: ['charts']
         });
       }
     } catch (error) { next(error); }
@@ -3746,7 +3766,7 @@ const tradeController = {
 
       const { minHoldTime, maxHoldTime } = req.query;
 
-      const filters = {
+      let filters = {
         ...parseTradeFilters(req.query, tradeFilterProfiles.analytics),
         includeArchived: req.query.includeArchived === 'true' || req.query.includeArchived === '1'
       };
@@ -3765,6 +3785,7 @@ const tradeController = {
         }
       }
 
+      filters = await restrictFiltersToTier(req.user.id, filters);
       const cacheKey = TradeQueries.cacheKey(req.user.id, filters)+(req.accountFxKey?':account_reporting_v1:'+req.accountFxKey:'');
 
       const cached = cache.get(cacheKey);
@@ -4502,14 +4523,16 @@ const tradeController = {
         // Trade details
         entryPrice: trade.price || trade.entry_price,
         exitPrice: trade.exit_price,
-        // The chart's summary row formats entryPrice/exitPrice/pnl above, so it
-        // must be told the currency those STORED values are in. That is not
-        // original_currency: a converted import holds USD there while
-        // original_currency still names the source it came from.
+        // Stored money fields use this base; native_prices below is derived
+        // separately from the original currency and historical import rate.
         currency: storedCurrency(trade) || trade.currency || null,
-        // The display walker scales this row by its stored base currency and
-        // relabels `currency`, so the chart summary never shows a stale $.
-        original_currency: storedCurrency(trade) || trade.currency || 'USD',
+        // Preserve import provenance so native price snapshots can recover
+        // historical quote prices while P&L uses the display currency.
+        original_currency: trade.original_currency || 'USD',
+        exchange_rate: trade.exchange_rate,
+        original_entry_price_currency: trade.original_entry_price_currency,
+        original_exit_price_currency: trade.original_exit_price_currency,
+        original_pnl_currency: trade.original_pnl_currency,
         quantity: trade.quantity,
         side: trade.side,
         pnl: trade.pnl,
@@ -4546,8 +4569,9 @@ const tradeController = {
       if (!chartData.candles_currency) {
         try {
           const FundamentalDataService = require('../services/fundamentalDataService');
-          const profile = await FundamentalDataService.getProfile(symbol);
-          candlesSource = String(profile?.currency || 'USD').toUpperCase();
+          if (trade.instrument_type === 'forex') candlesSource = require('../utils/forexSymbols').parseForexPair(symbol).quote;
+          const profile = trade.instrument_type === 'forex' ? null : await FundamentalDataService.getProfile(symbol);
+          candlesSource = String(profile?.currency || candlesSource).toUpperCase();
         } catch { /* provider currency unavailable - retain existing default */ }
       }
       const convertedChart = await ChartService.convertTradeChartForDisplay(req, chartData, candlesSource);

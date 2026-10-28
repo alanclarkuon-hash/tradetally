@@ -17,6 +17,7 @@ const etoroService = require('./etoroService');
 const okxService = require('./okxService');
 const krakenService = require('./krakenService');
 const syncRecovery = require('./syncRecovery');
+const oanda_service = require('./oandaService');
 const tradovateService = require('./tradovateService');
 const { getUserTimezone } = require('../../utils/timezone');
 const { publishInBackground } = require('../../events/domainEvents');
@@ -171,6 +172,10 @@ class BrokerSyncService {
             endDate,
             syncLogId: syncLog.id
           });
+          break;
+
+        case 'oanda':
+          result = await oanda_service.syncTrades(connection, { startDate, endDate, syncLogId: syncLog.id });
           break;
 
         case 'trading212':

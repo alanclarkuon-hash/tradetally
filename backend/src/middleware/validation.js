@@ -543,7 +543,10 @@ const schemas = {
     enableTradeGrouping: Joi.boolean(),
     tradeGroupingTimeGapMinutes: Joi.number().integer().min(1).max(1440),
     autoCloseExpiredOptions: Joi.boolean(),
-    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar'),
+    defaultStopLossType: Joi.string().valid('percent', 'lod', 'dollar', 'points'),
+    default_stop_loss_points: Joi.number().positive().max(1000000).allow(null),
+    default_stop_loss_points_by_underlying: Joi.object()
+      .pattern(/^[A-Z0-9]{1,20}$/, Joi.number().positive().max(1000000)).max(100),
     defaultStopLossPercent: Joi.number().min(0).max(100).allow(null),
     defaultStopLossDollars: Joi.number().min(0).allow(null),
     defaultTakeProfitType: Joi.string().valid('percent', 'risk_reward', 'dollar'),
@@ -763,12 +766,13 @@ const schemas = {
     autoAssignEnabled: Joi.boolean().default(false),
     checklistItems: Joi.array().items(
       Joi.object({
+        id: Joi.string().uuid(),
         label: Joi.string().trim().max(255).required(),
         itemOrder: Joi.number().integer().min(0).allow(null),
         weight: Joi.number().positive().max(100).default(1),
         isRequired: Joi.boolean().default(false)
       })
-    ).min(1).required()
+    ).unique((a, b) => Boolean(a.id && b.id && a.id === b.id)).min(1).required()
   }),
 
   submitPlaybookReview: Joi.object({
@@ -848,6 +852,22 @@ const schemas = {
     api_key: Joi.string().trim().max(4096).required(),
     user_key: Joi.string().trim().max(4096).required(),
     account_label: nullableString(255)
+  }),
+
+  brokerSyncOandaAccounts: Joi.object({
+    api_token: Joi.string().trim().min(1).max(512).required(),
+    broker_environment: Joi.string().valid('practice', 'live').default('practice')
+  }),
+
+  brokerSyncOandaConnection: Joi.object({
+    api_token: Joi.string().trim().min(1).max(512).required(),
+    account_id: Joi.string().trim().pattern(/^[0-9-]{1,32}$/).required(),
+    broker_environment: Joi.string().valid('practice', 'live').default('practice'),
+    account_label: Joi.string().trim().max(100).allow('').default(''),
+    auto_sync_enabled: Joi.boolean().default(false),
+    sync_frequency: Joi.string().valid('manual', 'daily', 'hourly', 'every_4_hours', 'every_6_hours', 'every_12_hours').default('daily'),
+    sync_time: Joi.string().pattern(/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/).default('06:00:00'),
+    sync_start_date: Joi.string().isoDate().allow(null).default(null)
   }),
 
   brokerSyncTrading212Connection: Joi.object({

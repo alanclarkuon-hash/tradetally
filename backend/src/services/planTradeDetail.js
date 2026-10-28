@@ -34,7 +34,7 @@ function projectPlanTrade(source,plan,result,fx=null) {
  const trade={...source,symbol:plan.definition.instrument==='option'?source.symbol:(plan.definition.symbol||source.symbol),underlying_symbol:plan.definition.symbol||source.underlying_symbol,plan_trade:{displayConversion:!!result.displayConversion,sourceSymbol:source.symbol,id:plan.id,title:plan.definition.title,sourceTradeId:source.id,evidenceWarning,cashflows:result.cashflows,tradeRealisedProfit:result.tradeRealisedProfit,sourceTradeIds:[...new Set(records.map(r=>r.trade_id))]},
   executions,quantity:result.entered,price:average(entries),entry_price:average(entries),exit_price:closed?average(exits):null,entry_time:entries[0]?.fill.time,exit_time:closed?exits.at(-1)?.fill.time:null,
   trade_date:entries[0]?.fill.time,pnl:result.realisedProfit,gross_pnl:result.realisedProfit==null?null:result.realisedProfit+costs,open_average_price:result.averagePrice,pnl_percent:result.percentGain,r_value:result.realisedR,commission:executions.reduce((s,e)=>s+e.commission,0),fees:executions.reduce((s,e)=>s+e.fees,0),
-  original_currency:result.currency,original_entry_price_currency:null,account_currency:result.accountCurrency,account_pnl_result:report,
+  original_currency:result.currency,original_entry_price_currency:null,original_exit_price_currency:null,original_pnl_currency:null,exchange_rate:null,native_prices:null,account_currency:result.accountCurrency,account_pnl_result:report,
   stop_loss:plan.definition.stopPrice,take_profit:null,notes:plan.definition.thesis||'',quality_grade:null,quality_score:null,quality_metrics:null,setup:plan.definition.setup||''};
  return trade;
 }

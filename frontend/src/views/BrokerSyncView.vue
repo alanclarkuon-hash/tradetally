@@ -61,7 +61,7 @@
     </div>
 
     <!-- Loading State -->
-    <div v-if="store.loading && !store.hasConnections" class="flex items-center justify-center py-12">
+    <div v-if="initial_loading" class="flex items-center justify-center py-12">
       <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
     </div>
 
@@ -140,6 +140,13 @@
                 </div>
               </div>
             </div>
+
+            <button type="button" class="rounded-lg border-2 border-dashed border-gray-300 p-6 text-left transition-colors hover:border-primary-500 dark:border-gray-600 dark:hover:border-primary-400" @click="reconnecting_oanda = null; show_oanda_modal = true">
+              <span class="flex items-center gap-4">
+                <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-100 text-lg font-bold text-primary-600 dark:bg-primary-900/30 dark:text-primary-400">OA</span>
+                <span><span class="block font-medium text-gray-900 dark:text-white">OANDA</span><span class="block text-sm text-gray-500 dark:text-gray-400">Connect a practice or live v20 account</span></span>
+              </span>
+            </button>
 
             <!-- Trading 212 Card -->
             <div
@@ -303,7 +310,7 @@
       <ProUpgradePrompt
         v-else-if="showUpgradeGate"
         variant="card"
-        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, Alpaca, Tradovate, or Webull to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
+        description="Broker sync is a Pro feature. Connect Interactive Brokers, Schwab, Trading 212, TradeStation, Alpaca, Tradovate, OANDA, or Webull to import your trades automatically. Free accounts can still import via CSV (up to 100 trades per import)."
       />
 
       <div class="card" v-if="excludedTrades.length">
@@ -439,6 +446,8 @@
       @close="showOkxModal = false; store.error = null" @save="handleOkxSave" />
     <KrakenConnectionModal v-if="showKrakenModal" :loading="store.loading" :error="store.error"
       @close="showKrakenModal = false; store.error = null" @save="handleKrakenSave" />
+    <OandaConnectionModal v-if="show_oanda_modal" :reconnecting="reconnecting_oanda" @close="show_oanda_modal = false" @connected="handle_oanda_connected" />
+
     <!-- Settings Modal -->
     <ConnectionSettingsModal
       v-if="showSettingsModal"
@@ -482,6 +491,7 @@ import Trading212ConnectionModal from '@/components/broker-sync/Trading212Connec
 import EtoroConnectionModal from '@/components/broker-sync/EtoroConnectionModal.vue'
 import OkxConnectionModal from '@/components/broker-sync/OkxConnectionModal.vue'
 import KrakenConnectionModal from '@/components/broker-sync/KrakenConnectionModal.vue'
+import OandaConnectionModal from '@/components/broker-sync/OandaConnectionModal.vue'
 import ConnectionSettingsModal from '@/components/broker-sync/ConnectionSettingsModal.vue'
 import IBKRNoticeBanner from '@/components/broker-sync/IBKRNoticeBanner.vue'
 import ManualTradeReviewModal from '@/components/import/ManualTradeReviewModal.vue'
@@ -527,6 +537,9 @@ const showTrading212Modal = ref(false)
 const showEtoroModal = ref(false)
 const showOkxModal = ref(false)
 const showKrakenModal = ref(false)
+const show_oanda_modal = ref(false)
+const reconnecting_oanda = ref(null)
+const initial_loading = ref(true)
 const showSettingsModal = ref(false)
 const selectedConnection = ref(null)
 const schwabAccounts = ref([])
@@ -689,13 +702,15 @@ async function consumeOAuthCallbackState(query) {
 onMounted(async () => {
   reset_oauth_connecting_state()
   window.addEventListener('pageshow', handle_oauth_page_show)
-  await Promise.all([
-    store.fetchConnections(),
-    store.fetchSyncLogs(),
-    fetchExcludedTrades(),
-    store.fetchProviders()
-  ])
-  await consumeOAuthCallbackState(route.query)
+  try {
+    await Promise.all([
+      store.fetchConnections(),
+      store.fetchSyncLogs(),
+      fetchExcludedTrades(),
+      store.fetchProviders()
+    ])
+    await consumeOAuthCallbackState(route.query)
+  } finally { initial_loading.value = false }
 })
 
 onUnmounted(() => {
@@ -789,6 +804,12 @@ async function handleEtoroSave(connection) {
   } catch { /* The form displays the safe error from the store. */ }
 }
 
+async function handle_oanda_connected() {
+  show_oanda_modal.value = false
+  await Promise.all([store.fetchConnections(), store.fetchSyncLogs()])
+  scheduleSuccessMessage('OANDA account connected. Select Sync Now to import trades.')
+}
+
 async function handleTrading212Save(connection) {
   try {
     await store.addTrading212Connection(connection)
@@ -815,6 +836,11 @@ async function handleSchwabConnect() {
 }
 
 async function handleReconnect(connection) {
+  if (connection.brokerType === 'oanda') {
+    reconnecting_oanda.value = connection
+    show_oanda_modal.value = true
+    return
+  }
   if (connection.brokerType !== 'schwab') return
   await handleSchwabConnect()
 }

@@ -23,7 +23,7 @@ test('stale lease recovery retains serialized cursor and queued followup, and re
  portfolio._getDailySeries.mockResolvedValue([{time:Date.parse('2026-01-01')/1000,close:1}]);
  const done=await history.process(job);
  expect(portfolio._getDailySeries).toHaveBeenCalledTimes(1);
- expect(portfolio._getDailySeries).toHaveBeenCalledWith('REMAINING','2026-01-01','2026-01-01',userId,{instrumentType:'crypto'});
+ expect(portfolio._getDailySeries).toHaveBeenCalledWith('REMAINING','2026-01-01','2026-01-01',userId,{instrumentType:'crypto',maintenance:true});
  expect(done).toMatchObject({processed:2,total:2,complete:2,stage:'finished',tasks});
  expect((await db.query('SELECT result FROM job_queue WHERE id=$1',[first])).rows[0].result).toMatchObject({processed:2,stage:'finished'});
  expect((await db.query('SELECT status FROM job_queue WHERE id=$1',[followup])).rows[0].status).toBe('pending');
