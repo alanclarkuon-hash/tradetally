@@ -3,12 +3,11 @@
     <div class="absolute inset-0 opacity-[0.04] dark:opacity-[0.08] pointer-events-none" aria-hidden="true">
       <div class="w-full h-full" style="background-image: linear-gradient(rgba(120,120,120,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(120,120,120,0.6) 1px, transparent 1px); background-size: 24px 24px;" />
     </div>
-    <div class="relative card-dense-body">
-      <div class="flex flex-col @3xl:flex-row gap-4 @3xl:gap-6 @3xl:items-stretch">
+    <div class="relative card-dense-body flex items-start gap-4">
+      <div class="flex min-w-0 flex-1 flex-col @3xl:flex-row gap-4 @3xl:gap-6 @3xl:items-stretch">
         <div class="@3xl:flex-[2] min-w-0 flex flex-col">
           <div class="flex items-baseline justify-between mb-1 gap-2">
             <h2 class="text-label">{{ incomplete ? 'Known portfolio value' : 'Combined portfolio value' }}</h2>
-            <CurrencyToggle v-model="cardCurrency" :currencies="choices" />
           </div>
           <div class="mt-auto pt-1">
             <div class="text-mono-num font-semibold tracking-tight leading-none text-gray-900 dark:text-white" :class="totalSizeClass">{{ totalDisplay }}</div>
@@ -32,6 +31,7 @@
           </div>
         </dl>
       </div>
+      <CurrencyToggle v-model="cardCurrency" :currencies="choices" class="shrink-0" />
     </div>
   </article>
 </template>
