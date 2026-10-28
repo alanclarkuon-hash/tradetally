@@ -41,6 +41,10 @@ describe('account cashflow (real PostgreSQL, temporary fixtures)', () => {
       transaction_type varchar, amount numeric, transaction_date date,
       description text, source_type varchar, created_at timestamptz DEFAULT now()
     )`);
+    // Fork cashflow enrichment reads broker cash events as well as manual transactions.
+    await client.query(`CREATE TEMP TABLE broker_cash_events (
+      user_id uuid, account_id uuid, event_date date, reference_id text
+    )`);
     await client.query('COMMIT');
     db.query.mockImplementation((sql, params) => client.query(sql, params));
     jest.spyOn(Account, 'findById').mockImplementation(async () => account);
