@@ -21,3 +21,24 @@ test('Webull and Tradovate upgrade migrations retain existing fork broker connec
   for(const broker of ['webull','tradovate'])await client.query('INSERT INTO broker_connections(user_id,broker_type) VALUES($1,$2)',[user,broker]);
  } finally {await client.query('ROLLBACK');client.release();}
 });
+
+test('upgraded trades provide the simulation flag without changing source financial values',async()=>{
+ const client=await db.pool.connect();
+ try{
+  await client.query('BEGIN');
+  const column=await client.query("SELECT data_type,column_default FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='trades' AND column_name='is_simulated'");
+  expect(column.rows).toEqual([expect.objectContaining({data_type:'boolean'})]);
+  await client.query('CREATE SCHEMA simulation_upgrade_regression');
+  await client.query('SET LOCAL search_path=simulation_upgrade_regression,public');
+  await client.query('CREATE TABLE trades(id integer,entry_price numeric,quantity numeric,pnl numeric)');
+  await client.query('INSERT INTO trades VALUES(1,100,2,12.34)');
+  const before=(await client.query('SELECT to_jsonb(t) AS row FROM trades t')).rows;
+  const migration=fs.readFileSync(path.join(__dirname,'../../migrations/913_add_trade_simulation_flag.sql'),'utf8');
+  await client.query(migration);
+  expect((await client.query("SELECT to_jsonb(t)-'is_simulated' AS row FROM trades t")).rows).toEqual(before);
+  expect((await client.query('SELECT is_simulated FROM trades')).rows).toEqual([{is_simulated:false}]);
+  await client.query('UPDATE trades SET is_simulated=true WHERE id=1');
+  await client.query(migration);
+  expect((await client.query('SELECT is_simulated FROM trades')).rows).toEqual([{is_simulated:true}]);
+ }finally{await client.query('ROLLBACK');client.release();}
+});

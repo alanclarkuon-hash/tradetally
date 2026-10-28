@@ -4,6 +4,8 @@
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
 
 const { Client } = require('pg');
+const fs = require('node:fs');
+const path = require('node:path');
 const db = require('../../src/config/database');
 const Account = require('../../src/models/Account');
 
@@ -34,7 +36,7 @@ describe('account cashflow (real PostgreSQL, temporary fixtures)', () => {
       entry_time timestamptz DEFAULT '2026-10-12 18:45:33+00', exit_time timestamptz,
       point_value numeric DEFAULT 5, contract_size numeric,
       commission numeric DEFAULT 0, entry_commission numeric, exit_commission numeric,
-      fees numeric DEFAULT 0, pnl numeric, is_simulated boolean DEFAULT false
+      fees numeric DEFAULT 0, pnl numeric
     )`);
     await client.query(`CREATE TEMP TABLE account_transactions (
       id uuid DEFAULT gen_random_uuid(), user_id uuid, account_id uuid,
@@ -45,6 +47,8 @@ describe('account cashflow (real PostgreSQL, temporary fixtures)', () => {
     await client.query(`CREATE TEMP TABLE broker_cash_events (
       user_id uuid, account_id uuid, event_date date, reference_id text
     )`);
+    // Exercise the real upgrade migration instead of inventing a test-only column.
+    await client.query(fs.readFileSync(path.join(__dirname,'../../migrations/913_add_trade_simulation_flag.sql'),'utf8'));
     await client.query('COMMIT');
     db.query.mockImplementation((sql, params) => client.query(sql, params));
     jest.spyOn(Account, 'findById').mockImplementation(async () => account);
