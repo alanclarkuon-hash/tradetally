@@ -31,7 +31,7 @@
           </div>
         </dl>
       </div>
-      <CurrencyToggle v-model="cardCurrency" :currencies="choices" class="shrink-0" />
+      <div class="shrink-0"><CurrencyToggle v-model="cardCurrency" :currencies="choices" /></div>
     </div>
   </article>
 </template>
