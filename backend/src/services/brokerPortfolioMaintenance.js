@@ -66,6 +66,17 @@ async function captureCurrent(userId,{broker}={}) {
 }
 
 async function maintainAllUsers() {
- for(const user of (await db.query('SELECT id FROM users')).rows)await require('./historyBackfillService').enqueue(user.id);
+ for(const user of (await db.query('SELECT id FROM users')).rows) {
+  const rows=(await db.query(`SELECT a.account_identifier,a.initial_balance_date,
+   (SELECT MAX(v.value_date) FROM portfolio_reconstructed_values v WHERE v.user_id=a.user_id AND v.account_identifier=a.account_identifier AND v.value_date<CURRENT_DATE) AS latest
+   FROM user_accounts a WHERE a.user_id=$1 AND NOT a.is_archived AND a.account_identifier IS NOT NULL AND a.broker=ANY($2::text[])`,[user.id,[...supported]])).rows;
+  const accounts={};
+  for(const a of rows) {
+   const initial=a.initial_balance_date?day(a.initial_balance_date):null;
+   const overlap=a.latest?day(new Date(Date.parse(day(a.latest))-2*86400000)):initial;
+   accounts[a.account_identifier]=initial&&overlap? [initial,overlap].sort().at(-1):overlap;
+  }
+  await require('./historyBackfillService').enqueue(user.id,{accounts});
+ }
 }
 module.exports={maintain,captureCurrent,maintainAllUsers};

@@ -1918,7 +1918,7 @@ class PortfolioService {
     return new Map(entries);
   }
 
-  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false, instrumentType = 'stock' } = {}) {
+  static async _getDailySeries(symbol, startDate, endDate, userId, { background = false, instrumentType = 'stock', maintenance = false } = {}) {
     // Separate coin prices from identically named equities (for example SUI).
     symbol = priceCacheKey(symbol, instrumentType);
     const key = historyKey(symbol, startDate, endDate, userId);
@@ -1974,6 +1974,7 @@ class PortfolioService {
       }
       return cachedCandles;
     }
+    if (maintenance && !require('./historyProviderRetry').begin(['shared',key],cachedCandles)) return cachedCandles;
     return coalescePortfolio(key, () => this._fetchDailySeries(symbol, startDate, endDate, userId, cachedCandles, instrumentType));
   }
 

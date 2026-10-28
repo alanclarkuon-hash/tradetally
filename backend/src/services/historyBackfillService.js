@@ -139,7 +139,7 @@ async function process(job) {
         state.gaps.push({...task,ranges:[]});state.processed=i+1;state.lastProgressAt=new Date().toISOString();await progress(job.id,state);continue;
       }
       try {
-        const prices = await require('./portfolioService')._getDailySeries(task.symbol, task.from, task.to, job.user_id, { instrumentType: task.instrumentType });
+        const prices = await require('./portfolioService')._getDailySeries(task.symbol, task.from, task.to, job.user_id, { instrumentType: task.instrumentType,maintenance:true });
         task.calendar = task.instrumentType === 'crypto' ? null : await require('./exchangeCalendar').resolve(task.symbol,{allowLookup:true,userId:job.user_id,from:task.from,to:task.to});
         const absent = missingRanges(prices, task.from, task.to, task.instrumentType === 'crypto', task.calendar);
         if (absent.length) state.gaps.push({ ...task, ranges: absent, reason: task.instrumentType === 'crypto' ? 'No finalized broker/provider prices for these dates' : calendarCoverageReason(task.calendar,task.from,task.to) });
