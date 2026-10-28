@@ -1,12 +1,15 @@
 // Row matches describe strategy intent; journal trade pairs are navigation anchors.
 const quantityMath=require('./planningQuantity');
 const contract=f=>JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null);
+const account=(plan,a)=>require('./planningAccounts').stageAccount(plan.definition,a.action,a.stage_key)||a.accountKey;
+function eligibleEntries(plan,records,own){
+ return records.filter(a=>a.action==='entry'&&own.some(e=>account(plan,a)===account(plan,e)&&a.fill.currency===e.fill.currency&&contract(a.fill)===contract(e.fill)&&(!e.brokerPositionId||a.brokerPositionId===e.brokerPositionId)&&a.fill.time<=e.fill.time));
+}
 function prepare(plan,records){
- const account=a=>require('./planningAccounts').stageAccount(plan.definition,a.action,a.stage_key)||a.accountKey;
  const exits=[...new Set(records.filter(a=>a.action==='exit').map(a=>a.stage_key))];
  return exits.map(exitKey=>{
   const own=records.filter(a=>a.action==='exit'&&a.stage_key===exitKey),quantity=own.reduce((q,a)=>q+a.quantity,0);
-  const eligible=records.filter(a=>a.action==='entry'&&own.some(e=>account(a)===account(e)&&a.fill.currency===e.fill.currency&&contract(a.fill)===contract(e.fill)&&(!e.brokerPositionId||a.brokerPositionId===e.brokerPositionId)&&a.fill.time<=e.fill.time));
+  const eligible=eligibleEntries(plan,records,own);
   const options=[...new Set(eligible.map(a=>a.stage_key))].map(entryKey=>({entryKey,quantity:eligible.filter(a=>a.stage_key===entryKey).reduce((q,a)=>q+a.quantity,0)}));
   const saved=plan.management?.exit?.[exitKey]?.entryMatches,explicit=Array.isArray(saved);
   const matches=explicit?saved.map(m=>({...m})):options.length===1?[{entryKey:options[0].entryKey,quantity}]:[];
@@ -40,9 +43,22 @@ function consume(queue,row,a){
  for(let i=queue.length-1;i>=0;i--)if(!quantityMath.exceeds(queue[i].q,0,a.quantity,capacity))queue.splice(i,1);
  return pieces;
 }
+// Availability is a view of verified source consumption, not a new allocation.
+// Include this exit's own units so reopening its editor does not lose its match.
+function availability(plan,rows,records){
+ for(const row of rows){
+  const own=records.filter(a=>a.action==='exit'&&a.stage_key===row.exitKey);
+  const eligible=eligibleEntries(plan,records,own);
+  row.options=row.options.map(option=>{
+   const sources=eligible.filter(a=>a.stage_key===option.entryKey);
+   const assignedQuantity=records.filter(a=>a.action==='exit'&&a.stage_key!==row.exitKey).reduce((sum,a)=>sum+(a.matchedEntries||[]).filter(m=>m.entryKey===option.entryKey&&sources.some(e=>e.trade_id===m.tradeId&&e.source_key===m.sourceKey)).reduce((q,m)=>q+m.quantity,0),0);
+   return {...option,totalQuantity:option.quantity,assignedQuantity,quantity:Math.max(0,option.quantity-assignedQuantity)};
+  });
+ }
+}
 function remember(plan,result){
  const management=JSON.parse(JSON.stringify(plan.management||{}));management.exit??={};
  for(const row of result.entryMatching||[])if(row.status==='matched'&&!row.explicit){management.exit[row.exitKey]={...management.exit[row.exitKey],entryMatches:row.matches};}
  return management;
 }
-module.exports={prepare,consume,remember};
+module.exports={prepare,consume,availability,remember};

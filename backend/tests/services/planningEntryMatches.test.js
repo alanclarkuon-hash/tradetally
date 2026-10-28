@@ -59,3 +59,38 @@ test('a genuinely linked minimum-sized entry can be consumed but an empty queue 
  const {p,trades,allocations}=precisionFixture(1e-8,1e-8);const r=ledger(p,allocations,trades);expect(r.matchingUnresolved).toBe(0);expect(r.records.find(a=>a.action==='exit').matchedEntries[0].quantity).toBe(1e-8);
  expect(require('../../src/services/planningEntryMatches').consume([],{status:'matched',matches:[{entryKey:'level',quantity:1e-8}]},{quantity:1e-8})).toBeNull();
 });
+
+
+test('availability subtracts another exit match and restores the current exit own units for editing',()=>{
+ const {p,trades,allocations}=fixture();
+ const t={...trades[2],id:'later-sale',executions:[{...trades[2].executions[0],id:'later-sale',quantity:1,datetime:'2026-01-04T10:00:00Z'}]};
+ const f=sourceFills(t)[0];p.definition.exits.push({key:'later'});
+ const all=[...allocations,{id:t.id,trade_id:t.id,source_key:f.key,stage_key:'later',action:'exit',quantity:1,source_snapshot:f}];
+ const r=ledger(p,all,[...trades,t]);const option=r.entryMatching.find(x=>x.exitKey==='later').options.find(o=>o.entryKey==='level');
+ expect(option).toMatchObject({quantity:2,totalQuantity:4,assignedQuantity:2});
+ p.management.exit.later={entryMatches:[{entryKey:'level',quantity:1}]};
+ const editing=ledger(p,all,[...trades,t]);
+ expect(editing.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level').quantity).toBe(3);
+ expect(editing.entryMatching.find(x=>x.exitKey==='later').options.find(o=>o.entryKey==='level').quantity).toBe(2);
+ expect(editing.realisedProfit).toBe(60);
+});
+
+test('availability accounts for later saved exits without silently choosing FIFO for the current exit',()=>{
+ const {p,trades,allocations}=fixture();delete p.management.exit.take.entryMatches;
+ const t={...trades[2],id:'reserved-later',executions:[{...trades[2].executions[0],id:'reserved-later',quantity:4,datetime:'2026-01-04T10:00:00Z'}]};
+ const f=sourceFills(t)[0];p.definition.exits.push({key:'later'});p.management.exit.later={entryMatches:[{entryKey:'level',quantity:4}]};
+ const r=ledger(p,[...allocations,{id:t.id,trade_id:t.id,source_key:f.key,stage_key:'later',action:'exit',quantity:4,source_snapshot:f}],[...trades,t]);
+ expect(r.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level')).toMatchObject({quantity:0,totalQuantity:4,assignedQuantity:4});
+ expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('needs_match');
+});
+
+
+test('availability deducts only consumed source fills that were eligible at this exit time',()=>{
+ const {p,trades,allocations}=fixture();delete p.management.exit.take.entryMatches;
+ const lateEntry={...trades[1],id:'late-entry',executions:[{...trades[1].executions[0],id:'late-entry',datetime:'2026-01-05T10:00:00Z'}]};
+ const laterExit={...trades[2],id:'later-exit',executions:[{...trades[2].executions[0],id:'later-exit',quantity:4,datetime:'2026-01-06T10:00:00Z'}]};
+ p.definition.exits.push({key:'later'});p.management.exit.later={entryMatches:[{entryKey:'level',quantity:4}]};
+ const extra=[lateEntry,laterExit].map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='entry'?'level':'later',action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,[...allocations,...extra],[...trades,lateEntry,laterExit]);
+ expect(r.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level')).toMatchObject({quantity:2,totalQuantity:4,assignedQuantity:2});
+});

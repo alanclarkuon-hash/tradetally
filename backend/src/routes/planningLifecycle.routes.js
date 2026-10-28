@@ -299,6 +299,7 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
   management.exit[b.exitKey]={...management.exit[b.exitKey],entryMatches:b.matches};
   const after=await evidence(c,{...p,management}),row=after.entryMatching?.find(r=>r.exitKey===b.exitKey);
   if(after.overExit||row?.status!=='matched')fail('Matched quantities must cover this exit exactly using available earlier entries in the same account and contract',409);
+  if(before.entryMatching.some(r=>r.exitKey!==b.exitKey&&r.status==='matched'&&after.entryMatching.find(next=>next.exitKey===r.exitKey)?.status!=='matched'))fail('These units are already matched to another exit. Change that exit match first.',409);
   await c.query('UPDATE trade_plans SET management=$1::jsonb,review=NULL,version=version+1,updated_at=NOW() WHERE id=$2',[JSON.stringify(management),p.id]);
   await record(c,p,'exit_entries_matched',{exitKey:b.exitKey,previous,matches:b.matches});
  });res.json({success:true});

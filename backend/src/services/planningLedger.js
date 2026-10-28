@@ -119,7 +119,7 @@ function ledger(plan,allocations,trades) {
   const valid=stored.provisional||(fill&&capitalMatches&&reportedMatches&&fill.fingerprint===stored.fingerprint&&(fill.costsVerified===stored.costsVerified||costEvidenceImproved)&&fxMatches);
   const snapshot=valid&&fill?{...stored,...fill}:stored;
   if(!valid)unresolved++;
-  return {...a,valid:!!valid,fill:snapshot,brokerPositionId:brokerPositionIdentity(byId.get(a.trade_id),snapshot.sourceIndex),quantity:Number(a.quantity)};
+  return {...a,accountKey:require('./planningAccounts').stageAccount(plan.definition,a.action,a.stage_key)||byId.get(a.trade_id)?.account_identifier||a.trade_id,valid:!!valid,fill:snapshot,brokerPositionId:brokerPositionIdentity(byId.get(a.trade_id),snapshot.sourceIndex),quantity:Number(a.quantity)};
  }).sort((a,b)=>a.fill.time.localeCompare(b.fill.time)||(a.action!==b.action?(a.action==='entry'?-1:1):String(a.id).localeCompare(String(b.id))));
  const matching=require('./planningEntryMatches'),entryMatching=matching.prepare(plan,records);let matchingUnresolved=entryMatching.filter(r=>r.status!=='matched').length;
  const queues=new Map();let entered=0,exited=0,cost=0,realised=0,entryCost=0,fees=0,overExit=false;
@@ -144,7 +144,7 @@ function ledger(plan,allocations,trades) {
    a.positionValue=a.valid&&f.currency&&f.instrument!=='spread_bet'?q*economicPrice*f.multiplier:null;
    a.accountPositionValue=a.valid&&accountPrice!=null&&f.instrument!=='spread_bet'?q*accountPrice:null;
    if(!a.stage_key.startsWith('roll_')&&accountPrice!=null)accountEntryCost+=q*accountPrice;
-   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*economicPrice*f.multiplier;fees+=fee;queue.push({stageKey:a.stage_key,accountId:a.accountId,tradeId:a.trade_id,brokerPositionId:brokerPositionIdentity(byId.get(a.trade_id),f.sourceIndex),side:f.tradeSide,instrument:f.instrument,q,currency:f.currency,price:economicPrice,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
+   entered+=q;if(!a.stage_key.startsWith('roll_'))entryCost+=q*economicPrice*f.multiplier;fees+=fee;queue.push({stageKey:a.stage_key,accountId:a.accountId,tradeId:a.trade_id,sourceKey:a.source_key,brokerPositionId:brokerPositionIdentity(byId.get(a.trade_id),f.sourceIndex),side:f.tradeSide,instrument:f.instrument,q,currency:f.currency,price:economicPrice,multiplier:f.multiplier,feePerUnit:fee/q,accountPrice,accountCurrency:recordAccountCurrency,accountFeePerUnit:accountFee==null?null:accountFee/q});
   }else{
    exited+=q;let remaining=q;let gross=0,entryFees=0,accountGross=0,accountEntryFees=0,accountExitValid=accountPrice!=null&&accountFee!=null;
    const row=entryMatching.find(r=>r.exitKey===a.stage_key);
@@ -155,7 +155,7 @@ function ledger(plan,allocations,trades) {
     gross+=matched*(f.tradeSide==='short'?first.price-f.price:f.price-first.price)*first.multiplier;
     if(first.accountPrice==null||first.accountFeePerUnit==null||first.accountCurrency!==recordAccountCurrency)accountExitValid=false;
     else if(accountPrice!=null){accountGross+=matched*(f.tradeSide==='short'?first.accountPrice-accountPrice:accountPrice-first.accountPrice);accountEntryFees+=matched*first.accountFeePerUnit;}
-    entryFees+=matched*first.feePerUnit;remaining-=matched;a.matchedEntries.push({entryKey:first.stageKey,tradeId:first.tradeId,quantity:matched});
+    entryFees+=matched*first.feePerUnit;remaining-=matched;a.matchedEntries.push({entryKey:first.stageKey,tradeId:first.tradeId,sourceKey:first.sourceKey,quantity:matched});
    }
    if(quantityMath.exceeds(remaining,0,q,totalAvailable))accountExitValid=false;
    a.realisedProfit=gross-entryFees-fee;
@@ -193,6 +193,7 @@ function ledger(plan,allocations,trades) {
   if(a.fill.currency===a.accountCurrency){realised+=cash-a.realisedProfit;a.realisedProfit=cash;}
  }
  for(const queue of queues.values())for(const lot of queue){cost+=lot.q*lot.price*lot.multiplier;if(lot.accountPrice!=null)accountCost+=lot.q*lot.accountPrice;}
+ matching.availability(plan,entryMatching,records);
  const openQuantity=entered-exited;
  const currency=currencies.size===1?[...currencies][0]:null;
  const costsUnresolved=records.filter(a=>a.fill.costsVerified===false).length;
