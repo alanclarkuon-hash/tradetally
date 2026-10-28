@@ -281,8 +281,12 @@ router.delete('/:id/allocations/:allocationId',run(async(req,res)=>{
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(p.status==='completed')fail('Reopen the review before correcting a completed plan');
   const a=(await c.query('DELETE FROM trade_plan_allocations WHERE id=$1 AND plan_id=$2 AND user_id=$3 RETURNING *',[req.params.allocationId,p.id,p.user_id])).rows[0];if(!a)fail('Allocation not found',404);
+  const management=JSON.parse(JSON.stringify(p.management||{}));
+  // Removing the last broker fill must not revive its old execution as a tick.
+  // Keep entry-match intent so explicitly relinking the same source can restore it.
+  if(management[a.action]?.[a.stage_key])management[a.action][a.stage_key].executed=false;
   await record(c,p,'trade_unlinked',{allocation:a,reason:req.body.reason.trim()});
-  await c.query("UPDATE trade_plans SET status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$1",[p.id]);
+  await c.query("UPDATE trade_plans SET management=$2::jsonb,status='entered',review=NULL,version=version+1,updated_at=NOW() WHERE id=$1",[p.id,JSON.stringify(management)]);
  });res.json({success:true});
 }));
 

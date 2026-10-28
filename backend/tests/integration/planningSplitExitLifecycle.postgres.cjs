@@ -1,0 +1,57 @@
+// Separate TEST only: inactive synthetic owner, loopback routes, complete cleanup.
+const root='/app/backend',fs=require('fs'),Module=require('module'),path=require('path');
+if(process.env.DB_NAME!=='tradetally_test')throw Error('Separate TEST database required');
+if(process.env.PLANNING_CANDIDATE_DIR)for(const file of ['services/planningEntryMatches.js','services/planningLedger.js','routes/planningLifecycle.routes.js']){const name=root+'/src/'+file,m=new Module(name,module);m.filename=name;m.paths=Module._nodeModulePaths(path.dirname(name));require.cache[name]=m;m._compile(fs.readFileSync(process.env.PLANNING_CANDIDATE_DIR+'/'+file,'utf8'),name);}
+const db=require(root+'/src/config/database'),assert=require('assert/strict'),crypto=require('crypto'),express=require(root+'/node_modules/express');
+const owner=crypto.randomUUID(),account=crypto.randomUUID(),pid=crypto.randomUUID(),ids=Array.from({length:4},()=>crypto.randomUUID());let server,expectedSources;
+(async()=>{try{
+ await db.query("INSERT INTO users(id,email,username,password_hash,is_active,is_verified,tier) VALUES($1,$2,$3,'not-a-login-hash',false,false,'pro')",[owner,'synthetic-'+owner+'@example.invalid','synthetic-'+owner]);
+ await db.query("INSERT INTO user_accounts(id,user_id,account_name,account_identifier,initial_balance_date,currency) VALUES($1,$2,'Synthetic','synthetic-split-cycle',CURRENT_DATE,'USD')",[account,owner]);
+ const definition=require(root+'/src/services/tradePlanning').normalize({title:'Synthetic split cycle',symbol:'TEST',instrument:'crypto',direction:'long',accountId:account,currency:'USD',riskBudget:100,stopPrice:80,quantityStep:1e-8,runnerMode:'row',entries:[{key:'level',label:'Sold level',price:90,riskWeight:100},{key:'unsold',label:'Unsold level',price:95,riskWeight:0}],exits:[{key:'target',label:'Runner',price:110,percent:100}],options:{}});
+ await db.query("INSERT INTO trade_plans(id,user_id,status,finalised,definition) VALUES($1,$2,'watching',true,$3::jsonb)",[pid,owner,JSON.stringify(definition)]);
+ for(const [i,[q,price,date,action]]of [[16.40000001,90,'2026-01-01','buy'],[3,95,'2026-01-01','buy'],[15.4,110,'2026-01-02','sell'],[1.00000002,110,'2026-01-02','sell']].entries())await db.query("INSERT INTO trades(id,user_id,symbol,trade_date,entry_time,entry_price,quantity,side,commission,fees,instrument_type,original_currency,account_identifier,executions) VALUES($1,$2,'TEST',$3::date,$4,$5,$6,'long',0,0,'crypto','USD','synthetic-split-cycle',$7::jsonb)",[ids[i],owner,date,date+'T10:00:00Z',price,q,JSON.stringify([{id:'part-'+i,action,quantity:q,price,datetime:date+'T10:00:00Z',commission:0,fees:0}])]);
+ const sources=async()=>(await db.query('SELECT * FROM trades WHERE user_id=$1 ORDER BY id',[owner])).rows;expectedSources=await sources();
+ const plan=async()=>(await db.query('SELECT * FROM trade_plans WHERE id=$1',[pid])).rows[0],allocations=async()=>(await db.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1',[pid])).rows;
+ const app=express();app.use(express.json());app.use((req,res,next)=>{req.user={id:owner};next()});app.use('/plans',require(root+'/src/routes/planningLifecycle.routes'));app.use((e,req,res,next)=>res.status(500).json({error:e.message}));server=app.listen(0,'127.0.0.1');await new Promise(r=>server.once('listening',r));const base='http://127.0.0.1:'+server.address().port+'/plans/'+pid;
+ async function call(route,method,body,version){const p=await plan(),r=await fetch(base+route,{method,headers:{'content-type':'application/json'},body:JSON.stringify({version:version??p.version,...body})});const response={status:r.status,body:await r.json()};assert.deepEqual(await sources(),expectedSources,'Plan API changed source trades');return response;}
+ async function fill(i,quantity){const t=(await sources()).find(t=>t.id===ids[i]),f=require(root+'/src/services/planningLedger').sourceFills(t)[0];return {tradeId:t.id,sourceKey:f.key,fingerprint:f.fingerprint,quantity:quantity??f.quantity};}
+ async function edit(i,stageKey,action,remove=[],quantity){return call('/allocations','POST',{stageKey,action,removeAllocationIds:remove,fills:i==null?[]:[await fill(i,quantity)]});}
+ async function match(quantity){return call('/exit-matches','PUT',{exitKey:'target',matches:[{entryKey:'level',quantity}]});}
+ async function result(){return require(root+'/src/services/planningLedger').ledger(await plan(),await allocations(),await sources());}
+ const ok=(r,status)=>assert.equal(r.status,status,JSON.stringify(r.body));
+ ok(await edit(0,'level','entry'),201);ok(await edit(2,'target','exit'),201);const originalRisk=JSON.stringify((await plan()).baseline),firstProfit=(await result()).realisedProfit;
+ ok(await edit(1,'unsold','entry'),201);assert.equal((await result()).realisedProfit,firstProfit);
+ ok(await edit(3,'target','exit'),201);assert.ok((await result()).matchingUnresolved>0);assert.equal((await result()).realisedProfit,null);
+ ok(await match(16.40000001),200);assert.equal((await result()).matchingUnresolved,0);const fullProfit=(await result()).realisedProfit;
+ let a=(await allocations()).find(a=>a.trade_id===ids[2]);ok(await edit(2,'target','exit',[a.id],15),201);assert.ok((await result()).matchingUnresolved>0);ok(await match(16.00000002),200);
+ a=(await allocations()).find(a=>a.trade_id===ids[2]);ok(await edit(2,'target','exit',[a.id],15.4),201);ok(await match(16.40000001),200);assert.equal((await result()).realisedProfit,fullProfit);
+ a=(await allocations()).find(a=>a.trade_id===ids[3]);ok(await edit(null,'target','exit',[a.id]),201);assert.ok((await result()).matchingUnresolved>0);ok(await match(15.4),200);
+ ok(await edit(3,'target','exit'),201);ok(await match(16.40000002),200);assert.equal((await result()).matchingUnresolved,0);
+ a=(await allocations()).find(a=>a.trade_id===ids[0]);let version=(await plan()).version;ok(await edit(0,'level','entry',[a.id],16),409);assert.equal((await plan()).version,version);assert.ok((await allocations()).some(x=>x.id===a.id));
+ ok(await edit(0,'level','entry',[a.id],16.40000001),201);assert.equal((await result()).matchingUnresolved,0);
+ // Simulate a broker correction on this synthetic fixture only. Existing links
+ // must flag stale evidence until explicitly replaced with the new fingerprint.
+ const changed=expectedSources.find(t=>t.id===ids[3]),executions=JSON.parse(JSON.stringify(changed.executions));executions[0].fees=.01;
+ await db.query('UPDATE trades SET fees=.01,executions=$1::jsonb WHERE id=$2 AND user_id=$3',[JSON.stringify(executions),ids[3],owner]);expectedSources=await sources();assert.ok((await result()).unresolved>0);
+ a=(await allocations()).find(a=>a.trade_id===ids[3]);ok(await edit(3,'target','exit',[a.id]),201);ok(await match(16.40000001),200);assert.equal((await result()).unresolved,0);assert.ok(Math.abs((await result()).realisedProfit-(fullProfit-.01))<1e-8);
+ // A synthetic broker quantity correction must also be explicitly relinked.
+ const corrected=expectedSources.find(t=>t.id===ids[3]),nextExecutions=JSON.parse(JSON.stringify(corrected.executions));nextExecutions[0].quantity=1.00000001;
+ await db.query('UPDATE trades SET quantity=$1,executions=$2::jsonb WHERE id=$3 AND user_id=$4',[1.00000001,JSON.stringify(nextExecutions),ids[3],owner]);expectedSources=await sources();assert.ok((await result()).unresolved>0);
+ a=(await allocations()).find(a=>a.trade_id===ids[3]);ok(await edit(3,'target','exit',[a.id]),201);ok(await match(16.40000001),200);assert.equal((await result()).matchingUnresolved,0);
+ version=(await plan()).version;ok(await call('/exit-matches','PUT',{exitKey:'target',matches:[{entryKey:'level',quantity:16.40000001}]},version-1),409);assert.equal((await plan()).version,version);
+ const exits=(await allocations()).filter(a=>a.action==='exit');ok(await call('/allocations','POST',{stageKey:'target',action:'exit',removeAllocationIds:exits.map(a=>a.id),fills:[]}),201);assert.equal((await result()).exited,0);assert.equal((await result()).provisionalCount,0);
+ ok(await call('/allocations','POST',{stageKey:'target',action:'exit',removeAllocationIds:[],fills:[await fill(2),await fill(3)]}),201);assert.equal((await result()).matchingUnresolved,0);
+ a=(await allocations()).find(a=>a.trade_id===ids[1]);const beforeUnsold=(await result()).realisedProfit;ok(await edit(null,'unsold','entry',[a.id]),201);assert.equal((await result()).realisedProfit,beforeUnsold);ok(await edit(1,'unsold','entry'),201);assert.equal((await result()).realisedProfit,beforeUnsold);
+ // Persist executed management rows through the same endpoint as the UI.
+ const saved=await plan(),m=JSON.parse(JSON.stringify(saved.management)),managementRow=(units,price)=>({executed:true,units,price,time:'2026-01-02T10:00:00Z',tactics:[],marketContext:[]});m.entry={level:managementRow(16.40000001,90),unsold:managementRow(3,95)};m.exit.target={...m.exit.target,...managementRow(16.40000001,110),percent:100,premium:null};
+ ok(await call('/management','PUT',{management:m}),200);
+ for(const exit of (await allocations()).filter(a=>a.action==='exit'))ok(await call('/allocations/'+exit.id,'DELETE',{reason:'Synthetic corrected original order link'}),200);
+ assert.equal((await result()).exited,0,'Individual correction must not resurrect a provisional exit');assert.equal((await result()).provisionalCount,0);
+ ok(await call('/allocations','POST',{stageKey:'target',action:'exit',removeAllocationIds:[],fills:[await fill(2),await fill(3)]}),201);assert.equal((await result()).matchingUnresolved,0);
+ a=(await allocations()).find(a=>a.trade_id===ids[1]);const profitBeforeCorrection=(await result()).realisedProfit;ok(await call('/allocations/'+a.id,'DELETE',{reason:'Synthetic corrected unsold entry link'}),200);assert.equal((await result()).provisionalCount,0);assert.equal((await result()).realisedProfit,profitBeforeCorrection);ok(await edit(1,'unsold','entry'),201);assert.equal((await result()).realisedProfit,profitBeforeCorrection);
+ const rowManagement=JSON.parse(JSON.stringify((await plan()).management));rowManagement.exit.target={...rowManagement.exit.target,...managementRow(16.40000001,110),percent:100,premium:null};ok(await call('/management','PUT',{management:rowManagement}),200);
+ ok(await call('/row-allocations','DELETE',{stageKey:'target',action:'exit'}),200);assert.equal((await result()).exited,0);assert.equal((await result()).provisionalCount,0);
+ ok(await call('/allocations','POST',{stageKey:'target',action:'exit',removeAllocationIds:[],fills:[await fill(2),await fill(3)]}),201);assert.equal((await result()).matchingUnresolved,0);
+ assert.deepEqual((await plan()).definition,definition);assert.equal(JSON.stringify((await plan()).baseline),originalRisk);
+ console.log(JSON.stringify({realDatabase:true,splitBoundaryMatched:true,linkedQuantityUpdates:true,unlinkRelinkCycle:true,staleMatchFlagged:true,consumedEntryReductionRolledBack:true,sourceCorrectionExplicitlyRelinked:true,sourceQuantityCorrectionRelinked:true,individualUnlinkNoProvisionalFallback:true,rowUnlinkNoProvisionalFallback:true,staleVersionRejected:true,unlinkAllNoProvisionalFallback:true,unsoldEntryProfitInvariant:true,sourceRecordsPreservedByPlanAPIs:true}));
+}finally{if(server)await new Promise(r=>server.close(r));for(const table of ['trade_plan_events','trade_plan_allocations','trade_plans','trades','user_accounts'])await db.query('DELETE FROM '+table+' WHERE user_id=$1',[owner]);await db.query('DELETE FROM users WHERE id=$1',[owner]);await db.pool.end();}})().catch(e=>{console.error(e);process.exitCode=1});

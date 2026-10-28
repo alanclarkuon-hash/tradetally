@@ -94,3 +94,29 @@ test('availability deducts only consumed source fills that were eligible at this
  const r=ledger(p,[...allocations,...extra],[...trades,lateEntry,laterExit]);
  expect(r.entryMatching.find(x=>x.exitKey==='take').options.find(o=>o.entryKey==='level')).toMatchObject({quantity:2,totalQuantity:4,assignedQuantity:2});
 });
+
+
+test.each([16.40000001,16.40000002])('sequential exit fragments retain whole-row precision after cancellation (%s)',matched=>{
+ const {p,trades}=precisionFixture(16.40000001,15.4,matched);
+ const tail={...trades[2],id:'sale-z',executions:[{...trades[2].executions[0],id:'sale-z',quantity:1.00000002}]};trades.push(tail);
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const before=JSON.stringify({p,trades,allocations}),r=ledger(p,allocations,trades);
+ expect(r.matchingUnresolved).toBe(0);expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('matched');
+ const used=r.records.filter(a=>a.action==='exit').flatMap(a=>a.matchedEntries).reduce((q,m)=>q+m.quantity,0);
+ expect(used).toBeLessThanOrEqual(16.40000001);expect(r.realisedProfit).toBeCloseTo(16.40000001*20,10);
+ expect(JSON.stringify({p,trades,allocations})).toBe(before);
+});
+
+test('consuming another row cannot discard an unrelated minimum-sized entry',()=>{
+ const {p,trades}=precisionFixture(4,1);trades[0].executions[0].quantity=1e-8;
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,allocations,trades);expect(r.openLots.find(l=>l.stageKey==='old')?.q).toBe(1e-8);
+});
+
+
+test('sequential fragments still reject a genuine shortage beyond the existing allowance',()=>{
+ const {p,trades}=precisionFixture(16.40000001,15.4,16.40000003);
+ trades.push({...trades[2],id:'sale-z',executions:[{...trades[2].executions[0],id:'sale-z',quantity:1.00000003}]});
+ const allocations=trades.map(t=>{const f=sourceFills(t)[0];return {id:t.id,trade_id:t.id,source_key:f.key,stage_key:f.action==='exit'?'take':t.id,action:f.action,quantity:f.quantity,source_snapshot:f}});
+ const r=ledger(p,allocations,trades);expect(r.entryMatching.find(x=>x.exitKey==='take').status).toBe('needs_match');expect(r.realisedProfit).toBeNull();
+});

@@ -26,7 +26,9 @@ function consume(queue,row,a){
   const available=lots.reduce((q,l)=>q+l.q,0);
   return {entryKey:match.entryKey,lots,available,capacity:Math.min(row.balance.get(match.entryKey),available)};
  }).filter(m=>m.capacity>0);
- const capacity=eligible.reduce((q,m)=>q+m.capacity,0);if(!eligible.length||quantityMath.exceeds(a.quantity,capacity))return null;
+ // Repeated subtraction can cancel digits from a small final fragment.
+ // Carry the original exit row magnitude into the machine-error guard only.
+ const capacity=eligible.reduce((q,m)=>q+m.capacity,0);if(!eligible.length||quantityMath.exceeds(a.quantity,capacity,row.quantity))return null;
  const pieces=[],used=[],matchedQuantity=Math.min(a.quantity,capacity);let unassigned=matchedQuantity;
  for(const [index,match]of eligible.entries()){
   const wanted=index===eligible.length-1?unassigned:Math.min(unassigned,match.capacity,matchedQuantity*match.capacity/capacity);
@@ -37,10 +39,12 @@ function consume(queue,row,a){
   }
   used.push({entryKey:match.entryKey,quantity:wanted});unassigned-=wanted;
  }
- if(!quantityMath.equal(pieces.reduce((q,p)=>q+p.q,0),a.quantity))return null;
+ if(!quantityMath.equal(pieces.reduce((q,p)=>q+p.q,0),a.quantity,row.quantity))return null;
  for(const m of used)row.balance.set(m.entryKey,Math.max(0,row.balance.get(m.entryKey)-m.quantity));
  for(const p of pieces)p.lot.q-=p.q;
- for(let i=queue.length-1;i>=0;i--)if(!quantityMath.exceeds(queue[i].q,0,a.quantity,capacity))queue.splice(i,1);
+ // Only exhausted lots leave the queue. The matching allowance is not a
+ // dust threshold and must not discard a separate real minimum-sized entry.
+ for(let i=queue.length-1;i>=0;i--)if(queue[i].q<=0)queue.splice(i,1);
  return pieces;
 }
 // Availability is a view of verified source consumption, not a new allocation.

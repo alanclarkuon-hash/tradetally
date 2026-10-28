@@ -148,7 +148,7 @@ function ledger(plan,allocations,trades) {
   }else{
    exited+=q;let remaining=q;let gross=0,entryFees=0,accountGross=0,accountEntryFees=0,accountExitValid=accountPrice!=null&&accountFee!=null;
    const row=entryMatching.find(r=>r.exitKey===a.stage_key);
-   const totalAvailable=queue.reduce((n,l)=>n+l.q,0);if(quantityMath.exceeds(q,totalAvailable))overExit=true;
+   const totalAvailable=queue.reduce((n,l)=>n+l.q,0);if(quantityMath.exceeds(q,totalAvailable,row?.quantity))overExit=true;
    const pieces=matching.consume(queue,row,a);a.entryMatchesExplicit=!!row?.explicit;a.matchedEntries=[];
    if(!pieces){matchingUnresolved++;if(row){row.status='needs_match';row.reason='Matched quantities exceed eligible entries or need updating';}}
    for(const {lot:first,q:matched}of pieces||[]){
@@ -157,9 +157,9 @@ function ledger(plan,allocations,trades) {
     else if(accountPrice!=null){accountGross+=matched*(f.tradeSide==='short'?first.accountPrice-accountPrice:accountPrice-first.accountPrice);accountEntryFees+=matched*first.accountFeePerUnit;}
     entryFees+=matched*first.feePerUnit;remaining-=matched;a.matchedEntries.push({entryKey:first.stageKey,tradeId:first.tradeId,sourceKey:first.sourceKey,quantity:matched});
    }
-   if(quantityMath.exceeds(remaining,0,q,totalAvailable))accountExitValid=false;
+   if(quantityMath.exceeds(remaining,0,q,totalAvailable,row?.quantity))accountExitValid=false;
    a.realisedProfit=gross-entryFees-fee;
-   a.accountRealisedProfit=accountExitValid&&!quantityMath.exceeds(remaining,0,q,totalAvailable)?accountGross-accountEntryFees-accountFee:null;
+   a.accountRealisedProfit=accountExitValid&&!quantityMath.exceeds(remaining,0,q,totalAvailable,row?.quantity)?accountGross-accountEntryFees-accountFee:null;
    if(a.accountRealisedProfit!=null)accountRealised+=a.accountRealisedProfit;
    realised+=a.realisedProfit;
   }
