@@ -88,7 +88,7 @@
     <div v-if="kind==='entry'" class="flex flex-wrap gap-6 mb-4"><label v-if="!managing">Risk amount <strong>{{ convertedMoney(draft.riskBudget,draft.currency,currencies[kind]) }}</strong></label><label>SL invalidation level <input :value="displayValue(draft.stopPrice,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked" @change="changeStop($event,currencies[kind])"></label></div>
     <EntryJournalAssessment v-if="managing&&kind==='entry'&&journalStage" :key="journalStage" :plan="plan" :entry="rows('entry').find(e=>e.key===journalStage)" :has-entries="ledger.records?.some(a=>a.action==='entry'&&a.stage_key===journalStage)" @close="journalStage=null" @saved="reload"/><div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Fib level</th><th v-if="planAccounts.length>1">Account</th><th>Price level ({{ symbol(currencies[kind]) }})</th><th>{{ kind==='entry'?'Risk %':'Exit %' }}</th><th>{{ kind==='entry'?(draft.instrument==='option'?'Contracts':'Units (shares to buy)'):'Units sold' }}</th><th>{{ kind==='entry'?'Position size':'Profit at exit' }}</th><th v-if="kind==='exit'&&draft.instrument==='option'">Premium target ({{ symbol(currencies[kind]) }})</th><th>Market context</th><th>{{ kind==='entry'?'Entry tactic':'Exit tactic' }}</th><th v-if="managing">Executed</th><th v-if="managing">Linked trade</th><th></th></tr></thead>
      <tbody><tr v-for="(e,i) in rows(kind)" :key="e.key">
-      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
+      <td><input v-model="e.label" :aria-label="kind+' '+(i+1)+' Fib level'" class="ladder-input" :disabled="preparationLocked||busy||(!managing&&linked(kind,e.key))"></td>
       <td v-if="planAccounts.length>1"><select v-model="e.accountId" :aria-label="kind+' '+(i+1)+' account'" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><option :value="null">{{ accounts.find(a=>a.id===draft.accountId)?.accountName }}</option><option v-for="a in planAccounts.filter(a=>a.id!==draft.accountId)" :key="a.id" :value="a.id">{{ a.accountName }}</option></select></td><td><input :aria-label="kind+' '+(i+1)+' price level'" :value="rowPrice(kind,e,currencies[kind])" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="e.price=priceValue($event,currencies[kind])"></td>
       <td><input v-if="kind==='entry'" :aria-label="'Entry '+(i+1)+' risk percent'" v-model.number="e.riskWeight" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"><input v-else :aria-label="'Exit '+(i+1)+' percent'" v-model.number="e.percent" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)"></td>
       <td><div class="units-control"><input :aria-label="kind+' '+(i+1)+' units'" :value="e.units??rowUnits(kind,e,i)" type="number" step="any" class="ladder-input" :disabled="preparationLocked||busy||linked(kind,e.key)" @change="changeUnits(kind,e,$event)"><button v-if="e.units!=null&&!linked(kind,e.key)" class="btn-secondary" :aria-label="'Reset '+kind+' '+(i+1)+' units to calculated'" title="Reset to calculated units" :disabled="preparationLocked" @click="resetUnits(kind,e)">Reset</button></div></td>
@@ -389,7 +389,7 @@ function hydrateManagement(){
  queueMicrotask(()=>hydrating=false)
 }
 function managementPayload(){
- const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map((e,position)=>[e.key,{position,...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
+ const management=Object.fromEntries(['entry','exit'].map(k=>[k,Object.fromEntries(managed.value[k].map((e,position)=>[e.key,{position,label:e.label,...(!(draft.value[k==='entry'?'entries':'exits']||[]).some(r=>r.key===e.key)?{stage:linked(k,e.key)&&plan.value.management?.[k]?.[e.key]?.stage?plan.value.management[k][e.key].stage:{label:e.label,accountId:e.accountId||null,riskWeight:k==='entry'?e.riskWeight||0:0}}:{}),executed:!!e.executed,units:e.units??(e.executed?rowUnits(k,e,managed.value[k].indexOf(e)):null),price:e.price,time:e.time||new Date().toISOString(),tactics:e.tactics||[],marketContext:e.marketContext||[],...(k==='exit'?{percent:e.percent,premium:e.premium??null,...(e.entryMatches?{entryMatches:e.entryMatches}:{})}:{})}]))]));
  return management
 }
 function mergeNewerManagement(base,local){
@@ -481,7 +481,18 @@ watch([()=>props.portfolioCapital,()=>draft.value?.currency,fx],applySelectedCap
 watch(()=>props.playbooks,()=>{if(!draft.value)return;hydrating=true;applyPlaybookSetup();queueMicrotask(()=>hydrating=false)},{deep:true})
 watch(()=>props.plan,p=>{if(p&&(p.id!==plan.value?.id||p.version!==plan.value?.version))adopt(p)})
 watch(()=>draft.value?.instrument,v=>{if(v==='option'&&!hydrating)draft.value.quantityStep=1})
-function previewDefinition(){const d=clean();if(managing.value){d.entries=managed.value.entry.map(({executed,time,...e})=>e);d.exits=managed.value.exit.map(({executed,time,...e})=>e)}return d}
+function previewDefinition(){
+ const d=clean();
+ if(managing.value){
+  // Management keeps ordering, stage identity, execution and match metadata.
+  // Calculate accepts only definition fields; do not forward the whole row.
+  const shared=['key','label','accountId','price','units','marketContext','tactics'];
+  const project=(row,fields)=>Object.fromEntries(fields.filter(key=>Object.hasOwn(row,key)).map(key=>[key,row[key]]));
+  d.entries=managed.value.entry.map(row=>project(row,[...shared,'riskWeight','tactic']));
+  d.exits=managed.value.exit.map(row=>project(row,[...shared,'percent','premium']));
+ }
+ return d
+}
 watch([draft,managed],()=>{
  if(hydrating)return;dirty=true;clearTimeout(saveTimer);
  if(!preparationLocked.value&&plan.value.id&&!planCommitments.value.length&&!['reviewed','completed','cancelled'].includes(plan.value.status))saveTimer=setTimeout(save,900);

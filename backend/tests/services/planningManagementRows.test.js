@@ -16,3 +16,14 @@ test('an older client cannot silently erase existing row positions',()=>{
  expect(preservePositions(previous,next)).toEqual({entry:{one:{price:100,position:3},two:{position:2}},exit:{target:{price:110,position:1}}});
  expect(previous.entry.two.position).toBe(4);
 });
+
+
+test('display labels override original and added rows without changing their identities or source definition',()=>{
+ const p={definition:{entries:[{key:'base',label:'Original entry'}],exits:[{key:'runner',label:'Runner'}]},management:{entry:{base:{position:0,label:'Entry alias'}},exit:{runner:{position:0,label:'Exit alias',entryMatches:[{entryKey:'base',quantity:1}]},added:{position:1,label:'Added alias',stage:{label:'Creation label'},price:120,units:null}}}};
+ const before=JSON.stringify(p),d=definitionForManagement(p);expect(d.entries[0].label).toBe('Entry alias');expect(d.exits.map(r=>r.label)).toEqual(['Exit alias','Added alias']);expect(d.exits.map(r=>r.key)).toEqual(['runner','added']);expect(JSON.stringify(p)).toBe(before);
+});
+
+test('older clients preserve both saved positions and display labels',()=>{
+ const {preservePositions}=require('../../src/services/planningManagementRows');const previous={entry:{one:{position:2,label:'Saved alias'}},exit:{}},next={entry:{one:{price:90}},exit:{}};
+ expect(preservePositions(previous,next).entry.one).toMatchObject({position:2,label:'Saved alias',price:90});
+});

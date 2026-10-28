@@ -1,3 +1,5 @@
+import {createRequire} from 'node:module'
+const {normalize:normalizePlanningDefinition}=createRequire(import.meta.url)('../../../../backend/src/services/tradePlanning.js')
 import {createPinia,setActivePinia} from 'pinia'
 import {useAuthStore} from '@/stores/auth'
 
@@ -299,4 +301,31 @@ it('resets the order filter on reopen and accepts partial alphanumeric broker ID
  await wrapper.get('input[aria-label="Filter by order number"]').setValue('abc-00');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
  await wrapper.get('input[aria-label="Filter by order number"]').setValue('missing');await wrapper.findAll('[role="dialog"] button').find(b=>b.text()==='Close').trigger('click');
  await button('Link trade').trigger('click');await flushPromises();expect(wrapper.get('input[aria-label="Filter by order number"]').element.value).toBe('');expect(wrapper.find('input[aria-label="Select fill one:one"]').exists()).toBe(true);
+});
+
+
+it('renames original and added management rows with schema-valid previews while keeping metadata separate',async()=>{
+ vi.useFakeTimers();plan.status='entered';plan.finalised=true;plan.definition.runnerMode='row';plan.management={entry:{a:{position:0,executed:false,units:null,price:100,time:'2026-01-01T00:00:00Z'}},exit:{b:{position:0,executed:false,units:null,price:120,time:'2026-01-01T00:00:00Z',percent:80,entryMatches:[{entryKey:'a',quantity:1}]},extra:{position:1,stage:{label:'Extra target',accountId:null,riskWeight:0},executed:false,units:null,price:125,time:'2026-01-01T00:00:00Z',percent:20}}};
+ const originalDefinition=JSON.stringify(plan.definition);
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ await wrapper.get('input[aria-label="exit 1 Fib level"]').setValue('Renamed target');
+ await vi.advanceTimersByTimeAsync(400);const payload=post.mock.calls.filter(([url])=>url==='/trade-plans/calculate').at(-1)[1].definition;
+ expect(()=>normalizePlanningDefinition(payload)).not.toThrow();
+ expect(payload.exits[0].label).toBe('Renamed target');
+ for(const row of [...payload.entries,...payload.exits])for(const key of ['position','executed','time','stage','entryMatches'])expect(row).not.toHaveProperty(key);
+ await wrapper.get('input[aria-label="exit 2 Fib level"]').setValue('Renamed extra');
+ await button('Save changes').trigger('click');await flushPromises();
+ const saved=put.mock.calls.filter(([url])=>url.endsWith('/management')).at(-1)[1].management;
+ expect(saved.exit.b).toMatchObject({label:'Renamed target',position:0,entryMatches:[{entryKey:'a',quantity:1}]});
+ expect(saved.exit.extra).toMatchObject({label:'Renamed extra',position:1});expect(JSON.stringify(plan.definition)).toBe(originalDefinition);
+ expect(wrapper.get('input[aria-label="exit 1 Fib level"]').element.value).toBe('Renamed target');expect(wrapper.get('input[aria-label="exit 2 Fib level"]').element.value).toBe('Renamed extra');
+});
+
+it('allows display-only renaming of linked rows while their financial controls remain locked',async()=>{
+ plan.status='entered';plan.finalised=true;plan.definition.runnerMode='row';plan.management={exit:{extra:{position:1,stage:{label:'Created target',accountId:null,riskWeight:0},executed:true,units:1,price:125,time:'2026-01-01T00:00:00Z',percent:20,entryMatches:[{entryKey:'a',quantity:1}]}}};
+ const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'linked',trade_id:'synthetic',source_key:'fill',stage_key:'extra',action:'exit',quantity:1,valid:true,fill:{provisional:false,price:125,currency:'USD',time:'2026-01-01'}}]},history:[]}}):original(url,...args));
+ mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();
+ const name=wrapper.get('input[aria-label="exit 2 Fib level"]');expect(name.attributes('disabled')).toBeUndefined();await name.setValue('Display alias');
+ expect(wrapper.get('input[aria-label="exit 2 units"]').attributes('disabled')).toBeDefined();await button('Save changes').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/p/management',expect.objectContaining({management:expect.objectContaining({exit:expect.objectContaining({extra:expect.objectContaining({label:'Display alias',stage:{label:'Created target',accountId:null,riskWeight:0},entryMatches:[{entryKey:'a',quantity:1}]})})})}));
 });
