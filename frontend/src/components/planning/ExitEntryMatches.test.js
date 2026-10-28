@@ -24,11 +24,11 @@ it('blocks a genuine over-allocation instead of rounding it away',async()=>{
 });
 
 
-it('shows remaining availability separately and disables entries fully assigned to other exits',async()=>{
+it('shows remaining availability and hides entries fully assigned to other exits',async()=>{
  const p=props();p.matching[0].options=[{entryKey:'low',quantity:0,totalQuantity:4,assignedQuantity:4},{entryKey:'high',quantity:1,totalQuantity:3,assignedQuantity:2}];p.matching[0].quantity=1;
  const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');
- expect(w.get('input[aria-label="Units from Lower grid"]').attributes('disabled')).toBeDefined();
- expect(w.text()).toContain('0 available units');expect(w.text()).toContain('4 assigned to other exits');
+ expect(w.find('input[aria-label="Units from Lower grid"]').exists()).toBe(false);
+ expect(w.text()).not.toContain('Lower grid');expect(w.text()).toContain('1 available units');
  await w.get('input[aria-label="Units from Upper grid"]').setValue(1);
  expect(w.findAll('button').find(b=>b.text()==='Save entry matches').attributes('disabled')).toBeUndefined();w.unmount();
 });
@@ -45,4 +45,19 @@ it('formats floating-point subtraction at broker precision without changing matc
  const p=props();p.matching[0].options=[{entryKey:'low',quantity:1.0999999999999996,totalQuantity:5.3,assignedQuantity:4.2}];
  const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');
  expect(w.text()).toContain('1.1 available units');expect(w.text()).not.toContain('1.0999999999999996');w.unmount();
+});
+
+
+it('omits a fully assigned stale match locally and saves only the newly chosen entry',async()=>{
+ const p=props();p.matching[0]={exitKey:'sale',quantity:2,status:'needs_match',matches:[{entryKey:'low',quantity:2}],options:[{entryKey:'low',quantity:0,totalQuantity:4,assignedQuantity:4},{entryKey:'high',quantity:2,totalQuantity:2,assignedQuantity:0}]};
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');
+ expect(w.find('input[aria-label="Units from Lower grid"]').exists()).toBe(false);expect(w.text()).not.toContain('Lower grid');expect(w.text()).toContain('Entries fully matched to other exits are hidden');expect(put).not.toHaveBeenCalled();
+ await w.get('input[aria-label="Units from Upper grid"]').setValue(2);const save=w.findAll('button').find(b=>b.text()==='Save entry matches');expect(save.attributes('disabled')).toBeUndefined();
+ await save.trigger('click');await flushPromises();expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'high',quantity:2}]});expect(p.matching[0].matches).toEqual([{entryKey:'low',quantity:2}]);w.unmount();
+});
+
+it('cancelling an unavailable stale match never changes saved matches',async()=>{
+ const p=props();p.matching[0].matches=[{entryKey:'low',quantity:2}];p.matching[0].options=[{entryKey:'low',quantity:0}];
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');expect(w.find('input').exists()).toBe(false);expect(w.text()).toContain('already matched to other exits');
+ expect(w.findAll('button').find(b=>b.text()==='Save entry matches').attributes('disabled')).toBeDefined();await w.get('button').trigger('click');expect(put).not.toHaveBeenCalled();expect(p.matching[0].matches).toEqual([{entryKey:'low',quantity:2}]);w.unmount();
 });
