@@ -26,3 +26,12 @@ test('projected plan prices cannot inherit a broker imports FX recovery markers'
  for(const key of ['original_entry_price_currency','original_exit_price_currency','original_pnl_currency','exchange_rate','native_prices'])expect(t[key]).toBeNull();
  expect(original.exchange_rate).toBe(1.25);
 });
+
+test('GBP projected plan prices and native chart snapshots agree despite imported USD FX provenance',()=>{
+ const original={...source,original_currency:'GBP',original_entry_price_currency:80,original_exit_price_currency:90,original_pnl_currency:10,exchange_rate:1.25};
+ const r=result();r.currency='GBP';r.records.forEach(record=>record.fill.currency='GBP');
+ const t=projectPlanTrade(original,{...plan,definition:{...plan.definition,currency:'GBP'}},r);
+ require('../../src/utils/tradePriceDisplay').attachNativeTradePrices(t);
+ expect(t.price_currency).toBe('GBP');expect(t.native_prices.entry_price).toBe(105);expect(t.native_prices.executions[0].price).toBe(100);
+ expect(t.pnl).toBe(140);expect(original.exchange_rate).toBe(1.25);
+});
