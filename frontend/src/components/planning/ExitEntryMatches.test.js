@@ -10,3 +10,15 @@ describe('exit row matches',()=>{
  it('keeps rejected matches visible and never emits saved',async()=>{put.mockRejectedValue({response:{data:{error:'Plan changed elsewhere'}}});const w=mount(ExitEntryMatches,{props:props()});await w.get('button').trigger('click');await w.get('input[aria-label="Units from Lower grid"]').setValue(2);await w.findAll('button').find(b=>b.text()==='Save entry matches').trigger('click');await flushPromises();expect(w.get('[role="alert"]').text()).toBe('Plan changed elsewhere');expect(w.emitted('saved')).toBeUndefined();w.unmount()});
  it('read-only plans show matches without edit controls',()=>{const w=mount(ExitEntryMatches,{props:{...props(),editable:false}});expect(w.find('button').exists()).toBe(false);w.unmount()});
 })
+
+it('permits the same precision boundary for total coverage and entry availability',async()=>{
+ const p=props();p.matching[0].quantity=17.00000002;p.matching[0].options=[{entryKey:'low',quantity:17.00000001}];
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');await w.get('input').setValue(17.00000001);
+ const save=()=>w.findAll('button').find(b=>b.text()==='Save entry matches');expect(save().attributes('disabled')).toBeUndefined();
+ await save().trigger('click');await flushPromises();expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'low',quantity:17.00000001}]});w.unmount();
+});
+it('blocks a genuine over-allocation instead of rounding it away',async()=>{
+ const p=props();p.matching[0].quantity=17.00000004;p.matching[0].options=[{entryKey:'low',quantity:17.00000001}];
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');await w.get('input').setValue(17.00000004);
+ expect(w.findAll('button').find(b=>b.text()==='Save entry matches').attributes('disabled')).toBeDefined();expect(put).not.toHaveBeenCalled();w.unmount();
+});

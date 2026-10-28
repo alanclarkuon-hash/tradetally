@@ -1,5 +1,5 @@
 // Row matches describe strategy intent; journal trade pairs are navigation anchors.
-const EPS=1e-8;
+const quantityMath=require('./planningQuantity');
 const contract=f=>JSON.stringify(f.contract?[f.contract.type,Number(f.contract.strike),f.contract.expiry]:null);
 function prepare(plan,records){
  const account=a=>require('./planningAccounts').stageAccount(plan.definition,a.action,a.stage_key)||a.accountKey;
@@ -11,7 +11,7 @@ function prepare(plan,records){
   const saved=plan.management?.exit?.[exitKey]?.entryMatches,explicit=Array.isArray(saved);
   const matches=explicit?saved.map(m=>({...m})):options.length===1?[{entryKey:options[0].entryKey,quantity}]:[];
   const total=matches.reduce((q,m)=>q+Number(m.quantity||0),0),unique=new Set(matches.map(m=>m.entryKey));
-  const valid=matches.length>0&&unique.size===matches.length&&matches.every(m=>typeof m.entryKey==='string'&&Number.isFinite(m.quantity)&&m.quantity>0&&options.some(o=>o.entryKey===m.entryKey))&&Math.abs(total-quantity)<=EPS;
+  const valid=matches.length>0&&unique.size===matches.length&&matches.every(m=>typeof m.entryKey==='string'&&Number.isFinite(m.quantity)&&m.quantity>0&&options.some(o=>o.entryKey===m.entryKey))&&quantityMath.equal(total,quantity);
   return {exitKey,quantity,options,matches,explicit,status:valid?'matched':'needs_match',reason:valid?null:'Choose entry rows and quantities for this exit'};
  });
 }
@@ -19,25 +19,25 @@ function consume(queue,row,a){
  if(!row||row.status!=='matched')return null;
  if(!row.balance)Object.defineProperty(row,'balance',{value:new Map(row.matches.map(m=>[m.entryKey,m.quantity]))});
  const eligible=row.matches.map(match=>{
-  const lots=queue.filter(l=>l.stageKey===match.entryKey&&l.q>EPS&&(!a.brokerPositionId||l.brokerPositionId===a.brokerPositionId));
+  const lots=queue.filter(l=>l.stageKey===match.entryKey&&l.q>0&&(!a.brokerPositionId||l.brokerPositionId===a.brokerPositionId));
   const available=lots.reduce((q,l)=>q+l.q,0);
   return {entryKey:match.entryKey,lots,available,capacity:Math.min(row.balance.get(match.entryKey),available)};
  }).filter(m=>m.capacity>0);
- const capacity=eligible.reduce((q,m)=>q+m.capacity,0);if(capacity+EPS<a.quantity)return null;
- const pieces=[],used=[];let unassigned=Math.min(a.quantity,capacity);
+ const capacity=eligible.reduce((q,m)=>q+m.capacity,0);if(!eligible.length||quantityMath.exceeds(a.quantity,capacity))return null;
+ const pieces=[],used=[],matchedQuantity=Math.min(a.quantity,capacity);let unassigned=matchedQuantity;
  for(const [index,match]of eligible.entries()){
-  const wanted=index===eligible.length-1?unassigned:Math.min(unassigned,a.quantity*match.capacity/capacity);
+  const wanted=index===eligible.length-1?unassigned:Math.min(unassigned,match.capacity,matchedQuantity*match.capacity/capacity);
   let remaining=wanted;
   for(const [i,lot]of match.lots.entries()){
-   const q=i===match.lots.length-1?remaining:Math.min(remaining,wanted*lot.q/match.available);
+   const q=Math.min(lot.q,i===match.lots.length-1?remaining:Math.min(remaining,wanted*lot.q/match.available));
    if(q>0){pieces.push({lot,q});remaining-=q;}
   }
   used.push({entryKey:match.entryKey,quantity:wanted});unassigned-=wanted;
  }
- if(Math.abs(pieces.reduce((q,p)=>q+p.q,0)-a.quantity)>EPS)return null;
+ if(!quantityMath.equal(pieces.reduce((q,p)=>q+p.q,0),a.quantity))return null;
  for(const m of used)row.balance.set(m.entryKey,Math.max(0,row.balance.get(m.entryKey)-m.quantity));
  for(const p of pieces)p.lot.q-=p.q;
- for(let i=queue.length-1;i>=0;i--)if(queue[i].q<=EPS)queue.splice(i,1);
+ for(let i=queue.length-1;i>=0;i--)if(!quantityMath.exceeds(queue[i].q,0,a.quantity,capacity))queue.splice(i,1);
  return pieces;
 }
 function remember(plan,result){
