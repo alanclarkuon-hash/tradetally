@@ -1,7 +1,7 @@
 // Display projection only. Keep non-negative capacity risk and original R unchanged.
 function calculate(plan,result,rates={}){
  const currency=plan.definition.currency,unavailable={amount:null,currency};
- if(result.unresolved||result.overExit||result.costsUnresolved||!['stock','crypto','cfd'].includes(plan.definition.instrument))return unavailable;
+ if(result.unresolved||result.overExit||result.matchingUnresolved||result.costsUnresolved||!['stock','crypto','cfd'].includes(plan.definition.instrument))return unavailable;
  const stop=Number(plan.definition.stopPrice);if(!(stop>0))return unavailable;
  if(!(result.openQuantity>1e-8))return {amount:0,currency};
  if(!result.openLots?.length)return unavailable;
