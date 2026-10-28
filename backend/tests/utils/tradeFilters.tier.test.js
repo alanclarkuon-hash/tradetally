@@ -2,7 +2,7 @@
 // centrally in TradeQueries._buildWhereClause so the trade list, counts,
 // exports, and every analytics query agree for free users.
 
-jest.mock('../../src/config/database', () => ({ query: jest.fn() }));
+jest.mock('../../src/config/database', () => ({ query: jest.fn().mockResolvedValue({rows: []}) }));
 jest.mock('../../src/utils/timezone', () => ({
   getUserTimezone: jest.fn().mockResolvedValue('America/New_York'),
   getUserLocalDate: jest.fn()

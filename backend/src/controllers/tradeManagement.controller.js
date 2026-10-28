@@ -426,7 +426,7 @@ function calculateRMultiples(trade, options = {}) {
         finalPointValue = getFuturesPointValue(underlying);
         logger.info(`[R-CALC] Auto-looked up point_value for ${symbol} (${underlying}): $${finalPointValue} per point`);
       } else {
-        logger.warn(`[R-CALC] Unknown point_value for futures trade ${trade.symbol}`);
+        logger.warn(`[R-CALC] Unknown point_value for futures trade`);
         finalPointValue = null;
       }
     }
@@ -481,7 +481,7 @@ function calculateRMultiples(trade, options = {}) {
     targetPLAmount = directTargetPLAmount;
     logger.debug('[R-CALC] Using direct calculation for target_pl_amount (multiple targets):', {
       directTargetPLAmount: directTargetPLAmount.toFixed(2),
-      note: 'Sum of (profit × shares × multiplier) at each TP level, minus estimated exit commission'
+      note: 'Sum of (profit Ã— shares Ã— multiplier) at each TP level, minus estimated exit commission'
     });
   } else if (takeProfit) {
     // Traditional calculation for single TP
@@ -1258,7 +1258,7 @@ const tradeManagementController = {
         // One row per position group. The representative leg (rep_id) is the
         // earliest stop-loss-bearing leg so the row exposes a usable stop_loss,
         // and trade_number ranks groups by their first stop-loss leg in
-        // chronological order — the same order getRPerformance numbers its
+        // chronological order â€” the same order getRPerformance numbers its
         // grouped chart rows.
         const groupedQuery = `
           WITH base AS (

@@ -369,13 +369,8 @@ class PriceMonitoringService {
       const alertsResult = await db.query(alertsQuery);
       let alerts = alertsResult.rows;
       
-      // Filter alerts based on billing status for hosted vs self-hosted
-      const billingEnabled = await TierService.isBillingEnabled();
-      if (billingEnabled) {
-        // Hosted instance - only Pro users get alerts
-        alerts = alerts.filter(alert => alert.tier === 'pro');
-      }
-      // Self-hosted instance (billingEnabled = false) - all users get alerts
+      const proUserIds = new Set(await TierService.filterProUserIds(alerts.map(alert => alert.user_id)));
+      alerts = alerts.filter(alert => proUserIds.has(String(alert.user_id)));
 
       for (const alert of alerts) {
         const shouldTrigger = this.shouldTriggerAlert(alert);

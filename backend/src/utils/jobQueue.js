@@ -797,7 +797,7 @@ class JobQueue {
     // stop (without re-enqueueing) for users who are not currently Pro.
     // isProUser resolves to true for everyone when billing is disabled.
     if (!(await TierService.isProUser(userId))) {
-      logger.logImport(`MAE recalc skipped for user ${userId}: not a Pro user`);
+      logger.logImport(`MAE recalc skipped for recipient: not a Pro user`);
       return { message: 'MAE recalc skipped: user is not Pro', skipped: true };
     }
 

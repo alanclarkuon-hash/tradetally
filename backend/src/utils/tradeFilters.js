@@ -26,7 +26,7 @@ const splitList = (value) => (value ? ensureString(value).split(',') : undefined
 const splitTrimmedList = (value) =>
   value ? ensureString(value).split(',').map((item) => item.trim()).filter(Boolean) : undefined;
 
-// `x ? coerce(x) : undefined` — historical list/count/export behavior for
+// `x ? coerce(x) : undefined` â€” historical list/count/export behavior for
 // prices and quantities ('' and 0 both fall through to undefined).
 const coercePositive = (value, coerce) => (value ? coerce(value) : undefined);
 // Guarded coercion used for P&L bounds so 0 / '0' are kept.
@@ -97,7 +97,7 @@ const ALL_FIELDS = [
  * - coerceNumbers:   parseFloat/parseInt price, quantity, and P&L bounds.
  * - splitBrokers:    split `brokers` into an array (count/export style).
  * - normalizeBroker: `broker`/`brokers` empty strings become undefined.
- * - normalizeStrings: Trade Management style — all plain string fields use
+ * - normalizeStrings: Trade Management style â€” all plain string fields use
  *                    `|| undefined`, and symbol goes through ensureString().
  * - rawTagSplit:     split tags without trimming (round-trip style).
  *
@@ -120,7 +120,7 @@ function parseTradeFilters(query = {}, options = {}) {
 // Per-endpoint profiles. Field order mirrors the original inline object
 // literals so JSON.stringify-based cache keys and logged shapes are unchanged.
 const tradeFilterProfiles = {
-  // trade.controller getUserTrades — coerced numbers, raw broker/brokers
+  // trade.controller getUserTrades â€” coerced numbers, raw broker/brokers
   // strings, exit-date range, accounts. Pagination added at the call site.
   tradeList: {
     fields: [
@@ -132,7 +132,7 @@ const tradeFilterProfiles = {
     ],
     coerceNumbers: true
   },
-  // trade.controller getTradesCount — like tradeList but no symbolExact /
+  // trade.controller getTradesCount â€” like tradeList but no symbolExact /
   // exit dates / accounts, and `brokers` is split into an array.
   tradeCount: {
     fields: [
@@ -145,7 +145,7 @@ const tradeFilterProfiles = {
     coerceNumbers: true,
     splitBrokers: true
   },
-  // trade.controller exportTradesToCSV — tradeCount minus importId.
+  // trade.controller exportTradesToCSV â€” tradeCount minus importId.
   tradeExport: {
     fields: [
       'symbol', 'startDate', 'endDate', 'tags', 'strategy', 'sector',
@@ -157,7 +157,7 @@ const tradeFilterProfiles = {
     coerceNumbers: true,
     splitBrokers: true
   },
-  // trade.controller getRoundTripTrades — small field set; tags split
+  // trade.controller getRoundTripTrades â€” small field set; tags split
   // WITHOUT trim/filter (historical quirk of this endpoint).
   roundTrip: {
     fields: [
@@ -168,7 +168,7 @@ const tradeFilterProfiles = {
     coerceNumbers: true,
     rawTagSplit: true
   },
-  // trade.controller getAnalytics — raw numeric strings (bound directly as
+  // trade.controller getAnalytics â€” raw numeric strings (bound directly as
   // SQL params), broker/brokers normalized '' -> undefined, holdTime.
   analytics: {
     fields: [
@@ -181,7 +181,7 @@ const tradeFilterProfiles = {
     ],
     normalizeBroker: true
   },
-  // trade.controller getPartialExitAnalytics — analytics subset plus
+  // trade.controller getPartialExitAnalytics â€” analytics subset plus
   // minPartials/maxPartials. Field order feeds a JSON.stringify cache key.
   partialExit: {
     fields: [
@@ -191,7 +191,7 @@ const tradeFilterProfiles = {
     ],
     normalizeBroker: true
   },
-  // tradeManagement.controller parseTradeManagementFilters — mirrors the
+  // tradeManagement.controller parseTradeManagementFilters â€” mirrors the
   // Performance-page (analytics) filter set, but normalizes every plain
   // string field ('' -> undefined) and ensureString()s symbol. No
   // market_sessions (historical omission on this page).
@@ -248,7 +248,7 @@ async function restrictFiltersToTier(userId, filters = {}) {
   // Lazy require: tierService pulls in models that also load trade helpers.
   const TierService = require('../services/tierService');
   if (await TierService.isProUser(userId)) return filters;
-  console.log(`[INFO] Dropping advanced trade filters for non-Pro user ${userId}`);
+  console.log(`[INFO] Dropping advanced trade filters: Pro access required`);
   return stripAdvancedFilters(filters);
 }
 

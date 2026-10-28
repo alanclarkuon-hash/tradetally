@@ -4,6 +4,7 @@ jest.mock('../../src/utils/finnhub', () => ({ getStockCandles: jest.fn() }));
 jest.mock('../../src/utils/alphaVantage', () => ({ isConfigured: () => true, getDailyData: jest.fn() }));
 jest.mock('../../src/utils/historicalPriceCache', () => ({ getRange: jest.fn(), hasRange: jest.fn(), insertCandles: jest.fn() }));
 jest.mock('../../src/services/holdingsService', () => ({}));
+jest.mock('../../src/services/tierService',()=>({filterProUserIds:jest.fn(async ids=>ids.map(String))}));
 jest.mock('../../src/services/notificationService', () => ({}));
 jest.mock('../../src/services/holdingsHistoryProvider', () => ({
   ...jest.requireActual('../../src/services/holdingsHistoryProvider'), yahoo: jest.fn(), crypto: jest.fn()
@@ -134,7 +135,7 @@ test('flat holdings with missing early prices cannot publish fabricated return m
 
 test('new nightly warmup shares the currency-safe pipeline rather than writing native foreign candles',async()=>{
  const db=require('../../src/config/database');
- db.query.mockImplementation(async sql=>({rows:sql.includes('MIN(eff)')?[{symbol:'SYNTH.L',earliest:'2026-08-01'}]:[]}));
+ db.query.mockImplementation(async sql=>({rows:sql.includes('MIN(eff)')?[{symbol:'SYNTH.L',user_id:'synthetic',earliest:'2026-08-01'}]:[]}));
  cache.getUnavailableSymbols=jest.fn().mockResolvedValue(new Set());
  cache.markUnavailable=jest.fn();
  cache.clearUnavailable=jest.fn().mockResolvedValue();

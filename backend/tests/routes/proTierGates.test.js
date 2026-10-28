@@ -46,6 +46,7 @@ jest.mock('../../src/controllers/oauth2.controller', () => stubController());
 jest.mock('../../src/controllers/account.controller', () => stubController());
 jest.mock('../../src/controllers/plaid.controller', () => stubController());
 
+jest.mock('../../src/services/accountPnlReporting', () => ({reportAccountPnl: (_req, _res, next) => next()}));
 const express = require('express');
 const request = require('supertest');
 const TierService = require('../../src/services/tierService');

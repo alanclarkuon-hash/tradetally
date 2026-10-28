@@ -43,6 +43,8 @@ describe('priceMonitoringService price alert webhook publication', () => {
     jest.clearAllMocks();
     NotificationPreferenceService.isNotificationEnabled.mockResolvedValue(true);
     db.query.mockResolvedValue({ rows: [] });
+    TierService.filterProUserIds.mockImplementation(async ids=>ids.map(String));
+    jest.spyOn(priceMonitoringService,'getMonitoredSymbols').mockImplementation(async()=> (await db.query('SELECT symbol FROM (SELECT DISTINCT symbol FROM trades) permitted')).rows.map(r=>r.symbol));
     finnhub.isCryptoSymbol = jest.fn(() => false);
     priceFallbackManager.getQuoteWithFallback = jest.fn();
     priceMonitoringService.failedSymbols.clear();
@@ -124,6 +126,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
   });
 
   test('scheduled monitoring retains trade instrument types instead of guessing from ticker',async()=>{
+    priceMonitoringService.getMonitoredSymbols.mockResolvedValue(['FET']);
     db.query.mockResolvedValueOnce({rows:[{symbol:'FET',instrument_type:'crypto'},{symbol:'FET',instrument_type:'stock'}]});
     db.query.mockResolvedValueOnce({rows:[]});
     const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
@@ -142,6 +145,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
     expect(priceMonitoringService.cycleRunning).toBe(false);
   });
   test('failed symbols do not starve later independent broker holdings',async()=>{
+    priceMonitoringService.getMonitoredSymbols.mockResolvedValue(Array.from({length:6},(_,i)=>'FAILED'+i).concat(['WAGB.L']));
     db.query.mockResolvedValueOnce({rows:Array.from({length:6},(_,i)=>({symbol:'FAILED'+i,instrument_type:'stock'})).concat([{symbol:'WAGB.L',instrument_type:'stock'}])}).mockResolvedValue({rows:[]});
     const update=jest.spyOn(priceMonitoringService,'updateSymbolPrice').mockResolvedValue(false);
     await priceMonitoringService.monitorPrices();
@@ -166,6 +170,7 @@ describe('priceMonitoringService price alert webhook publication', () => {
 
 describe('priceMonitoringService Pro gating', () => {
   beforeEach(() => {
+    priceMonitoringService.getMonitoredSymbols.mockRestore?.();
     jest.clearAllMocks();
     TierService.filterProUserIds.mockImplementation(async ids => ids.filter(id => id === 'pro-user'));
   });

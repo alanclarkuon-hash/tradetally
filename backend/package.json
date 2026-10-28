@@ -61,7 +61,8 @@
     "exceljs": "4.4.0",
     "jest": "^30.4.2",
     "nodemon": "^3.1.14",
-    "supertest": "^7.2.2"
+    "supertest": "^7.2.2",
+    "node-forge": "1.4.0"
   },
   "engines": {
     "node": ">=24.21.0"

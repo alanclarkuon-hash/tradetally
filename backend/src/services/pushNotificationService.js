@@ -94,7 +94,7 @@ class PushNotificationService {
       const devices = await db.query(devicesQuery, [userId]);
       
       if (devices.rows.length === 0) {
-        logger.logDebug(`No active iOS devices with push notifications enabled for user ${userId}`);
+        logger.logDebug(`No active iOS devices with push notifications enabled for recipient`);
         return { success: false, reason: 'no_devices' };
       }
 
@@ -275,14 +275,14 @@ class PushNotificationService {
 
   async sendPriceAlert(userId, alertData) {
     if (!await isProUser(userId)) {
-      logger.logDebug(`Push notification for price alert skipped for user ${userId} - Pro required`);
+      logger.logDebug(`Push notification for price alert skipped for recipient - Pro required`);
       return { success: false, reason: 'pro_required' };
     }
 
     // Check if user has price alerts enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
     if (!isEnabled) {
-      logger.logDebug(`Push notification for price alert skipped for user ${userId} - preference disabled`);
+      logger.logDebug(`Push notification for price alert skipped for recipient - preference disabled`);
       return { success: false, reason: 'preference_disabled' };
     }
 
@@ -306,7 +306,7 @@ class PushNotificationService {
     // Check if user has trade reminders enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
     if (!isEnabled) {
-      logger.logDebug(`Push notification for trade alert skipped for user ${userId} - preference disabled`);
+      logger.logDebug(`Push notification for trade alert skipped for recipient - preference disabled`);
       return { success: false, reason: 'preference_disabled' };
     }
 
@@ -325,14 +325,14 @@ class PushNotificationService {
 
   async sendNewsAlert(userId, newsData) {
     if (!await isProUser(userId)) {
-      logger.logDebug(`Push notification for news alert skipped for user ${userId} - Pro required`);
+      logger.logDebug(`Push notification for news alert skipped for recipient - Pro required`);
       return { success: false, reason: 'pro_required' };
     }
 
     // Check if user has news notifications enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
     if (!isEnabled) {
-      logger.logDebug(`Push notification for news alert skipped for user ${userId} - preference disabled`);
+      logger.logDebug(`Push notification for news alert skipped for recipient - preference disabled`);
       return { success: false, reason: 'preference_disabled' };
     }
 
@@ -357,14 +357,14 @@ class PushNotificationService {
 
   async sendEarningsAlert(userId, earningsData) {
     if (!await isProUser(userId)) {
-      logger.logDebug(`Push notification for earnings alert skipped for user ${userId} - Pro required`);
+      logger.logDebug(`Push notification for earnings alert skipped for recipient - Pro required`);
       return { success: false, reason: 'pro_required' };
     }
 
     // Check if user has earnings notifications enabled
     const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
     if (!isEnabled) {
-      logger.logDebug(`Push notification for earnings alert skipped for user ${userId} - preference disabled`);
+      logger.logDebug(`Push notification for earnings alert skipped for recipient - preference disabled`);
       return { success: false, reason: 'preference_disabled' };
     }
 

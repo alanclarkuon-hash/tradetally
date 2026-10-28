@@ -172,6 +172,9 @@ importers:
       jest:
         specifier: ^30.4.2
         version: 30.4.2(@types/node@26.1.1)
+      node-forge:
+        specifier: 1.4.0
+        version: 1.4.0(patch_hash=2798686e4488058ad81c3b8e32eb763c0feff21f4c717ce4d13b6ef2432cd5b8)
       nodemon:
         specifier: ^3.1.14
         version: 3.1.14

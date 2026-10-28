@@ -1,12 +1,12 @@
 // Production-safe, read-only candidate report. A mismatch is a review flag,
 // not proof: manual multipliers and broker quote units can be intentional.
 const fs = require('fs');
-const path = require('path');
+const { maintenancePaths, writePrivateReport } = require('../src/utils/maintenanceReport');
 const { Client } = require('pg');
 const { resolveFuturesRoot, extractUnderlyingFromFuturesSymbol, getFuturesPointValue } = require('../src/utils/futuresUtils');
 
 async function main() {
-  const envFile = process.argv.find(arg => arg.startsWith('--env-file='))?.slice(11) || path.join(__dirname, '../.env');
+  const {envFile, report} = maintenancePaths(process.argv.slice(2));
   const env = require('dotenv').parse(fs.readFileSync(envFile));
   const client = new Client({ host: env.DB_HOST, port: env.DB_PORT, database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD,
     options: '-c default_transaction_read_only=on -c statement_timeout=20000' });
@@ -37,10 +37,11 @@ async function main() {
     }
     const candidates = [...groups.values()].sort((a, b) => b.trades - a.trades)
       .map(group => ({ ...group, users: group.users.size, brokers: [...group.brokers] }));
-    console.log(JSON.stringify({ readOnly: true, note: 'Review candidates; broker quote units and manual overrides require confirmation.',
+    writePrivateReport(report, { readOnly: true, note: 'Review candidates; broker quote units and manual overrides require confirmation.',
       mismatchedTrades: candidates.reduce((sum, group) => sum + group.trades, 0), candidates,
-      unresolvedContracts: [...unresolved].map(([symbol, trades]) => ({ symbol, trades })) }, null, 2));
+      unresolvedContracts: [...unresolved].map(([symbol, trades]) => ({ symbol, trades })) });
+    console.log(JSON.stringify({readOnly:true, candidateGroups:candidates.length}));
     await client.query('ROLLBACK');
   } finally { await client.end(); }
 }
-if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error('Futures audit failed; no records were changed.'); process.exitCode = 1; });

@@ -325,14 +325,14 @@ class NotificationService {
     try {
       // Pro-only content
       if (!await isProUser(userId)) {
-        console.log(`[INFO] Behavioral alert notification skipped for user ${userId} - Pro required`);
+        console.log(`[INFO] Behavioral alert notification skipped for recipient - Pro required`);
         return;
       }
 
       // Check if user has trade reminders enabled (closest preference for behavioral alerts)
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
-        console.log(`Behavioral alert notification skipped for user ${userId} - preference disabled`);
+        console.log(`Behavioral alert notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -359,14 +359,14 @@ class NotificationService {
     try {
       // Pro-only content
       if (!await isProUser(userId)) {
-        console.log(`[INFO] Price alert notification skipped for user ${userId} - Pro required`);
+        console.log(`[INFO] Price alert notification skipped for recipient - Pro required`);
         return;
       }
 
       // Check if user has price alerts enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_price_alerts');
       if (!isEnabled) {
-        console.log(`Price alert notification skipped for user ${userId} - preference disabled`);
+        console.log(`Price alert notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -409,14 +409,14 @@ class NotificationService {
     try {
       // Pro-only content
       if (!await isProUser(userId)) {
-        console.log(`[INFO] News notification skipped for user ${userId} - Pro required`);
+        console.log(`[INFO] News notification skipped for recipient - Pro required`);
         return;
       }
 
       // Check if user has news notifications enabled for open positions
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_news_open_positions');
       if (!isEnabled) {
-        console.log(`News notification skipped for user ${userId} - preference disabled`);
+        console.log(`News notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -446,14 +446,14 @@ class NotificationService {
     try {
       // Pro-only content
       if (!await isProUser(userId)) {
-        console.log(`[INFO] Earnings notification skipped for user ${userId} - Pro required`);
+        console.log(`[INFO] Earnings notification skipped for recipient - Pro required`);
         return;
       }
 
       // Check if user has earnings notifications enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_earnings_announcements');
       if (!isEnabled) {
-        console.log(`Earnings notification skipped for user ${userId} - preference disabled`);
+        console.log(`Earnings notification skipped for recipient - preference disabled`);
         return;
       }
 
@@ -484,14 +484,14 @@ class NotificationService {
     try {
       // Pro-only content
       if (!await isProUser(userId)) {
-        console.log(`[INFO] Trade reminder notification skipped for user ${userId} - Pro required`);
+        console.log(`[INFO] Trade reminder notification skipped for recipient - Pro required`);
         return;
       }
 
       // Check if user has trade reminders enabled
       const isEnabled = await NotificationPreferenceService.isNotificationEnabled(userId, 'notify_trade_reminders');
       if (!isEnabled) {
-        console.log(`Trade reminder notification skipped for user ${userId} - preference disabled`);
+        console.log(`Trade reminder notification skipped for recipient - preference disabled`);
         return;
       }
 

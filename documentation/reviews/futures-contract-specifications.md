@@ -1,4 +1,4 @@
-# Futures point values and import repair — October 21, 2026
+# Futures point values and import repair â€” October 21, 2026
 
 `backend/src/utils/futuresUtils.js` contains dollars per quoted price point per
 contract, plus the minimum outright tick. Unknown roots return `null`. CSV
@@ -70,7 +70,7 @@ Run `backend/scripts/audit_futures_multipliers.js` for a read-only candidate rep
 
 `backend/scripts/repair_futures_import.js` defaults to a database-enforced read-only dry run for one username and import ID. It requires verified Tradovate import provenance, retained executions and unedited USD economics. Commission repairs additionally require a verified generic fallback and a commission-only source; directly recognized imports preserve their allocated costs. Unknown contracts and unexplained multipliers are skipped.
 
-Apply mode requires an absolute path for a private, durable backup. Each selected import is repaired in one serializable transaction. Repeated runs are idempotent. Multiplier changes clear invalid dollar excursions for recomputation. The script deletes the database analytics cache; operators must also invalidate the running application memory cache before showing repaired totals.
+Both tools require explicit `--env-file` and `--report` absolute paths outside every source checkout/worktree. Detailed financial diagnostics go only to an exclusively created private report; stdout contains generic counts. Apply mode additionally requires `--backup` with an absolute external path for a private, durable backup. Destinations are validated before connecting, and the backup is flushed before any repair. Each selected import is repaired in one serializable transaction. Repeated runs are idempotent. Multiplier changes clear invalid dollar excursions for recomputation. The script deletes the database analytics cache; operators must also invalidate the running application memory cache before showing repaired totals.
 
 ## Validation
 

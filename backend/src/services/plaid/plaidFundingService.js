@@ -316,7 +316,7 @@ class PlaidFundingService {
     // the connection is not marked as errored and resumes after an upgrade.
     const syncAccess = await TierService.canSyncBrokerConnection(connection.userId);
     if (!syncAccess.allowed) {
-      console.log(`[INFO] [PLAID] Skipping sync for connection ${connection.id}: Plaid sync is Pro-only for this user`);
+      console.log(`[INFO] [PLAID] Skipping Plaid sync: Pro access required`);
       return {
         processedCount: 0,
         skippedForTier: true,

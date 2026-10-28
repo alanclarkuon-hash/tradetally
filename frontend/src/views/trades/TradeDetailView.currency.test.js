@@ -41,7 +41,7 @@ describe('trade detail quote prices (issue 418)', () => {
       }
     }
     fetchTrade.mockResolvedValue(trade)
-    const wrapper = shallowMount(TradeDetailView, { global: { stubs: { RouterLink: true } } })
+    const wrapper = shallowMount(TradeDetailView, { global: { stubs: { RouterLink: true, CurrencyCard: false } } })
     await flushPromises()
     expect(wrapper.text()).toContain('$2,700.00')
     expect(wrapper.text()).toContain('$2,710.00')

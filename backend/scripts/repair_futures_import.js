@@ -1,7 +1,7 @@
 // Dry-run by default. Requires one reviewed user/import; never repairs all users.
-// --username=... --import-id=... [--env-file=...] [--apply --backup=/absolute/path.json]
+// --username=... --import-id=... --env-file=/private/config --report=/private/report.json [--apply --backup=/private/backup.json]
 const fs = require('fs');
-const path = require('path');
+const { maintenancePaths, writePrivateReport } = require('../src/utils/maintenanceReport');
 const { Client } = require('pg');
 const { planFuturesImportRepair } = require('../src/utils/futuresImportRepair');
 
@@ -13,10 +13,9 @@ async function main() {
   const username = argument('username');
   const importId = argument('import-id');
   const apply = process.argv.includes('--apply');
-  const backup = argument('backup');
+  const {envFile, report, backup} = maintenancePaths(process.argv.slice(2));
   if (!username || !importId) throw new Error('Specify --username and --import-id. Review a dry run before applying.');
-  if (apply && (!backup || !path.isAbsolute(backup))) throw new Error('--apply requires an absolute --backup path.');
-  const env = require('dotenv').parse(fs.readFileSync(argument('env-file') || path.join(__dirname, '../.env')));
+  const env = require('dotenv').parse(fs.readFileSync(envFile));
   const client = new Client({
     host: env.DB_HOST, port: env.DB_PORT, database: env.DB_NAME, user: env.DB_USER, password: env.DB_PASSWORD,
     options: `-c statement_timeout=15000 -c lock_timeout=3000${apply ? '' : ' -c default_transaction_read_only=on'}`
@@ -31,12 +30,13 @@ async function main() {
     const trades = (await client.query(`SELECT * FROM trades WHERE user_id=$1 AND import_id=$2 ORDER BY id${apply ? ' FOR UPDATE' : ''}`, [user.id, importId])).rows;
     const plans = trades.map(trade => planFuturesImportRepair(trade, log, user.timezone || 'UTC'));
     const repairs = plans.filter(plan => !plan.skipped);
-    console.log(JSON.stringify({ mode: apply ? 'apply' : 'dry_run', username, importId, plans: plans.map(plan => {
+    writePrivateReport(report, { mode: apply ? 'apply' : 'dry_run', username, importId, plans: plans.map(plan => {
       if (plan.skipped) return plan;
       const { executions, ...after } = plan.after;
       return { ...plan, after };
     }), beforePnl: trades.reduce((sum, trade) => sum + Number(trade.pnl || 0), 0),
-    afterPnl: plans.reduce((sum, plan, index) => sum + Number(plan.skipped ? trades[index].pnl || 0 : plan.after.pnl || 0), 0) }, null, 2));
+    afterPnl: plans.reduce((sum, plan, index) => sum + Number(plan.skipped ? trades[index].pnl || 0 : plan.after.pnl || 0), 0) });
+    console.log(JSON.stringify({mode:apply ? 'apply' : 'dry_run', candidates:repairs.length}));
     if (!apply || repairs.length === 0) {
       await client.query('ROLLBACK');
       return;
@@ -64,11 +64,11 @@ async function main() {
     }
     await client.query('DELETE FROM analytics_cache WHERE user_id=$1', [user.id]);
     await client.query('COMMIT');
-    console.log(JSON.stringify({ repaired: repairs.length, backup }));
+    console.log(JSON.stringify({ repaired: repairs.length }));
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     throw error;
   } finally { await client.end(); }
 }
 
-if (require.main === module) main().catch(error => { console.error(error.message); process.exitCode = 1; });
+if (require.main === module) main().catch(error => { console.error('Futures repair failed; no uncommitted repairs were retained.'); process.exitCode = 1; });

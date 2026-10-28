@@ -18,3 +18,11 @@ test('unverified or provisional coverage still cannot be plotted',()=>{for(const
 
 test('plan-linked chart uses the current asset ticker while preserving broker source identity',()=>{const original={...source,symbol:'LOKB',underlying_symbol:null},p={...plan,definition:{...plan.definition,symbol:'NVTS',instrument:'stock'}};const before=JSON.stringify(original);const t=projectPlanTrade(original,p,result());expect(t.symbol).toBe('NVTS');expect(t.underlying_symbol).toBe('NVTS');expect(t.plan_trade.sourceSymbol).toBe('LOKB');expect(t.plan_trade.sourceTradeId).toBe(original.id);expect(JSON.stringify(original)).toBe(before);expect(t.executions.map(e=>e.source_trade_ids)).toEqual([['one','two'],['three'],['four'],['five']])});
 test('option plan retains the contract symbol and uses the planned underlying for charts',()=>{const original={...source,symbol:'OPTION-CONTRACT',underlying_symbol:'OLD'},p={...plan,definition:{...plan.definition,symbol:'NVTS',instrument:'option'}};const t=projectPlanTrade(original,p,result());expect(t.symbol).toBe('OPTION-CONTRACT');expect(t.underlying_symbol).toBe('NVTS')});
+
+test('projected plan prices cannot inherit a broker imports FX recovery markers',()=>{
+ const original={...source,original_currency:'GBP',original_entry_price_currency:80,original_exit_price_currency:90,original_pnl_currency:10,exchange_rate:1.25,native_prices:{entry_price:80}};
+ const t=projectPlanTrade(original,plan,result());
+ expect(t.entry_price).toBe(105);
+ for(const key of ['original_entry_price_currency','original_exit_price_currency','original_pnl_currency','exchange_rate','native_prices'])expect(t[key]).toBeNull();
+ expect(original.exchange_rate).toBe(1.25);
+});

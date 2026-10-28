@@ -278,7 +278,7 @@ class ChartService {
 
       // Crypto symbols use CoinGecko on every install (after the tier gate)
       if (finnhub.isCryptoSymbol(symbol)) {
-        console.log(`[CHART] ${symbol} is crypto, using CoinGecko`);
+        console.log(`[CHART] Crypto chart uses CoinGecko`);
         return await ChartService.getCryptoTradeChartData(symbol, entryDate, exitDate);
       }
 
@@ -357,7 +357,7 @@ class ChartService {
         }
       }
 
-      // Self-hosted: no configured provider — Yahoo first, then Alpha Vantage.
+      // Self-hosted: no configured provider â€” Yahoo first, then Alpha Vantage.
       const yahooOnly = await yahooStockFallback(null);
       if (yahooOnly) return yahooOnly;
 
