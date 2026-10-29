@@ -61,3 +61,19 @@ it('cancelling an unavailable stale match never changes saved matches',async()=>
  const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');expect(w.find('input').exists()).toBe(false);expect(w.text()).toContain('already matched to other exits');
  expect(w.findAll('button').find(b=>b.text()==='Save entry matches').attributes('disabled')).toBeDefined();await w.get('button').trigger('click');expect(put).not.toHaveBeenCalled();expect(p.matching[0].matches).toEqual([{entryKey:'low',quantity:2}]);w.unmount();
 });
+
+
+it('shows a real minimum-sized remainder in decimal notation and saves its exact quantity',async()=>{
+ const p=props();p.matching[0].quantity=1e-8;p.matching[0].options=[{entryKey:'low',quantity:1e-8,totalQuantity:0.00035018,assignedQuantity:0.00035017}];
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');
+ expect(w.text()).toContain('0.00000001 available units');expect(w.text()).not.toContain('1e-8');
+ await w.get('input').setValue(1e-8);await w.findAll('button').find(b=>b.text()==='Save entry matches').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'low',quantity:1e-8}]});w.unmount();
+});
+it('labels a positive sub-precision remainder without implying zero or changing the saved quantity',async()=>{
+ const p=props();p.matching[0].quantity=3.68e-10;p.matching[0].options=[{entryKey:'low',quantity:3.68e-10}];
+ const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');
+ expect(w.text()).toContain('Less than 0.00000001 available units');
+ await w.get('input').setValue(3.68e-10);await w.findAll('button').find(b=>b.text()==='Save entry matches').trigger('click');await flushPromises();
+ expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'low',quantity:3.68e-10}]});w.unmount();
+});
