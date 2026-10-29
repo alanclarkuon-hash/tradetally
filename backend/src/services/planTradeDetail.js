@@ -51,7 +51,8 @@ async function resolvePlanTrade(req,source){
  const allocations=(await db.query('SELECT * FROM trade_plan_allocations WHERE plan_id=$1 AND user_id=$2',[plan.id,req.user.id])).rows;
  let trades=(await db.query('SELECT * FROM trades WHERE user_id=$1 AND id=ANY($2::uuid[])',[req.user.id,[...new Set(allocations.map(a=>a.trade_id))]])).rows;
  if(trades.some(t=>t.broker==='trading212')){const sources=require('./planBrokerFills');trades=sources.attachSources(trades,allocations,await sources.loadGroups(db,req.user.id));}
- const result=await require('./planningCashflows').enrich(db,plan,ledger({...plan,management:{}},allocations,trades),trades);
+ // Preserve explicit row matches and added row definitions; only omit unlinked manual executions.
+ const result=await require('./planningCashflows').enrich(db,plan,ledger(plan,allocations,trades,{includeProvisional:false}),trades);
  const fx=result.accounts?.length>1?await require('./planningFx').latestPlanningFx():null;
  const trade=projectPlanTrade(source,plan,result,fx);
  if(plan.definition.currency!==result.currency){const fx=await require('./planningFx').latestPlanningFx();const rates={USD:1,...fx?.rates};trade.stop_loss=rates[result.currency]>0&&rates[plan.definition.currency]>0?plan.definition.stopPrice*rates[result.currency]/rates[plan.definition.currency]:null;}
