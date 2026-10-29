@@ -25,7 +25,11 @@ import {equal,exceeds,tolerance} from '@/utils/planningQuantity'
 const props=defineProps({plan:Object,matching:{type:Array,default:()=>[]},entries:{type:Array,default:()=>[]},exits:{type:Array,default:()=>[]},editable:Boolean,prepareSave:Function}),emit=defineEmits(['saved'])
 const active=ref(null),quantities=ref({}),error=ref(''),saving=ref(false)
 // Display broker precision without rounding the quantities used for validation.
-const units=value=>Number(Number(value).toFixed(8)).toString()
+const unitFormatter=new Intl.NumberFormat('en-GB',{useGrouping:false,maximumFractionDigits:8})
+const units=value=>{
+ const quantity=Number(value),display=unitFormatter.format(quantity)
+ return quantity>0&&display==='0'?'Less than 0.00000001':display
+}
 const label=(rows,key)=>rows.find(row=>row.key===key)?.label||key
 const availableOptions=row=>(row?.options||[]).filter(option=>option.quantity>0)
 const total=computed(()=>availableOptions(props.matching.find(row=>row.exitKey===active.value)).reduce((q,option)=>q+Number(quantities.value[option.entryKey]||0),0))

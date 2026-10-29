@@ -95,13 +95,13 @@ function brokerPositionIdentity(trade,index){
  if(typeof executions==='string'){try{executions=JSON.parse(executions)}catch{return null}}
  const id=executions?.[index]?.etoro_position_id;return id==null?null:String(id);
 }
-function ledger(plan,allocations,trades) {
+function ledger(plan,allocations,trades,{includeProvisional=true}={}) {
  plan=require('./planningManagementRows').forManagement(plan);
  const byId=new Map(trades.map(t=>[t.id,t]));let unresolved=0;
  const provisional=[];
  const conversion=plan.provisionalConversion;
  const convert=conversion&&Number.isFinite(conversion.rate)&&conversion.rate>0&&conversion.currency;
- for(const action of ['entry','exit'])for(const [key,row] of Object.entries(plan.management?.[action]||{})){
+ if(includeProvisional)for(const action of ['entry','exit'])for(const [key,row] of Object.entries(plan.management?.[action]||{})){
   if(row.executed&&!allocations.some(a=>a.action===action&&a.stage_key===key)&&positive(row.units)&&positive(row.price)){
    provisional.push({id:'provisional:'+action+':'+key,trade_id:'provisional',source_key:key,stage_key:key,action,quantity:row.units,
     source_snapshot:{action,quantity:row.units,price:convert?row.price*conversion.rate:row.price,time:row.time,currency:convert?conversion.currency:plan.definition.currency,...(convert?{originalPrice:row.price,originalCurrency:plan.definition.currency,fxRate:conversion.rate}:{}),
