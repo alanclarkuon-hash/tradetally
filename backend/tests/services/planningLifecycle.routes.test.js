@@ -131,3 +131,32 @@ function exitMatchFixture(){
 test('exit matching saves strategy rows without touching financial source records',async()=>{exitMatchFixture();const r=await request(app).put('/plans/'+id+'/exit-matches').send({version:1,exitKey:'target',matches:[{entryKey:'other',quantity:2}]});expect(r.status).toBe(200);const save=db.query.mock.calls.find(([sql])=>sql.startsWith('UPDATE trade_plans SET management'));expect(JSON.parse(save[1][0]).exit.target.entryMatches).toEqual([{entryKey:'other',quantity:2}]);expect(db.query.mock.calls.some(([sql])=>/^UPDATE trades|^DELETE|^INSERT INTO trades/.test(sql))).toBe(false);expect(db.query.mock.calls.some(([sql,args])=>sql.startsWith('INSERT INTO trade_plan_events')&&args[2]==='exit_entries_matched')).toBe(true)});
 test.each([[{entryKey:'missing',quantity:2}],[{entryKey:'other',quantity:3}],[{entryKey:'other',quantity:1}],[{entryKey:'other',quantity:1},{entryKey:'other',quantity:1}]])('invalid row matching never writes: %j',async matches=>{exitMatchFixture();const r=await request(app).put('/plans/'+id+'/exit-matches').send({version:1,exitKey:'target',matches});expect([409,422]).toContain(r.status);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false)});
 test('exit matches are owner and version scoped',async()=>{exitMatchFixture();const r=await request(app).put('/plans/'+id+'/exit-matches').send({version:0,exitKey:'target',matches:[{entryKey:'other',quantity:2}]});expect(r.status).toBe(409);expect(db.query.mock.calls[1][1]).toEqual([id,'owner']);expect(db.query.mock.calls.some(([sql])=>sql.startsWith('UPDATE'))).toBe(false)});
+
+
+describe('planning tag library management',()=>{
+ test('renames and changes category by stable ID scoped to owner',async()=>{
+  db.query.mockResolvedValueOnce({rows:[{id,kind:'context',name:'New name',definition:'Updated'}]});
+  const r=await request(app).put('/plans/library/'+id).send({kind:'context',name:' New name ',definition:'Updated'});
+  expect(r.status).toBe(200);expect(r.body.tag.id).toBe(id);
+  expect(db.query.mock.calls[0][1]).toEqual([id,'owner','context','New name','Updated']);
+  expect(db.query.mock.calls[0][0]).toMatch(/WHERE id=\$1 AND user_id=\$2/);expect(db.query).toHaveBeenCalledTimes(1);
+ });
+ test('deletes only the owned library row without rewriting saved plans',async()=>{
+  db.query.mockResolvedValueOnce({rows:[{id}]});const r=await request(app).delete('/plans/library/'+id);
+  expect(r.status).toBe(200);expect(db.query).toHaveBeenCalledTimes(1);
+  expect(db.query.mock.calls[0]).toEqual(['DELETE FROM trade_plan_tags WHERE id=$1 AND user_id=$2 RETURNING id',[id,'owner']]);
+ });
+ test.each(['put','delete'])('missing or foreign tag returns 404 for %s',async(method)=>{
+  const r=await request(app)[method]('/plans/library/'+id).send({kind:'entry',name:'Synthetic'});expect(r.status).toBe(404);
+ });
+ test('duplicate rename returns a useful conflict without upserting another tag',async()=>{
+  db.query.mockRejectedValueOnce(Object.assign(new Error('duplicate'),{code:'23505'}));
+  const r=await request(app).put('/plans/library/'+id).send({kind:'entry',name:'Existing'});expect(r.status).toBe(409);expect(r.body.error).toMatch(/already exists/);
+ });
+ test.each([{kind:'bad',name:'Name'},{kind:'entry',name:' '},{kind:'entry',name:'x'.repeat(101)},{kind:'entry',name:'Name',definition:'x'.repeat(2001)}])('rejects invalid tag without writes',async(body)=>{
+  expect((await request(app).put('/plans/library/'+id).send(body)).status).toBe(422);expect(db.query).not.toHaveBeenCalled();
+ });
+ test.each(['put','delete'])('rejects invalid ID for %s',async(method)=>{
+  expect((await request(app)[method]('/plans/library/not-an-id').send({kind:'entry',name:'Synthetic'})).status).toBe(400);expect(db.query).not.toHaveBeenCalled();
+ });
+});
