@@ -76,6 +76,25 @@ router.post('/library',run(async(req,res)=>{
  const result=(await db.query('INSERT INTO trade_plan_tags(user_id,kind,name,definition) VALUES($1,$2,$3,$4) ON CONFLICT(user_id,kind,name) DO UPDATE SET definition=EXCLUDED.definition RETURNING id,kind,name,definition',[req.user.id,t.kind,t.name,t.definition])).rows[0];
  res.status(201).json({tag:result});
 }));
+// Library edits affect future selections; saved plan/review snapshots stay intact.
+const libraryTagSchema=Joi.object({kind:Joi.string().valid('entry','exit','context').required(),name:Joi.string().trim().min(1).max(100).required(),definition:Joi.string().max(2000).allow('').default('')});
+router.put('/library/:tagId',run(async(req,res)=>{
+ validId(req.params.tagId);
+ const s=libraryTagSchema.validate(req.body);
+ if(s.error)fail('Provide a valid tag kind, name and definition');
+ const t=s.value;
+ try{
+  const tag=(await db.query('UPDATE trade_plan_tags SET kind=$3,name=$4,definition=$5 WHERE id=$1 AND user_id=$2 RETURNING id,kind,name,definition',[req.params.tagId,req.user.id,t.kind,t.name,t.definition])).rows[0];
+  if(!tag)fail('Tag not found',404);
+  res.json({tag});
+ }catch(e){if(e.code==='23505')fail('A tag with that name already exists in this category',409);throw e}
+}));
+router.delete('/library/:tagId',run(async(req,res)=>{
+ validId(req.params.tagId);
+ const tag=(await db.query('DELETE FROM trade_plan_tags WHERE id=$1 AND user_id=$2 RETURNING id',[req.params.tagId,req.user.id])).rows[0];
+ if(!tag)fail('Tag not found',404);
+ res.json({deleted:true});
+}));
 router.put('/settings',run(async(req,res)=>{
  const s=Joi.object({accountLimits:Joi.array().max(50).items(Joi.object({accountId:uuid.required(),limit:Joi.number().positive().allow(null).required(),equity:Joi.number().positive().allow(null).default(null),exposureMultiple:Joi.number().positive().max(20).allow(null).default(null),buyingPower:Joi.number().min(0).allow(null).default(null)})).default([]),tradingAccountIds:Joi.array().max(50).unique().items(uuid).allow(null).default(null),portfolioLimit:Joi.number().positive().allow(null).required(),currency:Joi.string().pattern(/^[A-Z]{3}$/).required(),selectedLevel:Joi.number().valid(.05,.1,.2,.3).required(),reason:Joi.string().trim().min(10).max(2000).required()}).validate(req.body);
  if(s.error)fail('Set the risk limit/currency, exposure level and a reason');
