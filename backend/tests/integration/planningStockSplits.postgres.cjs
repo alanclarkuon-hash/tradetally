@@ -23,6 +23,7 @@ const owner=randomUUID(),account=randomUUID(),pid=randomUUID(),ids=[randomUUID()
  ok(await link(2,'unsold','entry'));assert(Math.abs((await result()).realisedProfit-116.4)<1e-8,'Unsold entry must not change realised profit');
  const saved=(await plan()).management,management={entry:{},exit:{target:{...saved.exit.target,label:'Renamed runner',executed:true,units:6,price:70,time:'2026-02-03T10:00:00Z'}}};delete management.exit.target.entryMatchBasisDate;
  ok(await call('/management','PUT',{management}),200);assert((await plan()).management.exit.target.entryMatchBasisDate,'Older clients must retain basis');
+ management.exit.target.entryMatchBasisDate=(await plan()).management.exit.target.entryMatchBasisDate;ok(await call('/management','PUT',{management}),200);
  const bad=await call('/exit-matches','PUT',{exitKey:'target',matches:[{entryKey:'unsold',quantity:6}]});assert.equal(bad.status,409,'Cannot match more than the unsold row capacity');
  const exitIds=(await allocations()).filter(a=>a.action==='exit').map(a=>a.id);ok(await call('/allocations','POST',{stageKey:'target',action:'exit',removeAllocationIds:exitIds,fills:[]}));assert.equal((await result()).exited,0);
  ok(await link(1,'target','exit'));ok(await call('/exit-matches','PUT',{exitKey:'target',matches:[{entryKey:'level',quantity:6}]}),200);r=await result();assert(Math.abs(r.realisedProfit-116.4)<1e-8);assert.equal(r.openQuantity,17);
