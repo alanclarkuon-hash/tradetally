@@ -7,7 +7,7 @@ const guid=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]
 // source evidence, not the position boundary of this trade detail response.
 function projectPlanTrade(source,plan,result,fx=null) {
  result=require('./planningReporting').project(result,plan.definition,fx);
- if(result.unresolved||result.overExit||(!result.coverageComplete&&!result.costsUnresolved)||result.provisionalCount||!result.currency)fail('Reconcile the plan trade links before opening the combined trade',409);
+ if(result.splitUnresolved||result.unresolved||result.overExit||(!result.coverageComplete&&!result.costsUnresolved)||result.provisionalCount||!result.currency)fail('Reconcile the plan trade links before opening the combined trade',409);
  const records=result.records.filter(r=>!r.fill.provisional);
  const groups=new Map();
  for(const r of records){

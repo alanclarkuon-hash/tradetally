@@ -77,3 +77,7 @@ it('labels a positive sub-precision remainder without implying zero or changing 
  await w.get('input').setValue(3.68e-10);await w.findAll('button').find(b=>b.text()==='Save entry matches').trigger('click');await flushPromises();
  expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'low',quantity:3.68e-10}]});w.unmount();
 });
+
+it('explains the split basis while submitting the displayed adjusted units',async()=>{
+ const p=props();p.matching[0].splitAdjusted=true;p.matching[0].splitBasisDate='2026-11-01';const w=mount(ExitEntryMatches,{props:p});await w.get('button').trigger('click');expect(w.text()).toContain('Quantities are split-adjusted through 2026-11-01');await w.get('input[aria-label="Units from Lower grid"]').setValue(2);await w.findAll('button').find(b=>b.text()==='Save entry matches').trigger('click');await flushPromises();expect(put).toHaveBeenCalledWith('/trade-plans/synthetic/exit-matches',{version:4,exitKey:'sale',matches:[{entryKey:'low',quantity:2}]});w.unmount();
+});
