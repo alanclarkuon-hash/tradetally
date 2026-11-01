@@ -110,7 +110,7 @@ function projectOriginalReports(groups,legacy,canonical){
 }
 function attachSources(trades,allocations,groups){
  const {legacy,canonical}=originalSettlementReports(groups);
- return trades.map(original=>{
+ const attached=trades.map(original=>{
   if(original.broker!=='trading212')return original;
   const selected=allocations.filter(a=>a.trade_id===original.id&&a.source_snapshot?.brokerExecution).map(a=>groups.find(g=>g.valid&&g.key===a.source_snapshot.brokerExecution.key)).filter(Boolean);
   const unique=[...new Map(selected.map(g=>[g.key,g])).values()];
@@ -127,6 +127,8 @@ function attachSources(trades,allocations,groups){
   if(events.length&&currencies.size===1)t.broker_settlement={status:'complete',currency:[...currencies][0],events};
   return t;
  });
+ attached.planningSplits=groups.marketSplits||{};
+ return attached;
 }
 
 module.exports={originalGroups,usedQuantity,availableGroups,loadGroups,attachSources,originalSettlementReports,projectOriginalReports};

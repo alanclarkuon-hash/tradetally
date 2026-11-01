@@ -315,11 +315,11 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
  const b=schema.value;
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(!p.finalised||['completed','reviewed','cancelled'].includes(p.status))fail('Finalise or reopen the plan before changing exit matches');
-  const before=await evidence(c,p);if(before.unresolved||before.costsUnresolved)fail('Reconcile source fills and costs before matching exits',409);
+  const before=await evidence(c,p);if(before.unresolved||before.costsUnresolved||before.splitUnresolved)fail('Reconcile source fills, split evidence and costs before matching exits',409);
   if(!before.entryMatching?.some(r=>r.exitKey===b.exitKey))fail('Exit row has no linked or executed fills in this plan');
   const management=JSON.parse(JSON.stringify(p.management||{}));management.exit??={};
   const previous=management.exit[b.exitKey]?.entryMatches||null;
-  management.exit[b.exitKey]={...management.exit[b.exitKey],entryMatches:b.matches};
+  management.exit[b.exitKey]={...management.exit[b.exitKey],entryMatches:b.matches,...(before.splitBasisDate?{entryMatchBasisDate:before.splitBasisDate}:{})};
   const after=await evidence(c,{...p,management}),row=after.entryMatching?.find(r=>r.exitKey===b.exitKey);
   if(after.overExit||row?.status!=='matched')fail('Matched quantities must cover this exit exactly using available earlier entries in the same account and contract',409);
   if(before.entryMatching.some(r=>r.exitKey!==b.exitKey&&r.status==='matched'&&after.entryMatching.find(next=>next.exitKey===r.exitKey)?.status!=='matched'))fail('These units are already matched to another exit. Change that exit match first.',409);
@@ -330,12 +330,16 @@ router.put('/:id/exit-matches',run(async(req,res)=>{
 
 router.put('/:id/management',run(async(req,res)=>{
  const stage=Joi.object({label:Joi.string().max(120).required(),accountId:uuid.allow(null).default(null),riskWeight:Joi.number().min(0).max(100).default(0)});
- const row=Joi.object({stage,label:Joi.string().max(120),position:Joi.number().integer().min(0).max(39),entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
+ const row=Joi.object({stage,label:Joi.string().max(120),position:Joi.number().integer().min(0).max(39),entryMatchBasisDate:Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/),entryMatches:Joi.array().max(40).items(Joi.object({entryKey:Joi.string().pattern(/^[a-zA-Z0-9_-]{1,64}$/).required(),quantity:Joi.number().positive().required()})),percent:Joi.number().min(0).max(100),premium:Joi.number().positive().allow(null),executed:Joi.boolean().required(),units:Joi.number().min(0).allow(null).required(),price:Joi.number().positive().allow(null).required(),time:Joi.string().isoDate().required(),tactics:Joi.array().max(20).items(Joi.string().max(100)).default([]),marketContext:Joi.array().max(20).items(Joi.string().max(100)).default([])});
  const schema=Joi.object({version:Joi.number().integer().required(),management:Joi.object({entry:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({}),exit:Joi.object().pattern(/^[a-zA-Z0-9_-]{1,64}$/,row).default({})}).required()}).validate(req.body);
  if(schema.error)fail('Provide valid management quantities, levels and tags');
  await db.withTransaction(async c=>{
   const p=await lock(c,req);if(!p.finalised||['cancelled','completed','reviewed'].includes(p.status))fail('Finalise or reopen this plan before recording management changes');
   const m=require('../services/planningManagementRows').preservePositions(p.management,schema.value.management);
+  for(const [key,row]of Object.entries(m.exit)){
+   if(row.entryMatchBasisDate!=null&&row.entryMatchBasisDate!==p.management?.exit?.[key]?.entryMatchBasisDate)fail('Save entry match basis through the exit match editor');
+   if(p.management?.exit?.[key]?.entryMatchBasisDate)row.entryMatchBasisDate=p.management.exit[key].entryMatchBasisDate;
+  }
   for(const [key,row]of Object.entries(m.exit))if(row.entryMatches&&!isDeepStrictEqual(row.entryMatches,p.management?.exit?.[key]?.entryMatches))fail('Save entry matches through the exit match editor');
   for(const [key,row]of Object.entries(p.management?.exit||{}))if(row.entryMatches&&!m.exit[key]?.entryMatches)m.exit[key]={...m.exit[key],entryMatches:row.entryMatches};
   const nextDefinition=definitionForManagement({...p,management:m});
@@ -358,7 +362,7 @@ router.put('/:id/management',run(async(req,res)=>{
   if(isDeepStrictEqual(canonical(m),canonical(p.management)))return;
   const before=await evidence(c,p);
   const remembered=require('../services/planningEntryMatches').remember(p,before);
-  for(const [key,row]of Object.entries(remembered.exit||{}))if(row.entryMatches)m.exit[key]={...m.exit[key],entryMatches:row.entryMatches};
+  for(const [key,row]of Object.entries(remembered.exit||{}))if(row.entryMatches)m.exit[key]={...m.exit[key],entryMatches:row.entryMatches,...(row.entryMatchBasisDate?{entryMatchBasisDate:row.entryMatchBasisDate}:{})};
   const next={...p,management:m};const result=await evidence(c,next);if(result.overExit)fail('Provisional exits exceed the available linked/provisional entries');
   const hasExecuted=Object.values(m.entry).some(r=>r.executed)||allocated.some(a=>a.action==='entry');
   const returnedToWatching=p.status==='entered'&&!hasExecuted;

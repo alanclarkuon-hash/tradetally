@@ -6,6 +6,7 @@
     <button v-if="editable" class="btn-secondary" type="button" :aria-expanded="active===row.exitKey" @click="edit(row)">{{ active===row.exitKey?'Cancel matching':'Match entries' }}</button>
    </div>
    <div v-if="active===row.exitKey" class="mt-4 space-y-3">
+    <p v-if="row.splitAdjusted" class="text-sm text-gray-500 dark:text-gray-400">Quantities are split-adjusted through {{ row.splitBasisDate }}. Original broker fills are unchanged.</p>
     <p class="text-sm">Choose which entry rows this exit closes. Match {{ units(row.quantity) }} units in total. Other entries remain open.</p>
     <p class="text-sm text-gray-500 dark:text-gray-400">Entries fully matched to other exits are hidden.</p>
     <label v-for="option in availableOptions(row)" :key="option.entryKey" class="flex flex-wrap items-center gap-3"><span class="min-w-32">{{ label(entries,option.entryKey) }}</span><input v-model.number="quantities[option.entryKey]" :aria-label="'Units from '+label(entries,option.entryKey)" type="number" min="0" :max="option.quantity+tolerance(option.quantity)" step="any" class="input max-w-48" /><small class="text-gray-500 dark:text-gray-400">{{ units(option.quantity) }} available units<span v-if="option.totalQuantity!=null"> · {{ units(option.totalQuantity) }} linked · {{ units(option.assignedQuantity) }} assigned to other exits</span></small></label>

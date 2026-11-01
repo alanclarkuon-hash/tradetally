@@ -5,17 +5,18 @@ const account=(plan,a)=>require('./planningAccounts').stageAccount(plan.definiti
 function eligibleEntries(plan,records,own){
  return records.filter(a=>a.action==='entry'&&own.some(e=>account(plan,a)===account(plan,e)&&a.fill.currency===e.fill.currency&&contract(a.fill)===contract(e.fill)&&(!e.brokerPositionId||a.brokerPositionId===e.brokerPositionId)&&a.fill.time<=e.fill.time));
 }
-function prepare(plan,records){
+function prepare(plan,records,splits){
  const exits=[...new Set(records.filter(a=>a.action==='exit').map(a=>a.stage_key))];
  return exits.map(exitKey=>{
   const own=records.filter(a=>a.action==='exit'&&a.stage_key===exitKey),quantity=own.reduce((q,a)=>q+a.quantity,0);
   const eligible=eligibleEntries(plan,records,own);
   const options=[...new Set(eligible.map(a=>a.stage_key))].map(entryKey=>({entryKey,quantity:eligible.filter(a=>a.stage_key===entryKey).reduce((q,a)=>q+a.quantity,0)}));
   const saved=plan.management?.exit?.[exitKey]?.entryMatches,explicit=Array.isArray(saved);
-  const matches=explicit?saved.map(m=>({...m})):options.length===1?[{entryKey:options[0].entryKey,quantity}]:[];
+  const matchFactor=splits?.matchFactor(own,plan.management?.exit?.[exitKey]?.entryMatchBasisDate)??(splits?null:1);
+  const matches=explicit?saved.map(m=>({...m,quantity:m.quantity*(matchFactor??1)})):options.length===1?[{entryKey:options[0].entryKey,quantity}]:[];
   const total=matches.reduce((q,m)=>q+Number(m.quantity||0),0),unique=new Set(matches.map(m=>m.entryKey));
-  const valid=matches.length>0&&unique.size===matches.length&&matches.every(m=>typeof m.entryKey==='string'&&Number.isFinite(m.quantity)&&m.quantity>0&&options.some(o=>o.entryKey===m.entryKey))&&quantityMath.equal(total,quantity);
-  return {exitKey,quantity,options,matches,explicit,status:valid?'matched':'needs_match',reason:valid?null:'Choose entry rows and quantities for this exit'};
+  const valid=(!explicit||matchFactor!=null)&&matches.length>0&&unique.size===matches.length&&matches.every(m=>typeof m.entryKey==='string'&&Number.isFinite(m.quantity)&&m.quantity>0&&options.some(o=>o.entryKey===m.entryKey))&&quantityMath.equal(total,quantity);
+  return {exitKey,quantity,options,matches,explicit,...(splits?.basisDate?{splitBasisDate:splits.basisDate,splitAdjusted:records.some(a=>a.splitFactor!==1)}:{}),status:valid?'matched':'needs_match',reason:valid?null:'Choose entry rows and quantities for this exit'};
  });
 }
 function consume(queue,row,a){
@@ -62,7 +63,7 @@ function availability(plan,rows,records){
 }
 function remember(plan,result){
  const management=JSON.parse(JSON.stringify(plan.management||{}));management.exit??={};
- for(const row of result.entryMatching||[])if(row.status==='matched'&&!row.explicit){management.exit[row.exitKey]={...management.exit[row.exitKey],entryMatches:row.matches};}
+ for(const row of result.entryMatching||[])if(row.status==='matched'&&!row.explicit){management.exit[row.exitKey]={...management.exit[row.exitKey],entryMatches:row.matches,...(row.splitBasisDate?{entryMatchBasisDate:row.splitBasisDate}:{})};}
  return management;
 }
 module.exports={prepare,consume,availability,remember};

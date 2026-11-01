@@ -329,3 +329,7 @@ it('allows display-only renaming of linked rows while their financial controls r
  expect(wrapper.get('input[aria-label="exit 2 units"]').attributes('disabled')).toBeDefined();await button('Save changes').trigger('click');await flushPromises();
  expect(put).toHaveBeenCalledWith('/trade-plans/p/management',expect.objectContaining({management:expect.objectContaining({exit:expect.objectContaining({extra:expect.objectContaining({label:'Display alias',stage:{label:'Created target',accountId:null,riskWeight:0},entryMatches:[{entryKey:'a',quantity:1}]})})})}));
 });
+
+it('keeps linked stock executions native while labelling their adjusted share quantity',async()=>{
+ plan={...plan,status:'entered',finalised:true};const original=get.getMockImplementation();get.mockImplementation((url,...args)=>url.endsWith('/workflow')?Promise.resolve({data:{ledger:{records:[{id:'link',trade_id:'trade',action:'entry',stage_key:'a',quantity:20,sourceQuantity:10,splitFactor:2,valid:true,fill:{currency:'USD',price:50,sourcePrice:100,quantity:20,time:'2026-01-01T10:00:00Z'}}],openQuantity:20},history:[]}}):original(url,...args));mountPage();await flushPromises();await button('Trade & Manage').trigger('click');await flushPromises();wrapper.vm.linkedCurrency='USD';await flushPromises();const section=wrapper.findAll('section').find(s=>s.find('h2').exists()&&s.find('h2').text()==='Linked trades');expect(section.text()).toMatch(/10 @ (?:US)?\$100\.00/);expect(section.text()).toContain('20 split-adjusted units');
+});
